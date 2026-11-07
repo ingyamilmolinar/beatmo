@@ -2,7 +2,5 @@
 
 package main
 
-// renderIsStub reports whether synthmatch's render path is the deterministic
-// test stub rather than the real C DSP. See drift_test.go for why the drift
-// guard has to know.
+// renderIsStub: the drift guard must skip, visibly, when synthmatch renders the test stub.
 const renderIsStub = false

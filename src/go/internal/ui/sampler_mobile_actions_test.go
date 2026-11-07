@@ -10,16 +10,14 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// setupMobileSamplerTab builds a narrow mobile Sampler tab with a loaded
-// buffer (so the edit knobs + action buttons lay out) and returns the game.
+// A loaded buffer, so the knobs and actions lay out.
 func setupMobileSamplerTab(t *testing.T, w, h int) *Game {
 	t.Helper()
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
 	g := New(logger)
 	t.Cleanup(g.CloseForTest)
-	// SetForceMobileProfile is a no-op under -tags test; force the small-screen
-	// profile directly (the canonical test path) so the mobile layout runs.
+	// SetForceMobileProfile is a no-op under -tags test.
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })
 	UpdateProfile()
@@ -35,10 +33,7 @@ func setupMobileSamplerTab(t *testing.T, w, h int) *Game {
 	return g
 }
 
-// TestSamplerMobileTogglesInPanelActionsOnStickyBar — on mobile the Sampler tab
-// keeps ONLY the Rev/Norm/Fade transforms row in-panel; the Preview/Save/Save
-// As/Reset actions relocate to the sticky bar (Approach B), so the in-panel
-// action buttons have empty rects. Verified in every supported language.
+// Only Rev/Norm/Fade stay in-panel; the actions live on the sticky bar. Every language.
 func TestSamplerMobileTogglesInPanelActionsOnStickyBar(t *testing.T) {
 	for _, loc := range []i18n.Locale{i18n.LocaleEN, i18n.LocaleES} {
 		t.Run(string(loc), func(t *testing.T) {
@@ -83,10 +78,7 @@ func TestSamplerMobileTogglesInPanelActionsOnStickyBar(t *testing.T) {
 	}
 }
 
-// TestSamplerMobileOverflowMenuHasSaveAs — the Sampler ⋯ overflow opens the
-// shared instrument action menu: Save As…, portable Export/Import (the
-// *.beatmo-inst.json feature) — same item set as the Synth tab
-// (instrumentActionMenuItems).
+// The shared instrument action menu, the same items as Synth's.
 func TestSamplerMobileOverflowMenuHasSaveAs(t *testing.T) {
 	g := setupMobileSamplerTab(t, 360, 760)
 	actions := g.drum.samplerPanelMobileActions()

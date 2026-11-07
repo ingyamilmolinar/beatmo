@@ -1,20 +1,4 @@
-/**
- * Playback stability regression — Phase 5 follow-up.
- *
- * The user reports that audio stops after interacting with the synth
- * sliders in the browser. The identity-defaults fix eliminated the
- * NaN-produced silence, but there may be another race / crash mode
- * triggered by 60Hz slider drag during active playback.
- *
- * This test reproduces the scenario:
- *   1. Start active playback (loop the snare via playSound).
- *   2. Spam setInstrumentParam at 60Hz for 1 second.
- *   3. After the spam, verify playSound still produces non-silent audio.
- *
- * The contract: even under pathological slider abuse, the audio chain
- * must remain operational. If audio is silenced or NaN'd, this test
- * detects it via tail-RMS dropping to 0 OR Number.isFinite() failing.
- */
+/** Under 60 Hz slider abuse during playback the audio chain must stay operational: no silence, no NaN. */
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";
@@ -115,13 +99,9 @@ assertFinite(baseline.head, 'baseline.head');
 const baselineEnergy = energy(baseline.head);
 console.log(`[TEST] baseline head energy=${baselineEnergy.toFixed(6)}`);
 
-// ─── Step 2: trigger active playback (simulate sequencer) ───
-//
-// Force the AudioContext awake (audio.js gates plays on user gesture).
+// audio.js gates plays on a user gesture, so the context is woken by hand.
 await page.evaluate(async () => {
-  // Some Chromium versions require an explicit user gesture event.
-  // chromium.launch's --autoplay-policy=no-user-gesture-required avoids
-  // it, but we still need the context to resume.
+  // The autoplay flag skips the gesture, but the context still needs resuming.
   if (window.__audioCtx && window.__audioCtx.state === 'suspended') {
     await window.__audioCtx.resume();
   }
@@ -138,10 +118,7 @@ await page.evaluate(async () => {
   await Promise.allSettled(promises);
 });
 
-// ─── Step 3: rapid slider drag mid-playback (the user's exact pattern) ───
-//
-// Set pitch at 60Hz for 1s while plays are flying. The bug pattern:
-// after this spam, subsequent plays may be silent / NaN-propagated.
+// 60 Hz for 1 s while plays fly: the user's pattern.
 await page.evaluate(async () => {
   const stamps = [];
   const startMS = performance.now();
@@ -169,9 +146,7 @@ assertFinite(post.tail, 'post-spam tail');
 const postEnergy = energy(post.head);
 console.log(`[TEST] post-spam head energy=${postEnergy.toFixed(6)}`);
 
-// Without identity-defaults fix, pitch=24 (the last drag value) leaves
-// the cache with a render that has all knobs in a strange state. With
-// the fix, the snare should still produce audible head energy.
+// The last drag value must still leave an audible snare.
 const ratio = postEnergy / Math.max(baselineEnergy, 1e-12);
 console.log(`[TEST] post-spam head ratio = ${(ratio * 100).toFixed(1)}%`);
 if (ratio < 0.25) {

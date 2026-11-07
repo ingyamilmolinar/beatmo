@@ -131,10 +131,7 @@ func (s *State) AnchorForBPMChange(prevBPM int, now time.Time, audioNow float64)
 	}
 }
 
-// DtSince returns elapsed seconds since the play anchor, preferring the audio
-// clock and falling back to wall clock. ok=false means no anchor is available
-// (the caller decides its own fallback). This is the SINGLE place the
-// audio-vs-wall clock selection lives.
+// The SINGLE place the audio-vs-wall clock choice lives: the audio clock when anchored, else wall. ok=false = no anchor.
 func (s *State) DtSince(now time.Time, audioNow float64) (dtSec float64, ok bool) {
 	if audioNow > 0 && s.audioStart > 0 {
 		return audioNow - s.audioStart, true
@@ -186,10 +183,7 @@ func (s *State) DtOfStep(idx, div, bpm int) float64 {
 	return (float64(idx)/float64(div) - s.beatBase) * 60.0 / float64(bpm)
 }
 
-// StepAtAudioTime is the inverse of AudioTimeOfStep on the audio clock: the
-// floor subdivision whose ideal start is ≤ t. ok is false without an audio
-// anchor — the audio lane schedules on the audio clock and has no wall-clock
-// fallback.
+// ok is false without an audio anchor: the audio lane schedules on the audio clock and has no wall fallback.
 func (s *State) StepAtAudioTime(t float64, bpm, div int) (int, bool) {
 	if s.audioStart <= 0 || bpm <= 0 {
 		return 0, false
@@ -211,10 +205,8 @@ func (s *State) AudioTimeOfStep(idx, div, bpm int) float64 {
 	return s.audioStart + s.DtOfStep(idx, div, bpm)
 }
 
-// SeekTo relocates the playhead to absolute subdivision `steps`. When playing,
-// it re-anchors the clocks so PosBeats continues smoothly from steps; when
-// stopped/paused it records the paused position. This is the single mutation
-// that moves the transport position.
+// The single mutation that moves the transport: playing re-anchors so PosBeats continues from steps; stopped or paused
+// records the paused position.
 func (s *State) SeekTo(steps, div int, now time.Time, audioNow float64) {
 	if div <= 0 {
 		div = 1
@@ -238,10 +230,7 @@ func (s *State) SeekTo(steps, div int, now time.Time, audioNow float64) {
 	}
 }
 
-// SetPosition places the playhead at absolute subdivision `steps`: it sets the
-// beat base, its last* display mirrors, and the paused/resume bookmark, without
-// touching the wall/audio clocks (callers that also (re)anchor the clock do so
-// separately). Used by the resume-from-offset and media-session resume paths.
+// Leaves the clocks alone (callers that re-anchor do it themselves); for the resume-from-offset and media-session paths.
 func (s *State) SetPosition(steps, div int) {
 	if div <= 0 {
 		div = 1

@@ -27,9 +27,7 @@ type laneNote struct {
 	Grid            float64 // grid + nudge, no offset (the probe's "predicted time")
 	Hash            uint64  // identity: any field (or the voice) changing ⇒ different Hash
 	node            uint64  // the node the cell plays (part of Hash)
-	// Layers is the cell's voice stack (a chord node); nil = one voice at
-	// (Pitch, Vol). Voice k sounds at Pitch+Layers[k].Semis, Vol×Layers[k].Gain
-	// and owns voice id base+k (the lane mints a contiguous block per cell).
+	// nil = one voice. Voice k owns id base+k: the lane mints a block per cell.
 	Layers []model.Layer
 }
 
@@ -41,8 +39,7 @@ func (n *laneNote) voiceCount() int {
 	return len(n.Layers)
 }
 
-// voiceAt is voice k's pitch and volume. A single-voice note returns its own
-// fields untouched (bit-identical to before voice stacks existed).
+// Single voices return their fields untouched, bit-identical.
 func (n *laneNote) voiceAt(k int) (pitch, vol float64) {
 	if len(n.Layers) == 0 {
 		return n.Pitch, n.Vol
@@ -93,12 +90,8 @@ func (s *playbackSlate) laneContext() (laneCtx, bool) {
 	return laneCtx{snap: snap, bpm: bpm, div: div, anySolo: anySolo, offset: RuntimeProf().AudioOffsetSec}, true
 }
 
-// laneNoteAt is the audio lane's PURE note function: what cell (row, abs)
-// sounds like under current state. No counters, gates or side effects — the
-// lane may evaluate the same cell any number of times. Audibility comes from
-// the predictor (which owns the stateful logic walk); volume / pitch /
-// duration from the same evalNodeParamsOnly the legacy sequencer uses, plus
-// the custom-logic decision the predictor recorded for the cell.
+// PURE: no counters, gates or side effects, so a cell can be evaluated any number of times.
+// Audibility comes from the predictor, which owns the stateful logic walk.
 func (s *playbackSlate) laneNoteAt(c *laneCtx, row, abs int) (laneNote, bool) {
 	g := s.g
 	if row < 0 || row >= len(g.drum.Rows) {

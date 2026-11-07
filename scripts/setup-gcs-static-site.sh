@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
-# Set up GCP resources for static site hosting with Cloud CDN.
-#
-# Usage:
-#   GCP_PROJECT=beatmo GCS_BUCKET=www-beatmo-io-static DOMAIN=beatmo.io ./scripts/setup-gcs-static-site.sh
-#
-# This script is idempotent - it checks if resources exist before creating them.
+# Idempotent. Usage: GCP_PROJECT=beatmo GCS_BUCKET=www-beatmo-io-static DOMAIN=beatmo.io ./scripts/setup-gcs-static-site.sh
 
 set -euo pipefail
 

@@ -7,10 +7,7 @@ import (
 	"time"
 )
 
-// TestBus_PanickingSubscriberDoesNotKillFanout asserts that when one
-// subscriber panics, other subscribers still receive events and the
-// fan-out pool stays alive for subsequent publishes. The pool's panic
-// recovery (async.Pool.run line ~120) is the safety net.
+// One panicking subscriber must not stop the others or kill the fan-out pool (its panic recovery is the net).
 func TestBus_PanickingSubscriberDoesNotKillFanout(t *testing.T) {
 	b := NewBus(context.Background(), Options{PoolWorkers: 2, PoolQueue: 16})
 	defer b.Close()

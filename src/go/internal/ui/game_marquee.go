@@ -14,15 +14,8 @@ func (g *Game) marqueeRect() image.Rectangle {
 	return image.Rect(g.marquee.startX, g.marquee.startY, g.marquee.curX, g.marquee.curY).Canon()
 }
 
-// handleMarquee owns the Shift+drag-from-empty-space gesture. handleEditor's
-// shift branch calls this from exactly two spots: (1) the arm site, only
-// reached when left==true, linkDrag/marquee are both inactive, shift is held,
-// and the press landed on empty grid space (nodeAtScreen == nil) — so arming
-// here is unconditional, no press-edge check needed (link-drag claims
-// Shift+press ON a node before this ever runs); (2) the continue/release
-// site, reached on every subsequent frame while g.marquee.active is true.
-// Always returns true (kept bool for symmetry with other gesture handlers
-// and so callers read as "consumed").
+// Called from two spots in handleEditor's shift branch: the arm site (empty space, nothing active)
+// and the continue/release site. Link-drag claims Shift+press on a node first.
 func (g *Game) handleMarquee(left bool, x, y int) bool {
 	if !g.marquee.active {
 		g.marquee = marqueeDrag{active: true, startX: x, startY: y, curX: x, curY: y}
@@ -42,17 +35,9 @@ func (g *Game) handleMarquee(left bool, x, y int) bool {
 	if len(ids) == 0 {
 		return true
 	}
-	// Reuse instead of duplicate: marquee-selecting the EXACT same node set
-	// (order-independent) an existing group already contains reopens THAT
-	// group instead of creating a new one. Subset/superset selections are
-	// NOT matches — they fall through to CreateGroup below.
+	// Exactly the same node set as an existing group reopens it; subsets and supersets create a new one.
 	if gid, ok := g.findGroupWithExactNodeSet(ids); ok {
-		// openGroupMenuForBadge's provisional-preserving reopen rule applies
-		// identically here: re-marqueeing the same set as the still-open
-		// provisional group keeps it provisional (openAt's same-id guard
-		// skips the discard-and-recreate path); any other match (committed,
-		// or a DIFFERENT still-open provisional group) reopens non-
-		// provisional — closing it must not delete it.
+		// Re-marqueeing the open provisional group keeps it provisional; any other match reopens committed.
 		g.openGroupMenuForBadge(gid, x, y)
 		g.logger.Debugf("[group] marquee reused existing group=%d nodes=%d", gid, len(ids))
 		return true
@@ -62,21 +47,13 @@ func (g *Game) handleMarquee(left bool, x, y int) bool {
 		g.logger.Debugf("[group] marquee create failed: %v", err)
 		return true
 	}
-	// The group is provisional until the user presses Save in the menu: no
-	// emitGroupCreated here (moved to GroupMenu.save()) so an abandoned
-	// marquee selection never produces an undo step. See
-	// GroupMenu.OpenAtProvisional / Close for the full discard lifecycle.
+	// Provisional until Save, so an abandoned selection never leaves an undo step.
 	g.groupMenu.OpenAtProvisional(gid, x, y)
 	g.logger.Debugf("[group] marquee created group=%d nodes=%d (provisional)", gid, len(ids))
 	return true
 }
 
-// findGroupWithExactNodeSet returns the lowest GroupID whose NodeIDs form the
-// EXACT same set as ids (order-independent, same cardinality) — used by
-// handleMarquee's release path to reuse an existing group instead of
-// duplicating it. g.graph.AllGroups() is already ascending-GroupID sorted, so
-// the first match found is the lowest id; subset/superset selections never
-// match (the length check rejects them outright).
+// The lowest matching id (AllGroups is sorted); a length mismatch rejects subsets and supersets.
 func (g *Game) findGroupWithExactNodeSet(ids []model.NodeID) (model.GroupID, bool) {
 	want := make(map[model.NodeID]bool, len(ids))
 	for _, id := range ids {
@@ -125,9 +102,7 @@ func (g *Game) drawGridMarquee(dst *ebiten.Image) {
 	if r.Empty() {
 		return
 	}
-	// Translucent accent fill + 1px border, tokens only (token discipline
-	// ratchet: no inline color literals). Same accent token family used
-	// elsewhere for selection/focus overlays.
+	// Tokens only: no inline color literals.
 	fill := WithAlpha(TokenAccent(), AlphaFaint)
 	border := WithAlpha(TokenAccent(), AlphaStrong)
 	drawRect(dst, r, fill, true)

@@ -10,20 +10,10 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
-// Icon renderer kernel — antialiased vector primitives in a 24-unit logical
-// grid. Every IconID body composes itself from these helpers in
-// logical-grid coordinates; the helpers convert to pixel space at draw
-// time using the bounding rect's dimensions.
-//
-// Visual language: Lucide-style minimalism — 1.75-unit stroke, round
-// caps/joins, generous interior padding, antialias on. Defined in
-// DESIGN.md `icon:` block; mirrored in touch_sizes.go (IconGrid /
-// IconStrokeWeight / IconPadding / IconCornerRadius).
+// Antialiased vector primitives on a 24-unit grid, converted to pixels at draw time; the language is DESIGN.md's
+// `icon:` block, mirrored in touch_sizes.go.
 
-// iconCanvas maps the IconGrid×IconGrid logical coordinate space onto a
-// pixel-space rectangle. Logical (0,0) is the top-left of the canvas;
-// logical (IconGrid, IconGrid) is the bottom-right. The canvas is
-// centered when the rect is non-square so the icon never stretches.
+// Centred on a non-square rect so an icon never stretches.
 type iconCanvas struct {
 	ox, oy float32 // pixel-space origin of the logical (0,0) point
 	scale  float32 // pixels per logical unit
@@ -43,9 +33,7 @@ func (c iconCanvas) px(x, y float32) (float32, float32) {
 	return c.ox + x*c.scale, c.oy + y*c.scale
 }
 
-// iconStrokeWidth returns the antialiased stroke width in pixels for the
-// rect r. Always ≥ 1 px so sub-pixel strokes don't disappear at small
-// icon sizes (the floor is the only branch the size-floor test covers).
+// At least 1 px so thin strokes survive small sizes.
 func iconStrokeWidth(r image.Rectangle) float32 {
 	dim := float32(minI(r.Dx(), r.Dy()))
 	w := IconStrokeWeight * dim / float32(IconGrid)
@@ -55,13 +43,8 @@ func iconStrokeWidth(r image.Rectangle) float32 {
 	return w
 }
 
-// ── Internal: white texture for path rasterization ─────────────────────
-//
-// Ebiten's path API (AppendVerticesAndIndicesForFilling/ForStroke) needs
-// a sample texture for DrawTriangles. The example pattern is a 3×3 white
-// image with a 1×1 sub-image so antialiased edges sample interior
-// pixels and don't bleed outside. Lazy-initialized so test builds (which
-// stub Ebiten) never attempt to allocate a real GPU texture.
+// The path API samples a texture: a 3×3 white image with a 1×1 sub-image keeps antialiased edges from bleeding.
+// Lazy, so test builds (stubbed Ebiten) never allocate a GPU texture.
 var (
 	iconWhiteOnce sync.Once
 	iconWhiteSub  *ebiten.Image
@@ -82,9 +65,6 @@ func rgbaParts(col color.Color) (cr, cg, cb, ca float32) {
 	return float32(r16) / 65535, float32(g16) / 65535, float32(b16) / 65535, float32(a16) / 65535
 }
 
-// drawPath rasterizes a built vector.Path either as a stroke (when op is
-// non-nil) or as a fill, tinting all generated vertices to col. Uses the
-// shared whiteSubImage texture per Ebiten's vector example.
 func drawPath(dst *ebiten.Image, path *vector.Path, op *vector.StrokeOptions, col color.Color) {
 	var vs []ebiten.Vertex
 	var is []uint16
@@ -109,8 +89,6 @@ func drawPath(dst *ebiten.Image, path *vector.Path, op *vector.StrokeOptions, co
 	dst.DrawTriangles(vs, is, iconWhiteSubImage(), dop)
 }
 
-// makeStrokeOptions builds the canonical stroke options used by every icon:
-// round caps + round joins, fixed width, no miter spikes.
 func makeStrokeOptions(width float32) *vector.StrokeOptions {
 	return &vector.StrokeOptions{
 		Width:    width,
@@ -121,8 +99,6 @@ func makeStrokeOptions(width float32) *vector.StrokeOptions {
 
 // ── Public icon-drawing helpers (logical coords) ──────────────────────
 
-// iconStrokeLine strokes a line from (x0,y0) to (x1,y1) in logical-grid
-// units, using col and the canvas-derived stroke width.
 func iconStrokeLine(dst *ebiten.Image, c iconCanvas, x0, y0, x1, y1 float32, col color.Color) {
 	px0, py0 := c.px(x0, y0)
 	px1, py1 := c.px(x1, y1)
@@ -130,8 +106,7 @@ func iconStrokeLine(dst *ebiten.Image, c iconCanvas, x0, y0, x1, y1 float32, col
 	if w < 1 {
 		w = 1
 	}
-	// vector.StrokeLine has butt caps. To get round caps that match the
-	// other helpers, build a minimal Path + StrokeOptions instead.
+	// vector.StrokeLine has butt caps; a Path gives the round caps the other helpers use.
 	var p vector.Path
 	p.MoveTo(px0, py0)
 	p.LineTo(px1, py1)
@@ -156,8 +131,6 @@ func iconFillCircle(dst *ebiten.Image, c iconCanvas, cx, cy, r float32, col colo
 	vector.DrawFilledCircle(dst, pcx, pcy, pr, col, true)
 }
 
-// iconStrokePolyline strokes a connected sequence of line segments
-// (logical coords) with the canonical stroke options.
 func iconStrokePolyline(dst *ebiten.Image, c iconCanvas, pts [][2]float32, col color.Color) {
 	if len(pts) < 2 {
 		return
@@ -176,8 +149,7 @@ func iconStrokePolyline(dst *ebiten.Image, c iconCanvas, pts [][2]float32, col c
 	drawPath(dst, &p, makeStrokeOptions(w), col)
 }
 
-// iconFillPath fills a closed polygon defined by pts (logical coords).
-// Last vertex is connected to the first; no need to repeat the start.
+// The last vertex connects to the first.
 func iconFillPath(dst *ebiten.Image, c iconCanvas, pts [][2]float32, col color.Color) {
 	if len(pts) < 3 {
 		return
@@ -193,8 +165,6 @@ func iconFillPath(dst *ebiten.Image, c iconCanvas, pts [][2]float32, col color.C
 	drawPath(dst, &p, nil, col)
 }
 
-// iconFillRoundedRect fills a rounded rectangle. x,y is the top-left,
-// w,h are dimensions, radius is the corner radius — all in logical units.
 func iconFillRoundedRect(dst *ebiten.Image, c iconCanvas, x, y, w, h, radius float32, col color.Color) {
 	if radius <= 0 {
 		px, py := c.px(x, y)
@@ -208,8 +178,7 @@ func iconFillRoundedRect(dst *ebiten.Image, c iconCanvas, x, y, w, h, radius flo
 		radius = h / 2
 	}
 	var p vector.Path
-	// Corners as quadratic curves — close enough to a circular arc at
-	// these scales, faster than tessellating a true circular arc.
+	// Quadratic corners are close enough to an arc at these sizes and cheaper.
 	x0, y0 := c.px(x+radius, y)
 	x1, y1 := c.px(x+w-radius, y)
 	x2, y2 := c.px(x+w, y+radius)
@@ -235,10 +204,7 @@ func iconFillRoundedRect(dst *ebiten.Image, c iconCanvas, x, y, w, h, radius flo
 	drawPath(dst, &p, nil, col)
 }
 
-// iconStrokeOpenRoundedRect strokes 3 of 4 sides of a rounded rectangle.
-// `omit` controls which edge is skipped: "top", "bottom", "left", "right".
-// Used for the trash bin (no top edge — lid sits over the body) and the
-// open-top tray of import/export icons.
+// omit is "top"/"bottom"/"left"/"right": the trash bin and the import/export trays are open-topped.
 func iconStrokeOpenRoundedRect(dst *ebiten.Image, c iconCanvas, x, y, w, h, radius float32, omit string, col color.Color) {
 	if radius*2 > w {
 		radius = w / 2
@@ -251,9 +217,7 @@ func iconStrokeOpenRoundedRect(dst *ebiten.Image, c iconCanvas, x, y, w, h, radi
 		cx, cy         float32
 		curve          bool
 	}
-	// Build the four edges + four corners as a list, then skip whichever
-	// the caller asked to omit. Corners adjacent to the omitted edge are
-	// also skipped (an "open" edge has no rounding).
+	// Corners next to the omitted edge are skipped too: an open edge has no rounding.
 	top := seg{x + radius, y, x + w - radius, y, 0, 0, false}
 	right := seg{x + w, y + radius, x + w, y + h - radius, 0, 0, false}
 	bottom := seg{x + w - radius, y + h, x + radius, y + h, 0, 0, false}
@@ -272,8 +236,7 @@ func iconStrokeOpenRoundedRect(dst *ebiten.Image, c iconCanvas, x, y, w, h, radi
 		{"bottom", []seg{br, bottom, bl}},
 		{"left", []seg{bl, left, tl}},
 	}
-	// Strokes draw each remaining segment as its own subpath; the
-	// stroke options apply round caps so adjacent segments meet cleanly.
+	// Each segment is its own subpath; round caps make them meet cleanly.
 	w_px := IconStrokeWeight * c.scale
 	if w_px < 1 {
 		w_px = 1
@@ -307,8 +270,7 @@ func iconStrokeOpenRoundedRect(dst *ebiten.Image, c iconCanvas, x, y, w, h, radi
 	}
 }
 
-// iconStrokeArc strokes a circular arc from startAngle to endAngle (radians,
-// 0 = +x, π/2 = +y down). cx,cy and r are logical units.
+// Radians, 0 = +x, π/2 = +y (down).
 func iconStrokeArc(dst *ebiten.Image, c iconCanvas, cx, cy, r, startAngle, endAngle float32, col color.Color) {
 	pcx, pcy := c.px(cx, cy)
 	pr := r * c.scale

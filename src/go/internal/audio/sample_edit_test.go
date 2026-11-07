@@ -214,8 +214,7 @@ func TestResampleSemitonesMultiOctave(t *testing.T) {
 		{-36, 76800}, // -3 octaves octuples
 	} {
 		out := ResampleSemitones(src, tc.semitones, 0)
-		// Linear interp walks floor((n-1)/step) steps, so the length lands
-		// within 0.1% of the ideal ratio (a few samples at 8x stretch).
+		// Linear interpolation walks floor((n-1)/step) steps.
 		tol := tc.wantLen/1000 + 1
 		if d := out_len_diff(len(out), tc.wantLen); d > tol {
 			t.Fatalf("%+.0f st: len = %d, want %d±%d", tc.semitones, len(out), tc.wantLen, tol)
@@ -323,8 +322,7 @@ func TestBakeSampleExtremePipeline(t *testing.T) {
 			peak = f
 		}
 	}
-	// Normalize→gain order: +12 dB after normalize-to-1 ⇒ peak ~3.98,
-	// proving gain applies post-normalize (locked by BakeSample's contract).
+	// +12 dB after normalising to 1 ⇒ peak ~3.98.
 	if peak < 3.5 || peak > 4.5 {
 		t.Fatalf("peak = %v, want ~3.98 (normalize then +12 dB)", peak)
 	}

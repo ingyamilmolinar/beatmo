@@ -7,9 +7,7 @@ import (
 	"math"
 )
 
-// flacEncoder encodes audio samples to FLAC format using verbatim (uncompressed) frames.
-// This produces valid FLAC files that any decoder can read, without requiring
-// external compression libraries. File sizes are similar to 16-bit WAV.
+// Verbatim (uncompressed) frames: valid FLAC any decoder reads, with no compression library.
 type flacEncoder struct{}
 
 func init() {

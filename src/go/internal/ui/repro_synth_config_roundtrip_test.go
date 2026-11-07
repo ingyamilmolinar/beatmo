@@ -10,9 +10,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// TestReproSynthConfigRoundtrip reproduces "synth config edits on an instrument
-// don't persist/load": edit the knobs the way the Synth tab does, export, wipe
-// to a clean machine, import — the edited document must come back.
+// Knobs edited the way the Synth tab does, exported, then imported on a clean machine: the edited document
+// comes back.
 func TestReproSynthConfigRoundtrip(t *testing.T) {
 	g := newDocsGame(t)
 	inst := g.drum.Rows[0].Instrument
@@ -46,9 +45,7 @@ func TestReproSynthConfigRoundtrip(t *testing.T) {
 	}
 }
 
-// TestReproSynthSaveRoundtrip: a Synth-tab Save moves the tone into the user
-// library; the project file alone must still reproduce it on a clean machine
-// (whose library has never seen the Save).
+// The clean machine's library never saw the Save, so the project file alone must carry the tone.
 func TestReproSynthSaveRoundtrip(t *testing.T) {
 	g := newDocsGame(t)
 	inst := g.drum.Rows[0].Instrument
@@ -74,9 +71,8 @@ func TestReproSynthSaveRoundtrip(t *testing.T) {
 	}
 }
 
-// TestReproRecipeDefaultOnlyRoundtrip: the user library holds a saved version
-// and the project copy is a fresh, UNEDITED pick of it (a prior Save + restart).
-// The file must still carry the saved tone to a clean machine.
+// The project copy is an UNEDITED pick of a saved version (a Save, then a restart): the file must still carry the
+// saved tone.
 func TestReproRecipeDefaultOnlyRoundtrip(t *testing.T) {
 	g := newDocsGame(t)
 	inst := g.drum.Rows[0].Instrument
@@ -113,10 +109,8 @@ func TestReproRecipeDefaultOnlyRoundtrip(t *testing.T) {
 	}
 }
 
-// TestReproSamplerSaveRoundtrip reproduces the Sampler-tab "Save" round-trip:
-// save() bakes the current edit (gain/trim/normalize/etc.) into a final PCM and
-// stores it via audio.SaveUserSample → userSamples, which the exporter embeds.
-// A brand-new instance must reproduce the baked sample from the project bytes.
+// save() bakes the edit into final PCM via audio.SaveUserSample, which the exporter embeds; a new instance
+// rebuilds it from the project bytes.
 func TestReproSamplerSaveRoundtrip(t *testing.T) {
 	withDefaultAudio(t)
 	g := New(testLogger)
@@ -125,8 +119,7 @@ func TestReproSamplerSaveRoundtrip(t *testing.T) {
 
 	inst := g.drum.Rows[0].Instrument
 
-	// Emulate a sampler edit + Save: bake a buffer and store it for the row's
-	// instrument (audio.SaveUserSample is exactly what samplerState.save calls).
+	// audio.SaveUserSample is exactly what samplerState.save calls.
 	raw := make([]float32, 2000)
 	for i := range raw {
 		raw[i] = float32(math.Sin(float64(i) * 0.05))
@@ -144,8 +137,7 @@ func TestReproSamplerSaveRoundtrip(t *testing.T) {
 		t.Fatalf("export: %v", err)
 	}
 
-	// Simulate a fresh instance: overwrite the in-memory PCM with a different
-	// buffer so a passing assertion can only come from the project bytes.
+	// Overwritten so a pass can only come from the project bytes.
 	audio.PutUserSample(inst, []float32{0, 0, 0, 0}, 48000)
 
 	g2 := New(testLogger)

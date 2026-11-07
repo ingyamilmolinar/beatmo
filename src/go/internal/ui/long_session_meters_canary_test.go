@@ -1,14 +1,7 @@
 //go:build test
 
-// Phase 1C strengthened long-session canary. Mirrors the production
-// scenario the user reported: 17 minutes (60 000 frames at 60 FPS) of
-// steady playback with the EQ panel's Meters tab visible. Every
-// iteration runs Update + EQ-panel Draw so the analyzer-snapshot
-// bridge chain is exercised on the same schedule production hits.
-//
-// On pre-fix code this fails the heap-delta cap and the per-frame
-// slope check — that failure IS the diagnostic evidence the user
-// asked us to "confirm through logs." Phase 2 makes it pass.
+// Minutes of steady playback with the Meters tab open, running Update and the EQ-panel Draw every frame, so the
+// analyzer-snapshot bridge runs on production's schedule.
 
 package ui
 
@@ -23,29 +16,14 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// metersCanaryFrames is the iteration budget. 60 FPS × 60 sec × 17 min
-// = 61 200; rounded down so the test runtime stays under a CI minute.
+// Rounded down to keep the run under a CI minute.
 const metersCanaryFrames = 60_000
 
-// metersCanarySampleEvery controls how often we snapshot memstats.
-// 12 samples across the run gives a slope signal without dominating
-// the test cost.
+// Enough samples for a slope without dominating the cost.
 const metersCanarySampleEvery = 5_000
 
-// TestLongSessionMetersTabHeapBounded drives Update + EQ-panel Draw at
-// the same cadence the production WASM session hits while the user is
-// idle on the Meters tab. Asserts:
-//
-//   - HeapAlloc post − pre delta ≤ heapAllocCap
-//   - Per-frame slope (late-window − early-window) ≤ slopeCapBytes
-//   - Bridge call ratio (elementReads / calls) ≤ readsPerCallCap.
-//     Always 0 in -tags test because the JS bridge is stubbed; the
-//     WASM canary in Phase 3 will enforce the WASM-side cap directly.
-//
-// The slope assertion is the load-bearing one: a steady-state leak
-// produces a positive slope that absolute caps can hide if the test
-// happens to GC right before the post-sample. Slope captures growth
-// per frame regardless of GC timing.
+// The SLOPE is the load-bearing check: a steady leak gives a positive slope that an absolute cap misses
+// when GC happens to run just before the last sample. The bridge read ratio is 0 under -tags test (stubbed).
 func TestLongSessionMetersTabHeapBounded(t *testing.T) {
 	if testing.Short() {
 		t.Skip("long canary skipped under -short; run via nightly")
@@ -63,26 +41,17 @@ func TestLongSessionMetersTabHeapBounded(t *testing.T) {
 	g.drum.SetBPM(240)
 	buildSoakScene(t, g, 6 /* rows */, 8 /* nodes per row */)
 
-	// Force the EQ panel to render Meters every frame the way the
-	// real session did. The WASM stub returns nil from
-	// BuildAnalyzerStateFromSnapshots; we install an override callback
-	// that routes through buildAnalyzerStateFromSnapshotsImpl with the
-	// same per-call slice churn the production WASM bridge produces.
+	// The WASM stub returns nil state, so an override routes through the real builder with the bridge's per-call
+	// slice churn.
 	if g.drum.eqPanelZone == nil {
 		t.Fatal("eqPanelZone nil; harness assumption broken")
 	}
 	g.drum.eqPanelZone.tabState.SetActiveTab(TabMeters)
-	// AnalyzerState mirrors the pre-fix WASM path: per-frame
-	// per-row spectrum + waveform allocation. This is what the
-	// freezeBtn block AND any non-Meters tab would call. Kept in
-	// place so a regression that routes TabMeters BACK through the
-	// heavy path immediately blows the heap-delta cap below.
+	// The heavy per-row path: a regression routing Meters back through it blows the heap cap.
 	g.drum.eqPanelZone.callbacks.AnalyzerState = func() *analyzer.State {
 		return buildAnalyzerStateFromSnapshotsImpl(channel.ID{}, g.drum.Rows, 48000, allocFetch, nil)
 	}
-	// AnalyzerMetricsOnly is the post-fix scalar path. EQPanelZone.Draw
-	// must route TabMeters here; if it doesn't, the heavy AnalyzerState
-	// above fires every frame and the canary fails.
+	// The scalar path Meters must take; otherwise the heavy callback above fires every frame.
 	g.drum.eqPanelZone.callbacks.AnalyzerMetricsOnly = func() *analyzer.State {
 		return buildAnalyzerMetricsOnlyImpl(g.drum.Rows, scalarFetch)
 	}
@@ -98,8 +67,6 @@ func TestLongSessionMetersTabHeapBounded(t *testing.T) {
 	runtime.GC()
 	runtime.ReadMemStats(&pre)
 
-	// Sample heap state across the run to produce a slope, not just an
-	// endpoint. This is the data that goes into the failure log.
 	var samples []memSample
 	for i := 1; i <= metersCanaryFrames; i++ {
 		setPlayStartForAbs(g, i)
@@ -123,8 +90,7 @@ func TestLongSessionMetersTabHeapBounded(t *testing.T) {
 	totalAllocDelta := post.TotalAlloc - pre.TotalAlloc
 	bridgeCalls, bridgeReads := audio.AnalyzerBridgeStats()
 
-	// Always log the full sample series so the failure (or pass)
-	// produces a CI artefact future debug sessions can grep.
+	// Logged always, so a CI run leaves a series to grep.
 	t.Logf("=== Meters-tab canary memstats slope (frames=%d) ===", metersCanaryFrames)
 	for _, s := range samples {
 		t.Logf("  frame=%6d heapAlloc=%6d KB totalAlloc=%9d KB",
@@ -137,9 +103,7 @@ func TestLongSessionMetersTabHeapBounded(t *testing.T) {
 	t.Logf("Analyzer bridge stats: calls=%d elementReads=%d (ratio=%.1f reads/call)",
 		bridgeCalls, bridgeReads, ratio(bridgeReads, bridgeCalls))
 
-	// Slope = (last sample heap − first sample heap) / frames between.
-	// Both samples are post-warmup; a non-zero slope indicates the loop
-	// retains state per frame.
+	// Both samples are post-warm-up; a non-zero slope means the loop retains state per frame.
 	slopeBytesPerFrame := int64(0)
 	if len(samples) >= 2 {
 		first := samples[len(samples)/2] // mid-run sample (after warmup)
@@ -151,18 +115,8 @@ func TestLongSessionMetersTabHeapBounded(t *testing.T) {
 	}
 	t.Logf("Late-window heap slope = %d bytes/frame", slopeBytesPerFrame)
 
-	// === ASSERTIONS ===
-	// Phase 1: these tighten Phase 2 expectations. On the unfixed code
-	// the heap delta and slope blow past the caps; on the fixed code
-	// they fit comfortably. Caps documented inline so future regressors
-	// know what a passing run looks like.
-
-	// The cap is intentionally generous (300 MB) because this test
-	// shares the binary with TestSoakHeapBounded_* and friends that
-	// leave hundreds of MB of unreclaimable residue. The contract is
-	// "this loop's own retained state stays bounded," which the SLOPE
-	// check below enforces directly. Absolute delta is here to flag
-	// catastrophic leaks (multi-GB), not the OOM-relevant signal.
+	// Generous: the shared binary carries other tests' residue. It flags catastrophic leaks; the slope below
+	// enforces the bound.
 	const heapAllocCap = 300 << 20 // 300 MB
 	if heapAllocDelta > heapAllocCap {
 		t.Errorf("HeapAlloc delta = %d KB after %d Meters-tab frames (cap %d KB) — "+
@@ -170,12 +124,7 @@ func TestLongSessionMetersTabHeapBounded(t *testing.T) {
 			heapAllocDelta>>10, metersCanaryFrames, heapAllocCap>>10)
 	}
 
-	// Slope cap sized for full-suite runs where prior tests leave
-	// residue. In isolation this test reports -99 bytes/frame (GC
-	// reclaims everything). In the suite the residue from prior tests
-	// pushes pre-HeapAlloc into the hundreds of MB and skews the
-	// slope; 8192 B/frame catches a true regression while tolerating
-	// the suite-pollution overhead documented above.
+	// Sized for full-suite runs, where other tests' residue skews the slope; a real per-frame leak still exceeds it.
 	const slopeCapBytesPerFrame = 8192
 	if slopeBytesPerFrame > slopeCapBytesPerFrame {
 		t.Errorf("Late-window heap slope = %d bytes/frame (cap %d) — "+
@@ -183,10 +132,7 @@ func TestLongSessionMetersTabHeapBounded(t *testing.T) {
 			slopeBytesPerFrame, slopeCapBytesPerFrame)
 	}
 
-	// Element-read ratio is a WASM-only invariant. The fast Go test
-	// runs without the JS bridge so bridgeCalls/bridgeReads are 0;
-	// asserting only when bridgeCalls > 0 keeps the assertion
-	// meaningful when the test moves to the WASM build (Phase 3).
+	// WASM only: the bridge counters are 0 without the JS bridge.
 	const readsPerCallCap = 8
 	if bridgeCalls > 0 {
 		if got := ratio(bridgeReads, bridgeCalls); got > readsPerCallCap {
@@ -210,11 +156,7 @@ func ratio(num, den uint64) float64 {
 	return float64(num) / float64(den)
 }
 
-// allocFetch mirrors the WASM ChannelAnalyzerSnapshot allocation
-// pattern: every call returns FRESH 512-element Spectrum + Waveform
-// slices so the builder cost is what production WASM pays. Keeping
-// the slices small (512) matches the JS-side AnalyserNode.fftSize
-// default.
+// FRESH slices on every call, as the WASM bridge allocates.
 func allocFetch(id channel.ID) audio.AnalyzerSnapshot {
 	const n = 512
 	spec := make([]float64, n)
@@ -232,9 +174,6 @@ func allocFetch(id channel.ID) audio.AnalyzerSnapshot {
 	}
 }
 
-// scalarFetch is the metrics-only equivalent of allocFetch — returns
-// the same scalar values without allocating Spectrum/Waveform. Mirrors
-// what audio.ChannelAnalyzerMetrics returns in production WASM.
 func scalarFetch(id channel.ID) (peak, rms float64, clips int, active bool) {
 	return 0.5, 0.1, 0, true
 }

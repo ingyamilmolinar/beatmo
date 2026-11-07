@@ -6,8 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Ensure nodes remain reasonably clickable when zoomed in by enforcing a
-// minimum on-screen radius, unless neighbors would overlap.
+// A minimum on-screen radius keeps nodes clickable when zoomed in, unless neighbours would overlap.
 func TestNodeMinSizeZoomIn(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

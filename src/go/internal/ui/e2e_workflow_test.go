@@ -8,8 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// TestE2EFullLifecycle exercises the complete user workflow:
-// build circuit → play → live edit → change BPM → stop → export → import → verify → resume.
+// Build → play → live edit → BPM → stop → export → import → verify → resume.
 func TestE2EFullLifecycle(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -144,8 +143,7 @@ func TestE2EFullLifecycle(t *testing.T) {
 	stopPlaybackForTest(g2)
 }
 
-// TestE2ERapidBPMStress verifies the engine survives rapid BPM changes
-// during playback without crashes or predictor corruption.
+// No crash, no predictor corruption.
 func TestE2ERapidBPMStress(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -206,8 +204,6 @@ func TestE2ERapidBPMStress(t *testing.T) {
 	stopPlaybackForTest(g)
 }
 
-// TestE2ERowAddDuringPlayback verifies that adding a row during
-// playback does not crash and playback continues.
 func TestE2ERowAddDuringPlayback(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)

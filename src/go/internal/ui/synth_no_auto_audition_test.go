@@ -12,23 +12,9 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// These tests pin the runtime-edit contract for the Synth tab:
-//
-//	Editing a knob or a stage pill ONLY updates the instrument config
-//	(audio.SetInstrumentParam → voice-cache invalidation → the NEXT
-//	trigger renders with the new values). It must NOT auto-play the
-//	instrument. The one-shot audition is reserved for the explicit
-//	Preview button (previewActiveSynth).
-//
-// Why: the auto-audition fired audio.Play(id) on every knob release and
-// stage toggle — an immediate, full-gain (vol=1.0) one-shot with no
-// scheduler lead that bypasses the row/node volume sequencer hits get.
-// Layered over the scheduled voices of the same instrument during
-// playback it overshoots the master chain and is heard as a crackling /
-// sharp transient alongside the unwanted "preview".
+// A knob or stage pill edit only changes the config the NEXT trigger renders; only Preview auditions. An automatic
+// full-gain one-shot layered over the scheduled voices overshot the master and crackled.
 
-// newSnareSynthTabGame builds the standard snare/drum-snare synth-tab
-// harness used by the drag e2e tests.
 func newSnareSynthTabGame(t *testing.T) *Game {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -46,8 +32,6 @@ func newSnareSynthTabGame(t *testing.T) *Game {
 	return g
 }
 
-// firstVisibleSynthControl returns the index, knob, and hit area of the first
-// laid-out (non-empty rect) synth knob.
 func firstVisibleSynthControl(t *testing.T, g *Game) (int, *Knob, *HitArea) {
 	t.Helper()
 	knobs := g.drum.SynthTabControls()
@@ -79,9 +63,7 @@ func firstVisibleSynthControl(t *testing.T, g *Game) (int, *Knob, *HitArea) {
 	return idx, knobs[idx], hit
 }
 
-// TestSynthStageTogglePill_DoesNotAutoAudition flips a modular per-stage
-// bypass pill. The toggle must mutate the param (next trigger renders with
-// the stage bypassed/enabled) but must not auto-play the instrument.
+// The param changes; the instrument does not play.
 func TestSynthStageTogglePill_DoesNotAutoAudition(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	layoutSynthTab(t, g)
@@ -102,9 +84,7 @@ func TestSynthStageTogglePill_DoesNotAutoAudition(t *testing.T) {
 	}
 }
 
-// TestPreviewButton_StillAuditionsExactlyOnce is the guard rail for the
-// fix: removing the automatic audition must NOT remove the explicit
-// Preview button's one-shot.
+// Removing the automatic audition must not remove Preview's one-shot.
 func TestPreviewButton_StillAuditionsExactlyOnce(t *testing.T) {
 	g := newSnareSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
@@ -120,12 +100,8 @@ func TestPreviewButton_StillAuditionsExactlyOnce(t *testing.T) {
 	}
 }
 
-// TestSetInstrumentParam_NeverTriggersPlayback pins the audio-layer half of
-// the contract directly: a param write dispatches config (platform callback,
-// voice-cache invalidation) but never schedules a voice. Every Play* entry
-// point (desktop, WASM, stub) stamps RecordVoiceTrigger, so an untouched
-// LastTriggerAt proves no playback happened. This is what "change the config
-// and let the next trigger pick it up" means at the engine boundary.
+// A param write dispatches config but never schedules a voice: every Play* entry point stamps RecordVoiceTrigger,
+// so an untouched LastTriggerAt proves it.
 func TestSetInstrumentParam_NeverTriggersPlayback(t *testing.T) {
 	assertDefaultParityState(t)
 	const instID = "no-auto-audition-probe"
@@ -141,14 +117,7 @@ func TestSetInstrumentParam_NeverTriggersPlayback(t *testing.T) {
 	}
 }
 
-// TestSynthControlWheelNudge_DoesNotAutoAudition drives the Task-9 ARMED wheel
-// nudge (synthControlHitAdapter.OnWheel while the control is armed, spinning the
-// ArmedControlEditor's value lane): a notch over the armed value lane must
-// propagate the param (next-trigger model) and NOT fire an audition. A
-// not-armed wheel is out of scope here — it scrolls the row (see
-// TestNotArmedWheelScrollsRow) and never touches audio config at all, so it
-// could never fire an audition either; arming is what actually exercises the
-// value-edit path this invariant guards.
+// An armed value-lane notch propagates the param and auditions nothing; an unarmed wheel only scrolls.
 func TestSynthControlWheelNudge_DoesNotAutoAudition(t *testing.T) {
 	g := newSnareSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
@@ -174,8 +143,7 @@ func TestSynthControlWheelNudge_DoesNotAutoAudition(t *testing.T) {
 	if res := h.OnWheel(vx, vy, 1); res != InputConsumed {
 		t.Fatalf("armed wheel over the value lane should be consumed (nudge), got %v", res)
 	}
-	// Settle the kinetic barrel so the value lane actually crosses a detent
-	// (SHARED FACTS: ImpulseNotch only resolves into a value change via Tick).
+	// ImpulseNotch becomes a value change only through Tick.
 	for i := 0; i < 240 && e.Tick(); i++ {
 	}
 	if _, ok := audio.GetInstrumentParams(instID)[paramName]; !ok {

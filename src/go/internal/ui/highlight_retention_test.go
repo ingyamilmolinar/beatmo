@@ -6,9 +6,6 @@ import (
 	"testing"
 )
 
-// TestHighlightedBeatsScrollAwayEvicts seeds entries with small abs values,
-// advances the drum offset past them, and asserts clearExpiredHighlights
-// drops every entry with idx < drum.Offset - highlightAbsRetentionSlack.
 func TestHighlightedBeatsScrollAwayEvicts(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -16,10 +13,7 @@ func TestHighlightedBeatsScrollAwayEvicts(t *testing.T) {
 	g.Layout(800, 600)
 	g.drum.SetLength(64)
 
-	// Seed 10 highlights at row 0, abs 1..10. Use frame=0 so 'until' is 0,
-	// meaning the time-based eviction predicate fires too — but isolate the
-	// abs-eviction by using a fresh game with frame still at 0 and a future
-	// 'until' value.
+	// A future 'until' isolates the abs-based eviction from the time-based one.
 	for abs := 1; abs <= 10; abs++ {
 		key := makeBeatKey(0, abs)
 		g.highlightSet(key, int64(g.frame+1_000_000)) // far-future expiry
@@ -28,8 +22,6 @@ func TestHighlightedBeatsScrollAwayEvicts(t *testing.T) {
 		t.Fatalf("seeded %d highlights, want 10", got)
 	}
 
-	// Advance the drum window so abs 1..10 fall well below
-	// (Offset - highlightAbsRetentionSlack).
 	g.drum.Offset = 1000
 
 	g.clearExpiredHighlights()
@@ -39,9 +31,7 @@ func TestHighlightedBeatsScrollAwayEvicts(t *testing.T) {
 	}
 }
 
-// TestHighlightedBeatsBoundedUnderLongPlayback seeds highlights monotonically
-// at increasing abs and asserts the map stays bounded by drum.Length +
-// highlightAbsRetentionSlack — the visible window plus its lookback slack.
+// Bounded by the visible window plus its lookback slack.
 func TestHighlightedBeatsBoundedUnderLongPlayback(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)

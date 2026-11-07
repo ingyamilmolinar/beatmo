@@ -1,11 +1,7 @@
 //go:build test
 
-// The screenshot scene is a REGRESSION SURFACE, so it has to actually show the
-// thing it is named for. `scene_crop_test.go` only checks subject bounds, and a
-// scene whose Setup silently no-ops still captures a perfectly valid-looking
-// PNG — which is exactly what happened here on the first capture: the cursor
-// was placed before rebuildMenu had produced any rows, so SetSelected had
-// nothing to select and the scene photographed a menu with no ring.
+// A scene whose Setup silently no-ops still captures a valid-looking PNG, and scene_crop_test checks only
+// bounds, so this checks the scene really shows the cursor ring.
 
 package ui
 

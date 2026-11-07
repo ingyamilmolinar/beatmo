@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# scripts/serve-lan.sh
-#
-# Bring-up wrapper for `make serve-lan`. Resolves the bundled Go toolchain,
-# binds the test server to 0.0.0.0, and prints a LAN URL + QR for the
-# in-page audio sanity probe so you can hit it from your phone over WiFi.
+# Binds the test server to 0.0.0.0 and prints a LAN URL + QR for the in-page audio probe, to open from a phone.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

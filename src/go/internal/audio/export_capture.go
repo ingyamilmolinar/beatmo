@@ -8,9 +8,7 @@ import (
 	"os"
 )
 
-// ExportCaptureToWAV writes the captured audio samples to a WAV file.
-// The samples should be float64 values in the range [-1, 1].
-// The output will be 16-bit mono PCM at the capture sample rate (44100 Hz).
+// 16-bit mono PCM; samples in [-1, 1].
 func ExportCaptureToWAV(samples []float64, filename string) error {
 	if len(samples) == 0 {
 		return fmt.Errorf("no samples to export")
@@ -93,8 +91,7 @@ func ExportCaptureToWAV(samples []float64, filename string) error {
 	return nil
 }
 
-// ExportCapturedAudioToWAV is a convenience function that stops capture and exports to WAV.
-// Returns the number of samples captured.
+// Returns the sample count.
 func ExportCapturedAudioToWAV(filename string) (int, error) {
 	samples := StopOutputCapture()
 	if len(samples) == 0 {

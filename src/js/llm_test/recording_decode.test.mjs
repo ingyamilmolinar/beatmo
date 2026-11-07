@@ -1,7 +1,4 @@
-/**
- * Unit tests for the WAV decode + RMS used by the measure_audio audio gate.
- * Run: node --test src/js/llm_test/recording_decode.test.mjs
- */
+/** Run: node --test src/js/llm_test/recording_decode.test.mjs */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { decodeWav, rms } from "./recording_decode.js";

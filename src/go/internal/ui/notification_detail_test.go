@@ -11,8 +11,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// TestImportSourceName reduces a file path / template name to the short label
-// shown in the "Loaded …" notification (basename, separator-agnostic).
+// Basename, whatever the separator.
 func TestImportSourceName(t *testing.T) {
 	cases := map[string]string{
 		"/home/u/beat.json":      "beat.json",
@@ -28,10 +27,7 @@ func TestImportSourceName(t *testing.T) {
 	}
 }
 
-// TestImportNotificationNamesSource drives a real import through the production
-// drain (onImport → pendingImportData → g.Update → notify) and asserts the
-// success notification names the loaded source (a template / JSON filename) and
-// its node/row counts — not the bare "Imported project JSON".
+// Through the production drain (onImport → pendingImportData → Update → notify).
 func TestImportNotificationNamesSource(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	i18n.SetLocale(i18n.LocaleEN)
@@ -48,9 +44,7 @@ func TestImportNotificationNamesSource(t *testing.T) {
 	if err := g.Update(); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-	// Find the import's own line, not Latest(): an import invalidates the voice
-	// cache, so its warm-up renders off-thread and posts "Circuit ready" right
-	// after "Loaded …" — whether that lands before this read is a race.
+	// The import's own line, not Latest(): the off-thread warm-up posts "Circuit ready" right after, racing this read.
 	var imported *notification
 	for _, n := range g.drum.notifStore.History() {
 		if n.key == i18n.KeyNotifImportedNamed {
@@ -73,8 +67,6 @@ func TestImportNotificationNamesSource(t *testing.T) {
 	}
 }
 
-// TestInvalidBPMNotificationShowsValueAndRange asserts the invalid-BPM toast
-// names the rejected value and the valid range, not a bare "Invalid BPM".
 func TestInvalidBPMNotificationShowsValueAndRange(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	i18n.SetLocale(i18n.LocaleEN)

@@ -166,9 +166,7 @@ func TestPickFamily_AutoPickNoneLeftReportsNotFound(t *testing.T) {
 	}
 }
 
-// sanity: defaultVerdictsPath resolves to a real, module-root-relative
-// path so the CLI's default -out works from any cwd, mirroring how
-// wavref.ModuleRoot-based paths behave elsewhere in cmd/refs.
+// From the module root, so the CLI's default -out works from any cwd.
 func TestDefaultVerdictsPath_UnderTestdata(t *testing.T) {
 	p, err := defaultVerdictsPath()
 	if err != nil {
@@ -187,9 +185,7 @@ func TestPickFamily_SessionSkipExcludesEvenWhenNotAnswered(t *testing.T) {
 		{Key: roster.Bassoon, Members: []instrument.ID{roster.Bassoon}},
 		{Key: roster.Cello, Members: []instrument.ID{roster.Cello, roster.CelloWarm}},
 	}
-	// bassoon has NO recorded verdict, but is in this session's skip set --
-	// unlike resume (persisted across runs), a session skip must exclude it
-	// regardless of resume's value.
+	// A session skip excludes bassoon whatever resume says.
 	fam, found, err := pickFamily(families, "", true, nil, map[instrument.ID]bool{roster.Bassoon: true})
 	if err != nil {
 		t.Fatalf("pickFamily: %v", err)

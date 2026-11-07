@@ -1,16 +1,7 @@
 //go:build test
 
-// End-to-end keyboard navigation for every list menu.
-//
-// Drives the REAL Game.Update loop with injected key presses (not the
-// component in isolation), so these fail if a menu forgets to call
-// MenuKeyNav.Update in its per-frame hook, forgets to claim the keyboard, or
-// wires MenuActivate to the wrong row — none of which a unit test on
-// MenuKeyNav alone can see.
-//
-// Each case asserts the menu's OWN action actually happened, not merely that
-// the highlight moved: a nav that selects correctly but activates nothing is
-// still broken from the user's point of view.
+// Real Game.Update with injected keys, so a menu that never pumps its nav, never claims the keyboard or
+// activates the wrong row fails; each case asserts the menu's OWN action happened, not only the highlight.
 
 package ui
 
@@ -23,8 +14,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// keyDriver drives real frames with a held key, honouring rising-edge
-// detection: each press is one frame down followed by one frame up.
+// Edge-detected: each press is one frame down, then one up.
 type keyDriver struct {
 	g      *Game
 	held   ebiten.Key
@@ -80,10 +70,8 @@ type menuNavCase struct {
 	effect func(g *Game) string
 	// isOpen reports whether the menu is still on screen — the Esc contract.
 	isOpen func(g *Game) bool
-	// reach drives the highlight to a row whose activation is observable.
-	// Some menus' FIRST row is deliberately inert for this purpose (the
-	// Templates page opens on "Back"; the File page on "Upload", which would
-	// raise a file dialog), so those jump to the end of the list instead.
+	// To a row whose activation is observable: some first rows are inert here (Templates opens on "Back", File on
+	// "Upload", which raises a dialog), so those go to the end.
 	reach func(d *keyDriver)
 }
 
@@ -93,26 +81,20 @@ func downOnce(d *keyDriver) { d.press(ebiten.KeyArrowDown) }
 // toLastRow jumps to the last selectable row via End.
 func toLastRow(d *keyDriver) { d.press(ebiten.KeyEnd) }
 
-// actionMenuNavPick records which action-menu row was activated. The action
-// menu's real items raise file dialogs and reset recipes, so the nav case wires
-// inert items and observes this instead.
+// The real items raise file dialogs and reset recipes, so the case wires inert ones.
 var actionMenuNavPick string
 
 func menuNavCases() []menuNavCase {
 	return []menuNavCase{
 		{
-			// The shared "⋯" overflow (Synth/Sampler Save As / Export / Import /
-			// Reset, and the synth "+ Add stage" list). It rendered rows and had
-			// no keyboard navigation at all.
+			// The shared "⋯" overflow and the synth "+ Add stage" list.
 			name:   "action_menu",
 			isOpen: func(g *Game) bool { return g.drum.portal().Has("test-action-menu") },
 			open: func(t *testing.T, g *Game) {
 				actionMenuNavPick = ""
 				t.Cleanup(func() { actionMenuNavPick = "" })
 				g.drum.openActionMenu("test-action-menu", image.Rect(40, 40, 160, 64),
-					// Six rows, not three: the hold-to-repeat case needs enough
-					// rows that the cursor has not clamped at the end before the
-					// first repeat is due, or it silently skips.
+					// Six rows, so the cursor has not clamped at the end before the first repeat is due.
 					[]actionMenuItem{
 						{Label: "Alpha", OnSelect: func() { actionMenuNavPick = "alpha" }},
 						{Label: "Beta", OnSelect: func() { actionMenuNavPick = "beta" }},
@@ -137,8 +119,7 @@ func menuNavCases() []menuNavCase {
 			reach: downOnce,
 		},
 		{
-			// A second SubdivMenuComponent instance: proves the wiring belongs to
-			// the component, not to one call site.
+			// A second instance: the wiring belongs to the component, not one call site.
 			name:   "jump_menu",
 			isOpen: func(g *Game) bool { return g.drum.portal().Has("jump-menu") },
 			open:   func(t *testing.T, g *Game) { g.drum.OpenJumpMenu() },
@@ -173,8 +154,7 @@ func menuNavCases() []menuNavCase {
 			effect: func(g *Game) string {
 				return "overflowPage=" + navItoa(g.drum.overflowPage)
 			},
-			// The File page's LAST row is "Load template" (the first is Upload,
-			// which would raise a native file dialog).
+			// The last row is "Load template"; the first, Upload, raises a native dialog.
 			reach: toLastRow,
 		},
 		{
@@ -204,8 +184,7 @@ func menuNavCases() []menuNavCase {
 			effect: func(g *Game) string {
 				return "preset=" + effectivePresetID(g.userTheme, g.circuitTheme)
 			},
-			// Row 0 is the shipped default preset (already in effect), so the
-			// second row is the first pick that demonstrably changes the theme.
+			// Row 0 is the default preset, already in effect.
 			reach: func(d *keyDriver) { d.press(ebiten.KeyArrowDown); d.press(ebiten.KeyArrowDown) },
 		},
 		{
@@ -219,8 +198,7 @@ func menuNavCases() []menuNavCase {
 				}
 				return "inst=" + string(g.drum.Rows[0].Instrument)
 			},
-			// Row 0's own instrument is already selected, so activating the
-			// FIRST row can be a no-op; End picks a demonstrably different one.
+			// Row 0's instrument is already selected, so End picks one that visibly differs.
 			reach: toLastRow,
 		},
 	}
@@ -252,8 +230,6 @@ func navBtoa(b bool) string {
 	return "false"
 }
 
-// TestMenuKeyNav_ArrowsMoveHighlight pins that Down moves the highlight in
-// every list menu — the half the user can see.
 func TestMenuKeyNav_ArrowsMoveHighlight(t *testing.T) {
 	for _, tc := range menuNavCases() {
 		t.Run(tc.name, func(t *testing.T) {
@@ -291,8 +267,7 @@ func TestMenuKeyNav_ArrowsMoveHighlight(t *testing.T) {
 	}
 }
 
-// TestMenuKeyNav_EnterPerformsTheRowAction pins the other half: Enter must
-// actually do what clicking the highlighted row would do.
+// Enter does what clicking the highlighted row would.
 func TestMenuKeyNav_EnterPerformsTheRowAction(t *testing.T) {
 	for _, tc := range menuNavCases() {
 		t.Run(tc.name, func(t *testing.T) {
@@ -321,9 +296,7 @@ func TestMenuKeyNav_EnterPerformsTheRowAction(t *testing.T) {
 	}
 }
 
-// TestMenuKeyNav_ArrowsDoNotPanGridWhileMenuOpen pins the keyboard claim: an
-// open nav menu must own the arrows, or every keystroke also pans the grid
-// behind it.
+// An open menu owns the arrows, or every keystroke also pans the grid behind it.
 func TestMenuKeyNav_ArrowsDoNotPanGridWhileMenuOpen(t *testing.T) {
 	for _, tc := range menuNavCases() {
 		t.Run(tc.name, func(t *testing.T) {
@@ -344,13 +317,8 @@ func TestMenuKeyNav_ArrowsDoNotPanGridWhileMenuOpen(t *testing.T) {
 	}
 }
 
-// TestMenuKeyNav_ArrowsWorkWhileSearchFocused pins the type-to-filter contract.
-//
-// Before the shared-MenuKeyNav refactor, every kb* method in the instrument
-// menu opened with `if m.searchBox.Focused() { return }` — so the arrows were
-// dead exactly where a keyboard user needs them: after typing a filter. Now
-// Up/Down walk the filtered results and Enter picks the highlighted one, while
-// the caret keeps Left/Right and text entry.
+// Up/Down walk the filtered results and Enter picks while the search field keeps Left/Right and typing: that
+// is exactly where a keyboard user needs the arrows.
 func TestMenuKeyNav_ArrowsWorkWhileSearchFocused(t *testing.T) {
 	d := newKeyDriver(t)
 	d.g.drum.OpenInstrumentMenu(0)
@@ -385,9 +353,7 @@ func TestMenuKeyNav_ArrowsWorkWhileSearchFocused(t *testing.T) {
 	}
 }
 
-// TestMenuKeyNav_EnterPicksHighlightedWhileSearchFocused pins that Enter
-// reaches the list rather than being swallowed by the focused text input
-// (TextInput consumes Enter for its own submit).
+// TextInput consumes Enter for its own submit, so it must reach the list instead.
 func TestMenuKeyNav_EnterPicksHighlightedWhileSearchFocused(t *testing.T) {
 	d := newKeyDriver(t)
 	d.g.drum.OpenInstrumentMenu(0)
@@ -416,15 +382,8 @@ func TestMenuKeyNav_EnterPicksHighlightedWhileSearchFocused(t *testing.T) {
 	}
 }
 
-// TestMenuKeyNav_SelectionSurvivesIdleFrames pins that a highlight, once set,
-// persists across frames while the menu sits open and nothing changes.
-//
-// It caught a real bug: updateOverflowKeyNav resets the cursor whenever the
-// item-list signature changes, and the stored signature started as "" — never a
-// real value — so the FIRST frame after opening always looked like a change and
-// wiped the selection. Arrowing still worked (the key press and the reset raced
-// within the same frame in the tests) but a highlight set programmatically, or
-// held across an idle frame, vanished.
+// The list signature must start as a real value: an initial "" made the first frame look like a change and
+// wipe the selection.
 func TestMenuKeyNav_SelectionSurvivesIdleFrames(t *testing.T) {
 	d := newKeyDriver(t)
 	d.g.drum.overflowPage = 1
@@ -445,14 +404,7 @@ func TestMenuKeyNav_SelectionSurvivesIdleFrames(t *testing.T) {
 	}
 }
 
-// TestMenuKeyNav_PreselectedRowSurvivesFirstFrame pins that a cursor placed
-// BEFORE the menu's first update frame is not wiped by it.
-//
-// The item-list "shape signature" that resets a stale cursor on a page switch
-// or a new search query started as "", which no real signature can equal — so
-// the very first frame after opening always looked like a shape change and
-// cleared the selection. Caught by a screenshot: the keyboard highlight simply
-// never rendered.
+// A cursor placed before the first update frame survives it.
 func TestMenuKeyNav_PreselectedRowSurvivesFirstFrame(t *testing.T) {
 	d := newKeyDriver(t)
 	d.g.drum.overflowPage = 1
@@ -482,9 +434,7 @@ func TestMenuKeyNav_PreselectedRowSurvivesFirstFrame(t *testing.T) {
 	}
 }
 
-// TestMenuKeyNav_EscapeClosesEveryMenu pins the third key of the keyboard
-// contract, alongside the arrows and Enter: every navigable list menu closes on
-// Esc, so a keyboard user is never trapped inside one.
+// Every list menu closes on Esc, so a keyboard user is never trapped.
 func TestMenuKeyNav_EscapeClosesEveryMenu(t *testing.T) {
 	for _, tc := range menuNavCases() {
 		t.Run(tc.name, func(t *testing.T) {
@@ -509,11 +459,8 @@ func TestMenuKeyNav_EscapeClosesEveryMenu(t *testing.T) {
 	}
 }
 
-// TestMenuKeyNav_EnterLeavesNoMenuStranded pins that Enter resolves the menu:
-// after activating a row, the menu is either closed or (for the audition menus)
-// still open ON PURPOSE with the selection applied. What must never happen is a
-// menu that swallowed Enter and did nothing at all — that is the dead-end the
-// arrows-without-Enter state used to be.
+// After Enter the menu is closed, or open ON PURPOSE with the selection applied (the audition menus), never
+// open having done nothing.
 func TestMenuKeyNav_EnterIsNeverSwallowed(t *testing.T) {
 	for _, tc := range menuNavCases() {
 		t.Run(tc.name, func(t *testing.T) {
@@ -538,8 +485,6 @@ func TestMenuKeyNav_EnterIsNeverSwallowed(t *testing.T) {
 
 // --- Hold-to-repeat, end to end -------------------------------------------
 
-// holdFrames drives n real frames with a key held down, returning the frames on
-// which the menu's cursor moved.
 func (d *keyDriver) holdFrames(nav *MenuKeyNav, k ebiten.Key, n int) []int {
 	var fired []int
 	prev := nav.Selected()
@@ -556,13 +501,8 @@ func (d *keyDriver) holdFrames(nav *MenuKeyNav, k ebiten.Key, n int) []int {
 	return fired
 }
 
-// TestMenuKeyNavRepeat_WorksThroughTheRealGameLoop is the end-to-end half.
-//
-// The unit tests drive nav.Update directly, once per frame by construction. This
-// one goes through Game.Update, so it also proves each menu pumps its nav EXACTLY
-// once per frame: a menu that pumped twice (component Update plus a portal
-// updateFn, say) would advance the hold counter at double rate and repeat twice
-// as fast as the curve specifies — invisible to every unit test here.
+// Through Game.Update, so each menu pumps its nav exactly once per frame: twice would repeat at double the
+// curve's rate, invisibly to every unit test.
 func TestMenuKeyNavRepeat_WorksThroughTheRealGameLoop(t *testing.T) {
 	for _, tc := range menuNavCases() {
 		t.Run(tc.name, func(t *testing.T) {

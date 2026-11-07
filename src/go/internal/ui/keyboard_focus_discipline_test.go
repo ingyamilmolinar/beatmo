@@ -7,10 +7,7 @@ import (
 	"testing"
 )
 
-// The grid keyboard gate must be the single KeyboardClaimed() predicate. This
-// guards against a denylist creeping back into handleGlobalShortcuts (the
-// original bug: an inline `focusedZone != "" || valueEditorActive()` check that
-// had to enumerate every text input and missed several).
+// One KeyboardClaimed() predicate, never a denylist: the inline check it replaced missed several text inputs.
 func TestGridKeyboardGateUsesSinglePredicate(t *testing.T) {
 	src, err := os.ReadFile("game_input_shortcuts.go")
 	if err != nil {
@@ -29,9 +26,7 @@ func TestGridKeyboardGateUsesSinglePredicate(t *testing.T) {
 	}
 }
 
-// After Phase 3, handleGlobalShortcuts must contain NO inline shortcut-key
-// handling — every gated key is owned by a component node dispatched via the
-// router. This guards against the monolithic grab-bag creeping back.
+// No inline shortcut-key handling: every gated key belongs to a router node.
 func TestGlobalShortcutsHasNoInlineKeyHandling(t *testing.T) {
 	src, err := os.ReadFile("game_input_shortcuts.go")
 	if err != nil {
@@ -42,14 +37,11 @@ func TestGlobalShortcutsHasNoInlineKeyHandling(t *testing.T) {
 	if !strings.Contains(body, "dispatchGated(") {
 		t.Fatal("handleGlobalShortcuts must dispatch gated shortcuts via g.keyboardRouter.dispatchGated()")
 	}
-	// The per-key claim seam is the ONLY way a popup control gets precedence;
-	// an inline "is a popup open?" check here is the denylist creeping back.
+	// The per-key claim seam is how a popup control gets precedence; an inline "popup open?" check is a denylist.
 	if !strings.Contains(body, "dispatchClaimedKeys()") {
 		t.Fatal("handleGlobalShortcuts must let partial claimants act via g.dispatchClaimedKeys() before the gated router")
 	}
-	// No inline shortcut-key constants — they belong in the nodes now. (KeyEscape
-	// is NOT checked: Esc routing via handleEscape is Phase 2's concern and the
-	// call site, not a constant, lives here.)
+	// KeyEscape is not checked: its call site, handleEscape, lives here.
 	for _, forbidden := range []string{
 		"KeyArrowLeft", "KeyArrowRight", "KeyArrowUp", "KeyArrowDown",
 		"KeySpace", "KeyBracketLeft", "KeyBracketRight", "Key0",
@@ -62,8 +54,6 @@ func TestGlobalShortcutsHasNoInlineKeyHandling(t *testing.T) {
 	}
 }
 
-// extractFuncBody returns the source text of the named top-level method/func
-// body (between its first '{' and the matching '}').
 func extractFuncBody(t *testing.T, src, name string) string {
 	t.Helper()
 	re := regexp.MustCompile(`func (\([^)]*\) )?` + regexp.QuoteMeta(name) + `\(`)

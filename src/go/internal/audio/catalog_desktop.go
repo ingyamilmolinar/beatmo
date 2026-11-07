@@ -21,9 +21,7 @@ var (
 	catalogByID map[instrument.ID]SoundMeta
 )
 
-// InitDefaultCatalog scans the top-level assets directory for WAV files grouped
-// by their first-level folder. It is safe to call multiple times; the scan runs
-// once.
+// Safe to call repeatedly; the scan runs once.
 func InitDefaultCatalog() {
 	catalogOnce.Do(func() {
 		_ = InitCatalogFromDir(defaultAssetsRoot())
@@ -35,9 +33,7 @@ func AssetsRoot() string {
 	return defaultAssetsRoot()
 }
 
-// defaultAssetsRoot attempts to locate the assets directory relative to the
-// current working directory. This supports running from repo root (`make run`)
-// as well as from module subdirs (e.g. `cd src/go && go run ...`).
+// Works from the repo root (`make run`) and from module subdirectories.
 func defaultAssetsRoot() string {
 	if root := env.AssetsRoot.Get(); root != "" {
 		if info, err := os.Stat(root); err == nil && info.IsDir() {
@@ -62,8 +58,6 @@ func defaultAssetsRoot() string {
 	return "assets"
 }
 
-// InitCatalogFromDir replaces the current catalog with WAV metadata discovered
-// under root. Primarily used by UI/Game startup; it may be re-run in tests.
 func InitCatalogFromDir(root string) error {
 	m := map[instrument.ID]SoundMeta{}
 	var out []SoundMeta
@@ -72,8 +66,7 @@ func InitCatalogFromDir(root string) error {
 		rootAbs = abs
 	}
 
-	// On-disk WAVs grouped by top-level folder. Embedded samples are no longer
-	// surfaced — instruments come from filesystem references only.
+	// Instruments come from filesystem references only; embedded samples are not surfaced.
 	_ = filepath.WalkDir(root, func(p string, d os.DirEntry, _ error) error {
 		if d == nil {
 			return nil
@@ -92,9 +85,7 @@ func InitCatalogFromDir(root string) error {
 		if len(parts) < 2 { // require category folder
 			return nil
 		}
-		// Skip the legacy assets/Saved/ folder. It used to host the on-disk
-		// "Save Instrument" output and is being removed; any leftover files
-		// must not surface in the catalog (tests pin this invariant).
+		// assets/Saved/ must never surface in the catalog.
 		if strings.EqualFold(parts[0], "Saved") {
 			return nil
 		}
@@ -125,8 +116,7 @@ func InitCatalogFromDir(root string) error {
 		return nil
 	})
 
-	// 3) Built-in synthesized instruments: add lightweight metadata so they
-	// appear in category lists distinct from WAV assets.
+	// Lightweight metadata so synths list apart from WAV assets.
 	for _, id := range instOrder {
 		if _, exists := m[id]; exists {
 			continue
@@ -211,8 +201,7 @@ func IsRegistered(id instrument.ID) bool {
 	return ok
 }
 
-// EnsureInstrumentLoaded registers an instrument on first use using the catalog
-// metadata. It returns an error if the ID is unknown.
+// Errors for an unknown ID.
 func EnsureInstrumentLoaded(id instrument.ID) error {
 	if id == "" || IsRegistered(id) {
 		return nil
@@ -229,8 +218,6 @@ func EnsureInstrumentLoaded(id instrument.ID) error {
 	return RegisterAudio(meta.ID, meta.Path)
 }
 
-// wavCategory normalizes top-level folder names into user-facing categories,
-// distinguishing WAV assets from synthesized sources.
 func wavCategory(cat string, rel string) string {
 	switch strings.ToLower(cat) {
 	case "snare":

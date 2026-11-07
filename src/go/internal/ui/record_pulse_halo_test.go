@@ -10,8 +10,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestRecordPulse_NotDrawnWhenIdle verifies the record-armed halo does NOT
-// render when recording is off.
 func TestRecordPulse_NotDrawnWhenIdle(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -35,9 +33,6 @@ func TestRecordPulse_NotDrawnWhenIdle(t *testing.T) {
 	}
 }
 
-// TestRecordPulse_DrawsMultiPassWhenArmed verifies that when isRecording is
-// true the halo draws as a multi-pass falloff (≥2 passes) extending ≥3 px
-// from the record button edge.
 func TestRecordPulse_DrawsMultiPassWhenArmed(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -71,9 +66,6 @@ func TestRecordPulse_DrawsMultiPassWhenArmed(t *testing.T) {
 	}
 }
 
-// captureOutlinesNear is the colour-agnostic equivalent of the pulse-halo
-// helper: it intercepts unfilled drawRect calls whose rect brackets
-// btnRect and whose colour matches the predicate.
 func captureOutlinesNear(t *testing.T, btnRect image.Rectangle, match func(color.Color) bool, fn func()) []drawnRect {
 	t.Helper()
 	var rects []drawnRect

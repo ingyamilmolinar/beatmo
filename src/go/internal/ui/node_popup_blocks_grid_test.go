@@ -20,8 +20,7 @@ func TestNodePopupBlocksGridClicks(t *testing.T) {
 	g.sidebar.ExpandAllSections()
 	g.sidebar.layout()
 	panel := g.sidebar.rects[sbPanel]
-	// Pick a coordinate inside the panel but outside known buttons.
-	// Use a point slightly to the left of the right-aligned +/- buttons.
+	// Inside the panel, left of the right-aligned ± buttons.
 	x := panel.Min.X + 40
 	y := panel.Min.Y + 12 // near first row value area
 	before := len(g.nodes)
@@ -61,8 +60,7 @@ func TestNodePopupButtonsClickableNoGrid(t *testing.T) {
 	g.sel = n
 	n.Selected = true
 	g.sidebar.Open(n)
-	// Only expand the logic section (not all) so the ln+/- buttons stay
-	// within the visible panel height on a 640x480 layout.
+	// Logic only, so the ln ± buttons stay inside the visible panel at 640x480.
 	g.sidebar.sectionOpen[secLogic] = true
 	g.sidebar.layout()
 	beforeNodes := len(g.nodes)

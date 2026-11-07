@@ -11,14 +11,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestApplyKitToDrumView_PreservesMixState is the Phase 6 ship signal:
-// applying a kit must swap each row's Instrument and leave every other piece
-// of the row's mix state as it was. Volume, Mute / Solo stay on the row; the
-// EQ, HPF/LPF and insert effects are the instrument's audio bundle, which
-// carries over to the kit's instrument (it sets none of its own — spec
-// 2026-10-31 §2.9: choosing an instrument never drops settings). Built without
-// a real Game (no Ebiten); the test only needs the DrumView struct's row slice
-// and the kit_binder bridge.
+// Only the Instrument changes. Volume, mute and solo stay on the row; EQ, filters and insert effects are the
+// instrument's audio bundle, which carries over: choosing an instrument never drops settings.
 func TestApplyKitToDrumView_PreservesMixState(t *testing.T) {
 	// Capture EventKitApplied for the hook assertion.
 	var mu sync.Mutex

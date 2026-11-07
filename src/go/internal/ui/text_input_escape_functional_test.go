@@ -6,10 +6,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// fakeInput is a stateful input source that drives the REAL Game.Update loop
-// the way a user's hardware does: edge-triggered keys (isKeyJustPressed true
-// only on the first frame a key goes down), a held mouse button, and typed
-// characters. This is the faithful harness for "test as the user will use it".
+// Drives the real Game.Update the way hardware does: edge-triggered keys, a held mouse button, typed characters.
 type fakeInput struct {
 	cx, cy   int
 	mouse    bool
@@ -44,9 +41,8 @@ func installFakeInput(fi *fakeInput) func() {
 	}
 }
 
-// frame advances one Update+Draw with the current input state (the real game
-// loop runs both each frame; many control rects are assigned during Draw), then
-// rolls the key snapshot so the next frame computes just-pressed correctly.
+// Update AND Draw, since many control rects are assigned during Draw; the key snapshot then rolls so the next frame
+// computes just-pressed correctly.
 func (fi *fakeInput) frame(t *testing.T, g *Game) {
 	t.Helper()
 	if err := g.Update(); err != nil {
@@ -89,9 +85,7 @@ func newDesktopGame(t *testing.T) *Game {
 	return g
 }
 
-// TestFunctional_Esc_BPMBox reproduces the exact user flow: click the BPM box,
-// type a new tempo, press Esc — expecting the edit to be discarded and the box
-// closed. Drives the real Game.Update loop end-to-end.
+// Esc after editing the BPM discards the edit and closes the editor.
 func TestFunctional_Esc_BPMBox(t *testing.T) {
 	g := newDesktopGame(t)
 	fi := newFakeInput(1280, 720)
@@ -135,10 +129,7 @@ func TestFunctional_Esc_BPMBox(t *testing.T) {
 	}
 }
 
-// TestFunctional_Esc_Rename reproduces the user flow for the instrument-rename
-// text field that "shows up": trigger rename (production row-rack action), type
-// a new name, press Esc — expecting the rename cancelled (name unchanged) and
-// the field closed. Drives the real Game.Update loop.
+// Through the production row-rack rename action.
 func TestFunctional_Esc_Rename(t *testing.T) {
 	g := newDesktopGame(t)
 	fi := newFakeInput(1280, 720)
@@ -177,9 +168,7 @@ func TestFunctional_Esc_Rename(t *testing.T) {
 	}
 }
 
-// TestFunctional_Esc_EQdBInput reproduces the user flow for an EQ band dB
-// value field: click the dB readout, type a value, press Esc — expecting the
-// edit discarded and the input closed. Drives the real Update+Draw loop.
+// Esc on an EQ band's dB wheel discards the edit and closes it.
 func TestFunctional_Esc_EQdBInput(t *testing.T) {
 	g := newDesktopGame(t)
 	fi := newFakeInput(1280, 720)
@@ -205,8 +194,7 @@ func TestFunctional_Esc_EQdBInput(t *testing.T) {
 	}
 	orig := ez.bandGainsDB[idx]
 
-	// 1. Click the dB readout — it opens the precision wheel popup (the only
-	// dB-entry path besides the curve; typed entry was retired).
+	// The dB readout opens the precision wheel; typed entry is gone.
 	r := ez.dbReadoutRect(idx)
 	fi.clickAt(t, g, (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2)
 	w := g.drum.eqWheelPopup
@@ -232,10 +220,7 @@ func TestFunctional_Esc_EQdBInput(t *testing.T) {
 	}
 }
 
-// TestFunctional_Esc_InstrumentSearch verifies the instrument-menu search:
-// with a non-empty query, the first Esc clears it (menu stays open); the second
-// Esc closes the menu. Previously a duplicate tree-level Esc handler closed the
-// menu on the very first press (so the clear was never observable).
+// The first Esc clears a non-empty query and keeps the menu; the second closes it.
 func TestFunctional_Esc_InstrumentSearch(t *testing.T) {
 	g := newDesktopGame(t)
 	fi := newFakeInput(1280, 720)
@@ -254,8 +239,7 @@ func TestFunctional_Esc_InstrumentSearch(t *testing.T) {
 		t.Skip("instrument menu did not open")
 	}
 
-	// Optionally simulate a typed search query (the menu's Update syncs
-	// state.searchText FROM the box, so set the box, not state).
+	// The menu syncs state.searchText FROM the box, so the box is set.
 	if m.searchBox != nil {
 		m.searchBox.SetText("kick")
 		fi.frame(t, g)
@@ -268,13 +252,8 @@ func TestFunctional_Esc_InstrumentSearch(t *testing.T) {
 	}
 }
 
-// TestFunctional_Esc_SoftKeyboardProxy reproduces the BROWSER bug: when a text
-// input is focused on WASM, keyboard focus moves to the hidden soft-keyboard
-// proxy, so the canvas never receives the Esc keydown (isKeyJustPressed stays
-// false). The proxy forwards it via SignalSoftKeyboardEscape. This test focuses
-// a text field (the row rename box — BPM no longer has a text box, it opens the
-// value wheel), types, fires ONLY the soft-keyboard signal (no canvas Esc), and
-// asserts the edit is cancelled and the field closed — the exact fix.
+// On WASM a focused input moves keyboard focus to the hidden soft-keyboard proxy, so the canvas never sees Esc;
+// the proxy forwards it through SignalSoftKeyboardEscape.
 func TestFunctional_Esc_SoftKeyboardProxy(t *testing.T) {
 	g := newDesktopGame(t)
 	fi := newFakeInput(1280, 720)
@@ -295,8 +274,7 @@ func TestFunctional_Esc_SoftKeyboardProxy(t *testing.T) {
 	fi.chars = []rune{'Q', 'Q'}
 	fi.frame(t, g)
 
-	// Esc arrives ONLY through the proxy (the canvas never sees the keydown:
-	// isKeyJustPressed(Escape) stays false) — only the proxy's forwarded signal.
+	// Only the proxy's forwarded signal; isKeyJustPressed(Escape) stays false.
 	SignalSoftKeyboardEscape()
 	fi.frame(t, g)
 
@@ -308,9 +286,7 @@ func TestFunctional_Esc_SoftKeyboardProxy(t *testing.T) {
 	}
 }
 
-// TestFunctional_Esc_BPMBox_Commits is the positive control: Enter commits the
-// wheel's value (so the Esc test above meaningfully distinguishes cancel from
-// commit).
+// The positive control, so the Esc test distinguishes cancel from commit.
 func TestFunctional_Esc_BPMBox_Commits(t *testing.T) {
 	g := newDesktopGame(t)
 	fi := newFakeInput(1280, 720)

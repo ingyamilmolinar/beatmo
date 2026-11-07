@@ -9,16 +9,8 @@ import (
 	"testing"
 )
 
-// TestDesignTokensFreshness re-runs the design-token generator into a
-// tempdir and confirms each output byte-matches the committed file.
-// Failure means DESIGN.md changed but `make gen-design-tokens` was not
-// run; the diff in the failure tells you what to regenerate.
-//
-// Why this is not a substitute for design_md_drift_test.go: that test
-// independently parses DESIGN.md and asserts each runtime constant
-// matches, catching generator-vs-DESIGN.md divergence (the regenerated
-// .gen.go and the committed .gen.go can both be wrong if the generator
-// has a bug). Both tests are needed; they catch different bugs.
+// The generator's output into a temp dir byte-matches the committed files, or `make gen-design-tokens` was not
+// run. The drift test catches a consistently wrong generator, which this cannot.
 func TestDesignTokensFreshness(t *testing.T) {
 	if runtime.GOOS == "js" {
 		t.Skip("skipping on WASM (no go toolchain in browser tests)")
@@ -35,11 +27,7 @@ func TestDesignTokensFreshness(t *testing.T) {
 	tmpComponents := filepath.Join(tmpDir, "design_components.gen.go")
 	tmpProfile := filepath.Join(tmpDir, "design_profile.gen.go")
 	tmpDensity := filepath.Join(tmpDir, "design_density.gen.go")
-	// Redirected but not compared: -out-sequence targets the templates
-	// package, which this UI-token freshness check does not own. It must
-	// still be redirected — the flag defaults to the real tracked
-	// internal/templates/instrument_sequence.gen.go, so leaving it off makes
-	// this test rewrite a checked-in file on every run.
+	// Not compared here, but redirected: its default is the real tracked templates file.
 	tmpSequence := filepath.Join(tmpDir, "instrument_sequence.gen.go")
 
 	goBin := goExecutable()
@@ -85,8 +73,6 @@ func TestDesignTokensFreshness(t *testing.T) {
 	}
 }
 
-// repoSubdir walks up from the test's cwd until it finds the requested
-// directory under what looks like the repo root.
 func repoSubdir(t *testing.T, sub string) string {
 	t.Helper()
 	cwd, err := os.Getwd()
@@ -96,9 +82,7 @@ func repoSubdir(t *testing.T, sub string) string {
 	dir := cwd
 	for i := 0; i < 8; i++ {
 		try := filepath.Join(dir, sub)
-		// Require a go.mod sentinel so a stray nested directory (e.g. a
-		// leftover src/go/src/go from a misdirected generator run) cannot
-		// shadow the real repo src/go in the upward walk.
+		// A go.mod sentinel, so a stray nested src/go cannot shadow the real one.
 		if _, err := os.Stat(filepath.Join(try, "go.mod")); err == nil {
 			return try
 		}
@@ -112,8 +96,7 @@ func repoSubdir(t *testing.T, sub string) string {
 	return ""
 }
 
-// goExecutable prefers the bundled toolchain at .tools/go/bin/go (the
-// project standard, see CLAUDE.md), falling back to PATH.
+// The bundled toolchain first, then PATH.
 func goExecutable() string {
 	if cwd, err := os.Getwd(); err == nil {
 		dir := cwd

@@ -12,20 +12,10 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// These tests pin the cross-platform parity contract for the per-row
-// instrument controls:
-//
-//   - Tapping the instrument-name label opens the instrument picker on EVERY
-//     platform (previously mobile opened the row context menu instead).
-//   - The ellipsis (⋯) overflow menu carries only Rename / Origin / Delete on
-//     every platform — "Instrument" (mobile-only) and "Color" (desktop-only)
-//     are both gone.
-//
-// They drive the real input loop (Game.Update via DrumView.Update) and assert
-// the user-visible overlay state, per the project's functional-test convention.
+// On every platform the label opens the instrument picker, and ⋯ carries the same items. Driven through the
+// real input loop.
 
-// instButtonTestDV builds a one-row DrumView with a known instrument list and
-// runs a warm-up frame so layout (including the mobile-specific pass) settles.
+// A warm-up frame settles the layout, mobile pass included.
 func instButtonTestDV(t *testing.T, w, h int) *DrumView {
 	t.Helper()
 	dv := NewDrumView(image.Rect(0, 0, w, h), nil, game_log.New(nil, game_log.LevelError))
@@ -53,8 +43,6 @@ func instButtonTestDV(t *testing.T, w, h int) *DrumView {
 	return dv
 }
 
-// pressReleaseLabel taps the row-0 label via the real input loop: one press
-// frame at the label center followed by one release frame.
 func pressReleaseLabel(t *testing.T, dv *DrumView, w, h int) {
 	t.Helper()
 	if len(dv.rowLabels()) == 0 {
@@ -90,9 +78,7 @@ func pressReleaseLabel(t *testing.T, dv *DrumView, w, h int) {
 	release()
 }
 
-// TestMobileLabelTapOpensInstMenu is the headline behavior change: on mobile,
-// tapping the instrument-name label opens the instrument picker directly (like
-// desktop), NOT the row context menu.
+// The picker directly, as on desktop, not the row context menu.
 func TestMobileLabelTapOpensInstMenu(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -136,8 +122,6 @@ func TestMobileLabelTapOpensInstMenu(t *testing.T) {
 	idle()
 }
 
-// TestDesktopLabelTapOpensInstMenu is the desktop regression guard: the label
-// continues to open the instrument picker (unchanged behavior).
 func TestDesktopLabelTapOpensInstMenu(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -159,13 +143,9 @@ func TestDesktopLabelTapOpensInstMenu(t *testing.T) {
 	}
 }
 
-// wantEllipsisMenu is the platform-uniform ellipsis menu contract:
-// Rename / Color / Origin / Delete (see contextMenuItems doc comment).
-// "Instrument" is absent — tapping the row label opens the picker directly.
+// The same on every platform; "Instrument" is absent because the label opens the picker.
 var wantEllipsisMenu = []string{"Rename", "Color", "Origin", "Delete"}
 
-// TestEllipsisMenuMobileItems pins the mobile ellipsis menu to exactly
-// Rename / Color / Origin / Delete — "Instrument" is absent.
 func TestEllipsisMenuMobileItems(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -188,8 +168,6 @@ func TestEllipsisMenuMobileItems(t *testing.T) {
 	}
 }
 
-// TestEllipsisMenuDesktopItems pins the desktop ellipsis menu to exactly
-// Rename / Color / Origin / Delete — identical to mobile.
 func TestEllipsisMenuDesktopItems(t *testing.T) {
 	assertDefaultParityState(t)
 

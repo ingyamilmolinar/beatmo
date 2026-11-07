@@ -27,8 +27,7 @@ func TestLogicButtonAlignedAndTextNotOverlap(t *testing.T) {
 
 	rLogic := g.sidebar.rects[sbLogicSelect]
 	panel := g.sidebar.rects[sbPanel]
-	// Logic button is now full-width within the panel. Verify it spans the
-	// panel content area (padded edges).
+	// Full width within the padded panel.
 	if rLogic.Min.X != panel.Min.X+sidebarPad {
 		t.Fatalf("logic button should start at panel left+pad: logic.Min.X=%d expected=%d", rLogic.Min.X, panel.Min.X+sidebarPad)
 	}
@@ -104,10 +103,7 @@ func TestGrooveDropdownInlinePanel(t *testing.T) {
 	}
 }
 
-// TestSidebarSectionToggleNoFlicker verifies that holding the mouse on a
-// section header for multiple frames does NOT cause repeated toggles, and
-// that a complete tap (press+release) toggles exactly once via the deferred
-// tap pattern.
+// Holding on a header never repeats the toggle; a complete tap toggles exactly once.
 func TestSidebarSectionToggleNoFlicker(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -155,8 +151,7 @@ func TestSidebarSectionToggleNoFlicker(t *testing.T) {
 	}
 }
 
-// TestSidebarScrollBehaviorWheel verifies that wheel events adjust the
-// scroll offset when content overflows the viewport.
+// When content overflows the viewport.
 func TestSidebarScrollBehaviorWheel(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -198,8 +193,6 @@ func TestSidebarScrollBehaviorWheel(t *testing.T) {
 	}
 }
 
-// TestSidebarScrollbarDrag verifies that dragging the scrollbar thumb
-// adjusts the scroll offset.
 func TestSidebarScrollbarDrag(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -249,8 +242,6 @@ func TestSidebarScrollbarDrag(t *testing.T) {
 	}
 }
 
-// TestSidebarScrollUsesScrollBehavior verifies the sidebar uses ScrollBehavior
-// and the View rect is properly set.
 func TestSidebarScrollUsesScrollBehavior(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

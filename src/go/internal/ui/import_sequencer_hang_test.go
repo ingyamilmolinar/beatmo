@@ -12,12 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
-// TestImportTwiceNoHang verifies that importing while the sequencer is active
-// does not cause a deadlock. This test simulates the scenario where:
-// 1. First import is done (sets up a graph)
-// 2. Playback is started (sequencer is running)
-// 3. Second import is attempted while sequencer holds seqMu
-// The fix stops playback during import to avoid seqMu contention.
+// Import stops playback so it never contends for seqMu with a running sequencer.
 func TestImportTwiceNoHang(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -81,9 +76,7 @@ func TestImportTwiceNoHang(t *testing.T) {
 	}
 	t.Log("First import succeeded")
 
-	// Start playback - this would activate the sequencer in non-test mode
-	// In tests, sequencerLoop doesn't run (runningUnderGoTest returns true),
-	// so we simulate by setting playing state
+	// sequencerLoop does not run under go test, so the playing state is set directly.
 	g.SetPlayingForTest(true)
 	g.SetAppliedBPMForTest(120)
 	g.SetPlayStartForTest(time.Now())
@@ -117,8 +110,6 @@ func TestImportTwiceNoHang(t *testing.T) {
 	}
 }
 
-// TestImportResetsPlayingState verifies that importing stops playback
-// during the import operation and restores it afterward.
 func TestImportResetsPlayingState(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -180,8 +171,7 @@ func TestImportResetsPlayingState(t *testing.T) {
 	}
 }
 
-// TestImportClearsSeqPathSnap verifies that seqPathSnap is cleared during
-// import to provide an additional safety net against lock contention.
+// A second safety net against seqMu contention.
 func TestImportClearsSeqPathSnap(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

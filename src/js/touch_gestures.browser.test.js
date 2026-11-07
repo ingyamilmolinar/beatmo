@@ -40,14 +40,7 @@ const server = http.createServer((req, res) => {
 await new Promise((r) => server.listen(0, r));
 const port = server.address().port;
 
-// Use iPhone 12 (portrait) device emulation for realistic mobile testing.
-// Must be PORTRAIT: mobile landscape is intentionally unsupported — the mobile
-// profile shows a rotate-to-portrait notice and blocks all touch input
-// (internal/ui/landscape_unsupported.go), so gesture verification (drag pans,
-// pinch zooms, two-finger pan) can only run in the supported portrait
-// orientation. The landscape-disabled behavior itself is covered by
-// landscape_block.browser.test.js + the landscape cases in
-// touch_device_matrix / mobile_import_gesture.
+// PORTRAIT: landscape blocks all touch input by design, so gestures can only be verified upright.
 const iPhone = devices['iPhone 12'];
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 const context = await browser.newContext({
@@ -91,18 +84,9 @@ console.log("Testing touch gestures on mobile viewport...");
 // Test 1: Single-finger drag on grid pans camera
 console.log("Test 1: Single-finger drag on grid pans camera");
 const gridY = 100; // Y position in grid area (above drum view)
-// A single-finger drag pans only if the WASM game loop OBSERVES the touch at the
-// anchor and then at a moved position (camera.go anchors camDrag at the first
-// frame it sees the press, then pans by travel-from-anchor). Under the CPU
-// starvation of the parallel browser-test phase the loop can tick so rarely that
-// CDP delivers the whole gesture (touchStart → moves → touchEnd) before its first
-// tick — the loop's only observation is already at the drag's END, so the anchor
-// is set there and zero travel is committed (dx=0,dy=0). This is a probabilistic
-// scheduling artifact, not a logic bug (it passes reliably unthrottled), so retry
-// the short (<500ms, no long-press risk) drag a few times; each attempt is a fresh
-// chance for the loop to catch the anchor frame. closeAllPopups() between attempts
-// clears any long-press popup a collapsed drag may have opened (which would freeze
-// panning via panOK=false). See project_mobile_gesture_unified_pan_model.
+// A drag pans only if the loop OBSERVES the anchor and then a moved position; starved in the parallel phase, it can see
+// only the end (zero travel). Retried (short, no long-press risk), closing any popup a collapsed drag opened, which
+// would block panning.
 let dragMoved = false;
 let lastDx = 0, lastDy = 0;
 for (let attempt = 0; attempt < 5 && !dragMoved; attempt++) {
@@ -123,8 +107,7 @@ await page.waitForTimeout(200); // Let gesture state settle before next test
 
 // Test 2: Pinch zoom changes camera scale
 console.log("Test 2: Pinch zoom changes camera scale");
-// In side-by-side layout, grid pane ends at splitX(). Pinch center must be
-// inside the grid pane for handleTouchPinch to accept it.
+// The pinch centre must be inside the grid pane for handleTouchPinch to accept it.
 const pinchCX = await page.evaluate(() => {
   if (typeof layoutHorizontal === 'function' && !layoutHorizontal() && typeof splitX === 'function') {
     return Math.floor(splitX() / 2); // Center of grid pane
@@ -151,8 +134,7 @@ await page.waitForTimeout(200); // Let gesture state settle before next test
 
 // Test 4: Tap in grid area is received by Go touch layer
 console.log("Test 4: Tap in grid area is received");
-// Reset touch debug state, tap in the grid area, and verify it was received.
-// Use a position well inside the grid pane (left half in side-by-side mode).
+// Well inside the grid pane.
 const tapX = await page.evaluate(() => {
   if (typeof layoutHorizontal === 'function' && !layoutHorizontal() && typeof splitX === 'function') {
     return Math.floor(splitX() / 2);
@@ -164,11 +146,8 @@ await cdpTap(page, tapX, gridY);
 await page.waitForTimeout(300);
 const tapState = await page.evaluate(() => typeof touchDebugState === 'function' ? touchDebugState() : null);
 if (tapState) {
-  // CDP taps are inherently racy with the Go goroutine. The touch events
-  // may reach Go but not be processed as a "tap" gesture by the time we
-  // read the state. Accept gesture=tap, longPress, or none (touch received
-  // but goroutine hadn't classified it yet). The thorough device_matrix
-  // test validates gesture classification in detail.
+  // A CDP tap races the Go goroutine: tap, longPress or none (received, not yet classified) all pass; device_matrix
+  // validates classification.
   const tapOk = tapState.lastGesture === 'tap' ||
     tapState.lastGesture === 'longPress' ||
     (tapState.touchEventCount != null && tapState.touchEventCount > 0) ||
@@ -184,8 +163,7 @@ if (tapState) {
 console.log("Test 5: Long press on node opens popup, slide to Delete");
 await page.evaluate(() => closeNodeMenu());
 await page.waitForTimeout(400); // Let gesture state settle (generous for CPU contention)
-// Reset camera to default so node (0,0) is visible in the grid pane.
-// Previous tests may have zoomed/panned the camera significantly.
+// Earlier tests may have zoomed or panned far.
 await page.evaluate(() => {
   if (typeof setCamScale === 'function') setCamScale(2.0);
   if (typeof setCamOffset === 'function') setCamOffset(100, 100);
@@ -205,17 +183,14 @@ if (nodeInfo && nodeInfo.x + nodeInfo.w / 2 < gridBound) {
   const nx = Math.floor(nodeInfo.x + nodeInfo.w / 2);
   const ny = Math.floor(nodeInfo.y + nodeInfo.h / 2);
 
-  // Long press to open popup, then slide to Delete button and release.
-  // First, hold touch to trigger long-press popup.
+  // Hold for the long-press popup first.
   const cdp = await page.context().newCDPSession(page);
   const coords = await canvasToPageCoords(page, nx, ny);
   await cdp.send('Input.dispatchTouchEvent', {
     type: 'touchStart',
     touchPoints: [{ x: coords.x, y: coords.y, id: 1 }],
   });
-  // Poll for long-press popup instead of fixed wait — under CPU contention
-  // the game loop runs slower, so the 500ms Go-side threshold takes longer
-  // wall-clock time to trigger. Poll every 50ms with a generous 3s timeout.
+  // Under contention the 500 ms threshold takes longer in wall time, so poll.
   let delRect = null;
   const pollStart = Date.now();
   while (Date.now() - pollStart < 3000) {
@@ -266,10 +241,8 @@ if (nodeInfo && nodeInfo.x + nodeInfo.w / 2 < gridBound) {
 // Test 6: long-press a node, slide to MOVE, release; tap an edge point → node moves
 console.log("Test 6: long-press slide-to-Move relocates node onto edge point");
 {
-  // Fresh mini-circuit away from the default path: endpoints A(6,2)–B(6,6)
-  // with a vertical edge (interior cells (6,3)..(6,5)); mover M at (8,3).
-  // Camera is already parked at scale=2.0 / offset=(100,100) from Test 5
-  // (verified empirically to keep these grid coords on-canvas on iPhone 12).
+  // A(6,2)-B(6,6) with a vertical edge, mover M at (8,3), clear of the default path; Test 5's camera keeps them on the
+  // iPhone 12 canvas.
   await page.evaluate(() => {
     addNode(6, 2, 'regular'); addNode(6, 6, 'regular');
     addEdgeGrid(6, 2, 6, 6);
@@ -356,10 +329,7 @@ console.log("Test 7: move-mode tap on empty cell cancels");
       await cdp2.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
       await cdp2.detach();
       await page.waitForTimeout(300);
-      // Tap a nearby empty cell (no edge there, still on-canvas): mode must
-      // cancel, node must stay. +80/+60 (rather than the larger offsets a
-      // desktop viewport could afford) keeps the target inside the 390×664
-      // iPhone-12 canvas measured for this camera position.
+      // Offsets kept small so the target stays inside the 390×664 canvas at this camera.
       const empty = await canvasToPageCoords(page, nRect.x + nRect.w / 2 + 80, nRect.y + nRect.h / 2 + 60);
       await cdpTap(page, empty.x, empty.y);
       await page.waitForTimeout(400);

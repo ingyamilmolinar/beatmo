@@ -1,20 +1,12 @@
 //go:build test
 
-// The shared hold-to-repeat cadence.
-//
-// This curve was previously inlined in Button.repeatTick and available to
-// nothing else, so MenuKeyNav had no repeat at all — a held arrow moved exactly
-// one row. Extracting it gives both a single implementation with per-caller
-// tuning, rather than a second copy that drifts (the parallel-implementations
-// pattern that produced the platform wheel bug).
+// One hold-to-repeat cadence with per-caller tuning, not a second copy that drifts.
 
 package ui
 
 import "testing"
 
-// ticksIn returns the frames (relative to press) on which the curve fires under
-// the MENU rule, simulating a key held continuously for n frames — including the
-// lastFired bookkeeping a real caller does.
+// Includes the lastFired bookkeeping a real caller does.
 func ticksIn(c repeatCurve, n int) []int {
 	var out []int
 	lastFired := 0
@@ -82,8 +74,7 @@ func TestRepeatCurve_NeverExceedsMinInterval(t *testing.T) {
 	}
 }
 
-// A long hold must not panic or fire every frame once the accelerator would
-// drive the interval past zero. `6 - step/20` goes negative at step 140.
+// `6 - step/20` goes negative at step 140.
 func TestRepeatCurve_SurvivesAVeryLongHold(t *testing.T) {
 	c := repeatCurve{Delay: 30, Interval: 6, AccelEvery: 20, MinInterval: 2}
 	lastFired := 0
@@ -95,9 +86,7 @@ func TestRepeatCurve_SurvivesAVeryLongHold(t *testing.T) {
 	}
 }
 
-// TestButtonRepeatCurveIsUnchanged pins the EXACT cadence the BPM and timeline
-// +/- buttons have today. The extraction must be behaviour-preserving: this
-// compares the shared curve against the original inline formula, frame by frame.
+// The BPM and timeline +/- buttons keep their exact cadence, frame by frame against the original formula.
 func TestButtonRepeatCurveIsUnchanged(t *testing.T) {
 	original := func(d int) bool {
 		if d <= 60 {
@@ -118,8 +107,7 @@ func TestButtonRepeatCurveIsUnchanged(t *testing.T) {
 	}
 }
 
-// The menu curve is deliberately gentler than the button curve: a list is
-// steered, a number is scrubbed.
+// A list is steered, a number is scrubbed.
 func TestMenuRepeatCurveIsGentlerThanTheButtonCurve(t *testing.T) {
 	if menuRepeat.Delay >= buttonRepeat.Delay {
 		t.Errorf("menu delay %d is not shorter than the button delay %d — a menu "+
@@ -132,14 +120,8 @@ func TestMenuRepeatCurveIsGentlerThanTheButtonCurve(t *testing.T) {
 	}
 }
 
-// TestMenuRuleHasNoDoubleFireAtAccelerationSteps is why menus do not use the
-// legacy modulus rule.
-//
-// `step % interval` re-tests the ABSOLUTE frame against a modulus that changes
-// mid-hold, so the frame an acceleration step lands on often satisfies both the
-// old and the new modulus — firing twice in quick succession. Harmless while
-// scrubbing a number; while steering a list it is a visible stutter, two rows
-// jumping together and then a pause.
+// `step % interval` re-tests the ABSOLUTE frame against a modulus that changes mid-hold, so an acceleration step
+// can fire twice: harmless on a number, a visible stutter on a list.
 func TestMenuRuleHasNoDoubleFireAtAccelerationSteps(t *testing.T) {
 	legacy := func(c repeatCurve, n int) []int {
 		var out []int
@@ -157,8 +139,7 @@ func TestMenuRuleHasNoDoubleFireAtAccelerationSteps(t *testing.T) {
 		}
 		return out
 	}
-	// stutters reports a gap that is SHORTER than the one after it — the
-	// signature of a double-fire: two rows jump together, then a pause.
+	// A gap SHORTER than the next is a double-fire: two rows jump, then a pause.
 	stutters := func(g []int) bool {
 		for i := 1; i < len(g); i++ {
 			if g[i] > g[i-1] {

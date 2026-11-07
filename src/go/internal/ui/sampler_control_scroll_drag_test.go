@@ -6,8 +6,6 @@ import (
 	"testing"
 )
 
-// firstVisibleSamplerControl returns the centre of the first on-window sampler
-// control dial.
 func firstVisibleSamplerControl(t *testing.T, g *Game) (cx, cy int) {
 	t.Helper()
 	for _, r := range visibleSamplerKnobRects(g.drum) {
@@ -17,9 +15,7 @@ func firstVisibleSamplerControl(t *testing.T, g *Game) (cx, cy int) {
 	return 0, 0
 }
 
-// TestSamplerControl_VerticalDragScrollsAndDoesNotOpenPopup: on the Sampler tab
-// a sweep that starts on a control must scroll the grid and NOT open the
-// value-wheel popup — the same "swipe up/down" fix as the Synth tab.
+// A sweep starting on a control scrolls the grid and opens no popup, as on Synth.
 func TestSamplerControl_VerticalDragScrollsAndDoesNotOpenPopup(t *testing.T) {
 	g := newMobileSamplerTabGameForTestSize(t, 390, 844)
 	grid := g.drum.sampler.knobGrid
@@ -43,8 +39,7 @@ func TestSamplerControl_VerticalDragScrollsAndDoesNotOpenPopup(t *testing.T) {
 	}
 }
 
-// TestSamplerControl_PopupOpensOnReleaseNotPress: a stationary tap opens the
-// sampler popup on RELEASE, not on the press frame.
+// A still tap opens it on release, not on the press frame.
 func TestSamplerControl_PopupOpensOnReleaseNotPress(t *testing.T) {
 	g := newMobileSamplerTabGameForTestSize(t, 390, 844)
 	cx, cy := firstVisibleSamplerControl(t, g)

@@ -8,14 +8,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Test-build variants of the Sampler capture/registration seams. The native
-// Voice interface is empty under -tags test, so capture cannot drain a real
-// voice; it returns a deterministic synthetic buffer instead, and PCM
-// registration just makes the id available like the other stub registrations.
+// The native Voice interface is empty under -tags test, so capture returns a deterministic synthetic buffer.
 
-// RenderInstrumentOneShot returns a deterministic synthetic one-shot buffer
-// (a 220 Hz sine with exponential decay) so the editing pipeline and UI flows
-// are testable without a real C renderer.
+// A 220 Hz decaying sine.
 func RenderInstrumentOneShot(id instrument.ID) ([]float32, int) {
 	sr := SampleRate()
 	n := sr / 2
@@ -29,16 +24,12 @@ func RenderInstrumentOneShot(id instrument.ID) ([]float32, int) {
 	return out, sr
 }
 
-// RenderInstrumentOneShotRaw mirrors the native raw-capture seam (render
-// ignoring any sample-edit descriptor). The stub render never applies
-// descriptors anyway, so it is the same synthetic buffer.
+// The stub never applies descriptors, so raw is the same buffer.
 func RenderInstrumentOneShotRaw(id instrument.ID) ([]float32, int) {
 	return RenderInstrumentOneShot(id)
 }
 
-// lastRegisteredSamplePCM records the most recent RegisterSamplePCM payload per
-// id so tests can assert the live re-registration the Sampler's real-time edit
-// flow performs (SetSampleEdit → reapplyUserSampleEdit → RegisterSamplePCM).
+// So tests can assert the live re-registration a Sampler edit performs.
 var lastRegisteredSamplePCM = map[instrument.ID]SampleRecord{}
 
 // RegisterSamplePCM registers an in-memory PCM buffer as a playable instrument.
@@ -47,21 +38,15 @@ func RegisterSamplePCM(id instrument.ID, pcm []float32, sr int) {
 	lastRegisteredSamplePCM[id] = SampleRecord{PCM: append([]float32(nil), pcm...), SampleRate: sr}
 }
 
-// LastRegisteredSamplePCMForTest returns the PCM most recently handed to
-// RegisterSamplePCM for id (test build only). Lets the Sampler real-time tests
-// verify that an edit re-registered the BAKED buffer for playback.
+// Test build only.
 func LastRegisteredSamplePCMForTest(id instrument.ID) (SampleRecord, bool) {
 	rec, ok := lastRegisteredSamplePCM[id]
 	return rec, ok
 }
 
-// sampleUnregisterCalls records UnregisterSamplePCM ids so tests can assert the
-// factory-reset path drops the user sample from the playback layer.
 var sampleUnregisterCalls []instrument.ID
 
-// UnregisterSamplePCM removes a user sample's playback registration so the
-// instrument's built-in synth render is heard again. In the test build it just
-// records the call (there is no real playback layer to restore).
+// So the built-in synth render is heard again. The test build only records the call.
 func UnregisterSamplePCM(id instrument.ID) {
 	sampleUnregisterCalls = append(sampleUnregisterCalls, id)
 }

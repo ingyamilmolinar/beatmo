@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// TestButtonHandleInputResult_ClickReturnsConsumed verifies that pressing
-// inside the button returns InputConsumed.
 func TestButtonHandleInputResult_ClickReturnsConsumed(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -27,8 +25,6 @@ func TestButtonHandleInputResult_ClickReturnsConsumed(t *testing.T) {
 	}
 }
 
-// TestButtonHandleInputResult_MissReturnsIgnored verifies that pressing
-// outside the button returns InputIgnored.
 func TestButtonHandleInputResult_MissReturnsIgnored(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -43,8 +39,6 @@ func TestButtonHandleInputResult_MissReturnsIgnored(t *testing.T) {
 	}
 }
 
-// TestButtonHandleInputResult_ReleaseReturnsIgnored verifies that releasing
-// without pressing returns InputIgnored.
 func TestButtonHandleInputResult_ReleaseReturnsIgnored(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -59,8 +53,7 @@ func TestButtonHandleInputResult_ReleaseReturnsIgnored(t *testing.T) {
 	}
 }
 
-// TestButtonHandleInputResult_SuppressReturnsIgnored verifies that the
-// suppress guard causes InputIgnored and clears on release.
+// Ignored while suppressed; the guard clears on release.
 func TestButtonHandleInputResult_SuppressReturnsIgnored(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = true
@@ -87,8 +80,6 @@ func TestButtonHandleInputResult_SuppressReturnsIgnored(t *testing.T) {
 	}
 }
 
-// TestButtonHandleInputResult_ConsumeOnPressSetsSuppress verifies the
-// ConsumeOnPress flag activates the suppress guard.
 func TestButtonHandleInputResult_ConsumeOnPressSetsSuppress(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -107,8 +98,6 @@ func TestButtonHandleInputResult_ConsumeOnPressSetsSuppress(t *testing.T) {
 	}
 }
 
-// TestButtonHandleInputResult_BackwardCompat verifies that Handle() returns
-// the same boolean as before the refactor.
 func TestButtonHandleInputResult_BackwardCompat(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -132,8 +121,6 @@ func TestButtonHandleInputResult_BackwardCompat(t *testing.T) {
 
 // --- buttonHitAdapter tests ---
 
-// TestButtonHitAdapter_OnPressFires verifies that OnPress calls the button's
-// OnClick callback and returns InputConsumed.
 func TestButtonHitAdapter_OnPressFires(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -151,8 +138,7 @@ func TestButtonHitAdapter_OnPressFires(t *testing.T) {
 	}
 }
 
-// TestButtonHitAdapter_OnPressNilOnClick verifies that OnPress with a nil
-// OnClick does not panic and still returns InputCaptured.
+// No panic, still InputCaptured.
 func TestButtonHitAdapter_OnPressNilOnClick(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -166,8 +152,6 @@ func TestButtonHitAdapter_OnPressNilOnClick(t *testing.T) {
 	}
 }
 
-// TestButtonHitAdapter_OnDragNoOp verifies that OnDrag does nothing and
-// does not panic.
 func TestButtonHitAdapter_OnDragNoOp(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -176,10 +160,7 @@ func TestButtonHitAdapter_OnDragNoOp(t *testing.T) {
 	h.OnDrag(10, 10) // must not panic
 }
 
-// TestButtonHitAdapter_OnReleaseSettlesPress verifies that OnRelease delivers
-// the release to the button so it settles out of the pressed state (the tree
-// captures the adapter on press, so release always arrives). A release with no
-// prior press is a harmless no-op.
+// The tree captures on press, so the release always arrives and settles the button; one with no press is a no-op.
 func TestButtonHitAdapter_OnReleaseSettlesPress(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -199,8 +180,6 @@ func TestButtonHitAdapter_OnReleaseSettlesPress(t *testing.T) {
 	}
 }
 
-// TestButtonHitAdapter_OnWheelIgnored verifies that OnWheel returns
-// InputIgnored.
 func TestButtonHitAdapter_OnWheelIgnored(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -214,8 +193,6 @@ func TestButtonHitAdapter_OnWheelIgnored(t *testing.T) {
 
 // --- repeatButtonHitAdapter tests ---
 
-// TestRepeatButtonHitAdapter_OnPressReturnsCaptured verifies that OnPress
-// delegates to Button.Handle and returns InputCaptured.
 func TestRepeatButtonHitAdapter_OnPressReturnsCaptured(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -231,9 +208,7 @@ func TestRepeatButtonHitAdapter_OnPressReturnsCaptured(t *testing.T) {
 	}
 }
 
-// TestRepeatButtonHitAdapter_OnPressDoesNotManageSuppress verifies that the
-// adapter no longer saves/restores suppress — the tree clears it before dispatch
-// and syncs it afterward.
+// The tree clears suppress before dispatch and syncs it after.
 func TestRepeatButtonHitAdapter_OnPressDoesNotManageSuppress(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -251,8 +226,6 @@ func TestRepeatButtonHitAdapter_OnPressDoesNotManageSuppress(t *testing.T) {
 	}
 }
 
-// TestRepeatButtonHitAdapter_OnDragDelegates verifies that OnDrag calls
-// Button.HandleInputResult(x, y, true).
 func TestRepeatButtonHitAdapter_OnDragDelegates(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -267,12 +240,9 @@ func TestRepeatButtonHitAdapter_OnDragDelegates(t *testing.T) {
 
 	// Drag continues the press.
 	h.OnDrag(20, 10)
-	// Button.HandleInputResult(x, y, true) with held > 0 increments held counter;
-	// no panic is the primary assertion.
+	// No panic is the assertion.
 }
 
-// TestRepeatButtonHitAdapter_OnDragDoesNotManageSuppress verifies that the
-// adapter no longer saves/restores suppress during OnDrag.
 func TestRepeatButtonHitAdapter_OnDragDoesNotManageSuppress(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -289,8 +259,6 @@ func TestRepeatButtonHitAdapter_OnDragDoesNotManageSuppress(t *testing.T) {
 	}
 }
 
-// TestRepeatButtonHitAdapter_OnReleaseCallsFalse verifies that OnRelease
-// calls Button.HandleInputResult(x, y, false).
 func TestRepeatButtonHitAdapter_OnReleaseCallsFalse(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -307,8 +275,6 @@ func TestRepeatButtonHitAdapter_OnReleaseCallsFalse(t *testing.T) {
 	// No panic is the primary assertion; the button is no longer held.
 }
 
-// TestRepeatButtonHitAdapter_OnReleaseDoesNotManageSuppress verifies that the
-// adapter no longer saves/restores suppress during OnRelease.
 func TestRepeatButtonHitAdapter_OnReleaseDoesNotManageSuppress(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -325,8 +291,6 @@ func TestRepeatButtonHitAdapter_OnReleaseDoesNotManageSuppress(t *testing.T) {
 	}
 }
 
-// TestRepeatButtonHitAdapter_OnWheelIgnored verifies that OnWheel returns
-// InputIgnored.
 func TestRepeatButtonHitAdapter_OnWheelIgnored(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -340,8 +304,6 @@ func TestRepeatButtonHitAdapter_OnWheelIgnored(t *testing.T) {
 
 // --- transportVolIconHitAdapter tests ---
 
-// TestTransportVolIconHitAdapter_OnPressFires verifies that OnPress calls the
-// onClick callback and returns InputCaptured.
 func TestTransportVolIconHitAdapter_OnPressFires(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -356,8 +318,7 @@ func TestTransportVolIconHitAdapter_OnPressFires(t *testing.T) {
 	}
 }
 
-// TestTransportVolIconHitAdapter_OnPressNilCallback verifies that OnPress
-// with a nil onClick does not panic and returns InputCaptured.
+// No panic, still InputCaptured.
 func TestTransportVolIconHitAdapter_OnPressNilCallback(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -368,8 +329,6 @@ func TestTransportVolIconHitAdapter_OnPressNilCallback(t *testing.T) {
 	}
 }
 
-// TestTransportVolIconHitAdapter_NoOps verifies that OnDrag, OnRelease, and
-// OnWheel do not panic.
 func TestTransportVolIconHitAdapter_NoOps(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -384,16 +343,8 @@ func TestTransportVolIconHitAdapter_NoOps(t *testing.T) {
 
 // --- textInputHitAdapter tests ---
 
-// TestTextInputHitAdapter_OnPress verifies the consume flag controls the
-// dispatcher return value. Focus/caret are driven by the legacy
-// TextInput.Update mouse poll (tree Phase 2, before dispatch), so OnPress only
-// governs fall-through:
-//   - default (consume=false): InputIgnored, so the press falls through to a
-//     lower-z handler (EQ dB input over its band mute button).
-//   - consume=true: InputConsumed, so a BPM box tap is NOT leaked into the
-//     Record button's touch-expanded hit rect on mobile.
-//
-// Regression: transport_input_isolation_test.go + TestEQBandMuteHoldNoMultipleToggles.
+// TextInput.Update owns focus and caret, so OnPress only decides fall-through: by default the press falls through
+// (the EQ dB input over its mute), and consume=true stops it (a BPM tap must not reach Record's expanded rect).
 func TestTextInputHitAdapter_OnPress(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -407,8 +358,6 @@ func TestTextInputHitAdapter_OnPress(t *testing.T) {
 	}
 }
 
-// TestTextInputHitAdapter_NoOps verifies that OnDrag, OnRelease, and OnWheel
-// do not panic and OnWheel returns InputIgnored.
 func TestTextInputHitAdapter_NoOps(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -424,8 +373,7 @@ func TestTextInputHitAdapter_NoOps(t *testing.T) {
 
 // --- rowVolIconHitAdapter tests ---
 
-// TestRowVolIconHitAdapter_OnPressFires verifies that OnPress calls the
-// onClick callback and returns InputCaptured (enables drag-through to popup).
+// InputCaptured, so a drag continues into the popup.
 func TestRowVolIconHitAdapter_OnPressFires(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -440,8 +388,7 @@ func TestRowVolIconHitAdapter_OnPressFires(t *testing.T) {
 	}
 }
 
-// TestRowVolIconHitAdapter_OnPressNilCallback verifies that OnPress with a
-// nil onClick does not panic and returns InputCaptured.
+// No panic, still InputCaptured.
 func TestRowVolIconHitAdapter_OnPressNilCallback(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -452,8 +399,6 @@ func TestRowVolIconHitAdapter_OnPressNilCallback(t *testing.T) {
 	}
 }
 
-// TestRowVolIconHitAdapter_NoOps verifies that OnDrag, OnRelease, and
-// OnWheel do not panic.
 func TestRowVolIconHitAdapter_NoOps(t *testing.T) {
 	assertDefaultParityState(t)
 

@@ -11,9 +11,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestViewMode_HasSixStates is a compile-time guard. The mobile redesign
-// promotes viewMode to six states (Pads/EQ/Wave/Spec/Mtr/Scope). If any
-// constant is missing this file fails to compile.
+// A missing view-mode constant fails the build.
 func TestViewMode_HasSixStates(t *testing.T) {
 	modes := []viewMode{
 		viewModeRows,
@@ -36,9 +34,6 @@ func TestViewMode_HasSixStates(t *testing.T) {
 	}
 }
 
-// TestSetViewMode_SyncsAudioPanelTabState verifies that switching to
-// viewModeEQ lands the audio panel on TabEQ, and viewModeWave lands on
-// TabWave. Drives the mapping the SegmentedControl needs.
 func TestSetViewMode_SyncsAudioPanelTabState(t *testing.T) {
 	assertDefaultParityState(t)
 	setupMobileTest(t, true)
@@ -77,9 +72,6 @@ func TestSetViewMode_SyncsAudioPanelTabState(t *testing.T) {
 	}
 }
 
-// TestViewSwitchSegmented_RenderedInBottomBarOnMobile verifies the new
-// 6-segment SegmentedControl replaces the binary view-switch button on
-// mobile and spans the full bottom action bar width.
 func TestViewSwitchSegmented_RenderedInBottomBarOnMobile(t *testing.T) {
 	assertDefaultParityState(t)
 	setupMobileTest(t, true)
@@ -105,8 +97,7 @@ func TestViewSwitchSegmented_RenderedInBottomBarOnMobile(t *testing.T) {
 	if sc.Rect().Dy() < TouchMinTarget() {
 		t.Fatalf("segmented height %d below TouchMinTarget %d", sc.Rect().Dy(), TouchMinTarget())
 	}
-	// Bar is now segmented-only (Theme 1) — control should span ≥ 80 % of
-	// the bar's interior, leaving only horizontal padding on the sides.
+	// Only side padding: the bar holds the segmented control alone.
 	if sc.Rect().Dx() < bar.Dx()*4/5 {
 		t.Errorf("segmented width %d should span most of bar width %d", sc.Rect().Dx(), bar.Dx())
 	}
@@ -133,8 +124,6 @@ func TestViewSwitchSegmented_AbsentOnDesktop(t *testing.T) {
 	}
 }
 
-// TestViewSwitchSegmented_TapDispatchesViewMode verifies a tap on each
-// segment switches DrumView.currentViewMode.
 func TestViewSwitchSegmented_TapDispatchesViewMode(t *testing.T) {
 	assertDefaultParityState(t)
 	setupMobileTest(t, true)
@@ -150,11 +139,8 @@ func TestViewSwitchSegmented_TapDispatchesViewMode(t *testing.T) {
 		t.Fatalf("precondition: viewSwitchSegmented non-nil")
 	}
 
-	// Use SetInputForTest (cursor + mouse click) rather than injectTouchTap
-	// so the test is robust against stale inputForTestActive from prior tests
-	// that used SetInputForTest. injectTouchTap is suppressed when
-	// inputForTestActive=true; SetInputForTest always works since it resets
-	// inputForTestActive itself.
+	// SetInputForTest resets inputForTestActive itself, while injectTouchTap is suppressed when a previous test left it
+	// set.
 	simulateTap := func(mx, my int) {
 		var px, py int
 		var pressed bool
@@ -188,9 +174,7 @@ func TestViewSwitchSegmented_TapDispatchesViewMode(t *testing.T) {
 		{7, viewModeSampler},
 	}
 	for _, c := range cases {
-		// The Synth/Sampler segments require a single-instrument context
-		// (Master blocks them); select the first row's instrument so the
-		// segment is enabled and the tap can switch views.
+		// Master blocks Synth/Sampler; selecting a row's instrument enables the segment.
 		if c.want == viewModeSynth || c.want == viewModeSampler {
 			if len(dv.Rows) > 0 {
 				dv.eqPanelZone.SetActiveChannel(channel.Of(dv.Rows[0].Instrument))
@@ -205,10 +189,7 @@ func TestViewSwitchSegmented_TapDispatchesViewMode(t *testing.T) {
 	}
 }
 
-// TestViewSwitchSegmented_DrawnAfterBottomBar pins the draw order so
-// the segmented control paints on top of the bar surface. Uses the
-// drawCallRecorder to intercept drawRoundedRect calls (ebitenstub
-// does not write real pixels, so raw img.At reads would always return 0).
+// The stub writes no real pixels, so drawRoundedRect calls are intercepted.
 func TestViewSwitchSegmented_DrawnAfterBottomBar(t *testing.T) {
 	assertDefaultParityState(t)
 	setupMobileTest(t, true)
@@ -228,8 +209,6 @@ func TestViewSwitchSegmented_DrawnAfterBottomBar(t *testing.T) {
 		t.Skip("no segmented rect to check")
 	}
 
-	// Intercept drawRoundedRect calls during g.Draw and verify at least one
-	// call lands within the segmented control's rect region.
 	img := ebiten.NewImage(360, 700)
 	var rec drawCallRecorder
 	rec.record(t, func() {

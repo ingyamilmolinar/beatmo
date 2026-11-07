@@ -9,11 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestDesktopWarmBackendNeverDropsWork pins the non-dropping contract: the
-// gated warm set must be fed with SubmitBlocking, never Submit. Submit drops on
-// backpressure by design (ErrBackpressure + a drop counter), which is exactly
-// how 273 warm requests into a 64-deep queue silently lost most of the working
-// set before this change.
+// Submit drops on backpressure by design, which would silently lose most of a large working set; the gated set goes
+// through SubmitBlocking.
 func TestDesktopWarmBackendNeverDropsWork(t *testing.T) {
 	const poolName = "test.warmup.nodrop"
 	pool, err := async.DefaultRegistry().Get(poolName, async.Options{

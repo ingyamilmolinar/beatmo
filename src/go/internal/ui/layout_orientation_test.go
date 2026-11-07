@@ -6,8 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestLandscapeMobileStacked verifies that on a small screen with landscape
-// dimensions (w > h), the drum pane is still stacked below (always stacked on mobile).
+// Mobile is always stacked, landscape included.
 func TestLandscapeMobileStacked(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -26,8 +25,6 @@ func TestLandscapeMobileStacked(t *testing.T) {
 	}
 }
 
-// TestPortraitMobileStacked verifies that on a small screen with portrait
-// dimensions (h > w), the drum pane is placed below (stacked).
 func TestPortraitMobileStacked(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -46,8 +43,6 @@ func TestPortraitMobileStacked(t *testing.T) {
 	}
 }
 
-// TestOrientationSwitchPortraitToLandscape verifies that switching from portrait
-// to landscape keeps stacked layout on mobile.
 func TestOrientationSwitchPortraitToLandscape(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -70,8 +65,6 @@ func TestOrientationSwitchPortraitToLandscape(t *testing.T) {
 	}
 }
 
-// TestOrientationSwitchLandscapeToPortrait verifies that switching from landscape
-// to portrait keeps stacked layout on mobile.
 func TestOrientationSwitchLandscapeToPortrait(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -94,8 +87,7 @@ func TestOrientationSwitchLandscapeToPortrait(t *testing.T) {
 	}
 }
 
-// TestLandscapeMobileBothPanesUsable verifies that in landscape stacked mode,
-// both grid and drum panes have full width and reasonable height.
+// Both panes keep full width and a reasonable height.
 func TestLandscapeMobileBothPanesUsable(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -122,8 +114,7 @@ func TestLandscapeMobileBothPanesUsable(t *testing.T) {
 	}
 }
 
-// TestDesktopAlwaysStacked verifies that without the small screen override,
-// even landscape dimensions produce a stacked (horizontal) layout.
+// Without the small-screen override, landscape dimensions still stack.
 func TestDesktopAlwaysStacked(t *testing.T) {
 	setupMobileTest(t, false) // NOT small screen
 
@@ -145,8 +136,6 @@ func TestDesktopAlwaysStacked(t *testing.T) {
 	}
 }
 
-// TestLandscapeMobileSplitterStacked verifies that in landscape mobile,
-// the splitter is stacked (Horizontal() == true), same as portrait.
 func TestLandscapeMobileSplitterStacked(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -161,8 +150,6 @@ func TestLandscapeMobileSplitterStacked(t *testing.T) {
 	}
 }
 
-// TestLandscapeMobileSplitterDragClampsY verifies that in landscape stacked mode,
-// dragging the splitter clamps Y within valid range.
 func TestLandscapeMobileSplitterDragClampsY(t *testing.T) {
 	setupMobileTest(t, true)
 

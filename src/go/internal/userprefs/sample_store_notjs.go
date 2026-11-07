@@ -11,12 +11,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Desktop SampleStore backend. Each user sample is one file under
-// <configdir>/beatmo/samples/<base64url(id)>.bsmp containing a 4-byte
-// little-endian sample-rate header followed by the raw little-endian float32
-// PCM. Kept out of prefs.json because PCM payloads are large; the filename
-// encodes the id reversibly so no manifest is needed. Writes are atomic
-// (temp + rename).
+// One file per sample under <configdir>/beatmo/samples/<base64url(id)>.bsmp: a 4-byte LE rate, then LE float32 PCM.
+// Out of prefs.json because PCM is large; the reversible filename needs no manifest. Atomic temp + rename.
 
 const sampleFileExt = ".bsmp"
 

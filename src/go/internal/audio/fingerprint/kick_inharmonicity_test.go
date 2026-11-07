@@ -7,10 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// weightedPartials renders a sum of steady sines with per-partial amplitudes — so
-// the FUNDAMENTAL can be made dominant (as in a real pitched body), which is what
-// lets the pitch tracker lock onto f0 rather than a louder harmonic. Inharmonicity
-// is measured relative to that settled f0, so the fundamental must dominate.
+// A dominant fundamental lets the pitch tracker lock onto f0 rather than a louder harmonic.
 func weightedPartials(sr int, dur float64, freqs, amps []float64) wave.Wave {
 	n := int(dur * float64(sr))
 	s := make([]float64, n)
@@ -28,8 +25,6 @@ func weightedPartials(sr int, dur float64, freqs, amps []float64) wave.Wave {
 // --- direct-formula sanity ----------------------------------------------------
 
 func TestInharmonicity_HarmonicVsStretched(t *testing.T) {
-	// f0 = 200. A harmonic stack lands exactly on n·f0 → 0. A stretched stack sits
-	// off the harmonics → clearly positive.
 	harm := inharmonicity([]spectralPartial{
 		{Freq: 200, Amp: 1}, {Freq: 400, Amp: 1}, {Freq: 600, Amp: 1}, {Freq: 800, Amp: 1},
 	}, 200)
@@ -59,8 +54,7 @@ func TestInharmonicity_PureTone(t *testing.T) {
 
 func TestKickAnalyze_InharmonicityPipeline(t *testing.T) {
 	const sr = 44100
-	// FFT-resolvable partials (binHz ≈ 10.8 Hz at 4096/44.1 kHz; all spacings > 100 Hz).
-	// Fundamental-dominant amplitudes so the pitch tracker settles on f0 = 200 Hz.
+	// Spacings above 100 Hz resolve at ~10.8 Hz/bin; the fundamental dominates so the tracker settles on 200 Hz.
 	amps := []float64{1.0, 0.5, 0.33, 0.25}
 	harmonic := KickAnalyze(weightedPartials(sr, 0.4, []float64{200, 400, 600, 800}, amps))
 	inharm := KickAnalyze(weightedPartials(sr, 0.4, []float64{200, 420, 650, 890}, amps))

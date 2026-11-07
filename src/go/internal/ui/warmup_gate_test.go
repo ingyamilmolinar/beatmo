@@ -8,9 +8,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestPlayBlockedWhileWarming drives the REAL transport path (playPressed →
-// Game.Update) rather than poking state, per the project's end-to-end testing
-// rule: a component test can pass while the feature is dead.
+// Through the real transport path, not poked state: a component test can pass while the feature is dead.
 func TestPlayBlockedWhileWarming(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(game_log.New(nil, game_log.LevelError))
@@ -33,11 +31,7 @@ func TestPlayBlockedWhileWarming(t *testing.T) {
 		t.Fatal("playback started while the voice cache was cold")
 	}
 
-	// Begin() feeds the backend off the caller's goroutine (see
-	// warmup_controller.go), so the asked/pending slices populate
-	// asynchronously. Wait for the full set to be fed before completing it —
-	// mirrors the existing TestWarmup* convention (waitForAskedCount) so this
-	// test isn't racy under load.
+	// The feeder is async; wait for the whole set before completing it.
 	_, total := g.warmup.Progress()
 	waitForAskedCount(t, be, total)
 	be.completeAll()
@@ -72,9 +66,7 @@ func TestPlayButtonDisabledWhileWarming(t *testing.T) {
 	if !g.drum.transportZone.playBtn.Disabled {
 		t.Fatal("Play button not disabled while warming")
 	}
-	// See TestPlayBlockedWhileWarming: wait for the async feeder to finish
-	// submitting the full warm set before completing it, or completeAll can
-	// race a partially-fed backend and leave the gate closed.
+	// The feeder is async; completing a partially fed backend would leave the gate closed.
 	_, total := g.warmup.Progress()
 	waitForAskedCount(t, be, total)
 	be.completeAll()
@@ -88,9 +80,7 @@ func TestPlayButtonDisabledWhileWarming(t *testing.T) {
 	stopPlaybackForTest(g)
 }
 
-// TestSetPlayingBypassesTheGate pins that the gate lives at the USER entry
-// point only. Tests, scenes, parity harnesses and the bench drive SetPlaying
-// directly and must keep working.
+// Only the USER entry point is gated; tests, scenes, parity harnesses and benches drive SetPlaying directly.
 func TestSetPlayingBypassesTheGate(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(game_log.New(nil, game_log.LevelError))

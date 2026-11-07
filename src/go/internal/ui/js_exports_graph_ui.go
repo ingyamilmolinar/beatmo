@@ -147,9 +147,7 @@ func (g *Game) initJSGraphUI() {
 		return nil
 	}))
 
-	// createNodeGroup(id1, id2, ...) -> groupId (int), or -1 on failure (e.g.
-	// no args, or an id not present in the graph). Test/debug helper mirroring
-	// the marquee-select "group these nodes" flow.
+	// createNodeGroup(id1, id2, ...) -> groupId, or -1 (no args, unknown id).
 	js.Global().Set("createNodeGroup", jsFn(func(args jsArgs) any {
 		ids := make([]model.NodeID, 0, args.Len())
 		for k := 0; k < args.Len(); k++ {
@@ -164,23 +162,9 @@ func (g *Game) initJSGraphUI() {
 		return int(gid)
 	}))
 
-	// setGroupRule(groupId, param, delta, everyN) -> bool. Replaces the
-	// group's rule set with a single rule; param is one of
-	// "pitch"/"volume"/"duration". Returns false on an unknown group or an
-	// invalid rule (bad param, everyN < 1, ...). AnchorIdx PRESERVES the
-	// group's existing rule anchor for this same param when one already
-	// exists (an in-place edit continues the ramp — task-rule-continuity
-	// Part 2, mirrors GroupMenu.writeRules), else stamps a fresh anchor at
-	// the current playhead (ruleAnchorIdxNow — 0 when not playing) so a
-	// brand-new rule's step count starts from this write, not the timeline
-	// origin; the JS-facing signature is unchanged.
-	//
-	// Also flips RulesEnabled true (task-enabled-status brief, Part C): this
-	// is the ONE call-site deliberately kept as a convenience — unlike the
-	// GroupMenu UI (where a delta stepper and the on/off toggle are
-	// deliberately independent so a user can compose several rules before
-	// committing), a scripted/JS caller writing a rule almost always wants it
-	// to apply immediately; there is no separate JS export for the toggle.
+	// setGroupRule(groupId, param, delta, everyN) -> bool: replaces the rules with one, keeping an existing anchor
+	// for the same param so a ramp continues. Also enables the rules: a scripted write wants them applied, and no
+	// separate toggle export exists.
 	js.Global().Set("setGroupRule", jsFn(func(args jsArgs) any {
 		gid := model.GroupID(args.Int(0))
 		param, err := model.ParseGroupParam(args.Str(1))
@@ -220,8 +204,7 @@ func (g *Game) initJSGraphUI() {
 		return true
 	}))
 
-	// dumpGroups() -> JSON string of every NodeGroup (AllGroups()). Read-only
-	// debug/test seam; never emits a hook.
+	// dumpGroups() -> JSON; read-only, never emits a hook.
 	js.Global().Set("dumpGroups", jsFn(func(args jsArgs) any {
 		b, err := json.Marshal(g.graph.AllGroups())
 		if err != nil {
@@ -482,8 +465,7 @@ func (g *Game) initJSGraphUI() {
 		return nil
 	}))
 
-	// ensureDefaultPath builds a minimal single-edge path if the graph is empty
-	// so browser tests can start playback without interacting with the editor.
+	// Builds a one-edge path on an empty graph so tests can play without the editor.
 	js.Global().Set("ensureDefaultPath", jsFn(func(args jsArgs) any {
 		if len(g.nodes) == 0 {
 			g.pendingStartRow = 0
@@ -520,18 +502,14 @@ func (g *Game) initJSGraphUI() {
 			return nil
 		}
 		txt := args.Str(0)
-		// Surface the error to JS instead of silently discarding it: a failed
-		// import that returns nothing reads as "nothing happened" with no clue.
-		// Returns "" on success, the error string otherwise.
+		// Returns "" on success or the error: a silent failure reads as "nothing happened".
 		if err := g.Import([]byte(txt)); err != nil {
 			return err.Error()
 		}
 		return ""
 	}))
 
-	// sliderRect(row) -> {x, y, w, h}
-	// Exposes the on-screen rectangle for a drum row's volume slider so
-	// browser tests can simulate pointer interaction precisely.
+	// sliderRect(row) -> {x,y,w,h}
 	js.Global().Set("sliderRect", jsFn(func(args jsArgs) any {
 		if args.Len() < 1 {
 			return nil
@@ -691,8 +669,7 @@ func (g *Game) initJSGraphUI() {
 		if id == "" {
 			return nil
 		}
-		// A pick like the instrument menu's: the row's settings are never
-		// dropped (pick_settings.go — it may ask first).
+		// Like the instrument menu's pick: the row's settings are never dropped (it may ask first).
 		prev := g.drum.selRow
 		g.drum.pickInstrument(row, id)
 		g.drum.selRow = prev
@@ -895,10 +872,7 @@ func (g *Game) initJSGraphUI() {
 		return arr
 	}))
 
-	// isNamingOpen() -> bool. True while the WAV-upload naming portal is open
-	// (after a .wav is picked, before the new sampler instrument is named/created).
-	// Read-only; lets the real-device upload test assert the OS file pick advanced
-	// the real upload→naming flow.
+	// isNamingOpen() -> bool: the WAV-upload naming portal is open.
 	js.Global().Set("isNamingOpen", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.ValueOf(false)
@@ -906,10 +880,7 @@ func (g *Game) initJSGraphUI() {
 		return js.ValueOf(g.drum.IsNamingOpen())
 	}))
 
-	// instMenuSearchRect() -> {x,y,w,h} of the instrument-menu search field, or
-	// null when the menu is closed / not in instruments mode. Read-only; used by
-	// the mobile sanity test to tap the search field and assert the native
-	// keyboard opens.
+	// instMenuSearchRect() -> {x,y,w,h} | null.
 	js.Global().Set("instMenuSearchRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
 			return js.Null()
@@ -921,10 +892,7 @@ func (g *Game) initJSGraphUI() {
 		return rectToJS(r)
 	}))
 
-	// instMenuSearchState() -> {text, cursor, focused} of the instrument-menu
-	// search box, or null when the menu is closed / the box doesn't exist.
-	// Read-only debug seam for the real-keyboard caret-editing browser test
-	// (the caret position is otherwise unobservable from JS).
+	// instMenuSearchState() -> {text,cursor,focused} | null: the caret is otherwise unobservable from JS.
 	js.Global().Set("instMenuSearchState", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
 			return js.Null()
@@ -940,9 +908,7 @@ func (g *Game) initJSGraphUI() {
 		return obj
 	}))
 
-	// openLogsPanel() -> bool. Ensures the Logs Navigation Panel is open (idempotent)
-	// and returns whether it is open afterwards. Read-only debug seam for the
-	// logs-search caret-editing browser test.
+	// openLogsPanel() -> bool; idempotent.
 	js.Global().Set("openLogsPanel", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.ValueOf(false)
@@ -953,9 +919,7 @@ func (g *Game) initJSGraphUI() {
 		return js.ValueOf(g.drum.IsLogsPanelOpen())
 	}))
 
-	// logsSearchRect() -> {x,y,w,h} of the logs-panel search field, or null when
-	// the panel is closed / the box doesn't exist. Read-only; used by the caret
-	// browser test to click the field.
+	// logsSearchRect() -> {x,y,w,h} | null.
 	js.Global().Set("logsSearchRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.logsComp == nil || !g.drum.logsComp.IsOpen() {
 			return js.Null()
@@ -967,9 +931,7 @@ func (g *Game) initJSGraphUI() {
 		return rectToJS(r)
 	}))
 
-	// logsSearchState() -> {text, cursor, focused} of the logs-panel search box,
-	// or null when the panel is closed / the box doesn't exist. Mirrors
-	// instMenuSearchState — the caret position is otherwise unobservable from JS.
+	// logsSearchState() -> {text,cursor,focused} | null.
 	js.Global().Set("logsSearchState", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.logsComp == nil || !g.drum.logsComp.IsOpen() {
 			return js.Null()
@@ -999,10 +961,7 @@ func (g *Game) initJSGraphUI() {
 
 	// Hex input removed; wheel used instead
 
-	// colorWheelRect() -> {x,y,w,h}
-	// Returns the swatch-grid picker panel rect (the free hue wheel was
-	// replaced by a palette-restricted swatch grid; the component keeps the
-	// legacy "Wheel" naming so this export stays stable for browser tests).
+	// colorWheelRect() -> {x,y,w,h}: the swatch grid; the "Wheel" name stays for test stability.
 	js.Global().Set("colorWheelRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.colorWheelComp == nil {
 			return nil
@@ -1067,10 +1026,7 @@ func (g *Game) initJSGraphUI() {
 		}
 		x := int(float64(r.Min.X) + fx*float64(r.Dx()))
 		y := int(float64(r.Min.Y) + fy*float64(r.Dy()))
-		// Map the fractional point onto the swatch grid. pickColorAt resolves
-		// any point in the grid body (gap-tolerant) to a palette swatch; if the
-		// point lands in the header band it returns nil, so fall back to the
-		// first swatch so the export always picks an on-palette color.
+		// A point in the header band returns nil, so fall back to the first swatch: always on-palette.
 		col := g.drum.colorWheelComp.pickColorAt(x, y)
 		if col == nil {
 			if cells := g.drum.colorWheelComp.cells; len(cells) > 0 {
@@ -1078,22 +1034,15 @@ func (g *Game) initJSGraphUI() {
 			}
 		}
 		if col != nil {
-			// Mirror the real-user picker: a deliberate pick wins even if it
-			// duplicates another row's color (SetRowColorManual). Using the
-			// plain SetRowColor here would silently substitute duplicates away,
-			// diverging from the manual-pick path scenes/WASM exercise.
+			// SetRowColorManual like a real pick: a deliberate duplicate wins.
 			g.drum.SetRowColorManual(row, col)
 		}
 		g.drum.closeColorWheelPortal()
 		return nil
 	}))
 
-	// NOTE: openColorMenu / openSubdivMenu are registered in
-	// js_exports_scenes.go (initJSScenes runs after initJSGraphUI, so its
-	// registrations win). This file used to register richer duplicates that
-	// were silently shadowed — the live behavior has always been the queued
-	// DrumView.OpenColorMenu / OpenSubdivMenu path. Don't re-add them here;
-	// TestJSExportCatalogueDrift keeps the catalogue honest.
+	// openColorMenu / openSubdivMenu are registered in js_exports_scenes.go, which runs later and wins; do not
+	// re-add them here.
 
 	// subdivBtnRect() -> {x,y,w,h}
 	js.Global().Set("subdivBtnRect", jsFn(func(args jsArgs) any {
@@ -1174,10 +1123,7 @@ func (g *Game) initJSGraphUI() {
 		return rectToJS(g.drum.renameComp.Bounds())
 	}))
 
-	// renameBoxState() -> {text, cursor, focused} of the instrument rename box,
-	// or null when the rename portal is closed. Mirrors instMenuSearchState —
-	// the caret position is otherwise unobservable from JS. Read-only debug seam
-	// for the rename caret-editing browser test.
+	// renameBoxState() -> {text,cursor,focused} | null.
 	js.Global().Set("renameBoxState", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.renameComp == nil || !g.drum.renameComp.IsOpen() {
 			return js.Null()
@@ -1382,9 +1328,7 @@ func (g *Game) initJSGraphUI() {
 		return nil
 	}))
 
-	// clickTimelineAt(frac) simulates a click on the timeline at a fractional
-	// position [0,1], updating the drum offset using the same centering logic
-	// as the UI.
+	// clickTimelineAt(frac): the UI's own centring logic, frac in [0,1].
 	js.Global().Set("clickTimelineAt", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return nil
@@ -1422,10 +1366,7 @@ func (g *Game) initJSGraphUI() {
 		return nil
 	}))
 
-	// seekSteps(steps) queues an absolute seek to subdivision `steps`. The
-	// request is drained on the next Update() under seqMu — do NOT call
-	// g.SeekSteps directly here, this callback is not inside the locked
-	// region.
+	// Queued and drained under seqMu on the next Update: never call g.SeekSteps here, outside the lock.
 	js.Global().Set("seekSteps", jsFn(func(args jsArgs) any {
 		if g.drum == nil || args.Len() < 1 {
 			return nil
@@ -1469,8 +1410,7 @@ func (g *Game) initJSGraphUI() {
 		return obj
 	}))
 
-	// moveNodeGrid(fromI, fromJ, toI, toJ) -> bool
-	// Direct move without confirmation (for programmatic/test use).
+	// moveNodeGrid(fromI, fromJ, toI, toJ) -> bool, without confirmation.
 	js.Global().Set("moveNodeGrid", jsFn(func(args jsArgs) any {
 		if args.Len() < 4 {
 			return js.ValueOf(false)
@@ -1485,10 +1425,6 @@ func (g *Game) initJSGraphUI() {
 		}
 		return js.ValueOf(g.moveNode(n, ti, tj))
 	}))
-
-	// ─────────────────────────────────────────────────────────────────────────
-	// State verification exports for real input tests
-	// ─────────────────────────────────────────────────────────────────────────
 
 	// totalNodes() -> int
 	js.Global().Set("totalNodes", jsFn(func(args jsArgs) any {
@@ -1524,8 +1460,7 @@ func (g *Game) initJSGraphUI() {
 		return rectToJS(g.drum.playBtn().Rect())
 	}))
 
-	// recBtnRect() -> {x,y,w,h} of the transport Record button (or null). Lets
-	// the real-device test tap Record with real touch to start/stop recording.
+	// recBtnRect() -> {x,y,w,h} | null.
 	js.Global().Set("recBtnRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.recordBtn() == nil {
 			return nil
@@ -1533,11 +1468,7 @@ func (g *Game) initJSGraphUI() {
 		return rectToJS(g.drum.recordBtn().Rect())
 	}))
 
-	// fileMenuBtnRect() -> {x,y,w,h} of the grid-pane folder button that opens the
-	// File menu (Upload / Import / Export / Load Template), or null before it is
-	// laid out. Since the "Pop Up Controls / Modes" overhaul the transport kebab
-	// was removed and File actions moved here (g.gridFileButtonRect → OpenFileMenu),
-	// so the real-device test taps this to reach the file-picker overlays.
+	// fileMenuBtnRect() -> {x,y,w,h} | null: the grid-pane folder button, the way to the file pickers.
 	js.Global().Set("fileMenuBtnRect", jsFn(func(args jsArgs) any {
 		r := g.gridFileButtonRect()
 		if r.Empty() {
@@ -1618,9 +1549,7 @@ func (g *Game) initJSGraphUI() {
 		return js.ValueOf(g.drum.IsInstMenuOpen())
 	}))
 
-	// instMenuBreadcrumbPath() -> [string] (visible-segment labels;
-	// empty when closed). Tests can assert on len(path) >= 2 to know
-	// they're at the instruments level, etc.
+	// instMenuBreadcrumbPath() -> [string], empty when closed.
 	js.Global().Set("instMenuBreadcrumbPath", jsFn(func(args jsArgs) any {
 		arr := js.Global().Get("Array").New()
 		if g.drum == nil || g.drum.instMenuComp == nil {
@@ -1632,10 +1561,7 @@ func (g *Game) initJSGraphUI() {
 		return arr
 	}))
 
-	// instMenuPageState() -> {page, pageCount, pageSize}. Replaces the
-	// legacy instMenuScrollOffset / instMenuScrollBarRect / instMenuScrollThumbRect
-	// trio under the new pagination model. Phase 7 retires the old
-	// names; for now both coexist in the bridge.
+	// instMenuPageState() -> {page,pageCount,pageSize}.
 	js.Global().Set("instMenuPageState", jsFn(func(args jsArgs) any {
 		obj := js.Global().Get("Object").New()
 		if g.drum == nil || g.drum.instMenuComp == nil {
@@ -1650,9 +1576,7 @@ func (g *Game) initJSGraphUI() {
 		return obj
 	}))
 
-	// instrumentIsFavorite(id) -> boolean. Reads the Favorites() global
-	// store. Used by the localStorage round-trip browser test to assert
-	// star persistence across reloads without going through the menu UI.
+	// instrumentIsFavorite(id) -> bool.
 	js.Global().Set("instrumentIsFavorite", jsFn(func(args jsArgs) any {
 		if args.Len() < 1 {
 			return js.ValueOf(false)
@@ -1660,9 +1584,7 @@ func (g *Game) initJSGraphUI() {
 		return js.ValueOf(Favorites().Get(args.Instrument(0)))
 	}))
 
-	// instrumentSetFavorite(id, fav) -> bool. Programmatic setter that
-	// writes to the Favorites() global store. The persisted backend
-	// flushes to localStorage; subsequent page loads see the value.
+	// instrumentSetFavorite(id, fav) -> bool; persists like a menu star.
 	js.Global().Set("instrumentSetFavorite", jsFn(func(args jsArgs) any {
 		if args.Len() < 2 {
 			return js.ValueOf(false)
@@ -1671,8 +1593,7 @@ func (g *Game) initJSGraphUI() {
 		return js.ValueOf(true)
 	}))
 
-	// instrumentFavoriteKeys() -> [string]. Returns the sorted list of
-	// favorited instrument ids — convenient for snapshot assertions.
+	// instrumentFavoriteKeys() -> [string], sorted.
 	js.Global().Set("instrumentFavoriteKeys", jsFn(func(args jsArgs) any {
 		arr := js.Global().Get("Array").New()
 		for _, k := range Favorites().Keys() {
@@ -1681,11 +1602,7 @@ func (g *Game) initJSGraphUI() {
 		return arr
 	}))
 
-	// instMenuRenderedOrder() -> [string]. Returns the instrument ids in
-	// the order they're currently rendered (post fuzzy filter and tier
-	// sort). Used by the JS-side bridge tests to assert tier ordering at
-	// the bridge boundary; the Go side already pins tier order via
-	// TestInstMenu_FavoritesPinnedInInstrumentsMode and friends.
+	// instMenuRenderedOrder() -> [id] as rendered (after filter and tier sort).
 	js.Global().Set("instMenuRenderedOrder", jsFn(func(args jsArgs) any {
 		arr := js.Global().Get("Array").New()
 		if g.drum == nil || g.drum.instMenuComp == nil {
@@ -1697,11 +1614,7 @@ func (g *Game) initJSGraphUI() {
 		return arr
 	}))
 
-	// instMenuFavoritesViewActive() -> boolean. Reports whether the menu
-	// is filtering to ★-favorited items only. Pairs with the virtual
-	// "Favorites" category at the top of the category list — clicking it
-	// flips this flag to true. Useful for bridge tests to confirm the
-	// click event reached the expected handler.
+	// instMenuFavoritesViewActive() -> bool.
 	js.Global().Set("instMenuFavoritesViewActive", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.instMenuComp == nil {
 			return js.ValueOf(false)
@@ -1709,13 +1622,7 @@ func (g *Game) initJSGraphUI() {
 		return js.ValueOf(g.drum.instMenuComp.state.favoritesView)
 	}))
 
-	// projectPinsList() -> [string]. Returns the per-project pinned
-	// instrument ids (sorted) that travel with the project JSON's
-	// pinned_instruments field. Empty when no pins are set. The list is
-	// architecture-only this PR — no UI to mutate it ships yet, so the
-	// list will be empty for any project authored before the follow-up
-	// PR adds the per-row "pin to project" affordance. The export pairs
-	// with setProjectPinsListForTest below for xplat parity round-trips.
+	// projectPinsList() -> [id], sorted; no UI edits pins yet.
 	js.Global().Set("projectPinsList", jsFn(func(args jsArgs) any {
 		arr := js.Global().Get("Array").New()
 		if g.drum == nil {
@@ -1727,11 +1634,7 @@ func (g *Game) initJSGraphUI() {
 		return arr
 	}))
 
-	// setProjectPinsListForTest(ids) -> bool. Test-only setter (no UI
-	// today). Accepts a JS array of strings; replaces the pin set
-	// wholesale. Empty array clears it. Returns true on success. Useful
-	// for xplat parity browser tests that need to seed pins before
-	// exporting JSON.
+	// setProjectPinsListForTest(ids) -> bool: replaces the set; [] clears it.
 	js.Global().Set("setProjectPinsListForTest", jsFn(func(args jsArgs) any {
 		if g.drum == nil || args.Len() < 1 {
 			return js.ValueOf(false)
@@ -1892,10 +1795,6 @@ func (g *Game) initJSGraphUI() {
 		return nil
 	}))
 
-	// ─────────────────────────────────────────────────────────────────────────
-	// Node sidebar scroll diagnostics
-	// ─────────────────────────────────────────────────────────────────────────
-
 	// sidebarScrollOffset() -> int (VS.First)
 	js.Global().Set("sidebarScrollOffset", jsFn(func(args jsArgs) any {
 		if !g.sidebar.IsOpen() {
@@ -2002,10 +1901,6 @@ func (g *Game) initJSGraphUI() {
 		return obj
 	}))
 
-	// ─────────────────────────────────────────────────────────────────────────
-	// Instrument menu scroll diagnostics
-	// ─────────────────────────────────────────────────────────────────────────
-
 	// instMenuScrollOffset() -> int
 	js.Global().Set("instMenuScrollOffset", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
@@ -2068,10 +1963,6 @@ func (g *Game) initJSGraphUI() {
 		obj.Set("totalCatBtns", len(comp.CategoryBtns()))
 		return obj
 	}))
-
-	// ─────────────────────────────────────────────────────────────────────────
-	// Context menu exports for testing
-	// ─────────────────────────────────────────────────────────────────────────
 
 	// openContextMenuJS(row) — programmatically open context menu for a drum row
 	js.Global().Set("openContextMenuJS", jsFn(func(args jsArgs) any {
@@ -2141,10 +2032,6 @@ func (g *Game) initJSGraphUI() {
 		return js.ValueOf(g.drum.contextMenuRow)
 	}))
 
-	// ─────────────────────────────────────────────────────────────────────────
-	// FX panel + portal state exports for testing
-	// ─────────────────────────────────────────────────────────────────────────
-
 	// fxPanelOpen() -> bool
 	js.Global().Set("fxPanelOpen", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
@@ -2169,9 +2056,7 @@ func (g *Game) initJSGraphUI() {
 		return rectToJS(g.drum.fxPanelRect)
 	}))
 
-	// fxPanelControlRects() -> {add, picks:[{effect,x,y,w,h}], sliders:[{slot,param,x,y,w,h}]}
-	// or null when the FX panel is closed: where a pointer presses to add an
-	// effect, pick one in the add picker, or drag a param (real-input benches).
+	// fxPanelControlRects() -> {add, picks:[{effect,x,y,w,h}], sliders:[{slot,param,x,y,w,h}]} | null.
 	js.Global().Set("fxPanelControlRects", jsFn(func(args jsArgs) any {
 		dv := g.drum
 		if dv == nil || !dv.IsFXPanelOpen() {
@@ -2245,10 +2130,6 @@ func (g *Game) initJSGraphUI() {
 		return js.ValueOf(g.drum.portal().StackLen())
 	}))
 
-	// ─────────────────────────────────────────────────────────────────────────
-	// Mobile / soft keyboard exports for testing
-	// ─────────────────────────────────────────────────────────────────────────
-
 	// kbProxyFocused() -> bool
 	js.Global().Set("kbProxyFocused", jsFn(func(args jsArgs) any {
 		return js.ValueOf(softKeyboardActive())
@@ -2305,10 +2186,6 @@ func (g *Game) initJSGraphUI() {
 		}
 		return js.ValueOf(g.drum.visibleRows())
 	}))
-
-	// ─────────────────────────────────────────────────────────────────────────
-	// Debug exports for grid input bug testing (fastPath issue)
-	// ─────────────────────────────────────────────────────────────────────────
 
 	// getFastPath() -> bool - returns current fastPath status
 	js.Global().Set("getFastPath", jsFn(func(args jsArgs) any {

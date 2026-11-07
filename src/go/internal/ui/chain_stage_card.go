@@ -10,22 +10,9 @@ import (
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
-// chain_stage_card.go — per-stage card decorations for the Chain
-// panel's left column. Extracted from chain_panel_zone.go (Phase 3 of
-// the audio-panel redesign) so the renderer that adds card chrome
-// (mini-waveform when the stage is a tap, insert-FX badge count on
-// the FX stage) lives next to its scope-specific dependencies.
-//
-// The functions are pure renderers — they read inputs (samples,
-// effect-chain count) and draw into the supplied destination image.
-// No state, no mutation. Callers (drawHeader in chain_panel_zone.go)
-// are responsible for sequencing.
+// Pure renderers: no state, no mutation.
 
-// drawChainStageMiniWaveform paints a small downsampled waveform
-// trace inside `rect` (the bottom strip of a stage button). When
-// `samples` is empty the function is a no-op so silent stages stay
-// clean. The trace uses TokenVizScopeTrace* tokens at low alpha so
-// it doesn't compete with the stage label.
+// A no-op for empty samples; low alpha so it never competes with the label.
 func drawChainStageMiniWaveform(dst *ebiten.Image, rect image.Rectangle, samples []float64, isA bool) {
 	if rect.Dx() < 6 || rect.Dy() < 3 || len(samples) == 0 {
 		return
@@ -36,9 +23,7 @@ func drawChainStageMiniWaveform(dst *ebiten.Image, rect image.Rectangle, samples
 	}
 	traceCol := WithAlpha(col, AlphaStrong)
 
-	// Decimate samples to one per pixel column. For each column take the
-	// max absolute amplitude of all samples falling in it so transient
-	// peaks remain visible in the thumbnail.
+	// Max absolute amplitude per column, so transients stay visible.
 	w := rect.Dx()
 	step := float64(len(samples)) / float64(w)
 	midY := rect.Min.Y + rect.Dy()/2
@@ -74,8 +59,7 @@ func drawChainStageMiniWaveform(dst *ebiten.Image, rect image.Rectangle, samples
 		}
 		y := midY - int(peakV*half)
 		x := rect.Min.X + c
-		// Connect previous y to this y with a tall 1px slice so the
-		// decimated trace reads continuous, not as scattered points.
+		// A tall slice between samples so the trace reads continuous.
 		y0, y1 := prevY, y
 		if y0 > y1 {
 			y0, y1 = y1, y0
@@ -85,14 +69,7 @@ func drawChainStageMiniWaveform(dst *ebiten.Image, rect image.Rectangle, samples
 	}
 }
 
-// drawChainFXBadgeCount paints a small "+N" badge in the top-left
-// corner of the InsertFX stage card showing how many insert effects
-// are currently active on the supplied row instrument. Returns
-// silently when count is 0 so silent FX cards stay clean.
-//
-// The full FX list is surfaced via the hover-dwell tooltip
-// (chain_panel_zone.go drives that path), so this badge is the at-
-// a-glance count + the tooltip is the audit detail.
+// Nothing at 0; the hover tooltip lists the effects.
 func drawChainFXBadgeCount(dst *ebiten.Image, btnRect image.Rectangle, count int) {
 	if btnRect.Empty() || count <= 0 {
 		return
@@ -110,10 +87,7 @@ func drawChainFXBadgeCount(dst *ebiten.Image, btnRect image.Rectangle, count int
 	DrawTextStyled(dst, label, bx+pad, by+pad/2, RoleCaption, colTextPrimary)
 }
 
-// chainInsertFXCountForActiveRow returns the count of enabled insert
-// effects for the instrument tied to the currently-active tap (A or
-// B). When neither tap is on an instrument-bearing stage this returns
-// 0. Pure function — no mutation, no I/O beyond audio.GetInsertEffects.
+// 0 when neither tap is on an instrument stage.
 func chainInsertFXCountForActiveRow(state *scope.State) int {
 	if state == nil {
 		return 0
@@ -138,11 +112,6 @@ func chainInsertFXCountForActiveRow(state *scope.State) int {
 	return n
 }
 
-// drawChainStageCardDecorations paints the mini-waveform (when this
-// stage is a tap) and the insert-FX badge count (when this stage is
-// the FX card). Called from chain_panel_zone.go's drawHeader for each
-// stage button. Pure renderer — uses the zone only to read tap state
-// and the scope.State via callback.
 func (z *ChainPanelZone) drawChainStageCardDecorations(dst *ebiten.Image, btn *Button, stageIdx int, isATap, isBTap bool) {
 	if btn == nil || btn.Rect().Empty() {
 		return
@@ -154,8 +123,7 @@ func (z *ChainPanelZone) drawChainStageCardDecorations(dst *ebiten.Image, btn *B
 		state = z.callbacks.ScopeState()
 	}
 
-	// Mini-waveform: only when this stage carries one of the two taps
-	// and its trace is currently visible (per-trace swatch toggle).
+	// Only on a tap whose trace is visible.
 	var sampSlice []float64
 	traceIsA := true
 	if isATap && z.showTapA && state != nil && state.TapA.Active && len(state.TapA.Samples) > 0 {
@@ -167,8 +135,6 @@ func (z *ChainPanelZone) drawChainStageCardDecorations(dst *ebiten.Image, btn *B
 	}
 	if len(sampSlice) > 0 {
 		r := btn.Rect()
-		// Density-aware strip height: the taller Spacious (mobile) rows give
-		// the mini-waveform room to read instead of the old fixed 6px.
 		waveStripH := Profile().DensityValues().ChainMiniWaveH
 		waveStripR := image.Rect(r.Min.X+2, r.Max.Y-waveStripH-1, r.Max.X-2, r.Max.Y-1)
 		drawChainStageMiniWaveform(dst, waveStripR, sampSlice, traceIsA)

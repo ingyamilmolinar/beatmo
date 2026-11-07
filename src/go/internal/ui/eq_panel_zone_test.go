@@ -16,8 +16,6 @@ import (
 
 // --- EQPanelZone test helpers ---
 
-// newTestEQPanelZone creates an EQPanelZone suitable for testing.
-// It wires up minimal callbacks and sets a non-empty rect.
 func newTestEQPanelZone(rows []*DrumRow) (*EQPanelZone, *eqTestCallbackLog) {
 	log := &eqTestCallbackLog{}
 	cb := EQCallbacks{
@@ -42,8 +40,6 @@ func newTestEQPanelZone(rows []*DrumRow) (*EQPanelZone, *eqTestCallbackLog) {
 	return z, log
 }
 
-// registerEQZone is a helper that creates a tree, registers the zone, sets
-// portal, and runs initial layout.
 func registerEQZone(z *EQPanelZone, rect image.Rectangle) *DrumViewTree {
 	tree := NewDrumViewTree()
 	tree.SetBounds(image.Rect(0, 0, 800, 600))
@@ -407,8 +403,7 @@ func TestEQPanelZoneHandleCharsIgnored(t *testing.T) {
 
 // --- Curve handle drag tests ---
 
-// TestEQPanelZoneCurveHandleDragSyncsSlider verifies that dragging an EQ
-// band handle on the curve updates the gain and fires OnGainChange on release.
+// The gain updates during the drag; OnGainChange fires on release.
 func TestEQPanelZoneCurveHandleDragSyncsSlider(t *testing.T) {
 	restore := noInputForTest()
 	defer restore()

@@ -1,15 +1,5 @@
-// output_capture_compare.browser.test.js
-//
-// Tests the output capture mechanism and compares the captured WebAudio output
-// against reference samples to verify the full audio pipeline works correctly.
-//
-// This test:
-// 1. Uses the new output capture mechanism (ScriptProcessorNode)
-// 2. Plays sounds through the full WebAudio pipeline (volume buses, channels, etc.)
-// 3. Captures the final mixed output
-// 4. Compares with reference samples rendered fresh by cmd/export_audio
-//
-// Usage: GO=/path/to/.tools/go/bin/go node src/js/output_capture_compare.browser.test.js
+// Sounds through the full WebAudio pipeline, captured at the output, must match reference renders.
+// Usage: GO=… node src/js/xplat_output_capture.browser.test.js
 
 import { chromium } from "playwright";
 import http from "http";
@@ -30,12 +20,7 @@ if (!fs.existsSync(chromiumPath)) {
   spawnSync("npx", ["playwright", "install", "chromium"], { cwd: jsDir, stdio: "inherit" });
 }
 
-// ============================================================================
-// Load desktop audio samples for reference
-// ============================================================================
-
-// The native reference is rendered NOW, from this tree, by cmd/export_audio —
-// never read from a committed snapshot (see loadDesktopAudioReference).
+// From this tree, never a committed snapshot.
 let desktopData;
 try {
   desktopData = loadDesktopAudioReference();
@@ -44,10 +29,6 @@ try {
   console.error(`Failed to render the desktop audio reference: ${err.message}`);
   process.exit(1);
 }
-
-// ============================================================================
-// Metric computation functions
-// ============================================================================
 
 function computePeak(data) {
   let peak = 0;
@@ -65,12 +46,8 @@ function computeRMS(data) {
   return Math.sqrt(sum / data.length);
 }
 
-// Signed Pearson correlation between `ref` and `cap` where `cap` is shifted by
-// `lag` samples: ref[i] is compared with cap[i + lag]. Only the overlapping region
-// (optionally restricted to [from, to) in ref index space) is scored. Returns the
-// signed correlation; a negative result means the two are inverted/decorrelated,
-// NOT merely time-shifted. Returns -2 (sentinel below any real correlation) when
-// the overlap is too small to score.
+// ref[i] against cap[i + lag] over the overlap; negative means inverted or decorrelated, not shifted. -2 when the
+// overlap is too small.
 function correlationAtLag(ref, cap, lag, from = 0, to = Infinity) {
   const start = Math.max(from, -lag);
   const end = Math.min(to, ref.length, cap.length - lag);
@@ -89,12 +66,7 @@ function correlationAtLag(ref, cap, lag, from = 0, to = Infinity) {
   return num / den;
 }
 
-// Windowed-RMS energy envelope: one RMS value per `win` consecutive samples. This
-// collapses the raw waveform to its energy-over-time shape, which is robust to the
-// sub-sample phase jitter the ScriptProcessorNode capture introduces (broadband
-// noise instruments lose raw-sample phase across 256-sample blocks, but their
-// energy envelope is preserved). Inversion-blind by construction (RMS uses |x|),
-// so it is paired with a signed raw-correlation inversion guard at the call site.
+// Energy over time: robust to the capture's sub-sample phase jitter, inversion-blind (so paired with a signed guard).
 function rmsEnvelope(arr, win) {
   const nb = Math.floor(arr.length / win);
   const out = new Float32Array(nb);
@@ -110,10 +82,7 @@ function rmsEnvelope(arr, win) {
   return out;
 }
 
-// Cross-correlation lag search: slide `cap` against `ref` over [-maxLag, +maxLag]
-// and return the lag that maximizes signed correlation, plus that correlation.
-// A negative best correlation indicates the captured waveform is inverted or
-// uncorrelated with the reference (not a benign time shift) and must fail.
+// The lag maximizing signed correlation; a negative best is inversion, not a benign shift.
 function bestLagCorrelation(ref, cap, maxLag, from = 0, to = Infinity) {
   let bestLag = 0;
   let bestCorr = -Infinity;
@@ -146,17 +115,8 @@ function trimSilence(arr, threshold = 1e-4) {
   return trimTrailingSilence(trimLeadingSilence(arr, threshold), threshold);
 }
 
-// ============================================================================
-// Test setup
-// ============================================================================
-
-// The REAL app, not a bare audio.js shell. An instrument's voice is its
-// document's param block, which Go pushes to audio.js (setInstrumentBlock); a
-// page that imports audio.js alone has no instruments at all (it once rendered
-// every family instrument as the bare, SUSTAINED modular voice). Its tail then spilled
-// into the next capture window and this test "found" an inverted kick, a
-// decorrelated snare or hi-hat — different ones each run. No production page
-// runs audio.js without Go.
+// The REAL app: a page with audio.js alone has no instruments, and once rendered every family as the sustained bare
+// voice, whose tail spilled into the next window and "found" inverted kicks.
 if (!buildMainWasm({ logLevel: "ERROR" })) throw new Error("go build main.wasm failed");
 const server = await createServer();
 const port = server.address().port;
@@ -169,16 +129,11 @@ page.on('console', (msg) => {
 });
 
 await page.goto(`http://localhost:${port}/`);
-// Ready = the app's exports exist AND its readiness gate opened (every recipe's
-// defaults are seeded into audio.js before a voice is rendered).
+// Exports exist AND the readiness gate opened.
 await page.waitForFunction(() => typeof window.playSound === 'function' &&
   typeof window.warmupProgress === 'function' && window.warmupProgress().ready === true,
   null, { timeout: 90000, polling: 200 });
 console.log('App loaded and warm');
-
-// ============================================================================
-// Test 1: Verify output capture mechanism works
-// ============================================================================
 
 console.log('\n--- TEST 1: OUTPUT CAPTURE MECHANISM ---');
 
@@ -242,19 +197,11 @@ if (!captureTest.hasAudio) {
 }
 console.log('  OK: Capture mechanism working');
 
-// ============================================================================
-// Test 2: Compare captured output with WASM-rendered reference
-// ============================================================================
-// This test renders reference samples via WASM at the browser's sample rate,
-// then compares with the captured WebAudio output. This ensures we're comparing
-// at matching sample rates and can verify the full audio pipeline.
+// Against references rendered in the page at its own rate, so both sides match in rate.
 
 console.log('\n--- TEST 2: COMPARE CAPTURED OUTPUT WITH WASM REFERENCE ---');
 
-// None of these is a row of the startup circuit, so each plays through a clean
-// channel (no per-row EQ / insert FX / sends reshaping it). rimshot stands in for
-// the snare family: the demo's snare row carries an EQ high-pass, a distortion
-// insert and a reverb send, which legitimately change its captured waveform.
+// None is a row of the startup circuit, so each plays through a clean channel; the demo's snare row carries EQ and FX.
 const instrumentsToTest = ['kick', 'rimshot', 'hihat'];
 const results = {};
 let anyFailed = false;
@@ -263,9 +210,7 @@ const failures = [];
 for (const instName of instrumentsToTest) {
   console.log(`\nTesting ${instName}...`);
 
-  // Play through full WebAudio pipeline and capture
-  // Use the SAME cached render as audio.js uses for the reference (important for
-  // instruments with random components like snare noise)
+  // The SAME cached render as the reference, so random components (noise) still match.
   const testResult = await page.evaluate(async ({ instName }) => {
     // First, get the sample rate
     const sampleRate = window.__audioCtx?.sampleRate || 48000;
@@ -273,9 +218,7 @@ for (const instName of instrumentsToTest) {
     // Ensure sample is rendered and cached (this is what playSound will use)
     await window.ensureSynthSample(instName);
 
-    // Get the cached render data as our reference
-    // This is the SAME data that playSound will use, so instruments with
-    // random components (like snare) will still match perfectly
+    // Exactly the data playSound will use.
     const reference = window.getCachedRenderData(instName);
     if (!reference) {
       throw new Error(`No cached render for ${instName}`);
@@ -285,8 +228,7 @@ for (const instName of instrumentsToTest) {
     window.clearOutputCapture();
     window.startOutputCapture();
 
-    // Play through normal playSound path (uses volume buses, channels, etc.)
-    // This uses the cached render we just ensured
+    // The normal playSound path through the channels.
     await window.playSound(instName, 1.0);
 
     // Wait for sound to complete
@@ -303,14 +245,8 @@ for (const instName of instrumentsToTest) {
     };
   }, { instName });
 
-  // Trim leading silence so both buffers start near their onset. The output tap is
-  // a ScriptProcessorNode (256-sample blocks) sitting AFTER the master limiter, and
-  // playSound schedules with a small variable lead, so the captured stream is
-  // time-shifted vs the pre-limiter cached-render reference by an unknown amount and
-  // is captured on 256-sample block phase. A lag-0 raw correlation therefore wildly
-  // under-reports the true match (hihat reads ~0.1, snare ~0.3, even with correct
-  // audio) and is unstable run-to-run for noise instruments. We recover the real
-  // match with two complementary, alignment-robust measures below.
+  // The capture is shifted by the variable lead and taken on block phase, so a lag-0 raw correlation under-reports a true
+  // match; two alignment-robust measures follow.
   const captured = trimLeadingSilence(testResult.captured, 1e-3);
   const reference = trimLeadingSilence(testResult.reference, 1e-3);
 
@@ -328,14 +264,8 @@ for (const instName of instrumentsToTest) {
     continue;
   }
 
-  // ----- PRIMARY: energy-envelope cross-correlation (the real content match) -----
-  // The windowed-RMS envelope is the audio's energy-over-time shape. The same C
-  // synthesis + same cached render flows through both paths, so the envelopes must
-  // be near-identical once aligned. This is the metric that actually proves the
-  // captured waveform IS the reference: it survives the sub-sample phase jitter that
-  // destroys raw correlation for broadband noise, yet it COLLAPSES (towards 0 or
-  // negative) if the captured audio is reversed, the wrong instrument, or silence.
-  // (Teeth-proven below at the call site / in the teeth-check run.)
+  // The aligned energy envelopes must be near-identical: this survives noise phase jitter yet collapses for reversed, wrong
+  // or silent audio.
   const ENV_WIN = 64; // ~1.3ms @ 48kHz — fine enough to resolve transients
   const ENV_MAX_LAG = Math.ceil(3072 / ENV_WIN); // search +/- ~3072 samples (~64ms)
   const envRef = rmsEnvelope(reference, ENV_WIN);
@@ -344,26 +274,9 @@ for (const instName of instrumentsToTest) {
     bestLagCorrelation(envRef, envCap, ENV_MAX_LAG);
   const envLagSamples = envBestLag * ENV_WIN;
 
-  // ----- INVERSION GUARD: signed raw correlation at the content-aligned lag -----
-  // The envelope is sign-blind (RMS uses |x|), so a NEGATED capture passes the envelope
-  // check. We catch inversion/decorrelation with the SIGNED raw-sample correlation, but
-  // raw correlation on broadband noise is delicate:
-  //   * A FREE raw-lag search is unusable: pure-noise instruments are self-similar, so
-  //     their autocorrelation has POSITIVE side-lobes as strong as the main lobe in both
-  //     polarities -- a free search finds an equal-magnitude positive lobe even for an
-  //     inverted capture (hihat is the worst case), defeating the guard.
-  //   * Pinning to a single coarse-envelope lag is too brittle: the 64-sample envelope
-  //     quantisation occasionally lands one block off the true onset, where the raw
-  //     correlation of a GENUINE capture can read negative -- a false inversion FAIL.
-  // Robust resolution: evaluate raw correlation only at the three lags anchored to the
-  // envelope peak {coarse-WIN, coarse, coarse+WIN}, pick the one with the largest
-  // ABSOLUTE correlation (= the true onset alignment, polarity-agnostic), and take its
-  // SIGNED value. This consistently reads POSITIVE for a genuine capture (kick ~0.95;
-  // broadband snare ~0.10-0.25, hihat ~0.27 -- low but reliably positive because their
-  // fine phase only partially survives the 256-sample-block, post-limiter capture) and
-  // the EXACT NEGATIVE for an inverted capture. Requiring the value > 0 therefore
-  // catches inversion for every instrument. (Teeth-proven: negating the reference makes
-  // all three FAIL.)
+  // The envelope is sign-blind, so inversion is caught by SIGNED raw correlation at the three lags around the envelope
+  // peak, taking the largest |r|: a free search finds positive side-lobes in noise, a single coarse lag can land a block
+  // off. It reads positive for a genuine capture and negative for an inverted one.
   const rawWinEnd = Math.min(4000, reference.length);
   let rawAbsBest = -1;
   let rawCorrAligned = -2;
@@ -406,14 +319,7 @@ for (const instName of instrumentsToTest) {
   console.log(`  Envelope best-lag correlation: ${envCorr.toFixed(6)} (lag=${envLagSamples} samples, ${(envLagSamples / testResult.sampleRate * 1000).toFixed(2)} ms)`);
   console.log(`  Raw signed correlation @aligned lag: ${rawCorrAligned.toFixed(6)} (lag=${rawLagAligned})`);
 
-  // PRIMARY ASSERTION: the energy envelope must genuinely match the reference.
-  // Threshold 0.93: kick/hihat clear 0.96-0.99, snare floats 0.951-0.956 (broadband
-  // noise; tighter margin). 0.93 keeps a ~2pt cushion on snare so the gate is strict
-  // but not flaky, while still rejecting reversed/wrong/silent audio (which read <0.2
-  // or negative). This is the strictest defensible bar given the post-limiter,
-  // block-phase capture tap; the raw kick correlation (~0.97) independently proves
-  // the capture path is sample-faithful, so the lower envelope bar is a noise-phase
-  // concession, not a correctness concession.
+  // Strict but not flaky: noise-like instruments sit just above it, while reversed, wrong or silent audio reads < 0.2.
   const ENV_THRESHOLD = 0.93;
   let instOk = true;
 
@@ -425,9 +331,7 @@ for (const instName of instrumentsToTest) {
     instOk = false;
   }
 
-  // INVERSION GUARD: a negative aligned raw correlation means the captured waveform
-  // is inverted or decorrelated vs the reference (NOT a benign time shift) and must
-  // fail outright. Require a small positive margin to reject pure decorrelation.
+  // A small positive margin rejects pure decorrelation too.
   if (!(rawCorrAligned > 0.02)) {
     const msg = `${instName}: Inverted/decorrelated capture - raw signed corr=${rawCorrAligned.toFixed(4)} at aligned lag must be > 0`;
     console.log(`FAIL: ${msg}`);
@@ -436,10 +340,7 @@ for (const instName of instrumentsToTest) {
     instOk = false;
   }
 
-  // For tonal instruments that align at the sample level, additionally require a high
-  // raw correlation as the strictest possible check. Kick consistently clears 0.95;
-  // broadband noise instruments legitimately cannot (block-phase capture), so this is
-  // gated to instruments whose raw correlation is expected to be high.
+  // Only tonal instruments align at sample level; noise cannot under block-phase capture.
   const RAW_TONAL_THRESHOLD = 0.90;
   const tonalInstruments = new Set(['kick']);
   if (tonalInstruments.has(instName) && !(rawCorrAligned >= RAW_TONAL_THRESHOLD)) {
@@ -463,10 +364,6 @@ for (const instName of instrumentsToTest) {
     console.log(`  WARN: Peak differs by ${(peakDiff / refPeak * 100).toFixed(1)}%`);
   }
 }
-
-// ============================================================================
-// Test 3: Polyphonic capture (multiple simultaneous voices)
-// ============================================================================
 
 console.log('\n--- TEST 3: POLYPHONIC CAPTURE ---');
 
@@ -530,10 +427,6 @@ if (polyResult.peak < 0.01) {
   console.log('  OK: Polyphonic audio captured successfully');
 }
 
-// ============================================================================
-// Test 4: Verify capture stats API
-// ============================================================================
-
 console.log('\n--- TEST 4: CAPTURE STATS API ---');
 
 const statsTest = await page.evaluate(async () => {
@@ -577,17 +470,9 @@ if (!anyFailed) {
   console.log('  OK: Stats API working correctly');
 }
 
-// ============================================================================
-// Cleanup
-// ============================================================================
-
 if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "output_capture_compare");
 await browser.close();
 server.close();
-
-// ============================================================================
-// Final results
-// ============================================================================
 
 console.log('\n============================================================');
 if (anyFailed) {

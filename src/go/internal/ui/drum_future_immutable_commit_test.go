@@ -7,10 +7,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
-// Regression: immutable timeline commits must never mask the mutable future
-// beyond the current playhead. If nextBeatIdxs/seqNextIdxs get ahead (e.g., via
-// stale freezes during live edits), DrumView must still rebuild from the true
-// present into the future so UI parity matches the engine predictor.
+// Immutable commits never mask the future: with the next-indices run ahead, the view still rebuilds from the
+// present so it matches the predictor.
 func TestDrumView_ImmutableCommitBeyondPlayheadDoesNotMaskFuture(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -39,8 +37,7 @@ func TestDrumView_ImmutableCommitBeyondPlayheadDoesNotMaskFuture(t *testing.T) {
 	g.SetPlaying(true)
 	g.elapsedBeats = 10
 
-	// Corrupt the per-row "next" indices far into the future. This should not
-	// cause commits beyond the playhead to be treated as immutable past.
+	// Far ahead, which must not make future commits count as past.
 	rows := len(g.drum.Rows)
 	g.nextBeatIdxs = make([]int, rows)
 	g.seqNextIdxs = make([]int, rows)
@@ -49,9 +46,7 @@ func TestDrumView_ImmutableCommitBeyondPlayheadDoesNotMaskFuture(t *testing.T) {
 		g.seqNextIdxs[i] = 50
 	}
 
-	// Plant an immutable commit in the future window that contradicts the
-	// predictor. Without proper playhead clamping this masks the window until
-	// it scrolls out.
+	// Contradicting the predictor in the future window.
 	const row = 0
 	const abs = 20
 	g.recordTimelineCommitKind(row, abs, false, model.NodeTypeInvisible, timeline.CommitKindPlayback)
@@ -75,8 +70,7 @@ func TestDrumView_ImmutableCommitBeyondPlayheadDoesNotMaskFuture(t *testing.T) {
 			abs, want, got, typ, kind, ok, g.nextBeatIdxs, g.seqNextIdxs, g.elapsedBeats)
 	}
 
-	// The leaked immutable commit should be demoted to Released so it remains
-	// debuggable but does not enforce immutability in the future window.
+	// Demoted to Released: still debuggable, never enforcing immutability ahead.
 	_, _, kind, ok := g.timelineCommittedWithKind(row, abs)
 	if !ok {
 		t.Fatalf("expected commit retained after demotion")

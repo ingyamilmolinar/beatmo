@@ -8,8 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
-// laneNoCV marks a lane voice with no underlying cVoice (test sine voices):
-// its trigger is still reported (hook) but carries no buffer.
+// For test sine voices: the trigger is still reported, with no buffer.
 var laneNoCV = &cVoice{}
 
 type laneTrigger struct {
@@ -17,10 +16,8 @@ type laneTrigger struct {
 	cv *cVoice
 }
 
-// laneTriggerCh hands "lane voice started rendering" events from the audio
-// thread (processBlock, under m.mu) to laneTriggerLoop, which does the
-// analyzer / scope work (an ~80 KB conversion per trigger) OFF the audio
-// thread. A full channel drops the meter/scope notification, never audio.
+// The analyzer / scope work (~80 KB per trigger) runs off the audio thread; a full channel drops the notification,
+// never audio.
 var laneTriggerCh = make(chan laneTrigger, 256)
 
 var laneTriggerHook atomic.Pointer[func(string)]
@@ -32,8 +29,7 @@ func setLaneTriggerHookForTest(fn func(string)) (restore func()) {
 	return func() { laneTriggerHook.Store(prev) }
 }
 
-// Started at package init so goleak's baseline (VerifyTestMain with
-// IgnoreCurrent) already contains it.
+// At init, so goleak's IgnoreCurrent baseline already contains it.
 func init() { go laneTriggerLoop() }
 
 func laneTriggerLoop() {
@@ -49,8 +45,7 @@ func laneTriggerLoop() {
 	}
 }
 
-// laneStarted runs on the audio thread at a lane voice's first rendered
-// block (caller holds m.mu): non-blocking handoff of its trigger.
+// On the audio thread under m.mu: the handoff never blocks.
 func (m *mixer) laneStarted(vs *voiceState) {
 	cv := vs.laneCV
 	if cv == nil {
@@ -63,8 +58,7 @@ func (m *mixer) laneStarted(vs *voiceState) {
 	}
 }
 
-// cancelVoices silently removes lane voices that have not produced a sample
-// yet. Lock order matches Read: pendingMu → mu.
+// Lock order matches Read: pendingMu → mu.
 func (m *mixer) cancelVoices(ids []uint64) (started []uint64) {
 	if len(ids) == 0 {
 		return nil
@@ -83,12 +77,8 @@ func (m *mixer) cancelAllLaneFuture() {
 	m.removeLaneVoices(func(vs *voiceState) bool { return vs.vid != 0 })
 }
 
-// removeLaneVoices drops pending voices matching sel and active voices
-// matching sel whose start is still in the future (a removed voice never
-// rendered a sample, so removal is silent — unlike RequestStop, which plays
-// a faded ~20 ms ghost when the start arrives).
-// It returns the selected voices it REFUSED because they have started
-// rendering (the caller must not replace those — see audioSink.Replace).
+// A removed voice never rendered a sample, so removal is silent (RequestStop would play a faded ghost). Voices that
+// have started are refused and returned: the caller must not replace them.
 func (m *mixer) removeLaneVoices(sel func(*voiceState) bool) (started []uint64) {
 	m.pendingMu.Lock()
 	keep := m.pendingAdd[:0]
@@ -122,16 +112,13 @@ func (m *mixer) removeLaneVoices(sel func(*voiceState) bool) (started []uint64) 
 	return started
 }
 
-// stopLaneAtSample queues a stop applied by processBlock when the block
-// containing atSample renders.
 func (m *mixer) stopLaneAtSample(inst channel.ID, atSample int) {
 	m.mu.Lock()
 	m.laneStops = append(m.laneStops, laneStopEvent{inst: inst, atSample: atSample})
 	m.mu.Unlock()
 }
 
-// applyLaneStops (caller holds mu): fade lane voices of each due event's
-// instrument that started before its sample; spare later ones.
+// Caller holds mu.
 func (m *mixer) applyLaneStops(blockEnd int) {
 	if len(m.laneStops) == 0 {
 		return

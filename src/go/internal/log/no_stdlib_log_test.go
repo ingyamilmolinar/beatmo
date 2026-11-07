@@ -10,13 +10,8 @@ import (
 	"testing"
 )
 
-// TestNoStdlibLogInProduction keeps every production log line on ONE pipeline.
-// The standard library's "log" writes straight to stderr: it ignores the
-// binary's -log level and, under `go test`, bypasses the silencing and the
-// failure tail (test_tail.go) — that is how every offline render printed two
-// "[AUDIO CAPTURE]" lines into every test run. Use this package (an injected
-// *Logger, or the package-level Debugf/Warnf/… for packages without one).
-// Standalone dev tools under cmd/ (other than the app itself) may still use it.
+// The standard "log" writes straight to stderr, ignoring -log and bypassing the test silencing and failure tail. Use
+// this package. Standalone dev tools under cmd/ (not the app) may still use it.
 func TestNoStdlibLogInProduction(t *testing.T) {
 	root := filepath.Join("..", "..") // src/go
 	var dirs []string

@@ -7,8 +7,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// screenPosForGrid returns a screen-space coordinate that maps to the given
-// grid subdivision (i,j) under the current camera/grid.
 func screenPosForGrid(g *Game, i, j int) (x, y int) {
 	unit := g.grid.Unit()
 	wx := float64(i) * unit
@@ -40,9 +38,7 @@ func TestNodeAddRemoveAfterSubdivChange(t *testing.T) {
 
 	// Compute screen coords for a new node at (4,0) in 8-sub grid.
 	tx, ty := screenPosForGrid(g, 4, 0)
-	// Run one frame with no button pressed so cam.HandleMouse calls clearMousePos(),
-	// preventing stale lastMouse from a previous test causing a spurious camera drag
-	// that would block the click handler.
+	// A frame with no button clears lastMouse, so a previous test's cannot fake a drag that blocks the click.
 	primeRestore := SetInputForTest(
 		func() (int, int) { return tx, ty },
 		func(ebiten.MouseButton) bool { return false },

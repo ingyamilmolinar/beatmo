@@ -11,9 +11,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestContextMenuAccentIsInstrumentColor verifies the per-row context (kebab)
-// menu reports the row's instrument color as its accent, so its chrome
-// (header underline + active item stripe) tints to the instrument.
+// The row's instrument colour, so the header underline and active stripe tint to it.
 func TestContextMenuAccentIsInstrumentColor(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -29,9 +27,7 @@ func TestContextMenuAccentIsInstrumentColor(t *testing.T) {
 	}
 }
 
-// TestContextMenuHeaderTintsToInstrument verifies the mobile context-menu
-// header underline is rendered in the instrument color family (warm: R≥B),
-// not the fixed azure (B≫R), proving the accent is wired into the draw path.
+// Warm (R ≥ B), not the fixed azure (B ≫ R): the accent reaches the draw path.
 func TestContextMenuHeaderTintsToInstrument(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true

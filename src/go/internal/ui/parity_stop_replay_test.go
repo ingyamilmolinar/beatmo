@@ -6,8 +6,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Regression: after stop, stale parity audio/highlights must be cleared so
-// replaying does not trigger highlight_vs_audio panics.
 func TestImportStopReplayClearsParity(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

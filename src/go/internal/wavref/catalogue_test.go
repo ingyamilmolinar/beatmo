@@ -53,8 +53,7 @@ func TestCatalogue_LookupByIDAndInstrument(t *testing.T) {
 	}
 }
 
-// A real entry must carry a file and a source; a status entry must carry
-// neither. This is the invariant that keeps "covered" honest.
+// A real entry carries a file and a source, a status entry neither: what keeps "covered" honest.
 func TestCatalogue_StatusEntriesCarryNoFile(t *testing.T) {
 	c, _ := Catalogue()
 	for _, r := range c.Refs {

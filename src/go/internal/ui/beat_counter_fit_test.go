@@ -6,11 +6,7 @@ import (
 	"testing"
 )
 
-// TestBeatCounterFitsMobile asserts the beat-counter slot is wide enough to
-// render the live "Beat 1 · 0:00" readout without clipping. Regression guard for
-// the mobile "Beat 1 · 0:00 clipped to Beat 1" bug: the band split clamped the
-// counter slot to HALF the band, starving the essential readout below its text
-// width on narrow phones.
+// Wide enough for the live readout: a half-band clamp once starved it on narrow phones.
 func TestBeatCounterFitsMobile(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -22,8 +18,7 @@ func TestBeatCounterFitsMobile(t *testing.T) {
 		t.Fatalf("expected mobile profile at 360x780")
 	}
 
-	// The actual drawn readout (mobile-compact "Beat N") must fit the slot so
-	// the live counter never clips to garbage.
+	// The mobile-compact readout fits, so it never clips.
 	readout := g.drum.timelineInfo(0)
 	want := TextWidth(readout) + 2*beatCounterPillPadX
 	got := g.drum.beatCounterRect.Dx()

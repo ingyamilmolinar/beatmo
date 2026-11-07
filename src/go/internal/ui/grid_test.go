@@ -150,14 +150,11 @@ func TestEdgeStyleScaling(t *testing.T) {
 func TestLinesExtendBeyondView(t *testing.T) {
 	assertDefaultParityState(t)
 	g := NewGrid(DefaultGridStep)
-	// Pan the camera by a non-integer multiple of the step to simulate
-	// arbitrary movement across the lattice.
+	// A non-integer multiple of the step.
 	cam := &Camera{Scale: 1, OffsetX: 30, OffsetY: -45}
 	minX, maxX, minY, maxY := visibleWorldRect(cam, 100, 100)
 	groups := g.Lines(cam, 100, 100)
-	// Subdivision Div=1 corresponds to beat lines; ensure they extend beyond
-	// the computed visible rectangle on all sides so panning never reveals
-	// empty space.
+	// Beat lines extend past the visible rect on every side, so panning never reveals empty space.
 	for _, gr := range groups {
 		if gr.Subdiv.Div != 1 {
 			continue
@@ -238,8 +235,7 @@ func TestBeatAxisLabel(t *testing.T) {
 		}
 	}
 	g.SetSubs(subs) // MaxDiv = 8, so half-beat = 4 subdivisions
-	// The user-reported sequence walking rightward through the negative axis at
-	// half-beat steps: -2:1/2, -2, -1:1/2, -1, then across the origin.
+	// Rightward through the negative axis at half-beat steps, then across the origin.
 	cases := []struct {
 		idx  int
 		want string

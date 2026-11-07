@@ -24,18 +24,15 @@ func TestStageDDriftFedFromEmission(t *testing.T) {
 	}
 }
 
-// TestStageDDriftGenFilterDropsStaleReport proves live-edit safety for Stage
-// D: an emission report that lands for a trace whose generation no longer
-// matches the current audioGen/parityGen (i.e. a live edit happened between
-// schedule and emission) must be dropped, not folded into the drift window.
+// A report whose generation moved between schedule and emission (a live edit) is dropped, not folded into the
+// drift window.
 func TestStageDDriftGenFilterDropsStaleReport(t *testing.T) {
 	g := newTestGameForParity(t)
 	g.SetPlaying(true)
 
 	g.openTimingTrace(0, 5, 1.000, g.audioGen.Load(), g.parityGen.Load())
 
-	// Simulate a live structural edit bumping the generation after the trace
-	// was opened but before the emission report arrives.
+	// The edit lands between the trace opening and the report.
 	g.audioGen.Add(1)
 
 	feedEmissionReportForTest(t, g, 0, 5, 1.008)
@@ -46,10 +43,7 @@ func TestStageDDriftGenFilterDropsStaleReport(t *testing.T) {
 	}
 }
 
-// feedEmissionReportForTest bridges the desktop-only audio.DrainEmitReports
-// (which needs a device pos, not a wall time) — closeTimingTrace is the seam
-// drainEmissionReports calls after mapping devPos→wall, so tests drive
-// Stage-D directly through it.
+// DrainEmitReports needs a device position; closeTimingTrace is the seam it calls after mapping to wall time.
 func feedEmissionReportForTest(t *testing.T, g *Game, row, abs int, mappedWallSec float64) {
 	t.Helper()
 	g.closeTimingTrace(row, abs, mappedWallSec)

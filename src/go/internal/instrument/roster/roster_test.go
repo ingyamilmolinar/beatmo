@@ -39,9 +39,7 @@ func TestAllMatchesTheIndex(t *testing.T) {
 	}
 }
 
-// TestNoRosterIDLooksMinted: a built-in can never be read as a circuit
-// instance or a user instrument, and never carries the master bus's name —
-// so instrument.ID.Base / IsUser need no roster lookup.
+// So instrument.ID.Base / IsUser need no roster lookup.
 func TestNoRosterIDLooksMinted(t *testing.T) {
 	for _, id := range All {
 		if id.IsInstance() || id.IsUser() || string(id) == instrument.ReservedMasterName {

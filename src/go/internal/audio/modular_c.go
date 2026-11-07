@@ -15,20 +15,14 @@ import (
 	"unsafe"
 )
 
-// modularBlock is the C modular_params struct as a flat array: element i is
-// ModularParamSchema()[i]. The struct is a dense array of doubles
-// (static-asserted in modular_params.gen.h, both generated from
-// modular_fields.go), so the block is handed to C as-is — no per-field marshal.
+// Element i is ModularParamSchema()[i]; the struct is a dense array of doubles (static-asserted), handed to C as-is.
 type modularBlock []float64
 
 var modularSchemaIndex = ModularParamSchemaIndexMap()
 
-// zeroModularBlock is a block with every field 0 (tests that build a voice from
-// scratch, the way a zero-valued Go struct used to).
 func zeroModularBlock() modularBlock { return make(modularBlock, len(modularParamSchema)) }
 
-// clone returns an independent copy (a block is a slice: plain assignment
-// aliases it).
+// A block is a slice: plain assignment aliases it.
 func (b modularBlock) clone() modularBlock { return append(modularBlock(nil), b...) }
 
 func (b modularBlock) set(name string, v float64) {
@@ -47,13 +41,10 @@ func (b modularBlock) get(name string) float64 {
 	return b[i]
 }
 
-// compiledModularParamCount is the param count the LINKED C engine was compiled
-// with (modular_param_count).
 func compiledModularParamCount() int { return int(C.modular_param_count()) }
 
-// A build/libdrums.a compiled against an older modular_params.gen.h reads every
-// later field at a shifted offset — wrong voices with no error anywhere. Refuse
-// to run with it (`make build/libdrums.a` rebuilds it).
+// A libdrums.a compiled against an older header reads later fields at shifted offsets, wrong voices with no error, so
+// it is refused (`make build/libdrums.a` rebuilds it).
 func init() {
 	if n := compiledModularParamCount(); n != len(modularParamSchema) {
 		panic(fmt.Sprintf("audio: the linked C engine has %d params but the schema has %d — rebuild build/libdrums.a", n, len(modularParamSchema)))
@@ -72,8 +63,7 @@ func renderModularBlock(buf []float32, sampleRate, samples int, b modularBlock) 
 		(*C.modular_params)(unsafe.Pointer(&b[0])))
 }
 
-// applyModularFinish runs ONLY the FINISH stage (modular_finish) over buf in
-// place — the test seam that measures the post ops against a known signal.
+// The test seam that measures the post ops against a known signal.
 func applyModularFinish(buf []float32, sampleRate int, b modularBlock) {
 	if len(buf) == 0 || len(b) != len(modularParamSchema) {
 		return
@@ -82,8 +72,7 @@ func applyModularFinish(buf []float32, sampleRate int, b modularBlock) {
 		(*C.modular_params)(unsafe.Pointer(&b[0])))
 }
 
-// oracleMaNoiseWhiteFill fills out with the REAL miniaudio ma_noise white
-// stream (test oracle only — production code must use noiseMaWhiteFill).
+// Test oracle only: production uses noiseMaWhiteFill.
 func oracleMaNoiseWhiteFill(out []float32, seed int) {
 	if len(out) == 0 {
 		return

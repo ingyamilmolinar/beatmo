@@ -14,13 +14,8 @@ func TestWidgetSpansColumn(t *testing.T) {
 	dv := newTestDrumViewWithBounds(image.Rect(0, 300, 800, 600))
 	h := dv.layoutHandler
 
-	// Wave/EQ widget is at row 2, spans both columns (ColSpan=2)
-	// Row 0: Transport (col 0), Timeline (col 1) - no spanning
-	// Row 1: Rack (col 0), Timeline (col 1) - no spanning
-	// Row 2: Wave (col 0, ColSpan=2) - spans column boundary
+	// Row 2's Wave spans both columns; rows 0 and 1 do not span.
 
-	// Column divider is between col 0 and col 1 (index 0)
-	// Row 0 should NOT span (Transport is col 0 only, Timeline is col 1 only)
 	if h.widgetSpansColumn(0, 0) {
 		t.Error("Row 0 should not span column boundary (Transport col=0, Timeline col=1)")
 	}
@@ -199,8 +194,7 @@ func TestLayoutResizeHandler_RowDividerDetection(t *testing.T) {
 	dv := newTestDrumViewWithBounds(image.Rect(0, 300, 800, 600))
 	h := dv.layoutHandler
 
-	// Row 0 divider (between row 0 and row 1) is suppressed because the
-	// Timeline widget spans rows 0-1 (anyWidgetSpansRow returns true).
+	// The Timeline spans rows 0–1, so that divider is suppressed.
 	rowY := dv.widgets.rowPos[1] + dv.widgets.offset.Y
 	midX := dv.widgets.colPos[0] + dv.widgets.offset.X + dv.widgets.ColWidth(0)/2
 
@@ -209,10 +203,7 @@ func TestLayoutResizeHandler_RowDividerDetection(t *testing.T) {
 		t.Errorf("Row 0 divider should NOT be detected (Timeline spans rows 0-1): got axis=%q idx=%d", axis, idx)
 	}
 
-	// Row 1 divider (between row 1 and row 2) IS detectable via the EQ
-	// boundary's central grab handle (fullWidthWidgetBelow). The handle is
-	// centred horizontally — clear of the sticky-bar's edge controls — so the
-	// divider is detected at the panel centre, not in the rack column.
+	// Detectable through the EQ boundary's central handle, clear of the sticky bar's edge controls.
 	rowY2 := dv.widgets.rowPos[2] + dv.widgets.offset.Y
 	cx := (dv.Bounds.Min.X + dv.Bounds.Max.X) / 2
 	axis2, idx2 := h.detectRowDivider(cx, rowY2)
@@ -225,8 +216,6 @@ func TestFullWidthWidgetBelow(t *testing.T) {
 	dv := newTestDrumViewWithBounds(image.Rect(0, 300, 800, 600))
 	h := dv.layoutHandler
 
-	// Row 2 has WidgetWave with ColSpan=2 (full width).
-	// fullWidthWidgetBelow(1) should be true (row 2 is below row 1).
 	if !h.fullWidthWidgetBelow(1) {
 		t.Error("fullWidthWidgetBelow(1) should be true — WidgetWave at row 2 spans full width")
 	}
@@ -241,8 +230,7 @@ func TestRowDividerSuppressedWhenFullWidthBelow(t *testing.T) {
 	dv := newTestDrumViewWithBounds(image.Rect(0, 300, 800, 600))
 	h := dv.layoutHandler
 
-	// Row divider at index 1 (between rows 1 and 2) should be suppressed
-	// because WidgetWave at row 2 spans full width.
+	// Suppressed: Wave at row 2 spans the full width.
 	segments := h.rowDividerSegments(1)
 	if segments != nil {
 		t.Errorf("rowDividerSegments(1) should return nil when full-width widget is below, got %d segments", len(segments))
@@ -253,8 +241,7 @@ func TestRowDividerSuppressedForRow0(t *testing.T) {
 	dv := newTestDrumViewWithBounds(image.Rect(0, 300, 800, 600))
 	h := dv.layoutHandler
 
-	// Row divider at index 0 (between rows 0 and 1) should be suppressed
-	// because the Timeline widget spans rows 0-1 (anyWidgetSpansRow).
+	// Suppressed: the Timeline spans rows 0–1.
 	segments := h.rowDividerSegments(0)
 	if segments != nil {
 		t.Errorf("rowDividerSegments(0) should return nil — Timeline spans rows 0-1, got %d segments", len(segments))
@@ -271,8 +258,7 @@ func TestColumnHandleRect_CenteredOnSegments(t *testing.T) {
 	}
 	hcy := (hr.Min.Y + hr.Max.Y) / 2
 
-	// The pill Y-center should fall within the rows 0-1 range, NOT at
-	// the full bounds center (which would include the EQ row).
+	// Within rows 0–1, not the whole-bounds centre that includes the EQ row.
 	row0Y := dv.widgets.rowPos[0] + dv.widgets.offset.Y
 	row2Y := dv.widgets.rowPos[2] + dv.widgets.offset.Y
 	fullCY := (dv.Bounds.Min.Y + dv.Bounds.Max.Y) / 2
@@ -289,8 +275,7 @@ func TestRowHandleRect_EQBoundaryHasPill(t *testing.T) {
 	dv := newTestDrumViewWithBounds(image.Rect(0, 300, 800, 600))
 	h := dv.layoutHandler
 
-	// Row 1 divider (EQ boundary) should have a pill even though line
-	// segments are suppressed, because fullWidthWidgetBelow is true.
+	// A pill even with the line segments suppressed, since a full-width widget is below.
 	hr := h.rowHandleRect(1)
 	if hr.Empty() {
 		t.Error("rowHandleRect(1) should NOT be empty — EQ boundary pill")
@@ -307,8 +292,6 @@ func TestRow1_2DividerDetectableViaPill(t *testing.T) {
 	dv := newTestDrumViewWithBounds(image.Rect(0, 300, 800, 600))
 	h := dv.layoutHandler
 
-	// The row 1/2 divider should be detectable at its central grab handle
-	// (the EQ resize pill is centred, clear of the sticky-bar edge controls).
 	rowY := dv.widgets.rowPos[2] + dv.widgets.offset.Y
 	cx := (dv.Bounds.Min.X + dv.Bounds.Max.X) / 2
 

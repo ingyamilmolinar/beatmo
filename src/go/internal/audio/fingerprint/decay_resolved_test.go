@@ -31,8 +31,7 @@ func TestBandT60_FitsConstructedDecay(t *testing.T) {
 }
 
 func TestBandT60_FiniteWhenClipEndsAboveMinus20dB(t *testing.T) {
-	// 1.0 s clip at 15 dB/s only reaches -15 dB: the old ring T60 clamped;
-	// the fitted rate still yields 4.0 s.
+	// A 1 s clip at 15 dB/s reaches only -15 dB; the fitted rate still yields 4.0 s.
 	b := NewBundle(decayingTone(44100, 1.0, 1000, 15), "short")
 	bd := BandT60(b.STFT(trackFFTSize, trackHop))
 	if !bd.OK[3] || math.IsInf(bd.T60Sec[3], 0) || math.Abs(bd.T60Sec[3]-4.0) > 0.6 {
@@ -40,13 +39,7 @@ func TestBandT60_FiniteWhenClipEndsAboveMinus20dB(t *testing.T) {
 	}
 }
 
-// TestBandT60_EnergyGateRejectsQuietBands guards the fix from code review
-// round 1: a pure 1 kHz tone must not report a "measurable" T60 on bands
-// that carry no energy of their own (125/250/8k here), which is exactly what
-// happened on the harp reference before the energy gate existed -- its own
-// 125 Hz and 500 Hz bands, both below the harp's ~776 Hz fundamental with
-// almost no real energy, were "fitted" purely from FFT leakage of the real
-// (much louder, much higher) partials.
+// A pure 1 kHz tone has no T60 on bands with no energy of their own; leakage from louder partials must not be fitted.
 func TestBandT60_EnergyGateRejectsQuietBands(t *testing.T) {
 	b := NewBundle(decayingTone(44100, 2.0, 1000, 20), "pure1k")
 	bd := BandT60(b.STFT(trackFFTSize, trackHop))
@@ -72,11 +65,7 @@ func TestDecaySlopeVsFreq_HighsDieFaster(t *testing.T) {
 	if !ok || len(rates) != 2 || labels[0] != "m1" {
 		t.Fatalf("per-mode decay want 2 rates, got %v %v ok=%v", rates, labels, ok)
 	}
-	// Brief's literal condition was `rates[0] > rates[1]`, which fires on the
-	// CORRECT outcome (m1@440Hz -20dB/s is less negative than m2@1215Hz
-	// -60dB/s, i.e. m1 genuinely decays slower) -- a polarity bug against its
-	// own comment and against "highs die faster". Fixed to fail only on the
-	// wrong-way case: mode 1 decaying MORE negative (faster) than mode 2.
+	// Fails only when mode 1 decays faster (more negative) than mode 2: highs die faster.
 	if rates[0] < rates[1] {
 		t.Fatalf("mode 1 should decay slower (less negative): %v", rates)
 	}

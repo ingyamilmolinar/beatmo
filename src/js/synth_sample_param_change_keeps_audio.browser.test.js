@@ -1,28 +1,5 @@
-/**
- * Regression: changing a synth param (any Synth-tab knob) on an
- * instrument carrying sample PCM must NOT silence it (WASM, production build).
- *
- * Original bug ("play → solo → synth tab → drag the oscillator knob → that
- * instrument's audio instantly stops, dead until reload"):
- * `registerSamplePCM(id)` converts an instrument to a sample by DELETING
- * RENDER[id] and storing its only PCM copy in renderCache[id]. The param-change
- * handler `_updateInstrumentParams` then did `renderCache.delete(id)`
- * UNCONDITIONALLY — for a sample that throws away the only audio, and
- * processAudioEvent can't re-render it (no RENDER[id]) → permanent silence.
- *
- * Current semantics ("synths remain synths", 2026-06-03):
- *  - FACTORY instrument (has RENDER_DEFAULTS, e.g. "snare"): a synth edit
- *    RESTORES the factory render and re-renders with the new params — desktop
- *    precedence (recipe path wins once params exist). Audible, never frozen.
- *    Deep coverage: synth_edits_override_stale_sample.browser.test.js.
- *  - PURE user sample (no RENDER_DEFAULTS, e.g. "user.sample.x"): the PCM is
- *    the only audio — a param edit must leave its buffer playing untouched.
- *
- * Both scenarios assert the same invariant: a param change NEVER kills the
- * audio.
- *
- * Run: GO=/abs/path/.tools/go/bin/go node src/js/synth_sample_param_change_keeps_audio.browser.test.js
- */
+/** A param change never kills an instrument carrying sample PCM: a shipped instrument re-renders as a synth with the new
+ * params; a pure user sample keeps its PCM, its only audio, untouched. */
 import { chromium } from "playwright";
 import { buildMainWasm, createServer } from "./real_input_test_helpers.js";
 import { waitForAudioReady } from "./browser_test_helpers.js";
@@ -50,18 +27,8 @@ try {
 
   const INST = "snare";
 
-  // Drive the whole experiment inside the page: register a PCM sample, then
-  // change synth params, asserting the instrument stays AUDIBLE at every step.
-  //
-  // "Audible" is measured off the RENDERED / registered PCM buffer
-  // (getCachedRenderData + ensureSynthSample), NOT the live AudioContext output
-  // capture. The ScriptProcessor capture node underruns non-deterministically
-  // under single-CPU headless SwiftShader and drops the loud transient of a
-  // short decaying one-shot — even a fresh, full-amplitude sample reads as
-  // ~silent and varies ~30x run-to-run (see project_synth_tab_audio_starvation).
-  // The C DSP render is deterministic and env-independent, so it faithfully
-  // proves the production invariant ("a param change never silences the
-  // instrument") that the param-change handler in _updateInstrumentParams owns.
+  // Measured off the rendered PCM, not the live capture, whose ScriptProcessor underruns under headless SwiftShader and
+  // drops a one-shot's transient; the render is deterministic.
   const result = await page.evaluate(async (id) => {
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const sr = 44100, frames = Math.floor(sr * 0.3);
@@ -70,13 +37,10 @@ try {
     for (let i = 0; i < frames; i++) f32[i] = Math.sin(2 * Math.PI * 220 * i / sr) * Math.exp(-3 * i / frames);
     const u8 = new Uint8Array(f32.buffer.slice(0));
 
-    // Convert the instrument to a SAMPLE (this is what the app does for some
-    // default instruments) — deletes RENDER[id], stores PCM in renderCache.
+    // Deletes RENDER[id] and stores the PCM in renderCache.
     window.registerSamplePCM(id, u8, sr);
 
-    // Peak of the audio the instrument WOULD play: the registered PCM if present,
-    // else a freshly forced synth render (the factory-restore path after a param
-    // edit clears renderCache and re-binds RENDER[id]).
+    // The registered PCM if present, else a forced synth render.
     const peakOf = async () => {
       let d = window.getCachedRenderData(id);
       if (!d || !d.length) { await window.ensureSynthSample(id); d = window.getCachedRenderData(id); }
@@ -102,9 +66,7 @@ try {
   if (!(result.after > 1e-3)) fail(`sample instrument went SILENT after a synth-param change (peak=${result.after}). Reproduces "changing the generator kills the audio".`);
   if (!(result.after2 > 1e-3)) fail(`sample instrument went SILENT after a second param change (peak=${result.after2}).`);
 
-  // Scenario 2: a PURE user sample (no factory render) — the protection
-  // branch. Its PCM is the only audio; a param edit must leave it playing
-  // bit-identically (there is no synth to re-render).
+  // No synth to re-render: its PCM must play on bit-identically.
   const userResult = await page.evaluate(async () => {
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const id = "user.sample.protection-check";
@@ -117,8 +79,7 @@ try {
       return d && d.length ? `${d.length}:${d[100]}:${d[1000]}` : String(d);
     };
     const sigBefore = sig();
-    // A block push for an id a registered PCM overrides must leave the PCM
-    // untouched (setInstrumentBlock's sample guard).
+    // setInstrumentBlock's sample guard.
     const s = window.__instrumentBlockForTest("kick");
     window.setInstrumentBlock(id, s.block, s.seconds, s.amp, s.melodic, s.gateTail, s.fx);
     await sleep(50);

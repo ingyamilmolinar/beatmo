@@ -1,21 +1,6 @@
-// jsaudit reports every value handed to syscall/js that js.ValueOf cannot
-// convert — it panics on them at runtime, in the browser only, and nothing at
-// compile time can see it. The typed ids and enums (instrument.ID,
-// channel.ID, instrument.Role, …) are exactly such values: a named type is
-// not one of the cases js.ValueOf switches on.
-//
-// It type-checks the packages for GOOS=js GOARCH=wasm and checks, in files
-// that import syscall/js:
-//
-//   - every argument to js.ValueOf and to Value.Set / SetIndex / Call /
-//     Invoke / New;
-//   - every element placed in a []any or map[string]any (the containers
-//     js.ValueOf walks);
-//   - every value a jsFn handler returns. jsFn passes results through
-//     jsSafe, which converts named basic types and TextMarshaler structs, so
-//     only what jsSafe cannot convert is reported there.
-//
-// Usage: jsaudit <module dir> <packages...>. Exit status 1 on any finding.
+// jsaudit reports every value handed to syscall/js that js.ValueOf cannot convert (it panics on them, in the browser only):
+// typed ids and enums are named types ValueOf does not switch on. Checks ValueOf / Set / Call / Invoke / New arguments,
+// []any and map[string]any elements, and what jsSafe cannot convert in jsFn results. Usage: jsaudit <module dir> <pkgs...>
 package main
 
 import (

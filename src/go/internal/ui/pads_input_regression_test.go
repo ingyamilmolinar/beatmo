@@ -7,25 +7,8 @@ import (
 	"testing"
 )
 
-// TestPadsTabInputNotSwallowedByHiddenAudioPanel pins the regression
-// the user reported after the input-isolation pass: on mobile, after
-// switching the bottom-nav to Pads, the row-rack controls became
-// unresponsive because the audio panel zone — although DRAW-gated by
-// `MobileEQMode()` — kept registering its full-bounds `eq-panel-
-// capture` hit area at z=130. That catch-all spatially overlapped
-// the row rack at z=120, so every press in the panel rect was
-// consumed by the (logically hidden) audio panel and never reached
-// the rack controls beneath.
-//
-// The fix: a zone's visibility predicate must gate BOTH Draw AND
-// HitAreas. When the audio panel is hidden by view-mode (Pads
-// active), it MUST contribute zero hit areas to the dispatcher. This
-// test fails on the bug and passes on the fix.
-//
-// Sample-point strategy: pick a point inside the row-rack zone's
-// rect (where the user expects taps to land on mute/solo/FX/volume
-// controls). Build the hit index. Assert the highest-z hit at that
-// point belongs to the row rack, NOT the audio-panel catch-all.
+// A zone's visibility predicate gates its HitAreas as well as its Draw: a hidden audio panel's full-bounds
+// catch-all overlapped the row rack and swallowed every press meant for its controls.
 func TestPadsTabInputNotSwallowedByHiddenAudioPanel(t *testing.T) {
 	assertDefaultParityState(t)
 	restore := SetForceSmallScreen(t, true)
@@ -35,14 +18,11 @@ func TestPadsTabInputNotSwallowedByHiddenAudioPanel(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(360, 800)
 
-	// Pads view explicitly. Default viewMode is viewModeRows so this is
-	// often a no-op, but call it for clarity and to exercise the
-	// transition path the user actually walks: EQ → Pads switch.
+	// Through the EQ → Pads switch the user walks.
 	g.drum.setViewMode(viewModeEQ)
 	g.drum.setViewMode(viewModeRows)
 	g.drum.recalcButtons()
-	// Drive a couple of frames so the tree's Layout phase runs and
-	// HitIndex.Update fires.
+	// Frames let the tree's Layout phase update the HitIndex.
 	g.Update()
 	g.Update()
 
@@ -50,10 +30,7 @@ func TestPadsTabInputNotSwallowedByHiddenAudioPanel(t *testing.T) {
 	if rack == nil {
 		t.Fatal("row rack zone is nil — environment broken before assertion")
 	}
-	// Use the rack's own hit areas to find an interactive control that
-	// genuinely exists at this layout. The first rack hit area is good
-	// enough — we just need a point INSIDE the rack that an honest
-	// user tap could land on (mute / solo / FX / volume slider).
+	// A point inside the rack an honest tap could land on.
 	rackHits := rack.HitAreas()
 	if len(rackHits) == 0 {
 		t.Skip("row rack has no hit areas in this layout; cannot exercise the regression")
@@ -79,9 +56,6 @@ func TestPadsTabInputNotSwallowedByHiddenAudioPanel(t *testing.T) {
 		t.Logf("  [%d] tag=%q z=%d rect=%v", i, h.Tag, h.ZIndex, h.Rect)
 	}
 	top := hits[0]
-	// The highest-z hit at a row-rack probe point must NOT be the
-	// audio-panel catch-all. Any panel-owned tag at this point means
-	// the regression is live.
 	forbiddenTags := []string{"eq-panel-capture", "chain-panel-capture"}
 	for _, bad := range forbiddenTags {
 		if top.Tag == bad {
@@ -94,14 +68,7 @@ func TestPadsTabInputNotSwallowedByHiddenAudioPanel(t *testing.T) {
 	}
 }
 
-// TestEQPanelHitAreasEmptyWhenHidden is the unit-level mirror: when
-// the EQ panel's visibility predicate returns false (mobile + Pads),
-// the tree's HitIndex must contain zero hit areas owned by the
-// `"eq-panel"` zone. Cuts the noise out of the integration test
-// above by asserting the contract directly. The test directly
-// inspects HitAreas() instead of relying on PanelRect — the bug
-// (catch-all registered even when the panel is hidden) manifests as
-// a non-empty HitAreas() slice with a `eq-panel-capture` entry.
+// Checked on HitAreas directly, not PanelRect: the defect is a non-empty slice holding eq-panel-capture.
 func TestEQPanelHitAreasEmptyWhenHidden(t *testing.T) {
 	assertDefaultParityState(t)
 	restore := SetForceSmallScreen(t, true)
@@ -128,10 +95,6 @@ func TestEQPanelHitAreasEmptyWhenHidden(t *testing.T) {
 	}
 }
 
-// TestEQPanelHitAreasEmptyAfterEQtoPadsTransition: the user flow that
-// reportedly broke. Switch EQ → Pads. After the transition, the
-// audio panel zone MUST contribute no hit areas; its visibility
-// predicate is false on mobile when viewMode=Rows.
 func TestEQPanelHitAreasEmptyAfterEQtoPadsTransition(t *testing.T) {
 	assertDefaultParityState(t)
 	restore := SetForceSmallScreen(t, true)
@@ -141,8 +104,6 @@ func TestEQPanelHitAreasEmptyAfterEQtoPadsTransition(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(360, 800)
 
-	// User flow: switch into EQ (panel becomes full-screen), then back
-	// to Pads.
 	g.drum.setViewMode(viewModeEQ)
 	g.drum.recalcButtons()
 	g.Update()

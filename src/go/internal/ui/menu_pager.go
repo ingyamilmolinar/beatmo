@@ -6,23 +6,14 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// menuPagerFooterH is the reserved footer-band height shared by every list
-// menu that shows the page navigator (logs, FX add-menu, template menu). Equal
-// to the value the logs pop-up used before extraction (TextHeight()+SpaceMD),
-// so logs stays pixel-identical. Density-aware via TextHeight().
+// Shared by every paged list menu; equals the logs pop-up's original band, so logs stays
+// pixel-identical.
 func menuPagerFooterH() int { return TextHeight() + SpaceMD }
 
-// menuPagerBtnSize is the prev/next chevron button side length (== the logs
-// pop-up's former logsBtnSize()).
 func menuPagerBtnSize() int { return TextHeight() + SpaceSM }
 
-// drawMenuPagerFooter draws a centered "Page X / M" label inside footerRect and
-// flanks it with the caller-owned prev/next buttons, returning their rects. All
-// geometry derives from footerRect (its center-x and bottom edge) so the pager
-// adapts to any menu width; the button rects are clamped to stay inside
-// footerRect at narrow widths. Pure layout+draw: the caller formats `label`
-// (i18n) and owns page state / button OnClick. When dst is nil only the
-// geometry is computed (headless tests).
+// All geometry derives from footerRect, clamped at narrow widths; the caller owns label, page state
+// and OnClick. dst nil computes geometry only.
 func drawMenuPagerFooter(dst *ebiten.Image, footerRect image.Rectangle, label string, prev, next *Button) (prevRect, nextRect image.Rectangle) {
 	lw := TextWidth(label)
 	fy := footerRect.Max.Y - menuPagerFooterH() + SpaceXS

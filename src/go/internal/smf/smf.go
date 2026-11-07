@@ -1,20 +1,6 @@
-// Package smf reads Standard MIDI Files (format 0 and 1) into the same score
-// model the MusicXML parser produces, so the template generator treats a MIDI
-// edition exactly like a MusicXML one.
-//
-// It exists for the Mutopia Project, whose Public-Domain editions are LilyPond
-// sources that ship as LilyPond-generated MIDI. Two properties of that MIDI
-// shape this package:
-//
-//   - LilyPond starts tick 0 at the START OF THE PICKUP bar (\partial), so the
-//     first downbeat sits pickup-length ticks in. MIDI cannot say this; the
-//     caller passes Options.PickupTicks, which the score catalogue corroborates
-//     against the committed .ly source.
-//   - Mutopia builds its MIDI with \unfoldRepeats, so measure numbers here are
-//     PERFORMED bars, not printed ones.
-//
-// Channel 10 (index 9) is General MIDI percussion: its notes become unpitched
-// notes carrying their GM key, exactly as a MusicXML drum part's would.
+// Package smf reads Standard MIDI Files (format 0/1) into the MusicXML score model, for Mutopia's LilyPond-generated MIDI:
+// tick 0 is the START of the pickup bar (Options.PickupTicks, corroborated against the .ly source), and \unfoldRepeats
+// makes measures PERFORMED bars. Channel 10 is GM percussion: unpitched notes carrying their GM key.
 package smf
 
 import (
@@ -230,9 +216,7 @@ func recordTempo(sc *musicxml.Score, measure int, bpm float64) {
 	sort.SliceStable(sc.Tempos, func(i, j int) bool { return sc.Tempos[i].Measure < sc.Tempos[j].Measure })
 }
 
-// buildMeasures lays bars from tick 0 through lastTick: an optional pickup bar
-// numbered 0, then full bars numbered from 1, each sized by the meter in force
-// at its start.
+// An optional pickup bar numbered 0, then full bars from 1, each sized by the meter in force at its start.
 func buildMeasures(meters []meterEvt, division, pickup, lastTick int) []musicxml.Measure {
 	meterAt := func(tick int) (int, int) {
 		b, bt := 4, 4
@@ -268,9 +252,8 @@ func buildMeasures(meters []meterEvt, division, pickup, lastTick int) []musicxml
 	return out
 }
 
-// hasDynamics reports whether a part's velocities vary. LilyPond writes one
-// constant velocity when the score carries no dynamics; reading that constant
-// as a dynamic would invent a uniform "forte" the score never marked.
+// LilyPond writes one constant velocity when a score marks no dynamics; reading it as a dynamic would invent a uniform
+// forte.
 func hasDynamics(notes []rawNote) bool {
 	for _, n := range notes[1:] {
 		if n.vel != notes[0].vel {

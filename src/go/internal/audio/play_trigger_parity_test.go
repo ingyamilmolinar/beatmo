@@ -7,23 +7,10 @@ import (
 	"testing"
 )
 
-// TestPlayVariantsRecordTriggerOnEveryPlatform asserts that every platform's
-// Play* entry point feeds the per-instrument trigger clock — RecordVoiceTrigger
-// — either directly or by delegating to a sibling Play* that does.
-//
-// The UI's time-since-trigger reads (the Synth-tab pulse glow and the Sampler
-// preview playhead line) all derive from audio.SinceLastTrigger, which is only
-// advanced by RecordVoiceTrigger. If a single platform's Play forgets the call,
-// those signals silently never fire on that platform.
-//
-// This guards the exact regression that made the Sampler playhead invisible in
-// the browser: engine_wasm.go's Play/PlayVol/PlayParams forwarded straight to
-// the JS WebAudio bridge without stamping the trigger, so SinceLastTrigger stayed
-// at its "never triggered" sentinel forever on WASM while desktop/stub worked.
+// The Synth-tab glow and the Sampler playhead read SinceLastTrigger, which only RecordVoiceTrigger advances: a
+// platform whose Play forgets it shows neither, as the browser once did.
 func TestPlayVariantsRecordTriggerOnEveryPlatform(t *testing.T) {
-	// Every file that defines an audio entry point, per platform. Batch
-	// playback (the sequencer's hot path) lives in batch_*.go and must stamp
-	// triggers too, else sequencer-driven hits never advance SinceLastTrigger.
+	// Batch playback (the sequencer's hot path) must stamp triggers too.
 	files := []string{
 		"engine_play.go", "engine_wasm.go", "stub.go",
 		"batch_desktop.go", "batch_wasm.go", "batch_stub.go",
@@ -33,11 +20,7 @@ func TestPlayVariantsRecordTriggerOnEveryPlatform(t *testing.T) {
 		"Play": true, "PlayVol": true, "PlayParams": true, "PlayParamsAt": true,
 		"PlayBatch": true,
 	}
-	// A body satisfies the invariant if it calls RecordVoiceTrigger directly, or
-	// delegates to another Play* entry point (which is itself checked), or to
-	// playParamsIdentity — the shared internal implementation behind
-	// PlayParams/PlayParamsAt (added in the parity-timing identity threading;
-	// it calls RecordVoiceTrigger directly, see engine_play.go).
+	// A call to RecordVoiceTrigger, to another checked Play* entry point, or to playParamsIdentity, which calls it.
 	satisfies := map[string]bool{
 		"RecordVoiceTrigger": true,
 		"Play":               true, "PlayVol": true, "PlayParams": true, "PlayParamsAt": true,
@@ -66,8 +49,6 @@ func TestPlayVariantsRecordTriggerOnEveryPlatform(t *testing.T) {
 	}
 }
 
-// bodyCallsAny reports whether body contains a call to any plain-identifier
-// function whose name is in names.
 func bodyCallsAny(body *ast.BlockStmt, names map[string]bool) bool {
 	found := false
 	ast.Inspect(body, func(n ast.Node) bool {

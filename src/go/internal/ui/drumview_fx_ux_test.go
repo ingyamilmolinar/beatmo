@@ -120,8 +120,7 @@ func TestFXPanelCloseOnClickOutside(t *testing.T) {
 	// Advance past debounce window.
 	fxAdvanceFrames(t, dv, 3)
 
-	// Click outside both the panel rect and the FX button.
-	// Use coordinates at (1, 1) which should be far from both.
+	// (1, 1) is far from both the panel and the FX button.
 	fxClickAndRelease(t, dv, 1, 1)
 	if dv.IsFXPanelOpen() {
 		t.Fatal("FX panel did not close on click outside")
@@ -460,19 +459,14 @@ func TestFXPanelAddEffectMobile(t *testing.T) {
 	}
 }
 
-// TestFXPanelAddEffectPickerSurvivesHeldMouse verifies that clicking
-// "+ Add Effect" and holding the mouse does not cause the type picker
-// to flicker closed. The click-outside logic must respect
-// suppressClicksUntilRelease while the mouse is still held from the
-// same click that opened the picker.
+// Click-outside must respect the suppress flag while the click that opened the picker is still held.
 func TestFXPanelAddEffectPickerSurvivesHeldMouse(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
 		t.Skip("no rows")
 	}
 
-	// Open FX panel and advance frames to clear the suppress guard
-	// from openFXPanel and expire the debounce window.
+	// Frames clear openFXPanel's suppress guard and the debounce window.
 	dv.toggleFXPanel(0)
 	if !dv.IsFXPanelOpen() || len(dv.fxPanelBtns) == 0 {
 		t.Fatal("panel did not open or has no buttons")
@@ -488,9 +482,7 @@ func TestFXPanelAddEffectPickerSurvivesHeldMouse(t *testing.T) {
 	cx := (addR.Min.X + addR.Max.X) / 2
 	cy := (addR.Min.Y + addR.Max.Y) / 2
 
-	// Simulate clicking "+ Add Effect" (mouse down at button center).
-	// This fires OnClick which sets fxAddMenuOpen=true, calls buildFXPanel()
-	// (panel grows taller/repositions), and SuppressClicksUntilMouseUp().
+	// OnClick opens the picker, grows the panel and suppresses clicks until release.
 	fxClickAt(t, dv, cx, cy)
 
 	if !dv.fxAddMenuOpen {
@@ -500,15 +492,8 @@ func TestFXPanelAddEffectPickerSurvivesHeldMouse(t *testing.T) {
 		t.Fatal("FX panel closed on the click frame itself")
 	}
 
-	// Now hold the mouse for 5+ frames at the SAME position.
-	// After buildFXPanel() the panel may have repositioned/grown, so (cx,cy)
-	// might be outside the new fxPanelRect. This is the exact scenario that
-	// triggers the bug: the click-outside check fires while the mouse is
-	// still held from the same click.
-	//
-	// Note: SetInputForTest clears suppressClicksUntilRelease, but in the
-	// real app suppress persists between frames (only cleared on mouse
-	// release). We restore it after SetInputForTest to match real behavior.
+	// The grown panel may no longer contain (cx, cy), which is when click-outside fired. SetInputForTest clears
+	// suppress, but the real app keeps it until release, so it is restored.
 	for i := 0; i < 6; i++ {
 		restore := SetInputForTest(
 			func() (int, int) { return cx, cy },
@@ -542,9 +527,6 @@ func TestFXPanelAddEffectPickerSurvivesHeldMouse(t *testing.T) {
 
 // ---------- Mobile Context Menu Structure Tests ----------
 
-// TestContextMenuEffectsAbsentOnMobile verifies that the mobile context
-// menu intentionally omits the "Effects" entry. Mobile users do not have
-// an FX entry point in this menu.
 func TestContextMenuEffectsAbsentOnMobile(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
@@ -574,10 +556,7 @@ func TestContextMenuEffectsAbsentOnMobile(t *testing.T) {
 	}
 }
 
-// TestContextMenuHasFiveItemsMobile pins the mobile button count: four items
-// (Rename, Color, Origin, Delete) plus the close button = 5. ("Instrument" was
-// removed — the row label opens the picker directly on every platform; "Color"
-// was re-exposed in Task 14 to open the grouped Vice City picker.)
+// The label opens the picker directly, so mobile has Rename, Color, Origin, Delete.
 func TestContextMenuHasFourItemsMobile(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
@@ -596,8 +575,7 @@ func TestContextMenuHasFourItemsMobile(t *testing.T) {
 		t.Fatal("context menu did not open")
 	}
 
-	// Mobile items: Rename, Color, Origin, Delete (4). No close × on mobile — it
-	// is desktop-only; the bottom sheet dismisses via tap-away.
+	// No close × on mobile: the bottom sheet dismisses via tap-away.
 	want := 4
 	if got := len(dv.contextMenuBtns); got != want {
 		t.Errorf("expected %d context menu buttons (4 items, no close), got %d", want, got)
@@ -694,10 +672,7 @@ func TestFXPanelHasNoCloseButtonMobile(t *testing.T) {
 
 // ---------- Flicker & Text Truncation Tests ----------
 
-// TestFXPanelDoesNotFlickerOnHeldPress reproduces the flicker bug: opening the
-// FX panel then holding the mouse button at the FX button position on the
-// next frame should NOT re-toggle the panel closed (the tree's suppress
-// mechanism prevents re-dispatch).
+// The tree's suppress keeps a held press from re-toggling the panel closed.
 func TestFXPanelDoesNotFlickerOnHeldPress(t *testing.T) {
 	dv := newTestDV(t)
 	cx, cy := fxBtnCenter(t, dv, 0)
@@ -708,8 +683,6 @@ func TestFXPanelDoesNotFlickerOnHeldPress(t *testing.T) {
 		t.Fatal("FX panel did not open")
 	}
 
-	// Frame 1: held press at same position — tree's suppress prevents
-	// re-dispatch, so panel stays open.
 	fxHoldAt(t, dv, cx, cy)
 	if !dv.IsFXPanelOpen() {
 		t.Fatal("FX panel closed on held press — flicker bug")
@@ -717,8 +690,6 @@ func TestFXPanelDoesNotFlickerOnHeldPress(t *testing.T) {
 	fxReleaseInput(t, dv)
 }
 
-// TestFXPanelTogglesAfterSuppressClears verifies toggling still works after
-// the user releases and clicks again.
 func TestFXPanelTogglesAfterSuppressClears(t *testing.T) {
 	dv := newTestDV(t)
 	cx, cy := fxBtnCenter(t, dv, 0)
@@ -739,9 +710,7 @@ func TestFXPanelTogglesAfterSuppressClears(t *testing.T) {
 	}
 }
 
-// fxGameFrame simulates one Game-like frame: HandleInput then Update.
-// This exercises the real dispatch path where the OverlayPortal in HandleInput
-// runs before Update re-reads the same mouse state.
+// HandleInput's overlay portal runs before Update re-reads the same mouse state, as in the real game.
 func fxGameFrame(dv *DrumView, x, y int, pressed bool, w, h int) {
 	restore := SetInputForTest(
 		func() (int, int) { return x, y },
@@ -757,11 +726,7 @@ func fxGameFrame(dv *DrumView, x, y int, pressed bool, w, h int) {
 	restore()
 }
 
-// TestFXPanelBlocksClickThrough_GameLoop tests the real Game dispatch path:
-// HandleInput (overlay stack) runs first, then Update re-reads mouse state.
-// When the FX panel is open and the user clicks a mute button behind it,
-// HandleInput closes the panel. Update must NOT let the same click through
-// to the mute button.
+// HandleInput closes the panel; Update must not then let the same click through to the mute button behind.
 func TestFXPanelBlocksClickThrough_GameLoop(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -804,8 +769,6 @@ func TestFXPanelBlocksClickThrough_GameLoop(t *testing.T) {
 	}
 }
 
-// TestFXPanelBlocksToolbarClickThrough_GameLoop tests that toolbar buttons
-// (play/stop/bpm) behind the FX panel are not activated when clicked.
 func TestFXPanelBlocksToolbarClickThrough_GameLoop(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -850,9 +813,7 @@ func TestFXPanelBlocksToolbarClickThrough_GameLoop(t *testing.T) {
 	}
 }
 
-// TestFXPanelBlocksClickThrough_UpdateOnly tests the standalone DrumView path
-// (Update() only, no HandleInput). This path is used in tests and also when
-// the input dispatcher is not wired up.
+// The Update-only path, used when no input dispatcher is wired.
 func TestFXPanelBlocksClickThrough_UpdateOnly(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -888,9 +849,7 @@ func TestFXPanelBlocksClickThrough_UpdateOnly(t *testing.T) {
 	}
 }
 
-// TestFXPanelOverlayCloseSetsSuppressAfterClose verifies that the
-// FXPanelOverlay.Close() path (used by portal click-outside) sets
-// suppressClicksUntilRelease AFTER closeFXPanel clears it.
+// Suppress must be set AFTER closeFXPanel clears it.
 func TestFXPanelOverlayCloseSetsSuppressAfterClose(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -913,9 +872,6 @@ func TestFXPanelOverlayCloseSetsSuppressAfterClose(t *testing.T) {
 	t.Cleanup(func() { suppressClicksUntilRelease = false })
 }
 
-// TestFXPanelPhase2CloseSetsSuppressAfterClose verifies that
-// handleFXPanelInput Phase 2 (click outside closes panel) sets
-// suppressClicksUntilRelease so that Update() blocks the same click.
 func TestFXPanelClickOutsideClosesViaTree(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -959,8 +915,7 @@ func TestFXPanelWidthFitsLabels(t *testing.T) {
 	if dv.fxPanelRect.Dx() < 280 {
 		t.Errorf("panel too narrow: %dpx", dv.fxPanelRect.Dx())
 	}
-	// Check sliders don't overlap label area.
-	// Sliders are indented by SpaceXL from panel left edge.
+	// Sliders are indented by SpaceXL from the panel's left edge.
 	for i, sl := range dv.fxPanelSliders {
 		sr := sl.Rect()
 		labelEnd := dv.fxPanelRect.Min.X + SpaceXL + dv.fxSliderLeft
@@ -1000,12 +955,8 @@ func TestFXParamLabelsNotTruncated(t *testing.T) {
 	}
 }
 
-// TestFXPanelOverlayReturnsCaptureDuringSliderDrag verifies that
-// FXPanelOverlay.HandleInput returns InputCaptured (not just InputConsumed)
-// while a slider drag is active. Without InputCaptured, the portal
-// does not set its capture pointer, so if the mouse leaves InputBounds()
-// during a drag the portal closes the panel and the click leaks
-// through to elements underneath.
+// InputCaptured, not Consumed: without it the portal sets no capture, and a drag leaving InputBounds closes the
+// panel and leaks the click beneath.
 func TestFXPanelOverlayReturnsCaptureDuringSliderDrag(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -1035,8 +986,6 @@ func TestFXPanelOverlayReturnsCaptureDuringSliderDrag(t *testing.T) {
 		t.Fatal("slider drag did not start")
 	}
 
-	// While a slider drag is active, the FX panel's capturing state should
-	// be true, meaning the portal system will route all input to it.
 	capturing := dv.fxPanelDeferredTap.Active() || (dv.fxScroll != nil && dv.fxScroll.ScrollBehavior().TouchActive()) || dv.fxSliderDragging
 	if !capturing {
 		t.Error("FX panel should be in capturing state during slider drag")
@@ -1052,11 +1001,7 @@ func TestFXPanelOverlayReturnsCaptureDuringSliderDrag(t *testing.T) {
 	fxGameFrame(dv, cx, cy, false, 800, 300)
 }
 
-// TestFXPanelSliderDragOutsidePanelDoesNotClose verifies that dragging an
-// FX panel slider outside the panel rect does NOT close the panel.
-// This tests the capture path: when fxSliderDragging is true, the portal
-// routes all subsequent input to the FX panel, preventing the
-// "click outside -> close" logic from firing mid-drag.
+// While a slider drags the portal routes all input to the panel, so click-outside cannot fire mid-drag.
 func TestFXPanelSliderDragOutsidePanelDoesNotClose(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -1084,10 +1029,6 @@ func TestFXPanelSliderDragOutsidePanelDoesNotClose(t *testing.T) {
 		t.Fatal("slider drag did not start")
 	}
 
-	// In the portal system, capture is handled automatically when the
-	// fxSliderDragging flag is set. The portal routes all input to the
-	// FX panel overlay while a drag is active.
-
 	// Drag outside the panel rect (but still inside dv.Bounds).
 	outsideX := dv.fxPanelRect.Max.X + 50
 	outsideY := dv.fxPanelRect.Min.Y + 5
@@ -1095,8 +1036,6 @@ func TestFXPanelSliderDragOutsidePanelDoesNotClose(t *testing.T) {
 		outsideX = dv.Bounds.Max.X - 1
 	}
 
-	// With slider dragging active, the panel should stay open even
-	// when input is outside the panel rect.
 	fxGameFrame(dv, outsideX, outsideY, true, 800, 300)
 	if !dv.IsFXPanelOpen() {
 		t.Error("FX panel closed during slider drag outside panel rect — " +
@@ -1113,9 +1052,6 @@ func TestFXPanelSliderDragOutsidePanelDoesNotClose(t *testing.T) {
 	}
 }
 
-// TestFXPanelSliderDragDoesNotActivateRowControls verifies that while
-// dragging a slider inside the FX panel, row controls (mute/solo/volume)
-// underneath are not activated — even if the drag passes over them.
 func TestFXPanelSliderDragDoesNotActivateRowControls(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -1162,9 +1098,6 @@ func TestFXPanelSliderDragDoesNotActivateRowControls(t *testing.T) {
 	}
 }
 
-// TestFXPanelClickInsideDoesNotActivateRowControls verifies that clicking
-// anywhere inside the FX panel (on a button, slider, or background) does
-// not activate row controls underneath.
 func TestFXPanelClickInsideDoesNotActivateRowControls(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -1223,8 +1156,6 @@ func TestFXPanelClickInsideDoesNotActivateRowControls(t *testing.T) {
 	}
 }
 
-// dummyPortalOverlay is a minimal PortalOverlay for testing portal state
-// without requiring a real overlay component.
 type dummyPortalOverlay struct{}
 
 func (o *dummyPortalOverlay) Layout(anchor, screenBounds image.Rectangle) {}
@@ -1232,11 +1163,7 @@ func (o *dummyPortalOverlay) HitAreas() []HitArea                         { retu
 func (o *dummyPortalOverlay) Draw(screen *ebiten.Image)                   {}
 func (o *dummyPortalOverlay) ShouldClose() bool                           { return false }
 
-// TestPortalOverlayDoesNotBlockTransportButtons reproduces Bug 1: a circular
-// input blocking loop where portal overlays being open causes anyDropdownOpen()
-// to return true, which makes popupActive() return true, which makes the tree
-// yield ALL input — including to zone buttons that the tree is supposed to
-// dispatch. After fix, anyDropdownOpen() should not include portal state.
+// An open portal must not make the tree yield ALL input, including to the zone buttons it dispatches.
 func TestPortalOverlayDoesNotBlockTransportButtons(t *testing.T) {
 	dv := newTestDV(t)
 
@@ -1257,16 +1184,12 @@ func TestPortalOverlayDoesNotBlockTransportButtons(t *testing.T) {
 		t.Fatal("portal should be open")
 	}
 
-	// anyDropdownOpen() now delegates to portal.IsOpen() — the circular loop
-	// no longer exists because legacyPopupOpen has been removed from the tree.
 	if !dv.anyDropdownOpen() {
 		t.Fatal("anyDropdownOpen() should return true when portal overlay is open")
 	}
 }
 
-// TestFXPanelSliderDragDoesNotToggleOtherRow reproduces Bug 2: dragging an FX
-// panel slider crosses over another row's FX button and toggles that row's
-// panel. After fix, the drag-state guard prevents the toggle.
+// A slider drag crossing another row's FX button must not toggle that row's panel.
 func TestFXPanelSliderDragDoesNotToggleOtherRow(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) < 2 {
@@ -1305,8 +1228,6 @@ func TestFXPanelSliderDragDoesNotToggleOtherRow(t *testing.T) {
 	r1cx, r1cy := fxBtnCenter(t, dv, 1)
 	fxGameFrame(dv, r1cx, r1cy, true, 800, 300)
 
-	// Before fix: row 1's FX button fires during drag → fxPanelRow changes.
-	// After fix: fxSliderDragging guard prevents toggle.
 	if dv.fxPanelRow != 0 {
 		t.Errorf("fxPanelRow changed to %d during slider drag — drag leaked to row 1's FX button", dv.fxPanelRow)
 	}
@@ -1318,9 +1239,7 @@ func TestFXPanelSliderDragDoesNotToggleOtherRow(t *testing.T) {
 	fxGameFrame(dv, r1cx, r1cy, false, 800, 300)
 }
 
-// TestContextMenuButtonsFireOnMobile reproduces the bug where context menu
-// button clicks are dead on mobile because the tree's popupActive() yields
-// before reaching hitIndex.At(), so portal overlay inputFn never fires.
+// The tree must dispatch to the portal overlay rather than yield before hitIndex.At().
 func TestContextMenuButtonsFireOnMobile(t *testing.T) {
 	setupMobileTest(t, true)
 	audio.ClearAllInsertEffects()
@@ -1363,11 +1282,7 @@ func TestContextMenuButtonsFireOnMobile(t *testing.T) {
 	cx := (r.Min.X + r.Max.X) / 2
 	cy := (r.Min.Y + r.Max.Y) / 2
 
-	// Click on the Rename button via the Game-loop path (HandleInput + Update).
-	// Before fix: tree yields at popupActive → portal inputFn never fires → button dead.
-	// After fix: tree dispatches to portal overlay → inputFn → handleContextMenuInput → button fires.
-	// Firing Rename closes the context menu (closeContextMenuPortal), so a
-	// still-open menu means the button never fired.
+	// Rename closes the menu, so a menu still open means the button never fired.
 	fxGameFrame(dv, cx, cy, true, 800, 300)
 	fxGameFrame(dv, cx, cy, false, 800, 300)
 
@@ -1377,9 +1292,7 @@ func TestContextMenuButtonsFireOnMobile(t *testing.T) {
 	}
 }
 
-// TestEQWaveToggleWorksWithPortalOpen reproduces the bug where the EQ/Wave
-// toggle button (viewSwitchBtn, z=110 in TransportZone) is dead when any
-// portal overlay is open because popupActive() returns true.
+// The view-switch button must work while a portal is open.
 func TestEQWaveToggleWorksWithPortalOpen(t *testing.T) {
 	setupMobileTest(t, true)
 	audio.ClearAllInsertEffects()

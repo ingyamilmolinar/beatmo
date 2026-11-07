@@ -1,7 +1,4 @@
-// Package songrender renders a Beatmo template circuit offline to a master
-// waveform + per-instrument stems. The arrangement (template -> note events via
-// the engine predictor) is pure Go and testable; rendering is build-tag split
-// (render_stub.go for tests, render_prod.go for the faithful audio-engine path).
+// The arrangement (template → note events through the predictor) is pure Go; rendering is split by build tag.
 package songrender
 
 import (
@@ -21,8 +18,7 @@ type InstrumentSpec struct {
 	Volume  float64            `json:"volume"`
 	Origin  int                `json:"origin"`
 	Effects []audio.EffectSlot `json:"effects,omitempty"`
-	// Doc is the instrument's document from the file's instrument_docs (nil =
-	// the instrument plays its library copy). Filled by ParseTemplate.
+	// nil = its library copy.
 	Doc *instrument.Doc `json:"-"`
 }
 
@@ -40,9 +36,7 @@ type NodeSpec struct {
 	LogicN    int             `json:"logic_n,omitempty"`
 	LogicP    float64         `json:"logic_p,omitempty"`
 
-	// GrooveKind/GroovePct move this node off the grid by a fraction of one
-	// subdivision ("delay" late, "rush" early) — swing, tuplets and grace
-	// notes in the generated templates live here.
+	// A fraction of one subdivision: swing, tuplets and grace notes live here.
 	GrooveKind model.GrooveKind `json:"groove_kind,omitempty"`
 	GroovePct  float64          `json:"groove_pct,omitempty"`
 
@@ -66,14 +60,11 @@ func (c *ChordSpec) model() model.ChordSpec {
 
 type ParsedTemplate struct {
 	BPM int `json:"bpm"`
-	// Subdiv is grid units per BEAT — the engine's MaxDiv — so one path step
-	// lasts 60/(BPM*Subdiv) seconds.
+	// One path step lasts 60/(BPM·Subdiv) seconds.
 	Subdiv      int              `json:"subdiv"`
 	Instruments []InstrumentSpec `json:"instruments"`
 	Nodes       []NodeSpec       `json:"nodes"`
-	// InstrumentDocs are the file's instrument documents, keyed by id: a full
-	// document, or (built-in templates) {"ref":"sha256:…"} resolved against the
-	// instrument pack by ParseTemplate.
+	// Built-in templates pin by {"ref":"sha256:…"}, resolved against the pack.
 	InstrumentDocs map[instrument.ID]instrument.Doc  `json:"-"`
 	RawDocs        map[instrument.ID]json.RawMessage `json:"instrument_docs,omitempty"`
 }

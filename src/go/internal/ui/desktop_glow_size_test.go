@@ -7,8 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestDesktopNodeGlowReasonableSize ensures glow radius is clamped to a
-// reasonable fraction of the pane height on desktop.
+// A bounded fraction of the pane height.
 func TestDesktopNodeGlowReasonableSize(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

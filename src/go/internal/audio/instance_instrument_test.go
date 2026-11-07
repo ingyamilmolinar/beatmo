@@ -8,9 +8,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestEnsureInstanceInstrument verifies that promoting an instance variant
-// ("organ--2") yields a registered, available, recipe-bound, render-equivalent
-// instrument identical to its base ("organ").
 func TestEnsureInstanceInstrument(t *testing.T) {
 	withDefaultAudio(t) // load roster.All + ResetInstruments cleanup
 
@@ -37,11 +34,7 @@ func TestEnsureInstanceInstrument(t *testing.T) {
 		t.Fatalf("organ--2 document origin = %q (ok %v), want organ", d.Origin, ok)
 	}
 
-	// (c) Sound equivalence — the crux. organ-2 must sound IDENTICAL to organ:
-	// the voice is rendered from the flattened param block and the render
-	// settings, so both must match field for field. Any divergence (e.g. the
-	// variant collapsing to a generic tone) fails here. This directly guards the
-	// failure mode instance-promotion exists to prevent.
+	// The voice is rendered from the flattened block and render settings, so both must match field for field.
 	baseDoc, _ := InstrumentDoc(roster.Organ)
 	varDoc, _ := InstrumentDoc("organ--2")
 	if baseDoc.Render != varDoc.Render {
@@ -100,15 +93,8 @@ func idListCount(ids []instrument.ID, id instrument.ID) int {
 	return n
 }
 
-// TestEnsureInstanceInstrumentInheritsBaseLoudness guards the fold Review
-// Round 1 found missing: an instance variant id (e.g. "violin--2") is NOT a
-// roster id, so it cannot appear in the static loudnessAliases table
-// (loudness_amp.go) the way a shipped variant can — roster.All
-// deliberately excludes gen-showcase instance ids. Without
-// EnsureInstanceInstrument seeding runtimeLoudnessAmp itself, "violin--2" would
-// silently fall back to DefaultAmplitude (0.8) instead of violin's measured
-// 1.0000 amplitude — the same failure mode CloneInstrument guards against for
-// clones (instrument_clone.go).
+// An instance id is not a roster id, so no static loudness alias can cover it: without seeding, violin--2 would play
+// at DefaultAmplitude instead of violin's measured level.
 func TestEnsureInstanceInstrumentInheritsBaseLoudness(t *testing.T) {
 	withDefaultAudio(t) // load roster.All + ResetInstruments cleanup
 

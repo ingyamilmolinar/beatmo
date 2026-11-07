@@ -8,12 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// TestServiceResetClearsPublishedStateAndCapture covers the desktop side of the
-// "audio tabs show garbage after loading a stopped circuit" bug. The analyzer
-// service carries the last capture forward across ticks and keeps publishing it
-// when no new audio flows (processTick: "carry forward last capture"). Loading a
-// circuit must be able to flush that so the Wave/Spectrum/Levels tabs read flat
-// until the new circuit is played.
+// The service carries the last capture forward while no audio flows; a circuit load must flush it so the tabs read flat
+// until the new circuit plays.
 func TestServiceResetClearsPublishedStateAndCapture(t *testing.T) {
 	cfg := Config{FFTSize: 64, WindowSize: 128, MaxInstruments: 4, SampleRate: 44100}
 	s := NewService(cfg)
@@ -24,9 +20,7 @@ func TestServiceResetClearsPublishedStateAndCapture(t *testing.T) {
 	masterBuf := make([]float64, cfg.WindowSize)
 	instBuf := make([]float64, cfg.WindowSize)
 
-	// Feed a full window of audio + a capture trigger, then run one tick so the
-	// service publishes a non-flat state (this is the "circuit was playing"
-	// state left behind at stop).
+	// The state a playing circuit leaves behind at stop.
 	loud := make([]float64, cfg.WindowSize)
 	for i := range loud {
 		loud[i] = 0.5

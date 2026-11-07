@@ -10,23 +10,15 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// desktopWarmBackend renders gated warm items on the audio.prewarm pool.
-//
-// It uses SubmitBlocking, NOT Submit. Submit is non-blocking by contract and
-// DROPS on backpressure — that is how the pre-gate prewarmer lost most of a
-// 273-item working set into a 64-deep queue. A gated warm set must complete,
-// so the feeder blocks instead. Blocking is safe here: Warm is called from
-// warmupController.Begin on the UI goroutine at import time, when no frame
-// deadline is being missed (the toast is already up and Play is already
-// disabled), and the queue drains at worker speed.
+// SubmitBlocking, NOT Submit: Submit drops on backpressure and lost most of a large warm set. Blocking is safe:
+// Begin runs at import time with the toast up and Play disabled.
 type desktopWarmBackend struct{ pool *async.Pool }
 
 func newDesktopWarmBackend(pool *async.Pool) warmBackend {
 	return &desktopWarmBackend{pool: pool}
 }
 
-// Cached delegates to the same probe the dispatch path reads, so an item
-// already rendered under the current bpm/params/pitch key is never re-rendered.
+// The dispatch path's own probe, so an item already cached under the current key is never re-rendered.
 func (b *desktopWarmBackend) Cached(inst instrument.ID, pitch float64) bool {
 	return audio.VoiceCached(inst, pitch)
 }
@@ -45,8 +37,6 @@ func (b *desktopWarmBackend) Warm(inst instrument.ID, pitch float64, done func()
 	}
 }
 
-// newWarmBackend selects the platform warm backend. Desktop renders on the
-// audio.prewarm pool; browser renders on audio.js's render workers.
 func newWarmBackend(g *Game) warmBackend {
 	if g != nil && g.voicePrewarmer != nil {
 		return newDesktopWarmBackend(g.voicePrewarmer.pool)

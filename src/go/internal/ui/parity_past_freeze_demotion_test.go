@@ -7,13 +7,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
-// TestFreezeLoopCommitsAreReleasedNotPlayback locks down the D4 invariant from
-// the parity refactor: the safety-net freeze loop in refreshDrumRow must
-// commit CommitKindReleased (mutable) when it speculates about a beat the
-// audio thread hasn't yet committed. Only applySequencerHighlight is
-// authorized to write CommitKindPlayback (the immutable kind).
-//
-// This test fails before the demotion change and passes after.
+// The safety-net freeze speculates about beats the audio thread has not committed, so it writes
+// CommitKindReleased; only applySequencerHighlight writes the immutable CommitKindPlayback.
 func TestFreezeLoopCommitsAreReleasedNotPlayback(t *testing.T) {
 	assertDefaultParityState(t)
 	g := buildTestGame(t)
@@ -30,10 +25,7 @@ func TestFreezeLoopCommitsAreReleasedNotPlayback(t *testing.T) {
 	g.drum.SetLength(8)
 	g.drum.Offset = 0
 
-	// Simulate a state where the sequencer has advanced past a few beats but
-	// applySequencerHighlight has not run yet. nextBeatIdxs[0] = 4 means
-	// rowPastExclusive(0) = 4, so the freeze loop will speculate-commit
-	// beats 0..3 to fill the gap.
+	// rowPastExclusive=4 with no highlight applied: the freeze loop fills beats 0..3.
 	g.SetPlaying(true)
 	g.nextBeatIdxs = []int{4}
 	g.seqNextIdxs = []int{4}
@@ -42,9 +34,6 @@ func TestFreezeLoopCommitsAreReleasedNotPlayback(t *testing.T) {
 	// Refresh: the freeze loop runs and writes commits.
 	g.refreshDrumRow()
 
-	// All committed beats in the just-frozen range must be CommitKindReleased,
-	// not CommitKindPlayback. Beats committed by applySequencerHighlight (none
-	// here, since we never called it) remain absent.
 	foundCommit := false
 	for abs := 0; abs <= 3; abs++ {
 		_, _, kind, ok := g.timelineCommittedWithKind(0, abs)
@@ -61,10 +50,7 @@ func TestFreezeLoopCommitsAreReleasedNotPlayback(t *testing.T) {
 	}
 }
 
-// TestApplySequencerHighlightStillCommitsPlayback verifies the symmetric
-// invariant: applySequencerHighlight is the SOLE source of CommitKindPlayback.
-// After a highlight fires, the corresponding beat is committed as immutable
-// playback so future structural edits cannot rewrite the audible past.
+// Once committed as Playback, a later structural edit cannot rewrite the audible past.
 func TestApplySequencerHighlightStillCommitsPlayback(t *testing.T) {
 	assertDefaultParityState(t)
 	g := buildTestGame(t)

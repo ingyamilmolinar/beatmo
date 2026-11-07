@@ -7,8 +7,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Ensure a 1-subdivision bidirectional pair triggers both nodes at subdiv=8
-// and continues to do so after changing to subdiv=16.
 func TestBiDirImmediateStepsTriggersBothNodes_AcrossSubdiv(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

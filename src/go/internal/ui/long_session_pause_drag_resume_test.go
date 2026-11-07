@@ -10,53 +10,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
-// TestLongSessionPauseDragResumeKeepsCellsPopulated exercises the user-reported
-// bug captured in screenshot.png: after a long playback session the user
-// presses Pause, drags the global-timeline ribbon a little, then presses Play
-// again — at which point part of the DrumView cell grid goes blank (bars
-// missing on the left of every row while the predictor still has data for
-// the live playhead).
-//
-// The reproduction reuses the compressed-window technique from
-// TestLongSessionPauseResumeRetainsVisibleGrid (windowCap=256, synthetic abs
-// drive) but routes the pause/resume through the full Game.Update →
-// PlayPressed transport flow instead of toggling Playing() directly. The
-// pause → drag → resume cycle in the user's report sequences three observable
-// state changes that the existing scroll-back test doesn't exercise together:
-//
-//  1. Pause goes through handlePlaybackTransition (engine.Stop, state.Pause).
-//  2. While paused, drum.Offset is rewritten by a view-offset drag
-//     (see drumview_ctor.go's OnOffsetChange — grid drag / two-finger
-//     pan; the ribbon itself now seeks instead of scrubbing Offset,
-//     see OnSeekToStep). refreshDrumRow runs at the dragged offset.
-//  3. Resume goes through handlePlaybackTransition again (engine.Start,
-//     state.Resume). On the very next frame DrumView.TrackBeat may snap
-//     Offset back to follow the playhead, and refreshDrumRow must paint a
-//     complete row window covering [Offset, Offset+Length).
-//
-// Invariant: for every abs i in [drum.Offset, drum.Offset+Length), a played
-// cell (i behind the playhead, frozen in the played snapshot) must render
-// exactly its snapshot; any other Steps[i] must equal
-// predictor.VisibleAt(rowIdx, i) UNLESS the timeline holds an immutable
-// Playback/Import commit at i. Anything else is the screenshot symptom —
-// preview.BuildRowWindow silently dropping cells.
-//
-// Coverage matrix:
-//   - FollowPlayback=true with small backward / small forward / large
-//     backward (past windowStart) / large forward (past windowEnd) drag.
-//   - FollowPlayback=false with backward-past-windowStart / forward-far-ahead.
-//     This is the harder case because TrackBeat no longer snaps Offset back,
-//     so the dragged Offset persists across the resume frame and the
-//     predictor's slide-clamp / visibleMinAbs anchor logic carries the load.
-//
-// NOTE: As of the commit that introduced this test, all sub-cases PASS. The
-// invariant holds in the synthetic Go harness, which suggests the user's
-// screenshot symptom lives in code paths this harness does not reach:
-// WASM/browser timing, the row-sprite cache rendering layer, or the
-// real-sequencer commit path. This test is therefore primarily a regression
-// guard for the predictor / preview.BuildRowWindow contract; a future fix
-// for the user-reported bug should make at least one of these sub-cases
-// fail before it passes again.
+// Pause, a view-offset drag, then Play, through the real transport flow: every visible cell must render its
+// played snapshot if played, else the predictor unless an immutable Playback/Import commit exists. Without
+// follow the dragged Offset persists across the resume, so the predictor's anchors carry the load.
 func TestLongSessionPauseDragResumeKeepsCellsPopulated(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -68,9 +24,7 @@ func TestLongSessionPauseDragResumeKeepsCellsPopulated(t *testing.T) {
 		{name: "follow_forward_small", dragDelta: 32, follow: true},
 		{name: "follow_backward_large_past_window_start", dragDelta: -512, follow: true},
 		{name: "follow_forward_large_past_window_end", dragDelta: 512, follow: true},
-		// FollowPlayback=false: Offset stays at the dragged value during playback.
-		// This exercises the slide-clamp path more thoroughly because the
-		// predictor cannot rely on the snap-back to re-center visibleMinAbs.
+		// Without follow there is no snap-back to re-centre visibleMinAbs.
 		{name: "nofollow_backward_past_window_start", dragDelta: -512, follow: false},
 		{name: "nofollow_forward_far_ahead", dragDelta: 128, follow: false},
 	}
@@ -96,23 +50,16 @@ func runPauseDragResumeRepro(t *testing.T, dragDelta int, followPlayback bool) {
 	}
 	g.drum.SetBPM(120)
 	buildSoakScene(t, g, 6 /* rows */, 8 /* nodesPerRow */)
-	// FollowPlayback stays enabled during the long-playback prefix so the
-	// predictor's windowStart slides forward with the playhead — that's
-	// the actual repro precondition (windowCap plateau reached). It is
-	// flipped (if the case wants nofollow) at pause time, just before
-	// the drag, so the dragged Offset persists across the resume.
+	// Follow stays on during the long prefix so windowStart slides with the playhead; a nofollow case flips it at
+	// pause, before the drag.
 	g.drum.SetFollow(true)
 
-	// Compressed retained window — 256 subdivisions vs production 4096.
-	// At div=8 / N=1500 this still exercises ~5 full window slides so
-	// windowStart is well past 0 by the time we pause.
+	// A compressed window still slides several times, so windowStart is well past 0 at pause.
 	const windowCap = 256
 	g.engine.Predictor.SetWindowCap(windowCap)
 	g.StopBackgroundPredictorForTest()
 
-	// Drive synthetic long playback through the proper Game.Update flow so
-	// PlayPressed → handlePlaybackTransition → state.Resume reaches the
-	// production state machine when we later pause/resume.
+	// Through Game.Update, so the later pause/resume reaches the production state machine.
 	pressPlay(t, g.drum)
 	if err := g.Update(); err != nil {
 		t.Fatalf("update entering play: %v", err)
@@ -147,17 +94,11 @@ func runPauseDragResumeRepro(t *testing.T, dragDelta int, followPlayback bool) {
 	if !g.Paused() {
 		t.Fatalf("expected Paused after pressPlay during playback (Playing=%v Paused=%v)", g.Playing(), g.Paused())
 	}
-	// Optionally disable auto-scroll BEFORE the drag so the dragged
-	// drum.Offset persists across resume (without this TrackBeat snaps
-	// Offset back to follow the playhead on the first resume frame).
+	// Before the drag, or TrackBeat snaps Offset back on the first resume frame.
 	g.drum.SetFollow(followPlayback)
 	advanceFrames(g, 4)
 
-	// 2) Simulate a view-offset drag (grid drag / two-finger pan) — this is
-	//    exactly what the OnOffsetChange callback does in drumview_ctor.go
-	//    (dv.Offset = newOffset; dv.offsetChanged = true). Post-Task-10 the
-	//    ribbon itself no longer scrubs Offset this way — it seeks via
-	//    OnSeekToStep — so this repro now targets the grid-drag path.
+	// What OnOffsetChange does for a grid drag or two-finger pan.
 	dragged := naturalOffset + dragDelta
 	if dragged < 0 {
 		dragged = 0
@@ -167,12 +108,7 @@ func runPauseDragResumeRepro(t *testing.T, dragDelta int, followPlayback bool) {
 	advanceFrames(g, 4)
 	t.Logf("post-drag refresh: drum.Offset=%d (delta=%+d)", g.drum.Offset, dragDelta)
 
-	// 3) Resume via the proper transport flow. The resume frame runs:
-	//    PlayPressed → state.Resume → handlePlaybackTransition (engine.Start)
-	//    → updateDrumTracking (TrackBeat may snap Offset) → refreshDrumRow.
-	//    The bug — if present — surfaces on the row state PUBLISHED by this
-	//    very Update call, before any subsequent refresh can self-heal. So
-	//    we assert RIGHT after this Update returns.
+	// Asserted right after the resume Update, on the state it PUBLISHED, before a later refresh could self-heal.
 	pressPlay(t, g.drum)
 	if err := g.Update(); err != nil {
 		t.Fatalf("update on resume: %v", err)
@@ -183,9 +119,6 @@ func runPauseDragResumeRepro(t *testing.T, dragDelta int, followPlayback bool) {
 	dumpRowDiagnostics(t, g)
 	assertCellsMatchPredictor(t, g, 0)
 
-	// Continue synthetic playback for a few more frames; the bug should
-	// either still be present (predictor genuinely lost the visible
-	// region) or have self-healed (preview pipeline catching up).
 	for step := 1; step <= 8; step++ {
 		setPlayStartForAbs(g, pausedAbs+step)
 		_ = g.Update()
@@ -193,9 +126,6 @@ func runPauseDragResumeRepro(t *testing.T, dragDelta int, followPlayback bool) {
 	}
 }
 
-// dumpRowDiagnostics prints per-row Steps vs predictor vs timeline-commit
-// state for the current visible window. Used to debug why the bug doesn't
-// reproduce in the synthetic harness.
 func dumpRowDiagnostics(t *testing.T, g *Game) {
 	t.Helper()
 	winStart, winEnd, cap := g.engine.Predictor.WindowBoundsForTest()
@@ -227,16 +157,8 @@ func dumpRowDiagnostics(t *testing.T, g *Game) {
 	}
 }
 
-// assertCellsMatchPredictor is the core invariant: after refresh, every row's
-// Steps slice (what the user sees as bars) must reflect either an immutable
-// timeline commit (Playback/Import) or — if no such commit exists for that
-// abs — the predictor's VisibleAt for the same abs.
-//
-// The bug manifests when a drag changes drum.Offset without warming the
-// preview pipeline: past cells in the new window have no immutable commit
-// AND prev-steps preservation fails (canPreserveSteps requires
-// PrevStepsOffset==Offset), so finalStep collapses to false and the user
-// sees "blank cells" even though the predictor still has the right data.
+// A drag that changes Offset without warming the preview leaves past cells with no commit and no preserved
+// steps, which renders them blank although the predictor still has the data.
 func assertCellsMatchPredictor(t *testing.T, g *Game, frame int) {
 	t.Helper()
 	postStart, postEnd, _ := g.engine.Predictor.WindowBoundsForTest()
@@ -265,21 +187,15 @@ func assertCellsMatchPredictor(t *testing.T, g *Game, frame int) {
 			if r.CellTypes[i] != model.NodeTypeInvisible {
 				fail.typeNon++
 			}
-			// A played cell renders its played snapshot (what it showed as
-			// the playhead passed it) — exactly, and never the live
-			// predictor, which after a pause/rebase no longer holds the
-			// played past (it reported 5 of 16 played hits here).
+			// A played cell renders exactly its snapshot, never the live predictor, which no longer holds the played past
+			// after a pause.
 			if pv, pt, ok := g.timelineService().Played(rowIdx, abs); ok && abs < g.globalPastExclusive() {
 				if r.Steps[i] != pv || r.CellTypes[i] != pt {
 					fail.mismatch++
 				}
 				continue
 			}
-			// Otherwise only an immutable past commit is allowed to diverge
-			// from the predictor (Playback/Import). For every other abs in
-			// the visible window, Steps must equal predictor.VisibleAt
-			// — a divergence means the preview pipeline silently
-			// dropped the row.
+			// Any other divergence from the predictor means the preview dropped the row.
 			if r.Steps[i] != predVis {
 				_, _, kind, ok := g.timelineCommittedWithKind(rowIdx, abs)
 				immutable := ok && (kind == timeline.CommitKindPlayback || kind == timeline.CommitKindImport)

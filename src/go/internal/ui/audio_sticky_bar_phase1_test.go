@@ -6,12 +6,6 @@ import (
 	"testing"
 )
 
-// NOTE: the slope / Pre / Reset-Hold pills moved off the sticky bar into the
-// per-tab spectrumControls component (audio_tab_controls.go). The slim-bar
-// phase deleted the bar's copies; the moved-pill behavior (spectrum-only
-// gating, slope cycling, Pre toggle) is now covered by
-// TestSpectrumControls* in audio_tab_controls_test.go.
-
 // TestHzToNote covers well-known landmarks used by the cursor chip.
 func TestHzToNote(t *testing.T) {
 	cases := []struct {

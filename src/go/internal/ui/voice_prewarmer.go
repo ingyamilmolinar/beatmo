@@ -10,57 +10,29 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// voicePrewarmer renders upcoming melody voices into audio's globalVoiceCache
-// off the audioLoop dispatch goroutine, so dispatch never pays a cold synth
-// render (the ~64ms church-organ render that made a beat land overdue and
-// panicked the timing gate — see
-// docs/superpowers/specs/2026-07-13-voice-prewarm-off-thread-design.md).
-//
-// Producers of warm requests:
-//   - warmFromBeatInfos: graph-change enumeration of each row's node pitches.
-//   - the scheduleSound backstop: the exact post-effect pitch (group/logic).
-//   - reWarmInstrument: proactive re-warm when the cache is invalidated (a synth
-//     param edit clears an instrument), replaying its last-enumerated pitches so
-//     the pool starts rendering the new-params voice immediately instead of
-//     leaving the next beat to cold-render inline.
-//
-// Correctness gate: warmPitch submits a warm iff audio.VoiceCached reports the
-// voice is NOT already in the cache under the key dispatch will read. That key
-// is recomputed from the CURRENT params on every call, so a param edit / cache
-// invalidation that moves the key is re-warmed automatically. An earlier
-// version deduped on a static (id, pitch) "seen" set that omitted the
-// paramsHash: after a synth param edit cleared the cache, the pitch stayed
-// marked warmed and was never re-rendered, so dispatch cold-rendered it and
-// tripped the overdue gate. Never reintroduce a persistent seen-set as the
-// correctness gate.
+// Renders upcoming voices off the dispatch goroutine so dispatch never pays a cold render. The gate is
+// VoiceCached under the CURRENT key, recomputed every call: never reintroduce a persistent seen-set, which kept edited voices cold.
 type voicePrewarmer struct {
 	pool     *async.Pool
 	poolName string
 	private  bool // pool is a private fallback (not registry-owned)
 
-	// warmFn performs one warm. Production submits audio.PrewarmVoice to the
-	// pool; tests inject a recorder to observe decisions without rendering.
+	// Tests inject a recorder instead of rendering.
 	warmFn func(id instrument.ID, pitch float64)
 
-	// warmParamsFn warms an EXPLICIT document snapshot. Production submits
-	// audio.PrewarmVoiceDoc to the pool; tests inject a recorder.
+	// Tests inject a recorder.
 	warmParamsFn func(id instrument.ID, pitch float64, d instrument.Doc)
 
-	// isMelodic reports whether an instrument renders at-pitch (so pitch
-	// neighbors need separate renders). Injectable for tests. ticks is the ±N
-	// pitch-neighborhood radius (0 disables).
+	// Melodic voices render per pitch, so neighbours need their own renders. ticks 0 disables the neighbourhood.
 	isMelodic func(id instrument.ID) bool
 	ticks     int
 
 	mu sync.Mutex
-	// pitchesByInst records the distinct rounded pitches last enumerated per
-	// instrument, so reWarmInstrument can replay them on a cache invalidation
-	// without touching Game state from the invalidation goroutine.
+	// So reWarmInstrument can replay them without touching Game state from the invalidation goroutine.
 	pitchesByInst map[instrument.ID][]float64
 
-	// bindings is latest-wins per (instrument, pitch), guarded by mu: a dial
-	// turn publishes a document per detent, and one job per document would fill
-	// the bounded queue with unheard sounds and drop the final one.
+	// Latest-wins: a dial turn publishes a document per detent, and one job each would fill the queue with unheard
+	// sounds and drop the last.
 	bindings map[warmKey]*bindingWarm
 
 	renderDocFn func(id instrument.ID, pitch float64, d instrument.Doc)
@@ -68,22 +40,19 @@ type voicePrewarmer struct {
 	g *Game
 }
 
-// bindingWarm: a slot that is not queued had its submit refused and waits for
-// retryBindings.
+// An unqueued slot had its submit refused and waits for retryBindings.
 type bindingWarm struct {
 	doc    instrument.Doc
 	queued bool
 }
 
-// warmKey identifies a distinct (instrument, rounded-pitch) pair. Used for
-// within-pass dedup in warmFromBeatInfos — NOT as a persistent warmed-set.
+// Within-pass dedup only, NOT a persistent warmed set.
 type warmKey struct {
 	id    instrument.ID
 	pitch float64
 }
 
-// roundWarmPitch mirrors audio.roundPitchForCache (unexported there): round to
-// the nearest 0.5 semitone.
+// Must mirror audio.roundPitchForCache: the nearest 0.5 semitone.
 func roundWarmPitch(p float64) float64 { return math.Round(p*2) / 2 }
 
 const prewarmPoolName = "audio.prewarm"
@@ -102,9 +71,7 @@ func newVoicePrewarmer(g *Game) *voicePrewarmer {
 		ticks:         RuntimeProf().PredictiveWarmTicks,
 		g:             g,
 	}
-	// Workers come from the runtime profile: the gated import warm-up (see
-	// warmup_controller.go) feeds this pool with SubmitBlocking, so worker
-	// count is the readiness gate's wall-clock divisor.
+	// The gated warm-up feeds this pool blocking, so the worker count is the gate's wall-clock divisor.
 	workers := RuntimeProf().PrewarmWorkers
 	if workers < 1 {
 		workers = 1
@@ -117,19 +84,16 @@ func newVoicePrewarmer(g *Game) *voicePrewarmer {
 	}
 	p.pool = pool
 	p.warmFn = func(id instrument.ID, pitch float64) {
-		// Non-blocking: on backpressure the warm is dropped and dispatch
-		// degrades to today's inline render — never worse, never blocks.
+		// Non-blocking: a dropped warm just means an inline render later, never a block.
 		_ = p.pool.Submit(p.thenRetry(func() { audio.PrewarmVoice(id, pitch) }))
 	}
 	p.warmParamsFn = p.warmLatest
-	// Hand exact renders to the prewarm pool and arm invariant I3: from here
-	// on, the audioLoop dispatch goroutine must never call recipe.Render.
+	// Arms invariant I3: from here the dispatch goroutine never calls recipe.Render.
 	audio.SetAsyncRenderSubmit(func(id instrument.ID, pitch float64, d instrument.Doc) {
 		_ = p.pool.Submit(p.thenRetry(func() { audio.PrewarmVoiceDoc(id, pitch, d) }))
 	})
 	audio.SetDispatchMustNotRender(true)
-	// Proactively re-warm on cache invalidation (synth param edit / reset), so
-	// the new-params voice renders before the next beat instead of inline.
+	// So the edited voice renders before the next beat instead of inline.
 	audio.VoiceCacheInvalidateObserver = func(id instrument.ID) { p.reWarmInstrument(id) }
 	// Warm the new binding whenever a param edit rotates an instrument's key.
 	audio.InstrumentBindingChangedObserver = func(id instrument.ID, d instrument.Doc) {
@@ -138,10 +102,7 @@ func newVoicePrewarmer(g *Game) *voicePrewarmer {
 	return p
 }
 
-// warmPitch submits one warm for (id, pitch) iff it is not already cached under
-// the key dispatch will read. Safe to call every beat / every enumeration:
-// already-warm pitches are a cheap VoiceCached probe and no submit. Goroutine-
-// safe (VoiceCached is mutex-guarded in audio; warmFn submits to a safe pool).
+// Cheap every beat: a warm pitch costs a VoiceCached probe. Goroutine-safe.
 func (p *voicePrewarmer) warmPitch(id instrument.ID, pitch float64) {
 	if id == "" || p.warmFn == nil {
 		return
@@ -152,10 +113,7 @@ func (p *voicePrewarmer) warmPitch(id instrument.ID, pitch float64) {
 	p.warmFn(id, roundWarmPitch(pitch))
 }
 
-// pitchNeighborhood returns the pitch plus, for melodic instruments, ±ticks
-// steps of 0.5st (the cache's pitch resolution) around it. Non-melodic
-// instruments (pitch is post-render) get just the exact pitch. Values are
-// clamped to the legal [-24, 24] semitone range.
+// Melodic only (others pitch after render); 0.5 st steps, the cache's resolution, clamped to ±24.
 func (p *voicePrewarmer) pitchNeighborhood(pitch float64, melodic bool) []float64 {
 	if !melodic || p.ticks <= 0 {
 		return []float64{pitch}
@@ -171,14 +129,8 @@ func (p *voicePrewarmer) pitchNeighborhood(pitch float64, melodic bool) []float6
 	return out
 }
 
-// warmFromBeatInfos enumerates each row's firing pitches from the current
-// beatInfosByRow window and warms the distinct (rowInstrument, pitch) pairs.
-// evalNodeParamsOnly is pure param math (node pitch + windowed group transpose,
-// NO render), so this is cheap; the render is what warmPitch offloads. Runs on
-// the UI goroutine (updateBeatInfos caller). A local within-pass set collapses
-// the many repeated beats of a looping melody to one warmPitch per distinct
-// pair, so a graph edit can't burst-flood the pool. Records the enumerated
-// pitches per instrument for reWarmInstrument.
+// Pure param math, no render; a within-pass set collapses a looping melody's repeats so an edit cannot flood the
+// pool. UI goroutine.
 func (p *voicePrewarmer) warmFromBeatInfos() {
 	g := p.g
 	if g == nil || g.drum == nil {
@@ -201,10 +153,7 @@ func (p *voicePrewarmer) warmFromBeatInfos() {
 				continue // mute/other node types don't schedule a voice
 			}
 			_, pitch, _ := g.evalNodeParamsOnly(row, idx, info)
-			// The exact node pitch, plus (melodic instruments only) the
-			// ±ticks × 0.5st neighborhood so an immediate one-tick pitch nudge
-			// lands on a warm cache instead of a ~24ms cold render. Non-melodic
-			// pitch is a post-render resample (already a hit), so no neighbors.
+			// The neighbourhood lets a one-tick pitch nudge land warm.
 			for _, np := range p.pitchNeighborhood(pitch, melodic) {
 				rp := roundWarmPitch(np)
 				k := warmKey{id: inst, pitch: rp}
@@ -222,11 +171,7 @@ func (p *voicePrewarmer) warmFromBeatInfos() {
 	p.mu.Unlock()
 }
 
-// reWarmInstrument replays the last-enumerated pitches for id (all instruments
-// when id==""), re-warming any that the invalidation left cold. Reads only the
-// prewarmer's own recorded state, so it is safe to call from the audio cache-
-// invalidation goroutine. warmPitch's VoiceCached gate makes already-warm
-// pitches cheap no-ops.
+// Reads only the prewarmer's own state, so it is safe from the invalidation goroutine; id "" means all.
 func (p *voicePrewarmer) reWarmInstrument(id instrument.ID) {
 	p.mu.Lock()
 	var work map[instrument.ID][]float64
@@ -246,13 +191,7 @@ func (p *voicePrewarmer) reWarmInstrument(id instrument.ID) {
 	}
 }
 
-// warmBinding renders document d at every pitch id is
-// currently enumerated to play, off-thread, so the next trigger is a cache HIT
-// rather than a ~24ms cold render on the audio dispatch goroutine.
-//
-// Reads only the prewarmer's own recorded pitch enumeration, so it is safe to
-// call from the edit goroutine (which is the UI goroutine, possibly under
-// seqMu) without touching Game state.
+// Reads only the prewarmer's own enumeration, so it is safe from the edit goroutine (possibly under seqMu).
 func (p *voicePrewarmer) warmBinding(id instrument.ID, d instrument.Doc) {
 	if id == "" || p.warmParamsFn == nil {
 		return
@@ -300,8 +239,7 @@ func (p *voicePrewarmer) submitBinding(k warmKey) {
 	p.mu.Unlock()
 }
 
-// runBinding removes the slot before rendering so an edit landing mid-render
-// queues a fresh job instead of being lost.
+// The slot is removed before rendering so an edit landing mid-render queues a fresh job.
 func (p *voicePrewarmer) runBinding(k warmKey) {
 	p.mu.Lock()
 	b := p.bindings[k]
@@ -313,8 +251,7 @@ func (p *voicePrewarmer) runBinding(k warmKey) {
 	p.renderDocFn(k.id, k.pitch, b.doc)
 }
 
-// retryBindings runs at the end of each prewarm job, because a finished job is
-// exactly when a queue slot opened.
+// At the end of each job, exactly when a queue slot opened.
 func (p *voicePrewarmer) retryBindings() {
 	p.mu.Lock()
 	var retry []warmKey
@@ -337,9 +274,7 @@ func (p *voicePrewarmer) thenRetry(job func()) async.Job {
 	}
 }
 
-// release frees the registry budget for the prewarm pool (closes a private
-// fallback pool, which is not registry-owned) and unhooks the invalidation
-// observer.
+// A private fallback pool is closed, not released: the registry does not own it.
 func (p *voicePrewarmer) release() {
 	if p == nil || p.pool == nil {
 		return

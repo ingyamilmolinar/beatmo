@@ -7,10 +7,7 @@ import (
 	"testing"
 )
 
-// newDesktopGameForTransport builds a desktop-profile Game laid out at a
-// realistic 1280x720 viewport. The transport zone then occupies the narrow
-// left column (the timeline takes the right side), which is the layout that
-// triggered the bug.
+// At 1280x720 the transport occupies the narrow left column.
 func newDesktopGameForTransport(t *testing.T) *Game {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -23,9 +20,7 @@ func newDesktopGameForTransport(t *testing.T) *Game {
 	return g
 }
 
-// TestDesktopFileOpsBehindFolderButton verifies the inline Upload/Import/Export
-// buttons are hidden on desktop (they moved behind the grid folder button's
-// file menu) and that the folder button is present to reach them.
+// Hidden inline; the folder button reaches them.
 func TestDesktopFileOpsBehindFolderButton(t *testing.T) {
 	g := newDesktopGameForTransport(t)
 	dv := g.drum
@@ -35,8 +30,6 @@ func TestDesktopFileOpsBehindFolderButton(t *testing.T) {
 		t.Errorf("desktop folder button rect is empty — the file menu trigger is hidden")
 	}
 
-	// File-ops move behind the file menu, so the cramped inline
-	// Upload/Import/Export buttons are hidden.
 	if got := dv.uploadBtn().Rect(); !got.Empty() {
 		t.Errorf("upload button rect = %v, want empty (moved behind file menu)", got)
 	}
@@ -48,9 +41,7 @@ func TestDesktopFileOpsBehindFolderButton(t *testing.T) {
 	}
 }
 
-// TestDesktopUndoRedoUseIconsNotEllipsisText verifies Undo/Redo stay inline on
-// desktop but render as ICONS, so the narrow cells no longer collapse their
-// "Undo"/"Redo" text to "..." (the source of the phantom second/third ellipsis).
+// Icons, so a narrow cell never clips "Undo"/"Redo" to "...", which read as an overflow button.
 func TestDesktopUndoRedoUseIconsNotEllipsisText(t *testing.T) {
 	g := newDesktopGameForTransport(t)
 	tz := g.drum.transportZone
@@ -68,8 +59,7 @@ func TestDesktopUndoRedoUseIconsNotEllipsisText(t *testing.T) {
 		if b.Text != "" {
 			t.Errorf("%s button still has Text=%q — icon buttons must not carry clippable text", name, b.Text)
 		}
-		// Whatever width the cell ends up, the rendered label must never be the
-		// bare "..." ellipsis that the user mistook for an overflow button.
+		// Never the bare "...".
 		clipped := clipTextToWidth(b.Text, b.Rect().Dx())
 		if clipped == "..." {
 			t.Errorf("%s button still renders as \"...\" (rect width=%d)", name, b.Rect().Dx())
@@ -77,10 +67,7 @@ func TestDesktopUndoRedoUseIconsNotEllipsisText(t *testing.T) {
 	}
 }
 
-// TestDesktopFileMenuOpensVisible verifies opening the file menu from the grid
-// folder button lands a non-empty popup within the screen (it is pixel-anchored
-// under the folder button in the grid pane, so it is NOT confined to the drum
-// pane — see the menu-adjacency rule).
+// Anchored under the folder button in the grid pane, so not confined to the drum pane.
 func TestDesktopFileMenuOpensVisible(t *testing.T) {
 	g := newDesktopGameForTransport(t)
 	dv := g.drum

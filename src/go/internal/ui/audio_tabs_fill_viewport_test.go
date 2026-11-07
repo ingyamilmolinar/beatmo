@@ -13,16 +13,9 @@ import (
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
-// Every data tab in the audio panel must use the height it was given. Wave
-// already did (adaptive gain); Chain owned the same machinery but defaulted
-// it OFF, and the two dB tabs had no adaptive scaling at all. These tests pin
-// "the signal fills the plot" as a property of each tab, measured off real
-// draw calls rather than off the control that used to enable it.
+// Every data tab uses the height it was given, measured off real draw calls.
 
-// TestChainAutoGainIsOnByDefault — Chain's auto-gain existed but its zero
-// value left it off, so a quiet tap rendered as a thin line across the middle
-// of the panel until the user found a pill labelled "AG". Framing the signal
-// is not an opt-in.
+// Framing the signal is not opt-in: off, a quiet tap was a thin line across the middle.
 func TestChainAutoGainIsOnByDefault(t *testing.T) {
 	z := NewChainPanelZone(ChainCallbacks{})
 	if !z.AutoGain() {
@@ -33,8 +26,6 @@ func TestChainAutoGainIsOnByDefault(t *testing.T) {
 	}
 }
 
-// chainStateAtPeak builds a one-tap scope.State carrying a decaying sine
-// whose loudest sample is exactly `peak`.
 func chainStateAtPeak(peak float64) *scope.State {
 	samples := make([]float64, 512)
 	for i := range samples {
@@ -48,11 +39,7 @@ func chainStateAtPeak(peak float64) *scope.State {
 	return st
 }
 
-// chainRenderedFill renders the zone's traces and returns the VERTICAL EXTENT
-// the trace covers as a fraction of the plot height. A line trace paints one
-// 1-px rect per column, so the tallest single rect says nothing; the union of
-// the columns is what the eye reads as "how much of the viewport the signal
-// occupies".
+// The union of the 1 px column rects is what the eye reads as the signal's extent.
 func chainRenderedFill(t *testing.T, z *ChainPanelZone, state *scope.State) float64 {
 	t.Helper()
 	rect := image.Rect(0, 0, 600, 200)
@@ -67,8 +54,7 @@ func chainRenderedFill(t *testing.T, z *ChainPanelZone, state *scope.State) floa
 	for _, r := range collectFilledRects(t, func() {
 		z.renderTracesDirect(dst, rect, state)
 	}) {
-		// The legend swatches below the plot carry the SAME colour; counting
-		// them would inflate the extent to ~60% no matter what the trace does.
+		// The legend swatches share the colour and would inflate the extent to ~60%.
 		if r.Color != want || !r.Rect.In(waveRect) {
 			continue
 		}
@@ -85,11 +71,8 @@ func chainRenderedFill(t *testing.T, z *ChainPanelZone, state *scope.State) floa
 	return float64(bot-top) / float64(waveRect.Dy())
 }
 
-// TestChainQuietTraceFillsThePlot — a -20 dBFS transient (a perfectly normal
-// level for one drum voice) must render at a readable height instead of at a
-// tenth of the plot because 1.0 is hardcoded as the full-scale reference.
-// The auto-off leg is what proves the measurement discriminates: it is the
-// behaviour that shipped, and it must score badly.
+// A -20 dBFS transient, normal for one drum, renders at a readable height; the auto-off leg must score badly,
+// proving the measurement discriminates.
 func TestChainQuietTraceFillsThePlot(t *testing.T) {
 	const quiet = 0.1 // -20 dBFS
 	z := NewChainPanelZone(ChainCallbacks{})
@@ -119,10 +102,7 @@ func spectrumChannelAtDB(db float64) *analyzer.ChannelMetrics {
 	return &analyzer.ChannelMetrics{Active: true, FFTBins: fft, FreqBins: freq}
 }
 
-// spectrumRenderedFill renders the bars under the given dB window and returns
-// the tallest bar as a fraction of the plot height. Measured off the real bar
-// rects via the drawSpectrumBarGradient seam, so it cannot drift from what
-// the renderer actually paints.
+// Through the drawSpectrumBarGradient seam, so it cannot drift from what is painted.
 func spectrumRenderedFill(t *testing.T, ch *analyzer.ChannelMetrics, win spectrumDBWindow) float64 {
 	t.Helper()
 	rect := image.Rect(0, 0, 600, 200)
@@ -146,10 +126,7 @@ func spectrumRenderedFill(t *testing.T, ch *analyzer.ChannelMetrics, win spectru
 	return float64(tallest) / float64(barRect.Dy())
 }
 
-// TestSpectrumBarsFillThePlot — the fixed -80..0 dB window left the top third
-// of the plot permanently empty for normal material. The adaptive window must
-// bring the loudest band up near the ceiling. The fixed leg is the shipped
-// behaviour and proves the measurement discriminates.
+// The loudest band reaches near the ceiling; the fixed leg proves the measurement discriminates.
 func TestSpectrumBarsFillThePlot(t *testing.T) {
 	ch := spectrumChannelAtDB(-28)
 
@@ -165,10 +142,7 @@ func TestSpectrumBarsFillThePlot(t *testing.T) {
 	}
 }
 
-// TestSpectrumCurveSharesTheBarWindow — the hi-res FFT curve is drawn UNDER
-// the bars as the same measurement at finer resolution. If it keeps the fixed
-// window while the bars adapt, the underlay detaches from the bars it is
-// supposed to explain.
+// The curve is the same measurement at finer resolution, so it must share the bars' window.
 func TestSpectrumCurveSharesTheBarWindow(t *testing.T) {
 	ch := spectrumChannelAtDB(-28)
 	rect := image.Rect(0, 0, 600, 200)
@@ -200,18 +174,8 @@ func TestSpectrumCurveSharesTheBarWindow(t *testing.T) {
 	}
 }
 
-// The window's per-refresh behaviour (rises for a louder peak, holds
-// otherwise, never advances twice on the same analyzer state) is pinned in
-// audio_tab_y_axis_contract_test.go, which owns the whole Y-axis contract
-// across all four tabs. It used to live here under a name that claimed
-// smoothing the dB axis no longer does.
-
-// TestEQBandLevelsUseTheSharedDBWindow — the EQ backdrop bars were the worst
-// of the three: not a dB mapping at all, but sqrt() of the raw linear FFT
-// magnitude. A -28 dBFS band (linear 0.04) therefore drew at sqrt(0.04) = 20%
-// of the plot no matter how the tab was sized. They must now read off the
-// same dB window Spectrum uses, so a band of a given loudness is the same
-// height on both tabs.
+// The same dB window as Spectrum, so a band of a given loudness is the same height on both tabs; a sqrt of the
+// linear magnitude drew -28 dBFS at 20% whatever the size.
 func TestEQBandLevelsUseTheSharedDBWindow(t *testing.T) {
 	const linear = 0.04 // -28 dBFS
 	spec := make([]float64, 256)
@@ -238,8 +202,7 @@ func TestEQBandLevelsUseTheSharedDBWindow(t *testing.T) {
 	}
 }
 
-// TestEQBandLevelsDecayToSilence — with no spectrum at all the bars must fall
-// away rather than freeze at their last height.
+// With no spectrum they fall away rather than freeze.
 func TestEQBandLevelsDecayToSilence(t *testing.T) {
 	levels := make([]float64, len(eqBandDefs))
 	for i := range levels {
@@ -255,12 +218,8 @@ func TestEQBandLevelsDecayToSilence(t *testing.T) {
 	}
 }
 
-// TestChainPaintsNoTriggerIndicator — the Chain tab used to paint a
-// full-height vertical bar with a head tick at 10% of the trace width. It was
-// mistaken for stray grid content invading the panel, and it told the user
-// nothing they could act on, so it is gone for good. Guarded by SHAPE rather
-// than by colour: the token it used is deleted too, and a reinstated marker
-// in any colour would still be a narrow full-height mark at that position.
+// The full-height marker read as stray grid and told the user nothing; guarded by shape, so a reinstated one in
+// any colour fails.
 func TestChainPaintsNoTriggerIndicator(t *testing.T) {
 	rect := image.Rect(0, 0, 600, 200)
 	waveRect, _ := chainTraceRects(rect)

@@ -1,24 +1,8 @@
 package deploy
 
-// `make serve` (scripts/serve_nocache.py) must answer a request while another
-// response is still in flight.
-//
-// index.html's FIRST <head> script starts fetch("main.wasm") so the download
-// overlaps the rest of the boot (landing page spec, "boot order is
-// game-first"). Nothing reads that response until audio.js and its static
-// imports have loaded, and Chromium applies backpressure to an unread body:
-// it stops reading the socket after a few MB. A server that handles ONE
-// connection at a time is then stuck writing the wasm, never serves audio.js's
-// imports (synth_param_abi.gen.js, chain_spec.gen.js, dsp_host.js),
-// and the module that would consume the wasm never runs. The page sits on
-// "Loading..." forever with no console error. Firefox and WebKit buffer the
-// whole body, so they boot; production (HTTP/2) and every browser-test server
-// (Node) serve concurrently, so nothing else saw it.
-//
-// This test reproduces Chromium's behaviour without a browser: one client
-// requests a large file and never reads it, a second client asks for a small
-// file and must get it promptly. Browser end-to-end:
-// src/js/dev_server_boot.browser.test.js.
+// index.html starts fetch("main.wasm") first, and Chromium stops reading an unread body after a few MB: a one-connection
+// server is then stuck on the wasm and never serves audio.js's imports, hanging on "Loading..." with no error. Reproduced
+// without a browser: one client stalls on a large file, a second must still get a small one.
 
 import (
 	"bufio"
@@ -42,8 +26,7 @@ func TestDevServerServesWhileAnotherResponseIsUnread(t *testing.T) {
 	script := filepath.Join(root, "scripts", "serve_nocache.py")
 
 	dir := t.TempDir()
-	// Far larger than the kernel's loopback socket buffers, like main.wasm
-	// (~30 MB): a writer that is not read from blocks well before the end.
+	// Far larger than the loopback socket buffers, so an unread writer blocks well before the end.
 	if err := os.WriteFile(filepath.Join(dir, "main.wasm"), make([]byte, 64<<20), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -61,8 +44,7 @@ func TestDevServerServesWhileAnotherResponseIsUnread(t *testing.T) {
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	waitListening(t, addr)
 
-	// Client 1: the early wasm fetch. Request it, read the status line, then
-	// stop reading -- what Chromium does until instantiateStreaming starts.
+	// Status line read, then no more: what Chromium does until instantiateStreaming starts.
 	stalled, err := net.Dial("tcp", addr)
 	if err != nil {
 		t.Fatal(err)

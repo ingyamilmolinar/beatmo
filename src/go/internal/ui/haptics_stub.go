@@ -2,11 +2,7 @@
 
 package ui
 
-// platformVibrate is the build-tagged platform implementation of haptic
-// feedback. The non-WASM (and WASM-test) implementation is a no-op so
-// desktop builds don't pull in browser APIs and unit tests stay
-// deterministic. Tests assert haptics by replacing `hapticEmit` (the
-// upstream test seam) instead.
+// A no-op off WASM so desktop pulls in no browser API and tests stay deterministic.
 func platformVibrate(ms int) {
 	_ = ms
 }

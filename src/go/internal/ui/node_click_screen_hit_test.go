@@ -6,8 +6,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// Clicking within the on-screen rect of a node should select it and open the popup,
-// even when the grid snap would map to an adjacent subdivision.
+// Even when the grid snap maps to the adjacent subdivision.
 func TestClickNodeByScreenRectOpensPopup(t *testing.T) {
 	withDefaultStart(t, true)
 	g := New(testLogger)

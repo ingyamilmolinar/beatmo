@@ -38,8 +38,7 @@ func TestAutoWahNoNaN(t *testing.T) {
 }
 
 func TestAutoWahEnvelopeResponse(t *testing.T) {
-	// Loud input should produce different frequency emphasis than quiet input,
-	// because the envelope follower drives the filter cutoff higher for loud signals.
+	// The envelope follower drives the cutoff higher for loud signals.
 	const sr = 44100
 	const n = 44100
 
@@ -69,14 +68,11 @@ func TestAutoWahEnvelopeResponse(t *testing.T) {
 		quietOut[i] = awQuiet.ProcessSample(x)
 	}
 
-	// The spectral shape should differ. Measure energy at a higher frequency
-	// relative to the fundamental. Loud signal should open the filter more,
-	// letting more high frequency through relative to the fundamental level.
+	// A loud signal opens the filter more, letting more highs through relative to the fundamental.
 	loudRMS := rmsEnergy(loudOut)
 	quietRMS := rmsEnergy(quietOut)
 
-	// At minimum, the RMS ratio should not be the same as the input ratio (80:1).
-	// The filter's envelope response should compress or expand the ratio.
+	// The envelope response must move the ratio away from the input's 80:1.
 	inputRatio := 0.8 / 0.01
 	outputRatio := loudRMS / (quietRMS + 1e-20)
 

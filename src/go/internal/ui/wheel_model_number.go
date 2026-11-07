@@ -2,29 +2,19 @@ package ui
 
 import "math"
 
-// NumberModel is the WheelModel for a plain number in [Min, Max]: BPM, node
-// volume / duration / logic values, the go-to position and time, clock
-// fields. Value is stored in real units; Ladder lists the step sizes
-// fine→coarse (rung 0 = finest) and Rung selects the active one.
-//
-// A detent moves to the NEXT line of the active step's grid — the multiples
-// of the step (round numbers: BPM 120 → 125 → 130 at step 5, whatever Min
-// is) — so a coarse step from an off-grid value first snaps onto the grid:
-// stepping by 4 beats from beat 13 lands on 16, not 17. Results clamp to
-// [Min, Max].
+// A detent moves to the NEXT line of the step's grid (multiples of the step: 120 → 125 → 130 at 5), so a coarse
+// step from off-grid snaps first: 4 beats from 13 lands on 16. Ladder runs fine→coarse.
 type NumberModel struct {
 	Min, Max, Value float64
 	Ladder          []float64
 	Rung            int
-	// Format renders a value at the active step (the step lets a label show
-	// only as much precision as the resolution has).
+	// The step lets a label show only the precision the resolution has.
 	Format func(v, step float64) string
 	// LadderFormat renders a rung's step for the ladder strip; nil = Format.
 	LadderFormat func(step float64) string
 	// OnRung, when set, is told about every rung change (persistence).
 	OnRung func(i int)
-	// Wrap rolls the value over at the ends (a clock field: 23 → 0) instead of
-	// clamping; the period is Max - Min + one finest step.
+	// Clock fields roll over (23 → 0); the period is Max - Min + one finest step.
 	Wrap bool
 }
 
@@ -77,10 +67,7 @@ func (m *NumberModel) clamp(v float64) float64 {
 	return v
 }
 
-// gridLine returns the value n grid lines away from v at step s, where the
-// first line in each direction is the nearest grid line strictly beyond v
-// (an on-grid v moves a full step). Lines are computed as k·s from an integer
-// k, so repeated steps never accumulate floating-point drift.
+// The first line each way is strictly beyond v; k·s from an integer k, so repeated steps never drift.
 func (m *NumberModel) gridLine(v, s float64, n int) float64 {
 	k := v / s
 	const eps = 1e-9

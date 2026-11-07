@@ -87,9 +87,7 @@ func TestParseHooksConfigBadJSON(t *testing.T) {
 		[]byte("[1, 2, 3]"), // wrong shape
 		[]byte("null"),      // null isn't a struct
 	} {
-		// Note: "null" actually decodes successfully (Go json sees it as
-		// a zero-valued struct) — accept either nil-error or error here,
-		// but rules must be empty.
+		// "null" decodes to a zero struct, so either outcome is fine as long as the rules are empty.
 		cfg, err := ParseHooksConfig(body)
 		if err == nil && len(cfg.Rules) != 0 {
 			t.Errorf("body=%q: silently accepted with %d rules", body, len(cfg.Rules))

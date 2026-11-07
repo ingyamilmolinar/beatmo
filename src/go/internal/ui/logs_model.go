@@ -16,8 +16,7 @@ const (
 	tsModeRange
 )
 
-// logsTimeSel is one selected timestamp-filter moment (minute precision). An
-// unset selection means "no filter / open-ended".
+// Minute precision; unset means no filter.
 type logsTimeSel struct {
 	set bool
 	t   time.Time
@@ -29,8 +28,7 @@ func endOfMinute(t time.Time) time.Time {
 	return truncateToMinute(t).Add(time.Minute - time.Nanosecond)
 }
 
-// matchAtAbs reports whether at falls within sel's minute (absolute, date-aware).
-// An unset sel is no filter (true).
+// Date-aware; an unset sel matches everything.
 func matchAtAbs(at time.Time, sel logsTimeSel) bool {
 	if !sel.set {
 		return true
@@ -38,8 +36,7 @@ func matchAtAbs(at time.Time, sel logsTimeSel) bool {
 	return !at.Before(truncateToMinute(sel.t)) && !at.After(endOfMinute(sel.t))
 }
 
-// matchRangeAbs reports whether at ∈ [from-minute-start, to-minute-end]. Either
-// bound may be unset (open-ended); both unset = no filter.
+// Either bound may be unset (open-ended).
 func matchRangeAbs(at time.Time, from, to logsTimeSel) bool {
 	if from.set && at.Before(truncateToMinute(from.t)) {
 		return false
@@ -50,8 +47,7 @@ func matchRangeAbs(at time.Time, from, to logsTimeSel) bool {
 	return true
 }
 
-// logLevel is the severity kind shown/filtered in the logs panel. The filter is
-// single-select (mutually exclusive), defaulting to levelError.
+// Single-select, defaulting to levelError.
 type logLevel int
 
 const (
@@ -88,18 +84,14 @@ type logRow struct {
 	highlights []int // fuzzy match positions in msg (set by name filter)
 }
 
-// notifRowInput is the read-time projection of a UI notification into the
-// logs-panel merge (kept separate so the model has no UI dependency).
+// Separate, so the model has no UI dependency.
 type notifRowInput struct {
 	at    time.Time
 	text  string
 	isErr bool
 }
 
-// mergeLogRows combines event records and notifications into one newest-first
-// list, tagging each with a severity level. Event narrative is INFO; a
-// notification is ERROR when it is an error, else INFO. (WARN/DEBUG have no
-// current source but are selectable.)
+// Newest first. Events are INFO; a notification is ERROR when it is one.
 func mergeLogRows(events []eventlogger.LogRecord, notifs []notifRowInput) []logRow {
 	out := make([]logRow, 0, len(events)+len(notifs))
 	for _, e := range events {
@@ -150,8 +142,7 @@ func pageSlice[T any](items []T, pageSize, page int) []T {
 	return items[start:end]
 }
 
-// filterRows applies level (single-select), name (fuzzy over tag+msg), and
-// timestamp filters. Name matches set logRow.highlights (positions in msg).
+// Name matches set highlights (positions in msg).
 func filterRows(rows []logRow, name string, level logLevel, tsMode timestampMode, at, from, to logsTimeSel) []logRow {
 	name = strings.TrimSpace(name)
 	out := make([]logRow, 0, len(rows))

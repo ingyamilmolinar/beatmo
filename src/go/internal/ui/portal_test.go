@@ -223,12 +223,6 @@ func (o *testPortalOverlay) ShouldClose() bool {
 	return o.shouldClose
 }
 
-// ---------------------------------------------------------------------------
-// Portal system gap tests
-// ---------------------------------------------------------------------------
-
-// TestPortalLayoutRelayoutsAll verifies that Layout() calls Layout on all
-// overlays in the stack.
 func TestPortalLayoutRelayoutsAll(t *testing.T) {
 	idx := &HitIndex{}
 	portal := NewOverlayPortal(idx)
@@ -270,8 +264,6 @@ func TestPortalLayoutRelayoutsAll(t *testing.T) {
 	}
 }
 
-// TestPortalOnCloseCallback verifies OnClose is called when an overlay is
-// closed by ID.
 func TestPortalOnCloseCallback(t *testing.T) {
 	idx := &HitIndex{}
 	portal := NewOverlayPortal(idx)
@@ -291,8 +283,6 @@ func TestPortalOnCloseCallback(t *testing.T) {
 	}
 }
 
-// TestPortalOnCloseCallbackOnCloseTop verifies OnClose is called when the
-// topmost overlay is closed via CloseTop().
 func TestPortalOnCloseCallbackOnCloseTop(t *testing.T) {
 	idx := &HitIndex{}
 	portal := NewOverlayPortal(idx)
@@ -312,8 +302,6 @@ func TestPortalOnCloseCallbackOnCloseTop(t *testing.T) {
 	}
 }
 
-// TestPortalCleanupClosedAutoRemoves verifies that CleanupClosed removes
-// overlays whose ShouldClose() returns true and fires OnClose.
 func TestPortalCleanupClosedAutoRemoves(t *testing.T) {
 	idx := &HitIndex{}
 	portal := NewOverlayPortal(idx)
@@ -341,8 +329,6 @@ func TestPortalCleanupClosedAutoRemoves(t *testing.T) {
 	}
 }
 
-// TestPortalCleanupClosedPartial verifies that CleanupClosed only removes
-// overlays that request closing, leaving others intact.
 func TestPortalCleanupClosedPartial(t *testing.T) {
 	idx := &HitIndex{}
 	portal := NewOverlayPortal(idx)
@@ -380,8 +366,6 @@ func TestPortalCleanupClosedPartial(t *testing.T) {
 	}
 }
 
-// TestPortalModalSwitching verifies that closing the top modal still leaves
-// a lower modal active.
 func TestPortalModalSwitching(t *testing.T) {
 	idx := &HitIndex{}
 	portal := NewOverlayPortal(idx)
@@ -430,8 +414,7 @@ func TestPortalModalSwitching(t *testing.T) {
 	}
 }
 
-// TestPortalDuplicateIdReplaces verifies that opening an overlay with a
-// duplicate ID replaces the existing one rather than stacking duplicates.
+// Replaced rather than stacked.
 func TestPortalDuplicateIdReplaces(t *testing.T) {
 	idx := &HitIndex{}
 	portal := NewOverlayPortal(idx)
@@ -454,8 +437,7 @@ func TestPortalDuplicateIdReplaces(t *testing.T) {
 	}
 }
 
-// TestPortalOnCloseCallbackDuringCleanup verifies OnClose fires exactly once
-// when an overlay self-closes via ShouldClose and CleanupClosed runs.
+// Exactly once.
 func TestPortalOnCloseCallbackDuringCleanup(t *testing.T) {
 	idx := &HitIndex{}
 	portal := NewOverlayPortal(idx)
@@ -482,10 +464,7 @@ func TestPortalOnCloseCallbackDuringCleanup(t *testing.T) {
 	}
 }
 
-// TestPortalScrimDimsBackdrop pins the backdrop scrim fix (B4-6/E4): a
-// Scrim-bearing overlay paints colScrim across the screen beneath it, and an
-// overlay without Scrim paints nothing. Previously NO overlay had a scrim and
-// the full-contrast background bled through every popup.
+// A Scrim overlay dims everything beneath it; one without Scrim paints nothing.
 func TestPortalScrimDimsBackdrop(t *testing.T) {
 	wantR, wantG, wantB, wantA := colScrim.RGBA()
 

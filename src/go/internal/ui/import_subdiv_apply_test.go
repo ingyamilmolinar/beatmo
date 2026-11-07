@@ -5,9 +5,6 @@ import (
 	"testing"
 )
 
-// Ensure that importing a JSON with a smaller subdivision applies that
-// subdivision to the game's grid and drum timeline without requiring a manual
-// SetSubdivisions call.
 func TestImportAppliesSubdivToGrid(t *testing.T) {
 	assertDefaultParityState(t)
 	// Build and export a simple project at 8 subdivisions per beat.
@@ -31,8 +28,6 @@ func TestImportAppliesSubdivToGrid(t *testing.T) {
 		t.Fatalf("exported subdiv=%d want 8", f.Subdiv)
 	}
 
-	// Import into a fresh game with default grid (32). Import should update
-	// the game's subdivision to 8 automatically.
 	g2 := New(testLogger)
 	t.Cleanup(g2.CloseForTest)
 	g2.Layout(800, 600)

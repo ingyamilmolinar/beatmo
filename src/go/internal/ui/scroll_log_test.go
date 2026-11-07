@@ -28,9 +28,7 @@ func TestScrollGestureEndEmits(t *testing.T) {
 	}
 }
 
-// TestScrollHandleTouchEndEmitsOnCommittedScroll verifies the real HandleTouchEnd
-// path: after a committed vertical touch-scroll, exactly one EventScroll is
-// published; a tap (begin+end with no dead-zone crossing) publishes none.
+// A committed scroll publishes exactly one EventScroll; a tap publishes none.
 func TestScrollHandleTouchEndEmitsOnCommittedScroll(t *testing.T) {
 	ch := make(chan string, 8)
 	u := hooks.GlobalBus().Subscribe(hooks.EventScroll, func(e hooks.Event) {
@@ -46,8 +44,7 @@ func TestScrollHandleTouchEndEmitsOnCommittedScroll(t *testing.T) {
 	sb.VS.Total = 50
 	sb.VS.Visible = 10
 
-	// --- Case 1: committed vertical scroll must emit ---
-	// Move vertically past the dead zone (tapMaxMovePx = 10px; use 30px to be safe).
+	// Well past the 10 px dead zone.
 	sb.HandleTouchBegin(100, 100)
 	sb.HandleTouchMove(100, 130) // +30 px vertical — commits direction
 	sb.HandleTouchEnd()
@@ -85,9 +82,7 @@ func TestScrollHandleTouchEndEmitsOnCommittedScroll(t *testing.T) {
 	}
 }
 
-// TestScrollHandleWheelEmitsOnMove verifies that HandleWheel emits exactly one
-// EventScroll when the scroll position moves, and emits nothing when the
-// position is already at the boundary (ScrollBy is a no-op).
+// Nothing is emitted at a boundary, where ScrollBy is a no-op.
 func TestScrollHandleWheelEmitsOnMove(t *testing.T) {
 	ch := make(chan string, 8)
 	u := hooks.GlobalBus().Subscribe(hooks.EventScroll, func(e hooks.Event) {

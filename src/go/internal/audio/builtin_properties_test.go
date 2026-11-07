@@ -7,9 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestBuiltinPropertiesCoverTheRoster: every shipped instrument has its
-// category and kit role written down, so none of them is classified by the
-// spelling of its id.
+// So no shipped instrument is classified by the spelling of its id.
 func TestBuiltinPropertiesCoverTheRoster(t *testing.T) {
 	for _, id := range roster.All {
 		if _, ok := builtinProperties[id]; !ok {
@@ -21,9 +19,6 @@ func TestBuiltinPropertiesCoverTheRoster(t *testing.T) {
 	}
 }
 
-// TestBuiltinPropertiesAreWhatCategoryOfAndRoleReport: CategoryOf and
-// RoleForInstrument answer a built-in (and an instance of one) from the
-// table, not from its name.
 func TestBuiltinPropertiesAreWhatCategoryOfAndRoleReport(t *testing.T) {
 	for id, p := range builtinProperties {
 		if got := CategoryOf(id); got != p.Category {
@@ -42,8 +37,6 @@ func TestBuiltinPropertiesAreWhatCategoryOfAndRoleReport(t *testing.T) {
 	}
 }
 
-// TestNamedInstrumentsAreClassifiedByName: an instrument the user named has
-// no row, so its name is what classifies it.
 func TestNamedInstrumentsAreClassifiedByName(t *testing.T) {
 	cases := []struct {
 		id   instrument.ID

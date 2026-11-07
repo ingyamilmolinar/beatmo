@@ -13,23 +13,11 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// These tests pin the contract that the input HitIndex can NEVER drift from
-// what a zone renders.
-//
-// Root cause of the original bug ("mute/solo toggles a different row than
-// the one rendered under the mouse after scrolling"): the tree republishes
-// a zone's hit areas on an edge-trigger — zone.NeedsLayout() || rect change
-// (drumview_tree.go Phase 1) — but needLayout is a CONSUMABLE flag cleared
-// by zone.Layout(). DrumView.Draw calls zone.Layout out-of-band every frame
-// (the lazy-layout pass and updateRowRects → rowRackZone.Layout), so any
-// scroll that lands after Phase 1 (zone wheel adapter fires in Phase 3,
-// momentum in Phase 2, legacy touch/step-drag after tree.Update) gets its
-// republish signal eaten by Draw: the rendered buttons move, the HitIndex
-// keeps the pre-scroll rect snapshots, and the next click dispatches to the
-// row that USED to be at that position.
+// The HitIndex must never drift from what a zone renders. needLayout is the tree's only republish signal and a
+// consumable flag: a Layout outside the tree eats it, the buttons move and the index keeps the old rects, so a
+// click hits the row that was there before the scroll.
 
-// scrollableTestGame builds a game with enough drum rows that the row rack
-// can scroll by at least 2 rows, and settles layout.
+// Enough rows to scroll by at least 2.
 func scrollableTestGame(t *testing.T) (*Game, *ebiten.Image) {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -58,8 +46,7 @@ func scrollableTestGame(t *testing.T) (*Game, *ebiten.Image) {
 	return g, screen
 }
 
-// dispatchPress mimics the tree dispatcher: query the HitIndex at (x, y)
-// and press the first handler that does not ignore the event.
+// The tree dispatcher's rule: the first handler that does not ignore the press.
 func dispatchPress(t *testing.T, g *Game, x, y int) string {
 	t.Helper()
 	hits := g.drum.tree.HitIndexRef().At(x, y)
@@ -76,22 +63,16 @@ func dispatchPress(t *testing.T, g *Game, x, y int) string {
 	return ""
 }
 
-// TestRowRackMuteTargetsRenderedRowAfterScroll reproduces the user-visible
-// bug: scroll the rack by one row AFTER the tree's publish gate ran (as the
-// wheel adapter, momentum, and the legacy touch/step-drag paths all do),
-// let Draw consume the needLayout flag, then click the mute button of a row
-// at its RENDERED position. The model row that toggles must be the rendered
-// row — not the row that occupied that position before the scroll.
+// Scrolled after the tree's publish ran, as the wheel, momentum and touch paths do, with Draw then eating
+// needLayout: the mute click must still toggle the row rendered under it.
 func TestRowRackMuteTargetsRenderedRowAfterScroll(t *testing.T) {
 	g, screen := scrollableTestGame(t)
 	rack := g.drum.rowRackZone
 
-	// Emulate any post-Phase-1 scroll: offset changes and needLayout is set
-	// after the tree already ran its Layout/publish phase this frame.
+	// Any scroll that lands after the tree's publish phase.
 	rack.SetRowOffset(rack.RowOffset() + 1)
 
-	// Draw repositions the rendered controls (lazy layout + updateRowRects
-	// both run zone.Layout) — consuming the needLayout republish signal.
+	// Draw lays the zone out and consumes the republish signal.
 	g.Draw(screen)
 	// The next Update MUST leave the HitIndex coherent with the new layout.
 	g.Update()
@@ -121,11 +102,8 @@ func TestRowRackMuteTargetsRenderedRowAfterScroll(t *testing.T) {
 	}
 }
 
-// hitAreaEqual compares the published copy of a hit area against the zone's
-// current one. Handler identity is compared only when checkHandler is true:
-// it matters for zones whose scroll can remap the SAME screen rect to a
-// DIFFERENT row's control (the rack), but is meaningless for zones that
-// construct fresh adapter values on every HitAreas() call.
+// Handler identity only matters where a scroll can remap the same rect to another row's control (the rack);
+// other zones build fresh adapters per HitAreas() call.
 func hitAreaEqual(a HitArea, b HitArea, checkHandler bool) bool {
 	if a.Rect != b.Rect || a.ZIndex != b.ZIndex || a.Tag != b.Tag ||
 		a.Touch != b.Touch || a.ClipRect != b.ClipRect {
@@ -149,10 +127,7 @@ func hitAreaEqual(a HitArea, b HitArea, checkHandler bool) bool {
 	return true
 }
 
-// handlersCallStable reports whether two consecutive HitAreas() calls on the
-// zone return identical handler values — i.e. the zone caches its hit-area
-// slice rather than rebuilding adapters per call. Only such zones can have
-// their published handler identity meaningfully asserted.
+// Only a zone that caches its slice can have its published handler identity asserted.
 func handlersCallStable(z Zone) bool {
 	a, b := z.HitAreas(), z.HitAreas()
 	if len(a) != len(b) {
@@ -173,10 +148,7 @@ func handlersCallStable(z Zone) bool {
 	return true
 }
 
-// assertHitIndexMatchesZones asserts the structural invariant: for every
-// registered zone, the hit areas owned by that zone in the tree's HitIndex
-// must be exactly the zone's current HitAreas() (and empty when the zone is
-// hidden). Any divergence means input dispatch no longer matches rendering.
+// Each zone's entries in the HitIndex are exactly its current HitAreas(), and none while it is hidden.
 func assertHitIndexMatchesZones(t *testing.T, g *Game, when string) {
 	t.Helper()
 	tree := g.drum.tree
@@ -211,18 +183,14 @@ func assertHitIndexMatchesZones(t *testing.T, g *Game, when string) {
 	}
 }
 
-// TestHitIndexNeverDriftsFromZoneHitAreas drives frames with scroll
-// mutations interleaved at the points real input lands (between the tree's
-// publish phase and Draw) and asserts the HitIndex ↔ zone parity invariant
-// after every settled frame.
+// Scroll mutations land where real input does, between the publish phase and Draw.
 func TestHitIndexNeverDriftsFromZoneHitAreas(t *testing.T) {
 	g, screen := scrollableTestGame(t)
 	rack := g.drum.rowRackZone
 
 	assertHitIndexMatchesZones(t, g, "settled")
 
-	// Scroll after the publish phase, then Draw (consumes needLayout), then
-	// Update — the exact sequence that strands the index.
+	// The exact sequence that strands the index.
 	rack.SetRowOffset(rack.RowOffset() + 1)
 	g.Draw(screen)
 	g.Update()
@@ -243,24 +211,15 @@ func TestHitIndexNeverDriftsFromZoneHitAreas(t *testing.T) {
 	assertHitIndexMatchesZones(t, g, "scroll-home+update+draw")
 }
 
-// TestZoneLayoutRoutesThroughTreeDiscipline forbids direct zone.Layout()
-// calls outside the tree. Out-of-band Layout consumes the zone's needLayout
-// flag — the tree's only republish signal — without updating the HitIndex,
-// which is exactly how the stale-input bug was born. All forced layouts
-// must go through DrumViewTree.LayoutZoneNow / EnsureLayouts so layout and
-// publish can never be separated.
+// A Layout outside the tree consumes needLayout without republishing; forced layouts go through
+// LayoutZoneNow / EnsureLayouts, so layout and publish never separate.
 func TestZoneLayoutRoutesThroughTreeDiscipline(t *testing.T) {
 	// file → allowed substrings for lines that may call <something>Zone.Layout(.
 	allowed := map[string][]string{
 		"drumview_tree.go": {""}, // the chokepoint itself — any use allowed
-		// grid_tree.go is the GridTree's own chokepoint (sibling tree owning
-		// the top grid pane). Its layoutPass/LayoutZoneNow call zone.Layout
-		// and immediately publish via hitIndex.Update — the same
-		// layout-and-publish-together discipline as drumview_tree.go.
+		// The GridTree's own chokepoint, which publishes right after it lays out.
 		"grid_tree.go": {""}, // sibling chokepoint — any use allowed
-		// ChainPanelZone is a nested composite inside EQPanelZone (not
-		// registered with the tree); its parent lays it out and owns its
-		// hit areas.
+		// Nested inside EQPanelZone, which lays it out and owns its hit areas.
 		"eq_panel_zone.go": {"z.chainZone.Layout("},
 	}
 	re := regexp.MustCompile(`(?:\b[A-Za-z_]\w*[Zz]one|\bzone)\.Layout\(`)

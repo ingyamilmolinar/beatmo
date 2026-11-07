@@ -4,9 +4,7 @@ package audio
 
 import "math"
 
-// phaser implements a chain of first-order allpass filters with an LFO sweeping
-// the cutoff frequency. The number of stages controls the depth of the notches
-// in the frequency response, while feedback reinforces the effect.
+// Stages set the notch depth; feedback reinforces it.
 type phaser struct {
 	stages   int     // number of allpass stages (2-12)
 	rate     float64 // LFO frequency Hz

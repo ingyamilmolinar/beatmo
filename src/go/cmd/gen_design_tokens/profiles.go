@@ -1,15 +1,6 @@
 package main
 
-// profiles.go — Phase 5a generator: parse the `profileOverrides:` block of
-// DESIGN.md and emit `design_profile.gen.go` with one profileValues struct
-// per profile (desktop / mobile). The generated file is consumed by
-// `internal/ui/layout_profile.go`'s desktop/mobile builder functions for
-// fields covered by the schema; remaining fields stay hand-coded until
-// future migration sweeps.
-//
-// Phase 5a v1 covers a representative slice of dimensional fields
-// (sizing primitives, popup sizing, transport/row-control button sizes).
-// Phase 5a v2+ extends the schema field-by-field as appetite warrants.
+// Emits design_profile.gen.go (one profileValues per desktop / mobile) from DESIGN.md's profileOverrides: block.
 
 import (
 	"bytes"
@@ -22,9 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// profileSet is the parsed shape: map of profile name → field name → integer value.
-// Order is preserved by the generator's emit step (alphabetical by profile,
-// alphabetical by field within) for stable diffs.
+// Emitted alphabetically by profile, then field, for stable diffs.
 type profileSet map[string]map[string]int
 
 func parseProfileOverrides(node *yaml.Node) (profileSet, error) {
@@ -60,10 +49,7 @@ func parseProfileOverrides(node *yaml.Node) (profileSet, error) {
 }
 
 func emitProfiles(profiles profileSet) ([]byte, error) {
-	// Collect the union of all field names across all profiles so the
-	// emitted struct definition is profile-independent. Every profile
-	// must set every field (validated below) — missing values are an
-	// error to prevent silent zero-defaults sneaking in.
+	// The field union, so the struct is profile-independent; every profile must set every field (no silent zeros).
 	fieldSet := map[string]bool{}
 	for _, p := range profiles {
 		for k := range p {

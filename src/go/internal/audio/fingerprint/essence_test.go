@@ -11,8 +11,7 @@ import (
 
 const essSR = 44100
 
-// essTone is a harmonic tone: amps[k] is partial k+1's amplitude, env(t) its
-// amplitude envelope.
+// amps[k] is partial k+1's amplitude.
 func essTone(f0 float64, amps []float64, durSec float64, env func(t float64) float64) wave.Wave {
 	n := int(durSec * essSR)
 	s := make([]float64, n)
@@ -82,9 +81,8 @@ func TestEssenceIgnoresLevel(t *testing.T) {
 	}
 }
 
-// The root cause of piano -> double-bass: an absolute floor let inaudible
-// room tone dominate. A noise floor 60 dB down must move the colour far less
-// than changing the instrument's harmonic recipe does.
+// An absolute floor let inaudible room tone dominate: a -60 dB floor must move colour far less than changing the
+// harmonic recipe.
 func TestEssenceNoiseFloorDoesNotDominate(t *testing.T) {
 	saw := essTone(220, essSaw, 1.5, essHeld)
 	hollow := essTone(220, essHollow, 1.5, essHeld)
@@ -95,9 +93,7 @@ func TestEssenceNoiseFloorDoesNotDominate(t *testing.T) {
 	}
 }
 
-// Texture is breath / bow / wires: the noise share of the sound itself. It
-// must grow steadily with the noise component, and a -60 dB floor (room
-// tone) must stay negligible next to a breath at -12 dB.
+// It grows steadily with the noise component, and a -60 dB floor stays negligible beside a -12 dB breath.
 func TestEssenceTextureSeesNoise(t *testing.T) {
 	clean := essTone(330, essSaw, 1.5, essHeld)
 	prev := -1.0
@@ -120,9 +116,7 @@ func TestEssenceTextureSeesNoise(t *testing.T) {
 	}
 }
 
-// Struck vs held at the same colour: how the note dies away IS the kind of
-// instrument (a plucked string decays, a bowed one holds). The pluck rings
-// like a mid-register guitar (T60 ~1 s).
+// How the note dies away IS the kind of instrument.
 func TestEssenceDecaySeparatesPluckFromHeld(t *testing.T) {
 	held := essTone(220, essSaw, 1.0, essHeld)
 	pluck := essTone(220, essSaw, 1.0, func(t float64) float64 { return math.Min(1, t/0.002) * math.Exp(-t/0.15) })
@@ -134,8 +128,7 @@ func TestEssenceDecaySeparatesPluckFromHeld(t *testing.T) {
 	}
 }
 
-// A room adds a tail; the instrument's decay is measured mostly where the
-// direct sound dominates (a log-time grid after the peak).
+// Measured mostly where the direct sound dominates.
 func TestEssenceDecayIsRobustToAReverbTail(t *testing.T) {
 	env := func(t float64) float64 { return math.Min(1, t/0.002) * math.Exp(-t/0.15) }
 	dry := essTone(220, essSaw, 1.5, env)
@@ -154,9 +147,7 @@ func TestEssenceDecayIsRobustToAReverbTail(t *testing.T) {
 	}
 }
 
-// How long the player holds the note past the reference's region is not the
-// instrument: a held candidate analysed over a held reference's window reads
-// the same whether its own note lasts 1 s or 3 s.
+// Note length is the player's, not the instrument's.
 func TestEssenceDecayIgnoresHowLongANoteIsHeld(t *testing.T) {
 	ref := essTone(220, essSaw, 1.0, essHeld)
 	long := essTone(220, essSaw, 3.0, essHeld)
@@ -165,9 +156,7 @@ func TestEssenceDecayIgnoresHowLongANoteIsHeld(t *testing.T) {
 	}
 }
 
-// The reference defines the region compared: whatever a candidate does after
-// the reference has died away is not part of the match (note length is the
-// user's choice, not the instrument's).
+// Whatever a candidate does after the reference died away is not part of the match.
 func TestEssenceCandidateIsAnalysedOverTheReferenceWindow(t *testing.T) {
 	burst := essTone(220, essSaw, 0.6, essPluck)
 	ref := wave.Wave{Samples: append(append([]float64(nil), burst.Samples...), make([]float64, essSR)...), SampleRate: essSR}
@@ -192,8 +181,7 @@ func TestEssenceWindowEndsWhereTheReferenceDies(t *testing.T) {
 	}
 }
 
-// A reverb tail is the room, not the instrument: a long noise-like tail
-// 30 dB down must not out-vote the note in the time averages.
+// A reverb tail 30 dB down must not out-vote the note.
 func TestEssenceTimeAveragesFollowTheLoudPart(t *testing.T) {
 	dry := essTone(110, essSaw, 0.3, essPluck)
 	n := int(1.2 * essSR)
@@ -223,8 +211,7 @@ func TestEssenceAttackTime(t *testing.T) {
 	if ef.AttackSec > 0.01 {
 		t.Fatalf("fast attack measured %.4f s, want < 10 ms", ef.AttackSec)
 	}
-	// Onsets faster than the ear resolves are the same onset: a 2 ms and a
-	// 6 ms pluck do not differ in attack, a 6 ms pluck and a 60 ms swell do.
+	// 2 ms and 6 ms are the same onset; 6 ms and 60 ms are not.
 	pluck6 := essTone(220, essSaw, 1.0, func(t float64) float64 { return math.Min(1, t/0.0075) * math.Exp(-t/0.12) })
 	swell := essTone(220, essSaw, 1.0, func(t float64) float64 { return math.Min(1, t/0.075) * math.Exp(-t/0.3) })
 	e6, ew := AnalyzeEssence(pluck6, EssenceOpts{}), AnalyzeEssence(swell, EssenceOpts{})
@@ -236,9 +223,7 @@ func TestEssenceAttackTime(t *testing.T) {
 	}
 }
 
-// The colour change from attack into body is its own term: a pluck that
-// starts bright and darkens differs from one whose colour never moves, even
-// with the same average colour budget.
+// Same average colour budget, different movement.
 func TestEssenceEvolutionSeesAColourChange(t *testing.T) {
 	steady := essTone(220, essSaw, 1.0, essHeld)
 	n := len(steady.Samples)
@@ -276,9 +261,7 @@ func TestEssenceTotalsWeighTheTerms(t *testing.T) {
 	}
 }
 
-// Traits say in which DIRECTION two clips differ: the brighter tone has the
-// higher brightness, the noisier one the higher noise share, the plucked one
-// the lower level after its peak -- and level never moves any of them.
+// Level never moves any of them.
 func TestEssenceTraitsPointTheRightWay(t *testing.T) {
 	bright := AnalyzeEssence(essTone(220, essSaw, 1.0, essHeld), EssenceOpts{})
 	dark := AnalyzeEssence(essTone(220, []float64{1, 0.2, 0.05}, 1.0, essHeld), EssenceOpts{})
@@ -300,10 +283,7 @@ func TestEssenceTraitsPointTheRightWay(t *testing.T) {
 	}
 }
 
-// A held note's plateau has no meaningful loudest frame -- every frame is
-// within a hair of the maximum -- so where the arg-max happens to land must
-// not decide its decay profile. The same held tone, with its loudest moment
-// put late in the plateau by a +0.5 dB bump, must read as held.
+// A +0.5 dB bump late in the plateau puts the arg-max there; it must still read as held.
 func TestEssenceDecayIgnoresWhereTheHeldPlateauPeaks(t *testing.T) {
 	early := essTone(220, essSaw, 1.0, essHeld)
 	late := essTone(220, essSaw, 1.0, func(t float64) float64 {
@@ -326,9 +306,7 @@ func TestEssenceDecayIgnoresWhereTheHeldPlateauPeaks(t *testing.T) {
 	}
 }
 
-// essMedian selects instead of sorting; it must still return exactly the
-// sorted middle (the mean of the two middles for an even count), duplicates
-// included.
+// Even counts take the mean of the two middles; duplicates included.
 func TestEssMedianIsTheSortedMiddle(t *testing.T) {
 	r := rand.New(rand.NewSource(13))
 	for n := 1; n <= 300; n++ {

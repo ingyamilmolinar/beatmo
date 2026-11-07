@@ -8,11 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Playback history (the played snapshot, timeline commits, the playhead, solo)
-// is per-session runtime state: it is ephemeral and must never reach the
-// project JSON, in either direction. Exporting the same document before and
-// after a session has played, soloed and accumulated history must produce the
-// same bytes, and importing a file must start with no history at all.
+// Playback history is session state and never in the project JSON: an export after play and solo is byte-identical,
+// and an import starts with no history.
 func TestExportImportCarryNoPlaybackHistory(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)

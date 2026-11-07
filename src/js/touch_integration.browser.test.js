@@ -1,10 +1,4 @@
-/**
- * Touch Integration Test
- *
- * End-to-end test that verifies touch events reach the Go layer using
- * the debug infrastructure. Tests both synthetic events and CDP events
- * to identify which approach works on real devices.
- */
+/** Touch events reach Go through the debug infrastructure, synthetic and CDP, to tell which works on real devices. */
 
 import { chromium, devices } from "playwright";
 import http from "http";

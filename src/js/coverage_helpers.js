@@ -1,37 +1,15 @@
-/**
- * Coverage collection helpers for browser tests.
- *
- * When COVERAGE=1 is set, browser tests flush Go coverage data from the
- * instrumented WASM binary before closing the browser. The raw coverage
- * files are written to coverage/browser-raw/ and later merged with
- * `go tool covdata`.
- *
- * When COVERAGE is not set, all functions are no-ops.
- */
+/** With COVERAGE=1, Go coverage is flushed from the instrumented WASM before the browser closes, into
+ * coverage/browser-raw/ for `go tool covdata`; otherwise every function is a no-op. */
 
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 
-/**
- * Check if coverage collection is enabled.
- * @returns {boolean}
- */
 export function isCoverageEnabled() {
   return process.env.COVERAGE === "1";
 }
 
-/**
- * Flush Go coverage data from the WASM binary running in the page.
- *
- * Calls flushGoCoverage() via page.evaluate(), decodes the base64 meta
- * and counters blobs, and writes them as covmeta.<hash> and
- * covcounters.<hash>.<pid>.<ts> files that `go tool covdata` can read.
- *
- * @param {import('playwright').Page} page - Playwright page object
- * @param {string} outDir - Directory to write coverage files to
- * @param {string} label - Test label (used in filenames for traceability)
- */
+/** Written as covmeta.<hash> / covcounters.<hash>.<pid>.<ts>, the names `go tool covdata` reads. */
 export async function flushCoverage(page, outDir, label) {
   if (!isCoverageEnabled()) return;
 
@@ -67,12 +45,7 @@ export async function flushCoverage(page, outDir, label) {
   fs.writeFileSync(countersFile, countersBuf);
 }
 
-/**
- * Clear Go coverage counters in the WASM binary.
- *
- * @param {import('playwright').Page} page - Playwright page object
- * @returns {Promise<boolean>} true if counters were cleared
- */
+/** Returns true if the counters were cleared. */
 export async function clearCoverage(page) {
   if (!isCoverageEnabled()) return false;
   try {

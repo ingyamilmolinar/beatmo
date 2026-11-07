@@ -1,36 +1,6 @@
-// xplat_melodic_formant.browser.test.js
-//
-// FORMANT-PRESERVATION parity test for the per-pitch melodic re-render
-// (desktop↔WASM parity, audio.js isMelodicInstrument path).
-//
-// Desktop melodic instruments RE-RENDER the C voice at the played semitone
-// pitch (synth_recipe_dispatch.go: tryRecipeVoicePitched threads `pitch` into
-// the modular param block so the C voice fundamental = 220·2^(pitch/12) while
-// the filter cutoff stays at an ABSOLUTE Hz). WebAudio used to resample one
-// pitch-0 buffer via BufferSource.playbackRate, which slides the filter formant
-// up with pitch ("munchkin"). audio.js now renders melodic instruments AT the
-// rounded pitch via render_modular_p, keyed by `${id}:${roundedPitch}`.
-//
-// This test PROVES re-render (not resample) directly against the C engine:
-//   1. Render a melodic-style modular voice at pitch 0 (fundamental 220 Hz),
-//      with a FIXED low-pass cutoff at an absolute Hz.
-//   2. Render the SAME voice at pitch +12 (fundamental 440 Hz). Because the
-//      cutoff is fixed in Hz, the +12 render's spectral rolloff stays at the
-//      same absolute frequency.
-//   3. Naively RESAMPLE the pitch-0 buffer by 2.0 (the old WebAudio behavior).
-//      A 2× resample doubles every spectral feature, including the rolloff.
-//   4. Assert the +12 at-pitch render DIFFERS materially from the 2× resample
-//      (low-frequency-band spectral correlation < ~0.95) — i.e. the formant did
-//      NOT simply double. A pure resample path would make them ~identical.
-//
-// It also confirms a DRUM (non-melodic) is unaffected by asserting
-// isMelodicInstrument('kick') === false and isMelodicInstrument('violin')
-// === true via the exported helper seam, and that a +12 vs 2×-resample
-// comparison for a pure (no-filter) oscillator IS ~identical (sanity: the
-// divergence comes from the fixed filter, the at-pitch mechanism itself does
-// not corrupt a filterless voice).
-//
-// Run:  GO=$(pwd)/.tools/go/bin/go node src/js/xplat_melodic_formant.browser.test.js
+// Melodic voices must RE-RENDER at pitch, as desktop does, not resample: with a fixed-Hz low-pass, the +12 render must
+// differ from the pitch-0 render resampled ×2 (the formant must not slide), while a filterless voice at +12 must match
+// its ×2 resample. Run: GO=… node src/js/xplat_melodic_formant.browser.test.js
 
 import { chromium } from "playwright";
 import http from "http";
@@ -54,8 +24,7 @@ const FRAMES = SAMPLE_RATE * SECONDS;
 
 // ---- metric helpers (host side) ----
 
-// Linear-interpolated resample by `ratio` (ratio=2.0 → playbackRate 2 = +12
-// semitones). Mirrors what WebAudio's BufferSource.playbackRate does.
+// As WebAudio's playbackRate (2.0 = +12 semitones).
 function resample(data, ratio) {
   const outLen = data.length;
   const out = new Float32Array(outLen);
@@ -70,9 +39,7 @@ function resample(data, ratio) {
   return out;
 }
 
-// Naive DFT magnitude at frequency f (Hz) over the buffer. Cheap single-bin
-// Goertzel-style probe — enough to compare relative spectral energy at a
-// handful of probe frequencies without an FFT lib.
+// A single-bin probe at a few frequencies: no FFT library needed.
 function bandEnergy(data, sr, fLo, fHi, steps) {
   let total = 0;
   for (let s = 0; s < steps; s++) {
@@ -117,9 +84,7 @@ function peakNormalize(data) {
 
 // ---- blocks from the real app ----
 
-// Every voice renders from the param block Go flattens from its instrument
-// document (there is no engine identity table), and Go decides which
-// instruments are melodic (render.melodic). Read both once from the real app.
+// The blocks and the melodic flags are Go's: read once from the real app.
 const CLASSIFY = ["violin", "bass-guitar", "kick", "snare"];
 let BLOCKS;
 {
@@ -182,8 +147,7 @@ const PARAM_ABI = {
   base: BLOCKS.modular.block,
 };
 
-// Render a modular voice with the given explicit params (everything else keeps
-// the bare `modular` instrument's own value). Returns a host Float32Array.
+// Everything else keeps the bare modular voice's value.
 async function renderModular(params) {
   const arr = await page.evaluate(async ({ params, abi, frames, sr }) => {
     const m = window.__drumsModule;
@@ -239,10 +203,7 @@ if (helperCheck.err) {
   if (helperCheck.snare === false) pass("isMelodicInstrument('snare') === false (drum unaffected)"); else fail("snare must NOT be melodic");
 }
 
-// (B) FORMANT PRESERVATION — filtered melodic voice.
-// A sawtooth-style oscillator (osc_type=1) with a FIXED 1200 Hz low-pass.
-// FM disabled (clean oscillator), drive disabled. Sustained envelope so the
-// steady-state spectrum is well-defined.
+// A saw through a FIXED 1200 Hz low-pass, sustained so the steady-state spectrum is well defined.
 const FILTER_CUTOFF_HZ = 1200;
 function melodicParams(pitch) {
   return {
@@ -273,10 +234,8 @@ const startN = Math.floor(0.2 * SAMPLE_RATE);
 const lenN = Math.floor(0.5 * SAMPLE_RATE);
 const seg = (d) => d.subarray(startN, startN + lenN);
 
-// Band energy ABOVE the fixed cutoff (1800–4000 Hz). In the at-pitch render
-// these harmonics are attenuated by the fixed 1200 Hz LP. In the 2×-resampled
-// render the cutoff effectively doubled to ~2400 Hz, so MORE energy survives
-// above 1800 Hz. The ratio is the smoking gun for resample-vs-rerender.
+// Above the cutoff the at-pitch render is attenuated; a ×2 resample doubled the cutoff, so more survives: the
+// resample-vs-rerender tell.
 const hiBand = (d) => bandEnergy(seg(d), SAMPLE_RATE, 1800, 4000, 12);
 const eHiAtPitch = hiBand(p12);
 const eHiResample = hiBand(p0resampled);
@@ -292,27 +251,21 @@ console.log(`hi-band at-pitch (+12 rerender):${eHiAtPitch.toFixed(4)}`);
 console.log(`hi-band +12 via 2x resample:    ${eHiResample.toFixed(4)}`);
 console.log(`time-domain correlation(+12 rerender, 2x resample): ${corr.toFixed(4)}`);
 
-// PRIMARY ASSERTION: the at-pitch +12 render must NOT be ~equal to the 2×
-// resample. Correlation < 0.95 proves the formant did not simply slide.
+// Correlation < 0.95 proves the formant did not simply slide.
 if (corr < 0.95) {
   pass(`+12 at-pitch render DIFFERS materially from 2x resample (corr=${corr.toFixed(4)} < 0.95) — re-render, not resample`);
 } else {
   fail(`+12 at-pitch render too similar to 2x resample (corr=${corr.toFixed(4)} >= 0.95) — looks like resample, formant slid`);
 }
 
-// SECONDARY ASSERTION: the 2× resample should leak materially MORE energy above
-// the fixed cutoff than the at-pitch render (its rolloff doubled).
+// The resample's rolloff doubled.
 if (eHiResample > eHiAtPitch * 1.3) {
   pass(`2x resample leaks more hi-band energy than at-pitch (${eHiResample.toFixed(4)} > 1.3*${eHiAtPitch.toFixed(4)}) — rolloff doubled under resample`);
 } else {
   fail(`expected 2x resample to leak more hi-band energy than at-pitch render; got resample=${eHiResample.toFixed(4)} atPitch=${eHiAtPitch.toFixed(4)}`);
 }
 
-// (C) SANITY — filterless voice: the at-pitch mechanism alone does NOT corrupt
-// a voice with no fixed-Hz feature. A pure (filter-disabled) oscillator at +12
-// should correlate HIGHLY with the 2× resample (both just double the pitch),
-// confirming the divergence in (B) comes from the fixed filter, not a bug in
-// the at-pitch render path.
+// With no fixed-Hz feature the at-pitch render should match the ×2 resample, so the divergence above is the filter's.
 function plainParams(pitch) {
   return {
     osc_type: 1, osc_enabled: 1, fm_enabled: 0, drive_enabled: 0,
@@ -324,8 +277,7 @@ function plainParams(pitch) {
 const q0 = peakNormalize(await renderModular(plainParams(0)));
 const q12 = peakNormalize(await renderModular(plainParams(12)));
 const q0resampled = peakNormalize(resample(q0, 2.0));
-// Compare HI-band energy (filterless → both should keep their harmonics; the
-// at-pitch and resample versions should be spectrally close in the band).
+// Filterless, both keep their harmonics.
 const qHiAtPitch = hiBand(q12);
 const qHiResample = hiBand(q0resampled);
 const ratio = qHiResample > 0 ? qHiAtPitch / qHiResample : 0;
@@ -333,9 +285,7 @@ console.log("\n--- SANITY (filterless voice) ---");
 console.log(`hi-band at-pitch:  ${qHiAtPitch.toFixed(4)}`);
 console.log(`hi-band resample:  ${qHiResample.toFixed(4)}`);
 console.log(`ratio:             ${ratio.toFixed(4)}`);
-// Without a fixed filter, the two should be in the same ballpark (no doubled
-// rolloff). Allow a wide band — the point is they are NOT wildly divergent the
-// way the filtered case is.
+// Same ballpark, not wildly divergent as in the filtered case.
 if (ratio > 0.5 && ratio < 2.0) {
   pass(`filterless +12 at-pitch ≈ 2x resample hi-band energy (ratio=${ratio.toFixed(4)}) — divergence in (B) is the fixed filter, not the at-pitch path`);
 } else {

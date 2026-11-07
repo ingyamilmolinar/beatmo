@@ -32,8 +32,7 @@ func stepsCenter(dv *DrumView) (int, int) {
 	return r.Min.X + r.Dx()/2, r.Min.Y + r.Dy()/2
 }
 
-// TestTimelineGridWheelScrollsRows verifies that wheel events over the
-// timeline grid's stepsRect scroll rows up/down via the row rack zone.
+// Over the cells, through the row rack zone.
 func TestTimelineGridWheelScrollsRows(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := makeDrumViewWithManyRows(t, 20)
@@ -57,10 +56,8 @@ func TestTimelineGridWheelScrollsRows(t *testing.T) {
 		t.Fatalf("wheel down over grid should scroll rows down: before=%d after=%d", before, dv.rowOffset)
 	}
 
-	// Row scroll over the cell grid reuses the SAME behavior as scrolling over
-	// the instrument labels: one row per notch, throttled by a step cooldown.
-	// Let the cooldown elapse before reversing direction (a real user wheeling
-	// up after wheeling down clears it the same way).
+	// The same behaviour as over the labels: one row per notch with a step cooldown, which must lapse before
+	// reversing.
 	idle := SetInputForTest(
 		func() (int, int) { return sx, sy },
 		func(ebiten.MouseButton) bool { return false },
@@ -93,8 +90,6 @@ func TestTimelineGridWheelScrollsRows(t *testing.T) {
 	}
 }
 
-// TestTimelineGridWheelDoesNotChangeLength verifies that wheel events over
-// the grid don't change the beat length (only row scroll).
 func TestTimelineGridWheelDoesNotChangeLength(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := makeDrumViewWithManyRows(t, 20)
@@ -120,8 +115,7 @@ func TestTimelineGridWheelDoesNotChangeLength(t *testing.T) {
 	}
 }
 
-// TestTimelineGridVerticalDragScrollsRows verifies that a vertical drag in
-// the stepsRect scrolls rows (not the horizontal offset).
+// Rows, not the horizontal offset.
 func TestTimelineGridVerticalDragScrollsRows(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := makeDrumViewWithManyRows(t, 20)
@@ -143,8 +137,7 @@ func TestTimelineGridVerticalDragScrollsRows(t *testing.T) {
 	)
 	dv.Update()
 
-	// Drag UPWARD (decreasing Y) by more than 2 row heights.
-	// Direct manipulation: drag up = scroll down = see more rows below.
+	// Direct manipulation: dragging up reveals rows below.
 	curY = sy - rh*3
 	for i := 0; i < 3; i++ {
 		dv.Update()
@@ -173,8 +166,7 @@ func TestTimelineGridVerticalDragScrollsRows(t *testing.T) {
 	}
 }
 
-// TestTimelineGridHorizontalDragScrollsOffset verifies that a horizontal drag
-// in the stepsRect scrolls the timeline offset (not the row scroll).
+// The offset, not the rows.
 func TestTimelineGridHorizontalDragScrollsOffset(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := makeDrumViewWithManyRows(t, 20)

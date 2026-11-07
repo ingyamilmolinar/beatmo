@@ -9,8 +9,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// setupPortalCloseTest creates a DrumView with a tree and sets up input stubs.
-// Returns the DrumView and a cleanup function.
 func setupPortalCloseTest(t *testing.T) (*DrumView, func()) {
 	t.Helper()
 	restore := SetInputForTest(
@@ -24,16 +22,12 @@ func setupPortalCloseTest(t *testing.T) (*DrumView, func()) {
 	dv := &DrumView{}
 	dv.tree = NewDrumViewTree()
 	dv.tree.SetBounds(image.Rect(0, 0, 800, 600))
-	// Popups live in the single global overlay subtree (drumview_ctor.go), so a
-	// minimal DrumView under test must wire it or the open* helpers hit a nil
-	// portal.
+	// Popups live in the global overlay subtree, so a minimal DrumView must wire it.
 	dv.overlayTree = NewDrumViewTree()
 	dv.overlayTree.SetBounds(image.Rect(0, 0, 800, 600))
 	return dv, restore
 }
 
-// openTestPortal opens a minimal portal entry with the given ID on the global
-// overlay portal.
 func openTestPortal(dv *DrumView, id string) {
 	dv.portal().Open(PortalEntry{
 		ID:      id,
@@ -137,9 +131,7 @@ func TestCloseContextMenuPortal_NilTree(t *testing.T) {
 
 // --- Portal tree input tests (color wheel / rename hold fix) ---
 
-// TestColorWheelPickViaPortalTree verifies that after opening the color wheel
-// via the button callback, a click inside the wheel picks a color on the first
-// attempt. Before the fix, colorHold + state.hold blocked all input.
+// The first click inside the freshly opened wheel picks.
 func TestColorWheelPickViaPortalTree(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 500, 300), nil, testLogger)
@@ -153,9 +145,7 @@ func TestColorWheelPickViaPortalTree(t *testing.T) {
 		t.Fatal("color menu should be open")
 	}
 
-	// Pick a swatch cell whose color differs from the current row color, via
-	// direct HandleInput at that cell's center. (Geometry-agnostic: derives the
-	// target from the laid-out cells so it survives the 7×5 ramp layout.)
+	// Derived from the laid-out cells so it survives layout changes.
 	cells := dv.colorWheelComp.SwatchCells()
 	if len(cells) == 0 {
 		t.Fatal("colorWheelComp has no swatch cells")
@@ -186,8 +176,6 @@ func TestColorWheelPickViaPortalTree(t *testing.T) {
 	}
 }
 
-// TestColorWheelPortalClickNotBlocked verifies that opening the color wheel
-// does NOT set anyDragActive(), allowing the portal tree to dispatch input.
 func TestColorWheelPortalClickNotBlocked(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 500, 300), nil, testLogger)
@@ -203,8 +191,6 @@ func TestColorWheelPortalClickNotBlocked(t *testing.T) {
 	}
 }
 
-// TestRenamePortalClickNotBlocked verifies that opening the rename overlay
-// does NOT set anyDragActive(), allowing the portal tree to dispatch input.
 func TestRenamePortalClickNotBlocked(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 500, 300), nil, testLogger)
@@ -221,10 +207,7 @@ func TestRenamePortalClickNotBlocked(t *testing.T) {
 	}
 }
 
-// TestColorWheelPortalHoldCleared verifies that after opening the color wheel
-// via the production callback path, the component's hold state is cleared
-// (Capturing() returns false). Before the fix, Open() set hold=true and
-// nothing cleared it.
+// Open() must not leave hold set, or Capturing() stays true.
 func TestColorWheelPortalHoldCleared(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 500, 300), nil, testLogger)

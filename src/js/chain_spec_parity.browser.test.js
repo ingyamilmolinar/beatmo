@@ -1,20 +1,6 @@
-// chain_spec_parity.browser.test.js
-//
-// The browser's LIVE audio graph is built as the engine specifies
-// (chain_spec.gen.js, generated from Go's chain_spec.go):
-//
-//   - the AudioContext runs at CHAIN_SPEC.sampleRate — the rate desktop runs
-//     at and every voice renders at;
-//   - the C stages after the voice (insert effects, EQ, the master soft clip)
-//     run on the beatmo-dsp AudioWorklet;
-//   - where AudioWorklet is unavailable (an insecure origin) the same C runs on
-//     the main-thread fallback host, still ending in the soft clip.
-//
-// What those stages compute is compared with desktop, sample by sample, by
-// xplat_audio_stages.browser.test.js; this test pins the live wiring in a page
-// with no Go (only audio.js), in Chromium and WebKit.
-//
-// Usage: node src/js/chain_spec_parity.browser.test.js
+// The LIVE graph is wired as chain_spec.gen.js says: the context at CHAIN_SPEC.sampleRate, the C stages on the
+// beatmo-dsp worklet (or the main-thread fallback host on an insecure origin), ending in the soft clip. In a page with
+// no Go, Chromium and WebKit. Usage: node src/js/chain_spec_parity.browser.test.js
 
 import { chromium, webkit } from "playwright";
 import http from "http";

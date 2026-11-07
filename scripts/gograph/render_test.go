@@ -17,10 +17,8 @@ func TestRenderHTMLSelfContained(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(out)
-	// self-contained: no external RESOURCE LOADS. We check for real network-load
-	// patterns, NOT a bare "http://" — app.js legitimately contains the SVG
-	// namespace constant "http://www.w3.org/2000/svg" (required by
-	// createElementNS; the browser never fetches it), which is not a network ref.
+	// Real network-load patterns, not a bare "http://": app.js names the SVG namespace for createElementNS, which the
+	// browser never fetches.
 	for _, bad := range []string{
 		"src=\"http", "src='http", "src=\"//",
 		"href=\"http", "href=\"//",

@@ -9,9 +9,6 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// newInputHandlerTestDV creates a DrumView suitable for HandleInput/HandleWheel tests.
-// The returned DrumView is fully initialized (tree, zones, scroll) so all
-// InputHandler methods are safe to call.
 func newInputHandlerTestDV(t *testing.T) *DrumView {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -25,10 +22,7 @@ func newInputHandlerTestDV(t *testing.T) *DrumView {
 	return dv
 }
 
-// TestDrumViewInput_TouchFlickerGuard verifies that when the mouse is released
-// (!pressed) but the row scroll's TouchActive is still true, mouseDownInBounds
-// stays true. This guards against touch-event flicker on mobile where a fast
-// swipe can momentarily drop the touch for one frame.
+// A fast swipe can drop the touch for one frame; capture must survive it.
 func TestDrumViewInput_TouchFlickerGuard(t *testing.T) {
 	dv := newInputHandlerTestDV(t)
 
@@ -45,8 +39,6 @@ func TestDrumViewInput_TouchFlickerGuard(t *testing.T) {
 	// Simulate touch-scroll active: set TouchScroller.active directly.
 	dv.rowScroll().TS.active = true
 
-	// Now release (pressed=false). Because TouchActive is true, the flicker
-	// guard should prevent mouseDownInBounds from being cleared.
 	result = dv.HandleInput(cx, cy, false)
 	// Capturing() returns true because mouseDownInBounds is still true.
 	if result != InputCaptured {
@@ -68,10 +60,7 @@ func TestDrumViewInput_TouchFlickerGuard(t *testing.T) {
 	}
 }
 
-// TestDrumViewInput_CapturePersistedOutOfBounds verifies that once a press
-// starts inside the DrumView (mouseDownInBounds=true), subsequent HandleInput
-// calls with pressed=true return InputCaptured even when the cursor drifts
-// outside the bounds. This prevents the splitter from stealing mid-drag.
+// So the splitter cannot steal a drag that drifts out of bounds.
 func TestDrumViewInput_CapturePersistedOutOfBounds(t *testing.T) {
 	dv := newInputHandlerTestDV(t)
 
@@ -96,9 +85,7 @@ func TestDrumViewInput_CapturePersistedOutOfBounds(t *testing.T) {
 	}
 }
 
-// TestDrumViewInput_HandleWheelPassthrough verifies that HandleWheel returns
-// InputIgnored for both in-bounds and out-of-bounds wheel events. The DrumView
-// defers wheel handling to Update() rather than consuming it in HandleWheel.
+// The DrumView defers wheel handling to Update().
 func TestDrumViewInput_HandleWheelPassthrough(t *testing.T) {
 	dv := newInputHandlerTestDV(t)
 
@@ -123,10 +110,7 @@ func TestDrumViewInput_HandleWheelPassthrough(t *testing.T) {
 	}
 }
 
-// TestDrumViewInput_ReleaseWithActiveDrag verifies the interaction between
-// anyDragActive() and the release path. When anyDragActive is true during
-// release, mouseDownInBounds is preserved (drag still owns capture). When
-// the drag ends, the next release clears mouseDownInBounds.
+// A release during a drag keeps capture; the release after the drag ends clears it.
 func TestDrumViewInput_ReleaseWithActiveDrag(t *testing.T) {
 	dv := newInputHandlerTestDV(t)
 
@@ -163,8 +147,6 @@ func TestDrumViewInput_ReleaseWithActiveDrag(t *testing.T) {
 	}
 }
 
-// TestDrumViewInput_PressOutsideBoundsIgnored verifies that pressing outside
-// the DrumView bounds returns InputIgnored and does NOT set mouseDownInBounds.
 func TestDrumViewInput_PressOutsideBoundsIgnored(t *testing.T) {
 	dv := newInputHandlerTestDV(t)
 

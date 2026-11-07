@@ -56,8 +56,7 @@ func TestShippedDocumentsValidate(t *testing.T) {
 	}
 }
 
-// Shipped values lie inside their knob ranges, or the derived range (Task B4)
-// widens to contain them — this lists which, so a widening is a decision.
+// Or the derived range widens to contain them: listed, so a widening is a decision.
 func TestShippedValuesInsideParamDefRanges(t *testing.T) {
 	defs := map[string]ParamDef{}
 	for _, d := range ModularSynthParamDefs() {

@@ -10,19 +10,11 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// These tests pin the reported behavior: the (i,j) coordinate badge that
-// appears next to a node when it is clicked must NOT auto-hide on a timer.
-// It stays visible while the node stays selected and its pop-up menu (the
-// node sidebar) is open, and only disappears when the user (a) selects a
-// different node, or (b) closes the pop-up menu.
-//
-// drawGridCoordBadge self-clears g.coordBadgeNode = nil when it decides the
-// badge should be hidden, so we can observe the visibility decision by
-// drawing once and checking whether g.coordBadgeNode survives.
+// The badge never auto-hides on a timer: it stays while the node is selected and its sidebar open, and goes when
+// another node is selected or the sidebar closes. Draw clears coordBadgeNode when it hides the badge, so one draw
+// shows the decision.
 
-// armCoordBadge mirrors the real desktop click-on-existing-node path
-// (game_input_editor.go): select the node, open its sidebar menu, and arm the
-// coordinate badge for it.
+// As the desktop click on an existing node does: select, open the sidebar, arm the badge.
 func armCoordBadge(g *Game, n *uiNode) {
 	g.sel = n
 	n.Selected = true
@@ -31,9 +23,7 @@ func armCoordBadge(g *Game, n *uiNode) {
 	g.coordBadgeFrame = g.frame
 }
 
-// TestCoordBadgePersistsPastTimerWhileMenuOpen is the failing repro: on
-// desktop the badge used to vanish after 180 frames (~3s). It must stay
-// visible while the node is selected and its menu is open.
+// Past the old 180-frame timer, while selected with the menu open.
 func TestCoordBadgePersistsPastTimerWhileMenuOpen(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -62,8 +52,6 @@ func TestCoordBadgePersistsPastTimerWhileMenuOpen(t *testing.T) {
 	}
 }
 
-// TestCoordBadgeHidesWhenMenuClosed pins hide-trigger (b): closing the pop-up
-// menu (the node sidebar) hides the badge.
 func TestCoordBadgeHidesWhenMenuClosed(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -88,8 +76,6 @@ func TestCoordBadgeHidesWhenMenuClosed(t *testing.T) {
 	}
 }
 
-// TestCoordBadgeHidesWhenDifferentNodeSelected pins hide-trigger (a):
-// selecting a different node hides the old node's badge.
 func TestCoordBadgeHidesWhenDifferentNodeSelected(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -101,16 +87,14 @@ func TestCoordBadgeHidesWhenDifferentNodeSelected(t *testing.T) {
 	if n1 == nil {
 		t.Fatal("tryAddNode(n1) returned nil")
 	}
-	// Create n2 first (tryAddNode arms the badge for the node it creates), then
-	// arm the badge for n1 so we can drive the draw-time guard directly.
+	// tryAddNode arms the badge for its node, so n2 is made first and the badge then armed for n1.
 	n2 := g.tryAddNode(6, 2, model.NodeTypeRegular)
 	if n2 == nil {
 		t.Fatal("tryAddNode(n2) returned nil")
 	}
 	armCoordBadge(g, n1)
 
-	// A different node is now the selection with its menu open, while the badge
-	// still points at n1 (the draw-time guard must catch this and hide it).
+	// The draw-time guard must hide the badge still pointing at n1.
 	g.sel = n2
 	n2.Selected = true
 	g.sidebar.Open(n2)

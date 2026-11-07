@@ -11,18 +11,8 @@ import (
 // ErrSchedulerClosed is returned by Schedule when called after Close.
 var ErrSchedulerClosed = errors.New("async: scheduler closed")
 
-// Scheduler dispatches Jobs at deadlines onto an underlying Pool. A
-// single timer goroutine owns a min-heap of pending entries; when the
-// head is due, the entry is non-blocking-Submitted to the pool.
-//
-// Use this instead of `go func() { time.Sleep(d); fn() }` whenever the
-// number of pending deadlines could grow with workload — one Scheduler
-// owns one timer goroutine regardless of pending count.
-//
-// Drop semantics match the rest of the system: if the pool is saturated
-// when an entry fires, the Scheduler counts it as Dropped and continues
-// (no retries, no blocking). Callers that need backpressure visibility
-// should monitor Stats().Dropped.
+// One timer goroutine and a min-heap however many deadlines are pending, unlike go func(){ Sleep; fn() }. A due entry is
+// Submitted without blocking; on a saturated pool it is counted Dropped (watch Stats().Dropped), never retried.
 type Scheduler struct {
 	pool *Pool
 
@@ -162,9 +152,7 @@ func (s *Scheduler) signal() {
 // due, a wakeup arrives (new earlier head), or the scheduler is closed.
 func (s *Scheduler) run() {
 	defer s.wg.Done()
-	// idleSleep is long enough that a paused (no-pending) scheduler
-	// doesn't spin, but short enough that a missed wakeup recovers
-	// within human-scale latency. wakeup makes this rare.
+	// Long enough that an idle scheduler never spins, short enough that a missed wakeup recovers.
 	const idleSleep = time.Hour
 
 	for {

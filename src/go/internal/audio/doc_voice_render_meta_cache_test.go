@@ -9,12 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// The native voice cache must key on EVERYTHING renderDocIntoCache reads: the
-// flattened block AND the document's render metadata (amplitude, beats,
-// gate_tail) and voice FX. Two documents with the same block but a different
-// amplitude (a project saved before a loudness re-measure, a pinned template
-// document) must not share a cached voice — otherwise what plays depends on
-// what was loaded before.
+// The key must cover everything renderDocIntoCache reads, render metadata and voice FX included: two documents
+// with one block but another amplitude must not share a voice, or what plays depends on what loaded first.
 func TestVoiceCacheFollowsRenderMetadata(t *testing.T) {
 	resetLibraryForTest(t)
 	globalVoiceCache.Clear()

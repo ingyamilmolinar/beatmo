@@ -14,10 +14,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// The Synth tab's FOCUS (spec 2026-10-24 §4.2): one focused dial at a time,
-// the control the graph explains. Pressing a dial focuses it (both modes); a
-// production card tap focuses the card's first dial; a focus never outlives
-// the instrument (or card set) it named.
+// One focused dial at a time, the one the graph explains: pressing a dial focuses it, a production card tap its first
+// dial, and a focus never outlives its instrument or card set.
 
 func TestPressingADialFocusesIt(t *testing.T) {
 	for _, prod := range []bool{false, true} {
@@ -70,8 +68,7 @@ func TestFocusDoesNotOutliveItsInstrument(t *testing.T) {
 	if _, _, ok := dv.synthFocusedDial(inst); !ok {
 		t.Fatal("setSynthFocusDial did not focus")
 	}
-	// Switch the row to an instrument whose cards differ (a kick has no
-	// melodic "sound" card): the focus must not carry over.
+	// A kick has no melodic "sound" card, so the focus must not carry over.
 	dv.Rows[0].Instrument = roster.Kick808
 	t.Cleanup(func() { audio.ResetInstrumentParams(roster.Kick808) })
 	dv.eqPanelZone.SetActiveChannel(channel.Of(roster.Kick808))
@@ -87,8 +84,7 @@ func TestFocusDoesNotOutliveItsInstrument(t *testing.T) {
 	}
 }
 
-// The overview is always one gesture away: Esc, or a tap on empty card space,
-// drops the focus (spec 2026-10-24 §4.2) — and the Esc does not Stop.
+// Esc or an empty tap drops back to the overview, and the Esc does not Stop.
 func TestFocusClearsOnEscAndOnAnEmptyTap(t *testing.T) {
 	for _, prod := range []bool{false, true} {
 		name := map[bool]string{false: "developer", true: "production"}[prod]

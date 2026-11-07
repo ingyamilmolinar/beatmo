@@ -16,11 +16,7 @@ func clearClickSuppression(t *testing.T) {
 	t.Cleanup(func() { suppressClicksUntilRelease = prev })
 }
 
-// TestSubdivMenuBottomAnchorStaysOnScreen is the regression case for the
-// "menu renders ~250px below its ÷n anchor over the EQ panel, clipped at the
-// screen bottom" bug. With the ÷n button anchored at the very bottom edge of
-// the bounds, AnchorPopupRect must flip/clamp the card so it stays fully on
-// screen.
+// With the anchor at the very bottom, AnchorPopupRect must flip/clamp the card fully on screen.
 func TestSubdivMenuBottomAnchorStaysOnScreen(t *testing.T) {
 	bounds := image.Rect(0, 0, 800, 600)
 	// Anchor flush against the bottom edge — there is no room below it.
@@ -50,9 +46,7 @@ func TestSubdivMenuBottomAnchorStaysOnScreen(t *testing.T) {
 	}
 }
 
-// TestSubdivMenuOptionsNotTruncated verifies the option labels keep their full
-// text ("16", "32") — the desktop card sizes its width from StyledTextWidth
-// (RoleBody) so the wider labels never collapse to "···".
+// The width comes from StyledTextWidth, so wider labels never collapse to "···".
 func TestSubdivMenuOptionsNotTruncated(t *testing.T) {
 	bounds := image.Rect(0, 0, 800, 600)
 	anchor := image.Rect(100, 100, 140, 124)
@@ -83,11 +77,7 @@ func TestSubdivMenuOptionsNotTruncated(t *testing.T) {
 	}
 }
 
-// TestSubdivMenuHighlightsCurrent verifies the active subdivision option is
-// rendered with the active draw state (azure stripe + colTextAccent label).
-// The highlight is now determined in drawSubdivRow by comparing the option
-// value to props.Current — this test verifies the component correctly exposes
-// the current value through Props() so the draw logic can distinguish it.
+// drawSubdivRow compares each option to props.Current, so the component must expose it.
 func TestSubdivMenuHighlightsCurrent(t *testing.T) {
 	bounds := image.Rect(0, 0, 800, 600)
 	comp := NewSubdivMenuComponent()
@@ -100,8 +90,6 @@ func TestSubdivMenuHighlightsCurrent(t *testing.T) {
 	})
 	comp.Open()
 
-	// Verify props.Current is correctly stored — drawSubdivRow uses
-	// comp.props.Current (not btn.Style) to decide the active state.
 	if comp.Props().Current != 16 {
 		t.Errorf("props.Current = %d, want 16", comp.Props().Current)
 	}
@@ -394,10 +382,7 @@ func TestSubdiv_SetPropsRebuildWhileOpen(t *testing.T) {
 	}
 }
 
-// TestSubdivRowButtonsPersistAcrossFrames verifies the subdiv rows keep the
-// SAME *Button instances across Draw calls so input state stays coherent.
-// Menu rows are flat (no keycap press animation — see
-// TestDrawMenuRowIsFlatNoKeycap), so only pointer persistence is asserted.
+// The same *Button instances across Draws, so input state stays coherent.
 func TestSubdivRowButtonsPersistAcrossFrames(t *testing.T) {
 	comp := NewSubdivMenuComponent()
 	comp.SetScreenBounds(image.Rect(0, 0, 200, 400))

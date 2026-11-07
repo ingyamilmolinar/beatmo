@@ -7,10 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestFamilyFieldsHaveTheirFamilyCapacity: a family's per-slot fields exist only
-// for the slots that family can occupy (Phase C task C3). Every shipped seed
-// puts a kick/snare/tom/FM/bass/Karplus-Strong voice in slot 1 and a cymbal
-// plate in slots 1-3; the generic gen-bank fields keep all 12 slots.
+// Shipped documents put the drum/FM/bass/KS voices in slot 1 and the cymbal plate in 1-3; generic fields keep all 12.
 func TestFamilyFieldsHaveTheirFamilyCapacity(t *testing.T) {
 	want := map[string]int{"kick_h2": 1, "kick_hold": 1, "kick_mode_gain": 1, "kick_reverb": 1,
 		"snare_tone2": 1, "tom_sweep": 1, "fm_r1": 1, "ks_sustain": 1, "harm_mix": 1,
@@ -27,9 +24,7 @@ func TestFamilyFieldsHaveTheirFamilyCapacity(t *testing.T) {
 	if seen != len(want) {
 		t.Fatalf("found %d of %d probed fields — table names changed?", seen, len(want))
 	}
-	// Stage TABLE cells are a deliberate, separately capped block
-	// (TestTablesAreModelParametersOnly); the slot-scoping budget is about the
-	// knob fields.
+	// Table cells are capped separately; this budget is the knob fields.
 	n := 0
 	for _, f := range ModularParamSchema() {
 		if !IsTableField(f) {
@@ -41,8 +36,6 @@ func TestFamilyFieldsHaveTheirFamilyCapacity(t *testing.T) {
 	}
 }
 
-// TestEverySeedRespectsSlotCapacity: no shipped seed places a family voice in a
-// slot its family has no fields for.
 func TestEverySeedRespectsSlotCapacity(t *testing.T) {
 	for _, id := range roster.All {
 		if err := validateSlotCapacity(MergedInstrumentParamsRO(id)); err != nil {
@@ -61,10 +54,7 @@ func TestValidateSlotCapacityNamesTheSlot(t *testing.T) {
 	}
 }
 
-// TestSetInstrumentParamRefusesAFamilyVoiceBeyondCapacity: a live write that
-// would put a family voice in a slot it cannot occupy is refused, like an
-// unknown name. Stored, it renders silence and every later undo/redo and
-// re-import of the session (both validate the whole map) is rejected.
+// Stored, it renders silence and every later undo/redo and re-import (which validate the whole map) is rejected.
 func TestSetInstrumentParamRefusesAFamilyVoiceBeyondCapacity(t *testing.T) {
 	const id = roster.Kick
 	t.Cleanup(func() { ResetInstrumentParams(id) })
@@ -78,9 +68,7 @@ func TestSetInstrumentParamRefusesAFamilyVoiceBeyondCapacity(t *testing.T) {
 	}
 }
 
-// TestSlotCapacityRoundsLikeTheEngine: C picks the voice with lrint (round half
-// to even), so 8.5 is a CLAP (8, capacity 1) to the engine — Go must judge the
-// same voice, not math.Round's cymbal (9, capacity 3).
+// C picks the voice with lrint (half to even), so 8.5 is a CLAP to the engine, not math.Round's cymbal.
 func TestSlotCapacityRoundsLikeTheEngine(t *testing.T) {
 	if err := validateSlotCapacity(RecipeParams{"gen2_source": 8.5}); err == nil {
 		t.Fatal("gen2_source=8.5 renders the clap voice (lrint) in slot 2, past its capacity, but was accepted")

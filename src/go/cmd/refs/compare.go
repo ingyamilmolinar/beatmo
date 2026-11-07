@@ -35,14 +35,10 @@ const (
 // clipping.
 const clipCeiling = 0.99
 
-// silenceRMSThreshold marks a render as "no audio", not merely "quiet
-// audio" -- worth a loud warning rather than a silently-written, baffling
-// WAV file the user plays and can't explain.
+// "No audio", not "quiet": worth a loud warning rather than a baffling silent WAV.
 const silenceRMSThreshold = 1e-6
 
-// compareDir is the review directory for one instrument's REAL-vs-SYNTH
-// comparison audio. Lives under $BEATMO_WAV_REFS, mirroring candidateDir,
-// so comparison audio never lands in the tree.
+// Under $BEATMO_WAV_REFS, so comparison audio never lands in the tree.
 func compareDir(inst instrument.ID) (string, error) {
 	base, ok := wavref.Dir()
 	if !ok {
@@ -55,10 +51,7 @@ func compareDir(inst instrument.ID) (string, error) {
 	return d, nil
 }
 
-// pickReference chooses which of an instrument's candidate references
-// (already status-filtered and ID-sorted by the caller) to compare against.
-// wantID == "" picks the first -- the caller is responsible for telling the
-// user which one that was and that -ref can pick another.
+// wantID "" picks the first; the caller says which, and that -ref picks another.
 func pickReference(candidates []wavref.Ref, wantID string) (wavref.Ref, error) {
 	if wantID == "" {
 		return candidates[0], nil
@@ -71,10 +64,7 @@ func pickReference(candidates []wavref.Ref, wantID string) (wavref.Ref, error) {
 	return wavref.Ref{}, fmt.Errorf("refs compare: %q is not a reference for this instrument", wantID)
 }
 
-// computeGains returns the pair of gains that bring levels a and b to their
-// common average: a*realGain == b*synthGain == target. That's what
-// "equalised" means here. A zero level means there is no ratio to compute
-// against silence, so unity gain (leave it alone) is the only sane answer.
+// Both brought to their common average; a zero level keeps unity gain (no ratio against silence).
 func computeGains(a, b float64) (float64, float64) {
 	if a <= 0 || b <= 0 {
 		return 1, 1
@@ -113,15 +103,8 @@ func levelMatchGains(mode string, realRMS, realPeak, synthRMS, synthPeak float64
 	return realGain, synthGain, nil
 }
 
-// computeGainsN generalises computeGains from one pair to a reference plus N
-// synth options: every clip is brought to their COMMON average, so all N+1 sit
-// at the same level.
-//
-// levels[0] is the reference; the rest are the options. For N==1 this reduces
-// EXACTLY to computeGains -- target = (a+b)/2 -- which is what keeps
-// `refs compare` and `refs diagnose` byte-identical while `refs audition`
-// gains a family-wide match. A zero level has no ratio to compute against
-// silence, so it keeps unity gain and is excluded from the target.
+// Every clip to their COMMON average; for N==1 exactly computeGains ((a+b)/2), which keeps refs compare and refs
+// diagnose byte-identical. A zero level keeps unity gain and is left out of the target.
 func computeGainsN(levels []float64) []float64 {
 	gains := make([]float64, len(levels))
 	var sum float64
@@ -149,11 +132,8 @@ func computeGainsN(levels []float64) []float64 {
 	return gains
 }
 
-// clampFamilyGains is clampGainsForPeak over N+1 clips: when ANY resulting
-// peak would exceed ceiling, EVERY gain is scaled down by the same factor, so
-// the equal-loudness relationship the matching just established survives the
-// clamp. Scaling only the offending clip would reintroduce exactly the level
-// difference this whole path exists to remove.
+// EVERY gain scales by one factor when any peak would exceed the ceiling: scaling only the offender would reintroduce the
+// level difference this path removes.
 func clampFamilyGains(gains, peaks []float64, ceiling float64) []float64 {
 	var worst float64
 	for i := range gains {
@@ -217,10 +197,7 @@ func isNearSilent(samples []float64) bool {
 	return rms < silenceRMSThreshold
 }
 
-// writeCompareWAV encodes samples via the app's own WAV encoder (the same
-// one internal/wavgen wraps for tests/tools) so the output is a real,
-// spec-conformant WAV usable everywhere -- including under `-tags test`,
-// where internal/audio's desktop-only ExportCaptureToWAV is unavailable.
+// The app's own encoder, so it works under -tags test too, where ExportCaptureToWAV is unavailable.
 func writeCompareWAV(path string, samples []float64, sr int) error {
 	f32 := make([]float32, len(samples))
 	for i, s := range samples {
@@ -250,11 +227,7 @@ func compareCandidates(c wavref.Cat, inst instrument.ID) []wavref.Ref {
 	return out
 }
 
-// comparableInstruments returns every distinct instrument id with at least
-// one non-status (real-audio) reference candidate -- i.e. everything
-// `refs compare -instrument` can legally be pointed at. This is the single
-// source of truth for "what can I pass to -instrument"; don't reimplement
-// this enumeration elsewhere (including in the Makefile).
+// The single source of truth for what -instrument accepts; never re-enumerate it (the Makefile included).
 func comparableInstruments(c wavref.Cat) []instrument.ID {
 	set := map[instrument.ID]bool{}
 	for _, r := range c.Refs {
@@ -280,10 +253,7 @@ type compareResult struct {
 	Match string
 	Ref   wavref.Ref
 	Dur   float64
-	// Pitch is the semitone offset from A3 the synth was actually rendered at.
-	// Reported because it is no longer simply the reference's stored integer:
-	// a reliable f0 renders at its exact fractional value, and the listener
-	// should be able to see which of the two happened.
+	// A reliable f0 renders at its exact fractional value, else the stored integer; reported so the listener sees which.
 	Pitch      float64
 	PitchExact bool
 	RealPath   string
@@ -294,19 +264,9 @@ type compareResult struct {
 	SynthGain  float64
 }
 
-// computeCompare renders the synth at a reference's own measured pitch --
-// upstream pitch labels have been wrong repeatedly, so the reference's own
-// `measured.semis_from_a3` is the only trustworthy render target -- then
-// level-matches the two clips and writes both to disk for an A/B listen.
-// Level-matching matters more than it looks: in any A/B test the louder
-// source is reliably judged fuller/better, so without it the listener
-// grades gain, not timbre.
-//
-// diag receives progress/warning messages that are advisory rather than
-// part of the final answer (the multi-candidate note, the near-silent-render
-// warning). runCompare routes diag to the same writer as the report so
-// nothing is lost; runCompareSh routes it to stderr so stdout carries
-// nothing but the four `-sh` shell assignments.
+// Rendered at the reference's own measured pitch (upstream labels are often wrong), then level-matched: the louder
+// source is reliably judged better, so without it the listener grades gain. diag carries advisory messages (stderr for
+// -sh, so stdout holds only the assignments).
 func computeCompare(diag io.Writer, inst instrument.ID, refID string, durFlag float64, match string) (compareResult, error) {
 	if match != matchRMS && match != matchPeak && match != matchNone {
 		return compareResult{}, fmt.Errorf("refs compare: unknown -match mode %q (want rms|peak|none)", match)
@@ -333,22 +293,9 @@ func computeCompare(diag io.Writer, inst instrument.ID, refID string, durFlag fl
 	return renderCompare(diag, inst, ref, durFlag, match)
 }
 
-// renderPitch is the semitone offset (from A3=220Hz) to render a synth at so
-// it matches a reference's ACTUAL pitch.
-//
-// The reference's own measured f0 is used directly, NOT the rounded
-// measured.semis_from_a3, because that rounding detunes the synth by up to
-// half a semitone against the very recording it is being compared to. Across
-// the corpus the median error is 11 cents but fifteen references exceed a
-// quarter-tone and six exceed 40 cents (koto +43.9, piano-felt -37.6,
-// singing-bowl +35.0) -- plainly audible as "out of tune" in an A/B listen,
-// and a systematic bias on every frequency-scaled diagnostic axis. Measured
-// already carries F0Hz; only the fractional part was being discarded.
-//
-// An unreliable f0 (percussion, where the detector's number is an artifact of
-// the octave guard rather than a pitch) falls back to the stored integer: the
-// exact value is meaningless either way there, and the stored one keeps those
-// renders reproducible against earlier verdicts.
+// The measured f0 itself, not the rounded semis_from_a3, which detunes by up to half a semitone against the very
+// recording compared (audibly, for many refs). An unreliable f0 falls back to the stored integer, keeping those renders
+// reproducible against earlier verdicts.
 func renderPitch(m wavref.Measured, f0Reliable bool) float64 {
 	if m.F0Hz > 0 && f0Reliable {
 		return 12 * math.Log2(m.F0Hz/a3Hz)
@@ -356,10 +303,7 @@ func renderPitch(m wavref.Measured, f0Reliable bool) float64 {
 	return float64(m.SemisFromA3)
 }
 
-// renderCompare renders ONE instrument against ref. It is the single-option
-// case of renderFamilyCompare, kept as a named entry point because
-// computeCompare, `refs diagnose` and the acceptance test all drive exactly
-// one instrument.
+// renderCompare is the single-option renderFamilyCompare, the entry point for the one-instrument callers.
 func renderCompare(diag io.Writer, inst instrument.ID, ref wavref.Ref, durFlag float64, match string) (compareResult, error) {
 	res, err := renderFamilyCompare(diag, []instrument.ID{inst}, ref, durFlag, match)
 	if err != nil {
@@ -368,10 +312,7 @@ func renderCompare(diag io.Writer, inst instrument.ID, ref wavref.Ref, durFlag f
 	return res[0], nil
 }
 
-// renderCompareOverrides is renderCompare's param-override variant: ov's
-// values render on top of inst's shipped defaults (see
-// synthmatch.RenderWithParams), for diagnosing a session candidate's clip
-// rather than the instrument's own shipped sound.
+// renderCompareOverrides renders ov on top of inst's document, for a session candidate's clip.
 func renderCompareOverrides(diag io.Writer, inst instrument.ID, ov map[string]float64, ref wavref.Ref, durFlag float64, match string) (compareResult, error) {
 	res, err := renderFamilyCompareOverrides(diag, []instrument.ID{inst}, []map[string]float64{ov}, ref, durFlag, match)
 	if err != nil {
@@ -380,39 +321,14 @@ func renderCompareOverrides(diag io.Writer, inst instrument.ID, ov map[string]fl
 	return res[0], nil
 }
 
-// renderFamilyCompare renders EVERY instrument in insts against ONE shared
-// reference, level-matches all of them together, and writes one reference WAV
-// plus one synth WAV per instrument. It is renderFamilyCompareOverrides with
-// no per-instrument param overrides.
+// renderFamilyCompare is renderFamilyCompareOverrides with no overrides: one shared reference, one level for all.
 func renderFamilyCompare(diag io.Writer, insts []instrument.ID, ref wavref.Ref, durFlag float64, match string) ([]compareResult, error) {
 	return renderFamilyCompareOverrides(diag, insts, nil, ref, durFlag, match)
 }
 
-// renderFamilyCompareOverrides is renderFamilyCompare's param-override
-// variant: overrides[i] (may be nil, and the whole slice may be nil) renders
-// on top of insts[i]'s shipped defaults via synthmatch.RenderShipped — the
-// sound as PLAYED (FX, gate, normalisation; percussion pitched by resampling)
-// — rather than the instrument's plain shipped sound. This is what lets a
-// session candidate -- an instrument plus a proposed knob tweak -- be
-// diagnosed and A/B'd exactly like a shipped instrument, without a second
-// synth-rendering code path.
-//
-// Rendering the family as a set rather than one instrument at a time is not an
-// optimisation, it is a correctness requirement. Level-matching derives the
-// reference's gain from the synth it is paired with, so N independent
-// renderCompare calls produced N DIFFERENTLY-SCALED copies of the same
-// reference -- and `refs audition` played only the first, leaving options 2..N
-// matched against a clip the listener never heard. A family whose options
-// differ in raw level by 4x therefore presented them ~6 dB apart, and in any
-// A/B the louder source is reliably judged fuller. Every result returned here
-// shares one RealPath and one common level.
-//
-// The reference is decoded, measured and written ONCE for the whole family
-// rather than once per member, which also drops N-1 decode/encode round trips.
-//
-// The WAV filename for an override render carries the first 8 hex chars of
-// audio.InstrumentSoundHash(inst, ov) so a candidate's render never
-// overwrites (or is confused with) the instrument's plain SYNTH__<inst>.wav.
+// overrides[i] (nil allowed) on top of insts[i]'s document, the sound as PLAYED, so a session candidate is A/B'd like a
+// shipped voice. One family render is a correctness requirement: the reference's gain depends on its pair, so per-member
+// renders made differently scaled copies of which only the first was heard. Override WAVs carry a sound-hash prefix.
 func renderFamilyCompareOverrides(diag io.Writer, insts []instrument.ID, overrides []map[string]float64, ref wavref.Ref, durFlag float64, match string) ([]compareResult, error) {
 	specs := make([]compareSpec, len(insts))
 	for i, inst := range insts {
@@ -464,8 +380,7 @@ func renderFamilyCompareSpecs(diag io.Writer, specs []compareSpec, ref wavref.Re
 	realWave := wave.Wave{Samples: realSamples, SampleRate: rate, Label: ref.ID}
 	realMeasured := measureWave(realWave)
 
-	// Render every member at the reference's OWN pitch -- that's the entire
-	// point of this command.
+	// At the reference's OWN pitch: the point of this command.
 	dur := durFlag
 	if dur <= 0 {
 		dur = ref.Measured.DurationSec
@@ -478,9 +393,7 @@ func renderFamilyCompareSpecs(diag io.Writer, specs []compareSpec, ref wavref.Re
 	synthMeasured := make([]wavref.Measured, len(insts))
 	for i, inst := range insts {
 		sp := specs[i]
-		// The sound as PLAYED (document FX, gate, normalisation; percussion
-		// pitched by resampling) — the raw C render skipped the FX of every
-		// document that carries them, so compare analysed a sound nobody hears.
+		// As PLAYED: the raw C render skips document FX, a sound nobody hears.
 		var w wave.Wave
 		var err error
 		if sp.Doc != nil {
@@ -516,9 +429,7 @@ func renderFamilyCompareSpecs(diag io.Writer, specs []compareSpec, ref wavref.Re
 		return nil, err
 	}
 
-	// The reference lands in the FIRST member's directory and every result
-	// points at that one file, so the clip the listener hears is the clip every
-	// option was matched against.
+	// In the FIRST member's directory, one file for every result: the clip heard is the clip every option was matched to.
 	refDir, err := compareDir(insts[0])
 	if err != nil {
 		return nil, err
@@ -567,8 +478,7 @@ func renderFamilyCompareSpecs(diag io.Writer, specs []compareSpec, ref wavref.Re
 	return out, nil
 }
 
-// warnNearSilent explains a silent render, including the build-tag caveat that
-// makes silence expected (and meaningless) under `-tags test`.
+// Silence is expected (and meaningless) under -tags test, so the warning says so.
 func warnNearSilent(diag io.Writer, inst instrument.ID, m wavref.Measured) {
 	fmt.Fprintf(diag, "WARNING: the synthesized %s render is silent or near-silent (RMS=%.6f, peak=%.6f).\n",
 		inst, m.RMS, m.Peak)
@@ -579,10 +489,7 @@ func warnNearSilent(diag io.Writer, inst instrument.ID, m wavref.Measured) {
 	fmt.Fprintln(diag)
 }
 
-// absOrSelf makes a path absolute, falling back to the original on failure.
-// `-sh`'s whole point is to be eval'd from an arbitrary cwd (the Makefile's own
-// shell), so a relative path would silently resolve against the wrong
-// directory.
+// -sh is eval'd from an arbitrary cwd (the Makefile's shell), where a relative path resolves wrong.
 func absOrSelf(p string) string {
 	if abs, err := filepath.Abs(p); err == nil {
 		return abs
@@ -633,11 +540,7 @@ func printCompareReport(w io.Writer, res compareResult) error {
 	return nil
 }
 
-// formatCompareSh renders the `-sh` output: four single-quoted, eval-able
-// shell assignments and nothing else. Quoting goes through shQuote, which also
-// escapes an embedded single quote -- a bare '%s' wrapper is safe for spaces
-// but a path containing an apostrophe would close the string and hand the
-// remainder to the shell.
+// Through shQuote, which escapes an embedded single quote too: a bare '%s' breaks on an apostrophe.
 func formatCompareSh(realPath, synthPath, refID string, dur float64) string {
 	return fmt.Sprintf(
 		"BEATMO_AB_REAL=%s\nBEATMO_AB_SYNTH=%s\nBEATMO_AB_DUR=%s\nBEATMO_AB_REF=%s\n",
@@ -654,18 +557,8 @@ func runCompare(w io.Writer, inst instrument.ID, refID string, durFlag float64, 
 	return printCompareReport(w, res)
 }
 
-// runCompareSh runs the IDENTICAL render + level-match pipeline as
-// runCompare (via computeCompare -- `-sh` never skips the work, only the
-// reporting) but SPLITS the two reports across streams instead of doing a
-// second full render: the human-readable table goes to diag (stderr in
-// practice), and w (stdout) carries ONLY the four BEATMO_AB_* shell
-// assignments. That's the standard split for a command whose output is
-// meant to be captured -- `eval "$(refs compare -sh ...)"` captures stdout
-// while the table flows to the terminal via stderr, unimpeded, from the
-// SAME invocation. Earlier this command's only wiring was "run compare for
-// the report, then run it again with -sh for the paths" -- two full synth
-// renders and two catalogue loads per listen for no benefit; this is the
-// one-invocation replacement.
+// The SAME pipeline as runCompare, once: the table goes to diag (stderr) and stdout carries ONLY the BEATMO_AB_*
+// assignments, so eval "$(refs compare -sh ...)" captures the paths while the table reaches the terminal.
 func runCompareSh(w, diag io.Writer, inst instrument.ID, refID string, durFlag float64, match string) error {
 	res, err := computeCompare(diag, inst, refID, durFlag, match)
 	if err != nil {
@@ -678,10 +571,7 @@ func runCompareSh(w, diag io.Writer, inst instrument.ID, refID string, durFlag f
 	return nil
 }
 
-// runCompareList prints every instrument comparable via `refs compare
-// -instrument` -- the single source of truth for "what can I pass to
-// -instrument". Callers (including `make ab-list`) must delegate here
-// rather than reimplementing the enumeration.
+// The single source of truth for what -instrument accepts; make ab-list delegates here.
 func runCompareList(w io.Writer) error {
 	c, err := loadCatalogue()
 	if err != nil {

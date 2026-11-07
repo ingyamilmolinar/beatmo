@@ -9,13 +9,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestRenameSpaceInsertedAtBeginning reproduces the reported bug: open the
-// instrument rename field, move the caret to the START (ArrowLeft), press
-// Space — the space MUST be inserted at the beginning of the name, not swallowed
-// (Space is also the transport play/pause shortcut, so the focused rename box
-// must own it). Drives the real integrated frame: handleGlobalShortcuts (the
-// keyboard-ownership gate that must yield Space to the box) + the rename portal's
-// PollKeyboard update (which runs TextInput.Update to insert the char).
+// Space is also the play/pause shortcut, so the focused rename box must own it. Drives handleGlobalShortcuts and
+// the rename portal's PollKeyboard together.
 func TestRenameSpaceInsertedAtBeginning(t *testing.T) {
 	g := newTestGameForUndo(t)
 	rc := g.drum.renameComp
@@ -36,9 +31,7 @@ func TestRenameSpaceInsertedAtBeginning(t *testing.T) {
 		t.Fatalf("setup value=%q want %q", tb.Value(), "kick")
 	}
 
-	// Move the caret to the very beginning with ArrowLeft (4 discrete presses,
-	// releasing between each so keyRepeat treats them as separate presses — as a
-	// real user tapping the key does).
+	// Released between presses so keyRepeat sees separate taps.
 	pressLeft := func(down bool) {
 		restore := SetInputForTest(
 			func() (int, int) { return -1, -1 },
@@ -59,9 +52,7 @@ func TestRenameSpaceInsertedAtBeginning(t *testing.T) {
 		t.Fatalf("after ArrowLeft x4: cursor=%d want 0 (arrow nav to start broken)", tb.CursorForTest())
 	}
 
-	// Press Space. isKeyJustPressed(Space) is true (as on real hardware) so this
-	// also verifies the transport shortcut does NOT steal it. inputChars carries
-	// the ' ' rune the widget inserts.
+	// isKeyJustPressed(Space) is true, as on real hardware, so the transport shortcut must not steal it.
 	restoreChars := SetInputForTest(
 		func() (int, int) { return -1, -1 },
 		func(ebiten.MouseButton) bool { return false },

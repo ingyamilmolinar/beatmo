@@ -1,23 +1,6 @@
-/**
- * Node-Logic Cross-Platform Parity (WASM ↔ native Go)
- *
- * Imports a circuit that exercises EVERY built-in node-logic kind
- * (every_n_triggers, skip_every_n, probability, trigger_if_prev_*) and asserts
- * the WASM predictor reproduces the native Go schedule BYTE-FOR-BYTE over a deep
- * horizon (many loop iterations). This proves logic-kind evaluation AND the
- * uint64 probability roll are identical across the native↔WASM compile boundary,
- * with the bounded dirty-rebuild fix (core/engine) compiled into the WASM binary
- * — i.e. the choppiness fix did not perturb the schedule on the platform the
- * user said was worst.
- *
- * Golden: src/go/internal/ui/testdata/parity_golden_node_rules.json, generated
- * by `go test -run TestNodeRuleParityGolden ./internal/ui/` (native).
- *
- * COVERED-BY-GO (the rebuild byte-identity at large windowStart, which the UI
- * window anchor makes unreachable in a static import):
- *   core/engine TestDirtyRebuildEquivalentToFullWalk — exhaustive across logic
- *   profiles × windowStart values; pure integer logic, architecture-independent.
- */
+/** Every node-logic kind over a deep horizon: the WASM predictor must reproduce the native schedule BYTE-FOR-BYTE,
+ * uint64 probability roll included, against testdata/parity_golden_node_rules.json (TestNodeRuleParityGolden).
+ * COVERED-BY-GO: core/engine TestDirtyRebuildEquivalentToFullWalk (rebuild identity at large windowStart) */
 
 import { setupFullWasm } from "./real_input_test_helpers.js";
 import { flushCoverage, isCoverageEnabled } from "./coverage_helpers.js";

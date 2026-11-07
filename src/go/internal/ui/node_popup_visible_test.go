@@ -7,18 +7,13 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// The node popup panel is a compact, node-anchored card rendered as a
-// GridTree layer ("grid-sidebar", clipped to the grid pane — see
-// game_node_sidebar.go's layout()), so it must stay fully visible within the
-// grid view (top pane), clamped away from the split line even for nodes near
-// the borders — it can never paint over the bottom drum-view pane.
+// Clamped inside the grid pane even for a node near the border, so it never paints over the drum view.
 func TestNodePopupClampedInsideTopPane(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(game_log.New(nil, game_log.LevelError))
 	t.Cleanup(g.CloseForTest)
 	g.Layout(400, 300)
-	// Create a node near the right edge of the grid area
-	// Position in grid units: use a high I so its screen X is near winW
+	// A high I puts its screen X near winW.
 	n := g.tryAddNode(g.grid.MaxDiv()-1, 0, 0)
 	g.sidebar.Open(g.nodeByID(n.ID))
 	g.sidebar.layout()

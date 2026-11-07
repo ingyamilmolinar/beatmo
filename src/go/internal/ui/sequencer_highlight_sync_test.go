@@ -10,10 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// TestApplySequencerHighlightSetsNodeWindow verifies that
-// applySequencerHighlight sets a nodeHighlightUntil window matching
-// the beat duration, so the grid node glow stays in sync with the
-// drum view cell highlight.
+// The window matches the beat duration, so the grid node glow stays in step with the cell highlight.
 func TestApplySequencerHighlightSetsNodeWindow(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -63,9 +60,7 @@ func TestApplySequencerHighlightSetsNodeWindow(t *testing.T) {
 	}
 }
 
-// TestApplySequencerHighlightNoWindowWhenAudioNowZero verifies that when
-// audio.Now() returns 0 (stub/test mode without override), no highlight
-// window is set — the grid node falls back to exponential decay.
+// With no audio clock the grid node falls back to exponential decay.
 func TestApplySequencerHighlightNoWindowWhenAudioNowZero(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

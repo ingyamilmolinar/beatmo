@@ -1,61 +1,6 @@
-/**
- * Audio playback probe — AudioWorkletProcessor `beatmo-audio-probe`.
- *
- * Measures what the listener actually HEARS on one bus (a channel or the
- * master), from the audio rendering thread. Everything upstream of this node
- * (Go predictor → scheduler → syscall/js bridge → audio.js queue →
- * BufferSource.start) only tells us what was ASKED for; this tap reports what
- * the render graph actually produced and when, so a note that was scheduled
- * but never sounded, sounded late, or sounded with a glitch is visible.
- *
- * Runs on the audio thread, so a stalled main thread (Go-WASM GC, a slow
- * Ebiten frame) cannot delay or distort its readings — probed 2026-09-30: a
- * 300 ms main-thread busy-loop left this processor's callback cadence
- * untouched (max inter-callback gap 13 ms, the 512-frame device burst).
- *
- * Acoustically transparent: zero outputs, never writes audio. A zero-output
- * AudioWorkletNode is an "automatic pull" node in Chromium, so it is rendered
- * without being wired to ctx.destination.
- *
- * Per-quantum work is O(128) with no allocation in steady state; results go
- * to the main thread as one small message every `reportFrames` frames.
- *
- * What it detects (all positions are absolute context frames, i.e.
- * `currentFrame + i`, so onset time in ctx seconds = frame / sampleRate — the
- * same clock as BufferSource.start(when)):
- *
- *   onsets    — a hop whose peak rises `riseDb` above a peak-hold envelope
- *               and above `floorDb`. `peak` is the loudest sample in the
- *               `levelWindowSec` after the onset (per-note level, so a note
- *               that plays at the wrong level / gets cut shows up).
- *   clicks    — a sample-to-sample step far larger than the local mean
- *               derivative (a discontinuity: a voice cut mid-cycle, a node
- *               disconnected under a sounding voice). Heuristic; noise-like
- *               instruments raise the local derivative so they don't trip it.
- *   cuts      — a loud hop followed immediately by digital silence (a hard
- *               stop, not a decay).
- *   clipped   — samples at/over full scale.
- *   env       — the peak of every ENV_DECIM hops (64 frames, 1.3 ms @ 48 kHz),
- *               so the analysis can tell a note whose onset was MASKED by a
- *               still-ringing previous note (sound present) from one that is
- *               genuinely SILENT (sound missing).
- *   drift     — wall clock (Date.now) minus audio clock (frames/sampleRate)
- *               per callback, min/max per report. The render thread is pulled
- *               by the device; when it fails to deliver in time (underrun)
- *               the device plays silence and the context clock falls behind
- *               the wall clock for good, so a rise of the per-report MINIMUM
- *               drift is an audible dropout of that length. `performance` is
- *               not exposed in AudioWorkletGlobalScope; Date.now is (1 ms).
- *
- * Messages:
- *   Main → Worklet: { type: 'stop' }
- *   Worklet → Main: { type: 'report', channelId, startFrame, endFrame,
- *                     onsets: [{f, peak}], clicks: [f], cuts: [f],
- *                     env: Float32Array (one peak per ENV_FRAMES), envFrames,
- *                     clipped, sumSq, n, minDriftMs, maxDriftMs,
- *                     maxGapMs, callbacks }
- *                   { type: 'done', channelId }
- */
+/** What the listener HEARS on one bus, from the audio thread, so a stalled main thread cannot distort it; zero outputs
+ * (Chromium pulls it unwired), no allocation. Reports onsets (with level), clicks, hard cuts, clipping, a coarse
+ * envelope (masked vs silent) and wall-minus-audio drift, whose rising minimum is a dropout. Date.now: no `performance` here. */
 
 /* eslint-disable no-undef */
 
@@ -119,8 +64,7 @@ class AudioProbeProcessor extends AudioWorkletProcessor {
     this._maxDrift = -Infinity;
     this._maxGap = 0;
     this._callbacks = 0;
-    // env point k covers ≈[envStart + k*ENV_FRAMES, +ENV_FRAMES) (± one hop:
-    // hops are not phase-aligned to ENV_FRAMES; plenty for masked-vs-silent).
+    // ± one hop: hops are not phase-aligned to ENV_FRAMES, which is plenty for masked-vs-silent.
     this._envStart = Math.ceil(frame / ENV_FRAMES) * ENV_FRAMES;
     this._env = new Float32Array(Math.ceil(this._reportFrames / ENV_FRAMES) + 8);
     this._envN = 0;

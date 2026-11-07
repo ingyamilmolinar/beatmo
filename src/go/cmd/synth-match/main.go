@@ -1,13 +1,7 @@
 //go:build !test && !js
 
-// synth-match: tune a synthesized instrument toward a reference WAV by
-// minimizing the fingerprint distance, then (optionally) patch the instrument's
-// shipped document (internal/assets/instruments/<id>.json; rebuild the pack
-// with `make asset-pack` afterwards).
-//
-// Usage:
-//
-//	synth-match -inst <id> -ref <wav> [-budget N] [-restarts N] [-dry-run] [-docdir <dir>]
+// synth-match tunes an instrument toward a reference WAV by fingerprint distance and can patch its shipped document
+// (make asset-pack after). Usage: synth-match -inst <id> -ref <wav> [-budget] [-restarts] [-dry-run] [-docdir]
 package main
 
 import (

@@ -1,24 +1,12 @@
 package ui
 
-// knob_wheel_nudge.go — the desktop scroll-wheel VALUE nudge for synth param
-// cards, plus the debounced single-undo commit that collapses a whole wheel
-// spin into one undo step.
-//
-// A wheel spin mutates live audio on every notch (so the sound tracks the
-// gesture), but records exactly ONE undo step when the spin ends — the same
-// "one event per gesture" contract the old rotary-drag release-commit provided.
-// The end of a spin is detected by a pause: wheelNudgeCommitFrames with no new
-// notch fires the latched commit. Opening the value-wheel popup (or switching
-// tabs) flushes any pending commit first so the popup snapshots the committed
-// value.
+// A wheel spin writes live audio on every notch but records ONE undo step when a pause ends it; opening the
+// popup or switching tabs flushes a pending commit first, so the popup snapshots the committed value.
 
-// wheelNudgeCommitFrames ≈ 600ms at 60fps: a pause this long ends a wheel
-// gesture and commits its single undo step.
+// ≈ 600 ms at 60 fps.
 const wheelNudgeCommitFrames = 36
 
-// wheelNudger debounces a wheel-spin gesture into a single trailing commit.
-// The zero value is inert (framesLeft == 0). Owned per-DrumView; ticked once
-// per synth-tab Update frame.
+// The zero value is inert.
 type wheelNudger struct {
 	framesLeft int
 	commit     func()
@@ -30,8 +18,6 @@ func (n *wheelNudger) bump(commit func()) {
 	n.commit = commit
 }
 
-// tick advances the debounce by one frame and fires the latched commit exactly
-// once when it reaches zero. Call once per Update frame.
 func (n *wheelNudger) tick() {
 	if n.framesLeft <= 0 {
 		return
@@ -44,8 +30,6 @@ func (n *wheelNudger) tick() {
 	}
 }
 
-// flush commits immediately (popup opening / tab switch mid-gesture) so a
-// pending wheel commit lands before the next snapshot is taken.
 func (n *wheelNudger) flush() {
 	if n.framesLeft > 0 && n.commit != nil {
 		c := n.commit
@@ -55,10 +39,7 @@ func (n *wheelNudger) flush() {
 	}
 }
 
-// nudgeKnobByWheel applies one wheel event to the shared knob model: one StepMul
-// (endless) or one detent (discrete) per notch. fine=true (Shift held) applies
-// at ONE rung finer than the badge's active rung WITHOUT persisting the rung
-// change. Returns true if the value changed.
+// fine (Shift) steps one rung finer than the badge WITHOUT persisting the rung change.
 func nudgeKnobByWheel(k *Knob, badge *KnobStepBadge, steps int, fine bool) bool {
 	if k == nil || steps == 0 {
 		return false
@@ -70,8 +51,6 @@ func nudgeKnobByWheel(k *Knob, badge *KnobStepBadge, steps int, fine bool) bool 
 	if k.Discrete {
 		return k.StepValueDirect(dir)
 	}
-	// Continuous / endless: Shift applies a temporarily-finer step (one ladder
-	// rung below the active resolution) without moving the persisted badge rung.
 	if fine && badge != nil {
 		if i := badgeIndexBelow(badge); i >= 0 && i < len(badge.ladder) {
 			saved := k.StepMul
@@ -83,9 +62,7 @@ func nudgeKnobByWheel(k *Knob, badge *KnobStepBadge, steps int, fine bool) bool 
 	return true
 }
 
-// badgeIndexBelow returns the ladder index one rung FINER than the active rung,
-// or -1 when already at the finest rung (or the badge is nil). The ladder is
-// ordered fine→coarse (index 0 is the smallest step), so finer == lower index.
+// -1 at the finest rung or for a nil badge.
 func badgeIndexBelow(b *KnobStepBadge) int {
 	if b == nil || b.idx <= 0 {
 		return -1

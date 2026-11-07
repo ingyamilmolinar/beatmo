@@ -8,10 +8,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestOverflowMenu_AllNonHeaderItemsHaveIcons enforces Theme 5 of the
-// mobile UI consistency pass: meaning is communicated through the
-// iconography channel (DESIGN.md single-chrome-accent invariant
-// forbids per-item accent colors).
+// Meaning goes through the icon: the single-chrome-accent rule forbids per-item accent colours.
 func TestOverflowMenu_AllNonHeaderItemsHaveIcons(t *testing.T) {
 	assertDefaultParityState(t)
 	setupMobileTest(t, true)
@@ -33,8 +30,6 @@ func TestOverflowMenu_AllNonHeaderItemsHaveIcons(t *testing.T) {
 	}
 }
 
-// TestOverflowMenu_SpecificIconAssignments pins each known action to
-// its semantic icon per DESIGN.md:1717-1733.
 func TestOverflowMenu_SpecificIconAssignments(t *testing.T) {
 	assertDefaultParityState(t)
 	setupMobileTest(t, true)

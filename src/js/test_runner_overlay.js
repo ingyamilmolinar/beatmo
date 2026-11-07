@@ -1,18 +1,5 @@
-// test_runner_overlay.js
-//
-// Injected into production index.html by createServer when the URL is
-// /?run=tests. The page below this overlay is the EXACT production app —
-// same canvas, same inline scripts, same _kbProxy/_mobileInput/_fp globals,
-// same WASM boot — so the runner reproduces the on-device infra 100%.
-//
-// Two execution modes:
-//   - "Run all" / per-scenario buttons run the scenario in-page and render
-//     PASS/FAIL + details.
-//   - The "user-tap" reproduction scenario dispatches the custom event
-//     beatmo:runner-needs-canvas; this overlay listens for that, dims and
-//     disables pointer events so the user's finger lands on the real
-//     on-canvas Play button underneath, then re-enables itself on
-//     beatmo:runner-release-canvas (or an auto-restore timer).
+// Injected by createServer at /?run=tests over the EXACT production page, so the runner reproduces device infra 100 %.
+// Scenarios run in-page; a user-tap scenario fires beatmo:runner-needs-canvas and the overlay steps aside for the finger.
 
 (async () => {
   // Wait for the production WASM boot to finish wiring its JS exports.
@@ -123,8 +110,7 @@
     return;
   }
 
-  // Importing the scenario modules triggers their register() side-effects.
-  // ADD SUITES HERE to surface more existing tests in the runner.
+  // Importing a scenario module registers it: add suites here.
   const { list } = await import("./scenarios/registry.js");
   await Promise.all([
     import("./scenarios/webaudio_output_capture.js"),
@@ -182,8 +168,7 @@
       `<span class="count fail">${fail} fail</span> · ${scenarios.length} total`;
   }
 
-  // Pass-through mode: scenarios fire beatmo:runner-needs-canvas when they
-  // need the user's finger to reach the canvas underneath us.
+  // Scenarios fire beatmo:runner-needs-canvas when the finger must reach the canvas.
   let needsCanvasBanner = null;
   let releaseTimer = null;
   function enterPassThrough(detail) {
@@ -231,8 +216,7 @@
     runAllBtn.disabled = true;
     runAllBtn.textContent = "Running…";
     for (const sc of scenarios) {
-      // Skip user-tap scenarios in "Run all" — they need a human to tap the
-      // canvas and would block the whole run. Users invoke them individually.
+      // They need a human and would block the run.
       if (sc.name.includes("user_tap")) continue;
       await runOne(sc);
     }

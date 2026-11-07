@@ -10,17 +10,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// The shipped faces are subsets of stock Inter (see font_embed.go). Subsetting
-// is the largest download saving available, but it fails SILENTLY: a dropped
-// codepoint renders as .notdef -- a tofu box -- and no test that only exercises
-// layout would notice. These tests pin the floor, so narrowing KEEP_RANGES in
-// scripts/subset_fonts.mjs breaks the build instead of the UI.
-//
-// The cmap is decoded here with nothing but encoding/binary rather than through
-// x/image/font/opentype, because the fast test path (-tags test -modfile
-// go.test.mod) stubs Ebiten and does not carry x/image. A guard that only ran on
-// the real-Ebiten path would miss most CI runs -- and this way the assertions
-// read the shipped bytes directly instead of a library's interpretation of them.
+// Subsetting fails SILENTLY (a dropped codepoint is a tofu box), so these pin the floor. The cmap is decoded with
+// encoding/binary: the -tags test path stubs Ebiten and carries no x/image, and this reads the shipped bytes directly.
 
 // requiredRunes is every codepoint the UI is known to draw, grouped by why it
 // must survive so a future edit to the subset ranges can see what it would cost.
@@ -40,11 +31,7 @@ var requiredRunes = []struct {
 		"°±²³µ·×÷¼⅓⅔−≈≠≤≥∞√Δ"},
 	{"typographic punctuation in menu and stage labels",
 		"–—’“”…‹›·"},
-	// Only symbols Beatmo actually draws AS TEXT belong here. The chrome glyphs
-	// DESIGN.md forbids (▶ ▼ ▲ ✕ ≡ ⏸ ■ and the arrows) go through IconID +
-	// DrawIcon, and stock Inter has no glyph for several of them anyway
-	// (U+2715 ✕, U+2261 ≡, U+2669 ♩ are absent upstream) -- listing one here
-	// would assert coverage the full font never had.
+	// Only symbols drawn AS TEXT: the forbidden chrome glyphs go through DrawIcon, and stock Inter lacks several of them.
 	{"symbols drawn as text (favorite star, check mark)",
 		"★✓"},
 }
@@ -193,10 +180,7 @@ func TestEmbeddedFontsCoverRequiredRunes(t *testing.T) {
 	}
 }
 
-// TestEmbeddedFontsAreSubsets guards the other direction: re-pointing the embed
-// at the full upstream TTFs silently regresses the download by ~160 KiB gzip.
-// Stock Inter reaches 2,851 codepoints; a subset must be well under that while
-// still being a usable face.
+// Re-pointing the embed at the full upstream TTFs would silently regress the download.
 func TestEmbeddedFontsAreSubsets(t *testing.T) {
 	const (
 		minCodepoints = 600  // below this the subset has lost real coverage
@@ -245,15 +229,8 @@ func TestEmbeddedFontFacesAgree(t *testing.T) {
 	}
 }
 
-// TestEmbeddedFontsCoverEveryShippedString is the guard that cannot drift: it
-// walks EVERY key of EVERY shipped locale and asserts the subset can draw every
-// rune in the translated string. requiredRunes above is a hand-written floor for
-// text that never goes through i18n (template titles, unit suffixes); this one
-// tracks the catalogs automatically, so adding a Spanish string with a new
-// accented character fails here rather than shipping a tofu box.
-//
-// i18n is safe to import from this test: it has no beatmo-internal dependencies,
-// so there is no cycle back to assets.
+// Walks EVERY key of EVERY shipped locale, so a new accented string fails here rather than shipping a tofu box;
+// requiredRunes is the hand floor for text outside i18n. i18n has no internal deps, so no cycle.
 func TestEmbeddedFontsCoverEveryShippedString(t *testing.T) {
 	restore := i18n.ActiveLocale()
 	t.Cleanup(func() { i18n.SetLocale(restore) })

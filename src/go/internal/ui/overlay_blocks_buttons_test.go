@@ -42,9 +42,7 @@ func setupOverlayTestDV(t *testing.T, w, h int) *DrumView {
 	return dv
 }
 
-// TestEditButtonSuppressesAdjacentButtons verifies that clicking the edit
-// (pencil) button sets suppressClicksUntilRelease so adjacent buttons (label)
-// cannot fire on subsequent frames of the same press.
+// The press sets the suppression, so the adjacent label cannot fire on later frames of it.
 func TestEditButtonSuppressesAdjacentButtons(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -69,8 +67,7 @@ func TestEditButtonSuppressesAdjacentButtons(t *testing.T) {
 	}
 }
 
-// TestEditButtonClosesContextMenu verifies that when the context menu is open,
-// firing the edit button's OnClick closes it before opening rename.
+// The context menu closes before rename opens.
 func TestEditButtonClosesContextMenu(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -94,9 +91,7 @@ func TestEditButtonClosesContextMenu(t *testing.T) {
 	}
 }
 
-// TestRenameOverlayBlocksRowButtons verifies that while the rename overlay is
-// open, clicking the label area does NOT fire the label button (which would
-// open the context menu on mobile).
+// The label beneath must not fire (on mobile it would open the context menu).
 func TestRenameOverlayBlocksRowButtons(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -136,8 +131,7 @@ func TestRenameOverlayBlocksRowButtons(t *testing.T) {
 	}
 }
 
-// TestContextMenuRenameOpensCleanly verifies that tapping the Rename button in
-// the context menu closes the context menu AND opens rename — not both at once.
+// One after the other, never both open at once.
 func TestContextMenuRenameOpensCleanly(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -172,8 +166,6 @@ func TestContextMenuRenameOpensCleanly(t *testing.T) {
 	}
 }
 
-// TestOverlayBlocksToolbarButtons verifies that when an overlay is open,
-// toolbar buttons (play, stop, etc.) don't fire.
 func TestOverlayBlocksToolbarButtons(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -213,9 +205,7 @@ func TestOverlayBlocksToolbarButtons(t *testing.T) {
 	}
 }
 
-// TestInstMenuToggleViaOverlay verifies that clicking the label while the inst
-// menu is open toggles the menu closed via the overlay HandleInput (not via
-// the button in Update, which is now blocked by the overlay guard).
+// Through the overlay's HandleInput: the button's own Update path is blocked by the overlay guard.
 func TestInstMenuToggleViaOverlay(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -237,8 +227,7 @@ func TestInstMenuToggleViaOverlay(t *testing.T) {
 	cx := lblRect.Min.X + lblRect.Dx()/2
 	cy := lblRect.Min.Y + lblRect.Dy()/2
 
-	// Simulate full input flow: HandleInput (overlay stack) + Update.
-	// In the real Game loop, HandleInput runs before Update each frame.
+	// HandleInput runs before Update each frame, as in the real loop.
 	restore := SetInputForTest(
 		func() (int, int) { return cx, cy },
 		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },

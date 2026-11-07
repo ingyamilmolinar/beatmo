@@ -86,11 +86,8 @@ func organicN(r fingerprint.OrganicRange) int {
 	return n
 }
 
-// runOrganic places inst's own render against the real-recording range.
-// overrides, when non-empty, renders the instrument's recipe with those
-// parameter overrides applied instead of its shipped sound -- the same seam
-// `refs diagnose -override` uses, so a PROPOSED candidate can be checked
-// against the organic band without editing its seed.
+// overrides render on top of the instrument's document (as refs diagnose -override does), so a PROPOSED candidate is
+// checked against the organic band without editing a document.
 func runOrganic(w, diag io.Writer, inst instrument.ID, pitch, dur float64, overrides map[string]float64) error {
 	if inst == "" {
 		return fmt.Errorf("refs organic: -instrument is required")
@@ -119,10 +116,7 @@ func defaultOrganicRangePath() (string, error) {
 	return filepath.Join(root, "internal", "audio", "fingerprint", "testdata", "organic_range.json"), nil
 }
 
-// locallyAdopted reports whether r's audio came from `refs adopt` pointing at a
-// path on this machine (Source.Provider == "local"). Such a ref is catalogued
-// but its bytes are unfetchable anywhere else, so it must not feed a COMMITTED
-// cross-machine artifact. See the call site in runCalibrateOrganic.
+// Catalogued but unfetchable anywhere else, so it must not feed a COMMITTED cross-machine artifact.
 func locallyAdopted(r wavref.Ref) bool {
 	return r.Source != nil && r.Source.Provider == localProvider
 }
@@ -138,21 +132,9 @@ func runCalibrateOrganic(w, diag io.Writer, outPath string) error {
 		if ref.Tier != wavref.TierInstrument {
 			continue
 		}
-		// A provider:"local" ref is audio adopted from a path on ONE developer's
-		// machine (`refs adopt`); `refs fetch` can only materialize it where that
-		// path exists. The catalogue entry is committed, the bytes are not and
-		// cannot be, so a range calibrated over it is a number nobody else can
-		// reproduce -- and testdata/organic_range.json is a COMMITTED golden that
-		// `refs check` re-derives (locally and in CI). Adopting one snare on
-		// 2026-09-14 moved 10 descriptors' percentiles and every one of their n
-		// by +1, failing that ratchet on a corpus change that no other machine
-		// could ever match.
-		//
-		// So the committed BASELINE is a function of the shared, fetchable corpus
-		// only. This is not a judgement about the audio: an adopted clip is real
-		// recorded sound and still drives `refs compare`, `make ab` and the ear
-		// verdicts, all of which are per-instrument and machine-local. It is the
-		// cross-machine statistical artifact that has to be portable.
+		// A provider:"local" ref's bytes exist on one machine only, so a range calibrated over it is a number nobody else (nor
+		// CI's refs check) can reproduce: the committed baseline is a function of the fetchable corpus. The clip still drives
+		// compare, make ab and the ear verdicts, which are machine-local.
 		if locallyAdopted(ref) {
 			fmt.Fprintf(diag, "skipping %s: locally adopted (provider %q) — not reproducible off this machine\n",
 				ref.ID, localProvider)

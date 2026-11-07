@@ -12,8 +12,7 @@ import (
 )
 
 func (g *Game) initJSRecording() {
-	// lastResult caches the most recent StopRecording result so that
-	// saveRecording() can use it even after stopRecording() was already called.
+	// So saveRecording() works after stopRecording().
 	var lastResult *audio.RecordingResult
 
 	// isRecording() -> bool
@@ -21,15 +20,8 @@ func (g *Game) initJSRecording() {
 		return js.ValueOf(audio.IsRecording())
 	}))
 
-	// startRecording(format?) -> Promise<{error: string}>
-	// format is optional; defaults to "wav24".
-	//
-	// Returns a Promise rather than a synchronous result because the
-	// off-thread pipeline blocks on awaitJSPromise to confirm the
-	// AudioWorklet + Web Worker are wired before returning. awaitJSPromise
-	// MUST run on a goroutine (not inside the JS callback) — otherwise the
-	// JS event loop is held by this callback and can never dispatch the
-	// Promise resolution, deadlocking the page.
+	// startRecording(format?="wav24") -> Promise<{error}>. awaitJSPromise MUST run on a goroutine: inside the
+	// callback the JS event loop could never resolve the promise and the page deadlocks.
 	js.Global().Set("startRecording", jsFn(func(args jsArgs) any {
 		format := audio.FormatWAV24
 		if args.Len() > 0 && args.At(0).Type() == js.TypeString {
@@ -73,21 +65,12 @@ func (g *Game) initJSRecording() {
 		return promiseCtor.New(executor)
 	}))
 
-	// stopRecording() -> Promise<{error: string, channelCount: int, format: string,
-	//   duration: float, channels: [{id, name, filename, size}], autoStopped: bool,
-	//   filename: string}>
-	//
-	// On WASM the recording finalize runs off-thread (audio worklet → web
-	// worker), so this returns a Promise that resolves once the worker has
-	// emitted the final Blob and the EventRecordStop hook has fired. The
-	// returned `filename` is the zip name ready in Downloads. JS callers
-	// (browser tests, custom UIs) should `await` this.
+	// stopRecording() -> Promise<{error,channelCount,format,duration,channels,autoStopped,filename}>; resolves once
+	// the off-thread worker emits the Blob and EventRecordStop fires.
 	js.Global().Set("stopRecording", jsFn(func(args jsArgs) any {
 		promiseCtor := js.Global().Get("Promise")
 		executor := js.FuncOf(func(this js.Value, pargs []js.Value) interface{} {
 			resolve := pargs[0]
-			// Kick the in-process stop, then wait on EventRecordStop to
-			// surface the finalized payload (filename, drops, etc).
 			doneCh := make(chan audio.RecordStopPayload, 1)
 			unsub := hooks.Subscribe(hooks.EventRecordStop, func(e hooks.Event) {
 				p, ok := e.Payload.(audio.RecordStopPayload)
@@ -136,9 +119,7 @@ func (g *Game) initJSRecording() {
 				if result != nil {
 					channels = js.Global().Get("Array").New(len(result.Channels))
 					for i, ch := range result.Channels {
-						// Prefer ch.Bytes (set by streaming/worker pipelines)
-						// over len(ch.Data) (legacy in-memory). Either path
-						// reports the encoded payload size correctly.
+						// Bytes is set by the streaming pipelines; Data by the in-memory one.
 						size := len(ch.Data)
 						if size == 0 && ch.Bytes > 0 {
 							size = ch.Bytes
@@ -172,20 +153,8 @@ func (g *Game) initJSRecording() {
 		return promiseCtor.New(executor)
 	}))
 
-	// saveRecording() -> Promise<{error: string, path: string}>
-	//
-	// Triggers the browser zip download. On WASM the underlying
-	// audio.StopRecording auto-saves on completion (mirroring desktop's
-	// async finalize), so this is normally redundant — it's kept to
-	// support the "stop and save in one call" UX. Returns a Promise that
-	// resolves to the saved filename (the zip in Downloads).
-	//
-	// Behavior:
-	//   - If recording is active: stops it (which auto-saves), waits for
-	//     EventRecordStop, returns the resulting path.
-	//   - If not recording but a previous session is still pending the
-	//     download anchor click: triggers it and returns.
-	//   - Otherwise: returns {error: "no recording available to save"}.
+	// saveRecording() -> Promise<{error,path}>. A stop already auto-saves; this keeps the one-call "stop and save":
+	// it stops an active recording, re-triggers a pending download, or reports nothing to save.
 	js.Global().Set("saveRecording", jsFn(func(args jsArgs) any {
 		promiseCtor := js.Global().Get("Promise")
 		executor := js.FuncOf(func(this js.Value, pargs []js.Value) interface{} {
@@ -239,9 +208,7 @@ func (g *Game) initJSRecording() {
 				return nil
 			}
 
-			// Not recording: the last session may have already auto-saved
-			// during its own stop. If lastResult exists, the save was
-			// already triggered. If not, surface a friendly error.
+			// The last stop already triggered the save.
 			if lastResult != nil {
 				path := lastResult.SessionDir
 				lastResult = nil

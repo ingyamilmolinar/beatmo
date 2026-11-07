@@ -15,9 +15,7 @@ import (
 
 func newTestBus(t *testing.T) *hooks.Bus {
 	t.Helper()
-	// Large pool queue so the fan-out path doesn't drop events under
-	// burst publishes — that would conflate "bus fan-out drops" with
-	// "sink-queue drops" in the saturation test.
+	// A large queue, so bus fan-out drops never conflate with the sink-queue drops under test.
 	return hooks.NewBus(context.Background(), hooks.Options{
 		PoolWorkers: 2, PoolQueue: 4096, Name: "eventstream-test",
 	})
@@ -131,12 +129,8 @@ func TestSink_VerboseModeIncludesAll(t *testing.T) {
 }
 
 func TestSink_DropsOnSaturation(t *testing.T) {
-	// Test the drop contract directly: with a queue of capacity 2 and no
-	// writer goroutine draining it, the 3rd+ enqueue must drop. Going
-	// through the bus + writer races a fast in-memory consumer against
-	// producers — on most machines the writer drains the queue between
-	// sends and no drops occur, so that path can't deterministically
-	// exercise saturation. The drop semantics live in enqueue; test them.
+	// The drop contract directly: through the bus a fast consumer usually drains between sends, so saturation cannot be
+	// exercised deterministically.
 	s := &Sink{queue: make(chan Record, 2)}
 	const N = 1000
 	for i := 0; i < N; i++ {

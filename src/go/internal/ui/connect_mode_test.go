@@ -10,8 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// TestConnectModeBasicEdge verifies that connect mode creates a horizontal
-// edge between two perpendicular nodes and exits.
+// A horizontal edge between perpendicular nodes, then the mode exits.
 func TestConnectModeBasicEdge(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -42,8 +41,6 @@ func TestConnectModeBasicEdge(t *testing.T) {
 	}
 }
 
-// TestConnectModeVerticalEdge verifies that connect mode works for vertical
-// (same I) node pairs.
 func TestConnectModeVerticalEdge(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -69,8 +66,7 @@ func TestConnectModeVerticalEdge(t *testing.T) {
 	}
 }
 
-// TestConnectModeNonPerpendicularError verifies that tapping a diagonal node
-// shows an error notification and keeps connect mode active.
+// A diagonal node shows an error and keeps the mode.
 func TestConnectModeNonPerpendicularError(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -104,8 +100,6 @@ func TestConnectModeNonPerpendicularError(t *testing.T) {
 	}
 }
 
-// TestConnectModeEmptyTapCancels verifies that tapping empty grid space
-// cancels connect mode.
 func TestConnectModeEmptyTapCancels(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -135,9 +129,7 @@ func TestConnectModeEscCancels(t *testing.T) {
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.enterConnectMode(a)
 
-	// Esc is now owned by handleEscape (Task 6 consolidation); it is dispatched
-	// every frame from handleGlobalShortcuts in production. Drive that single
-	// authority directly instead of handleEditor (which no longer touches Esc).
+	// handleEscape owns Esc, every frame in production.
 	restore := stubKeys(nil, map[ebiten.Key]bool{ebiten.KeyEscape: true})
 	defer restore()
 
@@ -148,8 +140,6 @@ func TestConnectModeEscCancels(t *testing.T) {
 	}
 }
 
-// TestConnectModeEdgeDuplicate verifies that connecting nodes that already
-// share an edge does not create a duplicate.
 func TestConnectModeEdgeDuplicate(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -176,8 +166,6 @@ func TestConnectModeEdgeDuplicate(t *testing.T) {
 	}
 }
 
-// TestConnectModePlaybackSafe verifies that creating an edge during playback
-// works and playback continues.
 func TestConnectModePlaybackSafe(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -244,8 +232,7 @@ func TestConnectModeClearsOnImport(t *testing.T) {
 	}
 }
 
-// TestConnectModeSelfConnectionIgnored verifies that tapping the source node
-// itself is a no-op (stays in connect mode).
+// A no-op; the mode stays.
 func TestConnectModeSelfConnectionIgnored(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)

@@ -8,11 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestEQActiveChannelFollowsInstrumentChange verifies the regression: when
-// a row's instrument is changed via SetInstrument and the EQ panel is
-// currently tracking that row's old instrument, the EQ active channel
-// must follow to the new instrument id and the channel button label
-// must reflect the new row name.
+// The tracked channel follows the row to its new instrument, and the button shows the new name.
 func TestEQActiveChannelFollowsInstrumentChange(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -40,20 +36,13 @@ func TestEQActiveChannelFollowsInstrumentChange(t *testing.T) {
 	if dv.eqChannelBtn() == nil {
 		t.Fatalf("eqChannelBtn is nil")
 	}
-	// The channel button must reflect the row's new name. That name is
-	// whatever SetInstrument computed for "hihat" (audio.InstrumentDisplayName),
-	// which depends on global catalog state — "Hi-Hat" when the catalog is
-	// loaded, "Hihat" (PrettyName fallback) when it is empty. Assert against
-	// the row name rather than a hardcoded string so the test verifies the
-	// actual contract (button follows row) independent of catalog/test order.
+	// Against the row name, which depends on catalogue state, so the contract holds whatever ran before.
 	if got, want := dv.eqChannelBtn().Text, dv.Rows[dv.selRow].Name; got != want {
 		t.Fatalf("eqChannelBtn.Text = %q, want %q (the new row name)", got, want)
 	}
 }
 
-// TestEQActiveChannelUnchangedWhenNotTracking verifies the guard
-// condition: when the EQ panel is tracking instrument X but a different
-// row's instrument is changed, the EQ active channel must not move.
+// Another row's change leaves the channel alone.
 func TestEQActiveChannelUnchangedWhenNotTracking(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -82,9 +71,7 @@ func TestEQActiveChannelUnchangedWhenNotTracking(t *testing.T) {
 	}
 }
 
-// TestEQDropdownClosedWhenTrackedInstrumentChanges verifies that an open
-// channel dropdown is closed when the instrument it points at changes,
-// so the menu does not display stale entries.
+// So the menu never shows stale entries.
 func TestEQDropdownClosedWhenTrackedInstrumentChanges(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -103,8 +90,7 @@ func TestEQDropdownClosedWhenTrackedInstrumentChanges(t *testing.T) {
 	dv.selRow = 0
 	dv.setEQActiveChannel(channel.Of(roster.Kick))
 
-	// Open the dropdown via real input simulation, mirroring
-	// TestEQChannelDropdownOpensAndSelects.
+	// Through real input.
 	btnRect := dv.eqChannelBtn().Rect()
 	cx, cy := (btnRect.Min.X+btnRect.Max.X)/2, (btnRect.Min.Y+btnRect.Max.Y)/2
 	restore := SetInputForTest(

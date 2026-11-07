@@ -53,9 +53,7 @@ func TestInstrumentStoreRoundTrip(t *testing.T) {
 	}
 }
 
-// TestInstrumentStoreWarnsOnLegacyRecipeSections: a file from the recipe era
-// loads (its documents and sample edits survive) with ONE warning naming the
-// ignored sections, and the next write drops them.
+// Its documents and sample edits survive, ONE warning names the ignored sections, the next write drops them.
 func TestInstrumentStoreWarnsOnLegacyRecipeSections(t *testing.T) {
 	dir := t.TempDir()
 	legacy := `{"schema_version":"0.0.1","user_recipes":{"user.kick.abc":{"id":"user.kick.abc"}},` +
@@ -81,9 +79,7 @@ func TestInstrumentStoreWarnsOnLegacyRecipeSections(t *testing.T) {
 	}
 }
 
-// TestInstrumentStoreKeepsDocumentsSavedBeforeVersioning: the documents saved
-// before the versioned library are read into it once and never deleted — a
-// library write keeps them as they were.
+// Read into the versioned library once and never deleted: a library write keeps them.
 func TestInstrumentStoreKeepsDocumentsSavedBeforeVersioning(t *testing.T) {
 	dir := t.TempDir()
 	old := `{"schema_version":"0.0.1","instruments":{"user.snap.abc123":{"id":"user.snap.abc123"}}}`

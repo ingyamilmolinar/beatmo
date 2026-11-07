@@ -9,9 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// confirmConfig declares a confirmation dialog. onConfirm/onCancel are the
-// pluggable domain effects (the dialog itself never touches the graph or the
-// mode manager); the caller owns whatever mode state sits behind the dialog.
+// The dialog never touches the graph or the mode manager; the caller owns the state behind it.
 type confirmConfig struct {
 	id          string
 	titleKey    i18n.Key
@@ -23,12 +21,8 @@ type confirmConfig struct {
 	onCancel    func()
 }
 
-// ConfirmDialog is the single shared modal confirmation, rendered as a
-// PortalOverlay in the settings-overlay shape: real *Buttons with keycap chrome,
-// per-button hit areas + a panel catch-all (NO full-screen backdrop, so a press
-// outside the panel misses every area and the tree's CloseTop route fires
-// OnClose → onCancel — the shared click-outside contract). Implements
-// portalEnterHandler (Enter → confirm) and portalEscapeHandler (Esc → cancel).
+// NO full-screen backdrop: a press outside the panel misses every area, so the tree's CloseTop fires OnClose →
+// onCancel, the shared click-outside contract.
 type ConfirmDialog struct {
 	cfg        confirmConfig
 	confirmBtn *Button
@@ -39,8 +33,6 @@ type ConfirmDialog struct {
 	closed     bool
 }
 
-// newConfirmDialog constructs a dialog from cfg. Buttons are created once here
-// and SetRect'd on every Layout call.
 func newConfirmDialog(cfg confirmConfig) *ConfirmDialog {
 	d := &ConfirmDialog{cfg: cfg}
 	confirmSpec := ComponentButtonPrimary
@@ -55,11 +47,7 @@ func newConfirmDialog(cfg confirmConfig) *ConfirmDialog {
 	d.cancelBtn = NewButtonKey(cancelKey, ComponentButtonSecondary, d.cancel)
 	d.confirmBtn.SetTextRole(RoleBody)
 	d.cancelBtn.SetTextRole(RoleBody)
-	// Close × is desktop-only (shared desktopCloseVisible gate). On mobile the
-	// dialog dismisses via the Cancel button or a tap outside the panel
-	// (CloseTop → OnClose → cancel), so no × is drawn. Kept as the dialog-native
-	// spec button to match the Cancel/Confirm chrome; only the platform gate is
-	// shared. Every closeBtn use site below guards `d.closeBtn != nil`.
+	// Desktop only: on mobile Cancel or a tap outside dismisses it. Every closeBtn use guards nil.
 	if desktopCloseVisible() {
 		d.closeBtn = NewSpecButton("", ComponentButtonSecondary, d.cancel)
 		d.closeBtn.Icon = string(IconClose)
@@ -68,8 +56,7 @@ func newConfirmDialog(cfg confirmConfig) *ConfirmDialog {
 	return d
 }
 
-// confirm/cancel fire the pluggable callback exactly once, then flag closed so
-// the portal sweep (ShouldClose) removes the entry. Idempotent.
+// Fires exactly once, then flags closed so the portal sweep removes it.
 func (d *ConfirmDialog) confirm() {
 	if d.closed {
 		return
@@ -90,12 +77,7 @@ func (d *ConfirmDialog) cancel() {
 	}
 }
 
-// Layout centers the panel over anchor when non-empty (the "future anchored
-// variant" portalEntry's doc comment alludes to — a caller wants the dialog
-// centered over a specific pane, e.g. the grid content pane, rather than the
-// portal's full screenBounds); otherwise it falls back to centering over
-// screenBounds, matching the original screen-centered behavior. Token-driven
-// sizing: title width + both buttons + padding.
+// Centred over anchor when given (a caller wanting a specific pane), else over screenBounds.
 func (d *ConfirmDialog) Layout(anchor, screenBounds image.Rectangle) {
 	title := i18n.T(d.cfg.titleKey)
 	titleW := StyledTextWidth(title, RoleSectionHeader)
@@ -104,18 +86,13 @@ func (d *ConfirmDialog) Layout(anchor, screenBounds image.Rectangle) {
 	if cw := StyledTextWidth(i18n.T(i18n.KeyCancel), RoleBody) + 2*SpaceMD; cw > btnW {
 		btnW = cw
 	}
-	// On mobile there is no close × (see newConfirmDialog), so the title band
-	// reclaims that reserved space and can run to the panel's right padding.
+	// No × on mobile, so the title band reclaims its space.
 	closeSz := 0
 	if d.closeBtn != nil {
 		closeSz = Profile().CloseButtonSize
 	}
-	// One extra SpaceMD of breathing room beyond the exact-fit term below (see
-	// titleAvailWidth) so the natural title measures strictly less than the
-	// available header width and never trips clipTextToWidthMeasure's
-	// ellipsis — an exact fit (the pre-fix formula) leaves zero slack and a
-	// 1px integer-division rounding loss (cx-w/2 floors on odd w) was enough
-	// to truncate "Break the circuit?" to "Break the circu...".
+	// One extra SpaceMD so the title fits with slack: an exact fit lost 1 px to integer rounding and truncated
+	// "Break the circuit?".
 	titleTerm := titleW + 3*SpaceMD + closeSz + SpaceXS
 	if d.cfg.swatch != nil {
 		titleTerm += menuTitleSwatchSz + SpaceSM // mirror titleAvailWidth's swatch deduction
@@ -132,8 +109,6 @@ func (d *ConfirmDialog) Layout(anchor, screenBounds image.Rectangle) {
 	cx := (b.Min.X + b.Max.X) / 2
 	cy := (b.Min.Y + b.Max.Y) / 2
 	d.rect = image.Rect(cx-w/2, cy-h/2, cx+w/2, cy-h/2+h)
-	// Shared MenuCard frame: title band (+ optional swatch), footer keycaps
-	// Cancel · Confirm (destructive on the right), the dialog's own close ×.
 	_ = btnH
 	if d.card == nil {
 		d.card = NewMenuCard(nil)
@@ -142,11 +117,8 @@ func (d *ConfirmDialog) Layout(anchor, screenBounds image.Rectangle) {
 	d.card.Layout(d.rect, MenuCardSpec{Title: title, Swatch: d.cfg.swatch, Footer: []*Button{d.cancelBtn, d.confirmBtn}})
 }
 
-// HitAreas publishes one hit area per interactive control (confirm, cancel,
-// close) plus a full-panel catch-all registered LAST so the button areas win
-// the portal's equal-z stable-sort on overlap. Deliberately NO full-screen
-// backdrop: a press outside the panel rect misses every area here, so the
-// portal's outside-click handling (CloseTop → OnClose) drives the cancel path.
+// The catch-all goes LAST so buttons win the equal-z stable sort; no backdrop, so an outside press reaches
+// the portal's CloseTop → cancel.
 func (d *ConfirmDialog) HitAreas() []HitArea {
 	if d.rect.Empty() {
 		return nil
@@ -161,9 +133,7 @@ func (d *ConfirmDialog) HitAreas() []HitArea {
 		areas = append(areas, HitArea{Rect: d.closeBtn.Rect(), ZIndex: ZOverlayMin, Tag: d.cfg.id + "-close",
 			Handler: &buttonHitAdapter{btn: d.closeBtn}})
 	}
-	// Panel catch-all LAST (the card's): swallows in-panel taps that miss a
-	// button so they never fall through, but covers ONLY the panel rect —
-	// outside taps still yield len(hits)==0 → tree CloseTop → OnClose → cancel.
+	// Covers ONLY the panel, so outside taps still reach CloseTop.
 	return append(areas, d.card.CatchAll(ZOverlayMin, d.cfg.id, confirmPanelHandler{}))
 }
 
@@ -190,18 +160,11 @@ func (d *ConfirmDialog) ShouldClose() bool { return d.closed }
 // HandleEnter (portalEnterHandler): Enter accepts.
 func (d *ConfirmDialog) HandleEnter() bool { d.confirm(); return true }
 
-// HandleEscape (portalEscapeHandler): Esc cancels; return false so the
-// universal handler's CloseTop removes the (still-topmost) entry — the
-// proven mid-stack contract (see grid_move_break_confirm.go history).
+// Returns false so the universal handler's CloseTop removes the still-topmost entry.
 func (d *ConfirmDialog) HandleEscape() bool { d.cancel(); return false }
 
-// portalEntry builds the PortalEntry for this dialog. centerIn returns the
-// pane rect the caller wants the dialog centered over (e.g. the grid pane vs
-// the full screen) — Anchor is set from it and Layout centers on it directly
-// when non-empty (see Layout), so the dialog centers correctly even before
-// the portal's own screenBounds have been populated by a frame's Update()/
-// Draw() pass. Pass a nil centerIn (or one returning an empty rect) to fall
-// back to the portal's screenBounds (full-screen centering).
+// centerIn lets Layout centre on the pane before the portal's screenBounds exist; nil or empty falls back to
+// full-screen centring.
 func (d *ConfirmDialog) portalEntry(centerIn func() image.Rectangle) PortalEntry {
 	anchor := image.Rectangle{}
 	if centerIn != nil {
@@ -217,8 +180,7 @@ func (d *ConfirmDialog) portalEntry(centerIn func() image.Rectangle) PortalEntry
 	}
 }
 
-// confirmPanelHandler swallows taps on the panel background (missing both
-// buttons) so they don't fall through to a lower surface.
+// So a tap on the panel background never falls through.
 type confirmPanelHandler struct{}
 
 func (confirmPanelHandler) OnPress(x, y int) InputResult        { return InputConsumed }

@@ -7,9 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
-// coalesceKinds enumerates the high-rate event kinds whose narrative is more
-// useful as a "settled" line than as a per-tick stream. A 50ms BPM drag
-// publishes ~50 EventBPMChange events; the user only wants to read one.
+// High-rate kinds whose narrative reads better as one settled line: a BPM drag publishes dozens of events.
 var coalesceKinds = map[hooks.Kind]struct{}{
 	hooks.EventBPMChange:          {},
 	hooks.EventMasterVolumeChange: {},
@@ -26,10 +24,8 @@ var coalesceKinds = map[hooks.Kind]struct{}{
 	hooks.EventDragProgress: {},
 }
 
-// coalescer debounce-trails high-rate events: each new event for a coalesced
-// Kind replaces any pending entry and rearms a per-Kind timer; the trailing
-// entry is emitted when the window elapses with no further events. Other
-// kinds bypass the coalescer entirely (see Logger.dispatch).
+// Debounce-trailing: each event replaces the pending one for its Kind and rearms that Kind's timer; the last is emitted
+// when the window passes quietly. Other kinds bypass it.
 type coalescer struct {
 	window time.Duration
 	emit   func(hooks.Event)
@@ -88,8 +84,7 @@ func (c *coalescer) Submit(e hooks.Event) {
 		ev := latest.ev
 		delete(c.pending, kind)
 		c.mu.Unlock()
-		// Emit outside the lock so a re-entrant Submit (rare, but possible
-		// if emit triggers another publish) doesn't deadlock.
+		// Outside the lock, so a re-entrant Submit (emit triggering a publish) cannot deadlock.
 		c.emit(ev)
 	})
 	c.pending[kind] = entry

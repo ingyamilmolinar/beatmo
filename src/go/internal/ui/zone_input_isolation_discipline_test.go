@@ -10,26 +10,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// zoneInputIsolationCases enumerates every Zone that renders an opaque
-// visual surface and therefore MUST register a full-bounds catch-all
-// hit area at its nominal z. Tag is the canonical "<zoneID>-capture"
-// label callers should use; ZIndex matches the value the zone is
-// registered with in DrumViewTree (see drumview_tree.go z-index
-// table). To add a zone here, also add a `NewInputCaptureHitArea`
-// call to its `rebuildHitAreas` covering its visible Rect.
-//
-// Excluded by design:
-//   - Transport zone (z=100): the action-bar chrome is segmented into
-//     buttons that fully tile the bar, no whitespace to leak.
-//   - Row rack zone (z=120): segmented rows — every row has its own
-//     hit areas, no whitespace.
-//   - Timeline zone (z=110): renders the bar + steps area but is
-//     INTENTIONALLY transparent to z so the grid drag adapter
-//     (z=110) and the per-row scroll forwarder pick up cursor input
-//     for the drum grid. Phase 3's fix is to keep the scrub
-//     bar's hit area strictly bounded; the rest of the zone
-//     stays click-through.
-//   - Overlay portals (z≥300): handled by the portal layer.
+// Every opaque zone with its "<id>-capture" tag and nominal z; a new one also needs a NewInputCaptureHitArea
+// over its Rect. Excluded: transport and rack, whose controls tile them; the timeline, transparent so the grid
+// drag and row scroll get input; portals, which handle their own.
 var zoneInputIsolationCases = []struct {
 	zoneID     string
 	captureTag string
@@ -39,13 +22,8 @@ var zoneInputIsolationCases = []struct {
 	{"chain-panel", "chain-panel-capture", 140},
 }
 
-// TestZoneInputIsolationDiscipline pins the contract: every zone in
-// `zoneInputIsolationCases` registers a catch-all `HitArea` covering
-// its full Rect at the expected nominal z. A failure here means a
-// future refactor accidentally removed the catch-all, re-opening the
-// input-leak the user reported on the mobile Synth tab. The fix is
-// always: add `NewInputCaptureHitArea(zone.Rect(), z, tag)` to the
-// zone's `rebuildHitAreas`.
+// A missing catch-all lets chrome whitespace fall through to a lower zone; the fix is always
+// NewInputCaptureHitArea(zone.Rect(), z, tag).
 func TestZoneInputIsolationDiscipline(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -64,20 +42,8 @@ func TestZoneInputIsolationDiscipline(t *testing.T) {
 	}
 }
 
-// TestZoneInvisibleEqualsNoInput pins the second leg of the
-// visibility contract: when a zone's host-supplied visibility
-// predicate says it's hidden, `HitAreas()` MUST return an empty
-// slice (or one containing no entries). Pre-fix the EQ panel zone
-// returned its catch-all + per-control areas even when
-// `MobileEQMode()` was false, swallowing input destined for the
-// row rack beneath. The tree-level fix in `drumview_tree.go` is
-// the primary enforcement; this assertion catches anyone who
-// re-introduces the leak at the zone level.
-//
-// The test forces the canonical "hidden" state for each zone in
-// the case table (mobile + viewMode=Rows), then asserts
-// `HitAreas()` returns nothing. Add a new zone to the case table
-// when it joins the tree.
+// A hidden zone publishes no hit areas, or it swallows input meant for the rack beneath. The tree enforces this
+// first; this catches a zone-level leak. Add new zones to the case table.
 func TestZoneInvisibleEqualsNoInput(t *testing.T) {
 	assertDefaultParityState(t)
 	restore := SetForceSmallScreen(t, true)
@@ -88,8 +54,7 @@ func TestZoneInvisibleEqualsNoInput(t *testing.T) {
 	g.Layout(360, 800)
 	g.drum.setViewMode(viewModeRows)
 	g.drum.recalcButtons()
-	// Drive a few frames so the tree's Layout phase runs and any
-	// transition-triggered re-publish settles.
+	// So the tree's Layout phase and any re-publish settle.
 	g.Update()
 	g.Update()
 
@@ -120,10 +85,7 @@ func TestZoneInvisibleEqualsNoInput(t *testing.T) {
 	}
 }
 
-// TestZoneInvisibleNotInHitIndex is the tree-level mirror: even if a
-// zone's HitAreas() were stale, the tree's HitIndex must not contain
-// entries owned by an invisible zone. Verifies the tree gate is
-// load-bearing independent of per-zone self-policing.
+// Even with stale zone HitAreas(), the tree's index holds nothing from an invisible zone.
 func TestZoneInvisibleNotInHitIndex(t *testing.T) {
 	assertDefaultParityState(t)
 	restore := SetForceSmallScreen(t, true)
@@ -137,9 +99,7 @@ func TestZoneInvisibleNotInHitIndex(t *testing.T) {
 	g.Update()
 	g.Update()
 
-	// Probe a point ANYWHERE on screen. The hits returned must not
-	// belong to the audio-panel zones (eq-panel / chain-panel), since
-	// those are hidden by viewMode=Rows.
+	// viewMode=Rows hides the audio-panel zones.
 	probePoints := []image.Point{
 		{X: 50, Y: 50},
 		{X: 180, Y: 400},
@@ -159,15 +119,8 @@ func TestZoneInvisibleNotInHitIndex(t *testing.T) {
 	}
 }
 
-// TestTabIsolation_OnlyActiveTabPublishes enforces leg (i) of the
-// tab-isolation contract: the shared EQPanelZone hosts every audio tab's
-// content (Wave/Spectrum/Levels/EQ/Chain/Synth/Sampler), so on any given
-// view mode its HitAreas() must contain ONLY tags valid for the active tab.
-// A tag exclusively owned by a different tab (synth-*, sampler-*,
-// save-as-dialog-*, scope-*/chain-panel-capture, or eq-panel-capture on
-// Pads) means that tab's controls are still live and can swallow input —
-// exactly the class of bug the user reported. Walks all 8 view modes so a
-// future tab can't silently re-open the leak the way Sampler did.
+// EQPanelZone hosts every audio tab, so in each view mode its HitAreas() carry only the active tab's tags: another
+// tab's tag means its controls are still live and can swallow input. Every view mode is walked.
 func TestTabIsolation_OnlyActiveTabPublishes(t *testing.T) {
 	assertDefaultParityState(t)
 	setupMobileTest(t, true)
@@ -194,11 +147,7 @@ func TestTabIsolation_OnlyActiveTabPublishes(t *testing.T) {
 	}
 }
 
-// assertNoTransientOverlayAfterSwitch is the single invariant a tab/view
-// transition must establish: NO transient interaction state from the
-// departing tab survives. It centralises every check so the contract is
-// defined once and reused by the transition-matrix repro tests and the
-// opener-coverage discipline test below.
+// No transient state from the departing tab survives a switch; defined once for every caller.
 func assertNoTransientOverlayAfterSwitch(t *testing.T, dv *DrumView, ctx string) {
 	t.Helper()
 	if dv.tree != nil && dv.portal().IsOpen() {
@@ -218,8 +167,7 @@ func assertNoTransientOverlayAfterSwitch(t *testing.T, dv *DrumView, ctx string)
 	}
 }
 
-// openChannelDropdownForTest opens the audio-panel channel dropdown the way
-// the sticky-bar pill does: flip the zone's open flag and build the portal.
+// As the sticky-bar pill does.
 func openChannelDropdownForTest(dv *DrumView) {
 	if dv.eqPanelZone == nil {
 		return
@@ -228,14 +176,8 @@ func openChannelDropdownForTest(dv *DrumView) {
 	dv.eqPanelZone.buildChannelDropdown()
 }
 
-// TestTabIsolation_SwitchResetsTransientState enforces leg (ii): every
-// setViewMode tears down ALL transient per-tab state. The original bug was
-// the Sampler Save-As dialog surviving the switch and eating keyboard/IME
-// input behind a hidden panel; the broader bug (this strengthened version)
-// is that switching *into Pads* skipped CloseAllPopups entirely, so any open
-// portal — including a full-screen modal — leaked and blocked all input. The
-// single enforcement point is resetTransientTabState at the setViewMode
-// chokepoint.
+// Every setViewMode tears down all transient tab state through resetTransientTabState, Pads included: a
+// surviving portal or modal blocks all input behind a hidden panel.
 func TestTabIsolation_SwitchResetsTransientState(t *testing.T) {
 	assertDefaultParityState(t)
 	setupMobileTest(t, true)
@@ -258,9 +200,7 @@ func TestTabIsolation_SwitchResetsTransientState(t *testing.T) {
 			dv.setViewMode(viewModeSampler)
 			advanceFrames(g, 2)
 			dv.sampler.loadFromInstrument(roster.Kick, []float32{0.1, -0.2, 0.3, -0.4}, 48000, samplerSourceSynth)
-			// Stack every transient overlay a real Sampler session can hold:
-			// the Save-As dialog, a full-screen modal portal, and the channel
-			// dropdown. All must be gone after the switch.
+			// Everything a real Sampler session can hold open.
 			dv.samplerSaveAs()
 			dv.openNamingPortal()
 			openChannelDropdownForTest(dv)
@@ -278,11 +218,7 @@ func TestTabIsolation_SwitchResetsTransientState(t *testing.T) {
 	}
 }
 
-// TestResetTransientTabState_TearsDownEveryOpener pins the chokepoint itself,
-// independent of setViewMode: resetTransientTabState must close EVERY kind of
-// transient overlay a tab can open. Any NEW opener added to the UI must be
-// torn down here — this table is the enforcement list. A leaked overlay after
-// the chokepoint runs is exactly the Sampler->Pads "input dead" class of bug.
+// Every kind of transient overlay a tab can open; a new opener must be torn down here.
 func TestResetTransientTabState_TearsDownEveryOpener(t *testing.T) {
 	assertDefaultParityState(t)
 	setupMobileTest(t, true)
@@ -329,12 +265,7 @@ func TestResetTransientTabState_TearsDownEveryOpener(t *testing.T) {
 	}
 }
 
-// zonesByID returns the discipline-test-visible audio-panel zones,
-// keyed by their canonical ID. The tree itself doesn't expose a
-// public "list all zones" accessor — that's deliberate (the tree's
-// dispatch loop is the only legitimate consumer). For this
-// discipline test we reach into the DrumView fields directly,
-// mirroring the existing render_pipeline_discipline_test.go pattern.
+// The tree deliberately exposes no zone list, so this reads the DrumView fields.
 func zonesByID(dv *DrumView) map[string]Zone {
 	out := map[string]Zone{}
 	if dv.eqPanelZone != nil {
@@ -346,11 +277,7 @@ func zonesByID(dv *DrumView) map[string]Zone {
 	return out
 }
 
-// assertZoneHasCaptureHitArea is the per-zone discipline check.
-// Verifies (1) HitAreas() returns at least one entry with the
-// expected capture tag, (2) the capture rect equals the zone's
-// visible Rect (no shrink-or-grow), (3) the capture's ZIndex
-// matches the zone's nominal z.
+// The capture tag is present, its rect equals the zone's, and its z is nominal.
 func assertZoneHasCaptureHitArea(t *testing.T, z Zone, c struct {
 	zoneID     string
 	captureTag string
@@ -359,8 +286,7 @@ func assertZoneHasCaptureHitArea(t *testing.T, z Zone, c struct {
 	t.Helper()
 	rect := rectOf(z)
 	if rect.Empty() {
-		// Zero-bounds zone (mobile gate, not laid out yet, etc.) —
-		// skip; HitAreas() correctly returns no entries.
+		// A zone with zero bounds (not laid out yet) correctly has none.
 		return
 	}
 	var capture *HitArea
@@ -383,10 +309,7 @@ func assertZoneHasCaptureHitArea(t *testing.T, z Zone, c struct {
 	}
 }
 
-// rectOf returns the zone's visible Rect via type assertion. The
-// `Zone` interface doesn't expose Rect() because some zones don't
-// have a single rect; the audio-panel zones do. If a new zone is
-// added to `zoneInputIsolationCases`, extend this switch.
+// Zone has no Rect(): not every zone has one rect. Extend this for a new case.
 func rectOf(z Zone) image.Rectangle {
 	switch v := z.(type) {
 	case *EQPanelZone:

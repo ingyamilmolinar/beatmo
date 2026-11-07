@@ -6,10 +6,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// ScrollBehavior composes VerticalScroller (item-level) and TouchScroller
-// (pixel-level momentum) into a single scrollable behaviour. It handles
-// wheel, scrollbar drag, and touch input uniformly so callers only need
-// to forward raw events and read the result.
+// Callers forward raw events and read the result.
 type ScrollBehavior struct {
 	VS         VerticalScroller // item-level scroll state
 	TS         TouchScroller    // pixel-level momentum/direction lock
@@ -18,16 +15,10 @@ type ScrollBehavior struct {
 	pixelAccum float64 // sub-item precision accumulator
 	dirty      bool    // true when VS.First changed since last ClearDirty
 
-	// Surface names the scrolled region for interaction telemetry
-	// (e.g. "inst-menu", "row-rack", "synth-grid"). Default "" renders as
-	// "scrolled" in the INFO log.
+	// For telemetry; "" logs as "scrolled".
 	Surface string
 
-	// Opt-in "step-by-step" state (used by the synth ControlGrid and the row
-	// rack). These power WheelStep / StepDragTo and are independent of the
-	// continuous HandleWheel / HandleDragTo / HandleTouch* paths, so scrollbars
-	// that don't call the step methods (dropdowns, context menu, sidebar) keep
-	// their original feel.
+	// The opt-in stepped state, independent of the continuous paths, so scrollbars that never call it keep their feel.
 	stepCooldown   int  // frames until the next wheel/step move is allowed
 	stepDragging   bool // a stepped thumb drag is in progress
 	stepDragStartY int  // pointer Y at the start of the stepped drag
@@ -45,8 +36,7 @@ func NewScrollBehavior(style ScrollbarStyle, itemHeight int) *ScrollBehavior {
 
 // --- Input handlers (return true when VS.First changed) ---
 
-// HandleWheel processes a mouse wheel event. steps > 0 = scroll up (toward
-// lower indices), matching VerticalScroller.ScrollBy semantics.
+// steps > 0 scrolls up, toward lower indices.
 func (sb *ScrollBehavior) HandleWheel(steps int) bool {
 	if sb.VS.ScrollBy(-steps) {
 		sb.dirty = true
@@ -83,12 +73,7 @@ func (sb *ScrollBehavior) HandleDragEnd() {
 
 // --- Step-by-step input (opt-in; see the stepCooldown/stepDragging fields) ---
 
-// WheelStep advances the scroll by exactly ONE item in the wheel's direction,
-// then refuses further steps until cooldownFrames frames have elapsed (see
-// TickStep). The magnitude of steps is ignored on purpose — one notch (or one
-// fast flick / hi-res-wheel burst) is one item — so the wheel can't fly through
-// the list. steps > 0 is a wheel-up (toward lower indices), matching ScrollBy.
-// Returns true when VS.First changed.
+// Exactly ONE item whatever the magnitude, then a cooldown, so a flick or hi-res wheel cannot fly through the list.
 func (sb *ScrollBehavior) WheelStep(steps, cooldownFrames int) bool {
 	if steps == 0 || sb.stepCooldown > 0 {
 		return false
@@ -108,18 +93,13 @@ func (sb *ScrollBehavior) WheelStep(steps, cooldownFrames int) bool {
 	return true
 }
 
-// TickStep advances the per-frame cooldown clock. Call once per frame. Cheap
-// no-op when no cooldown is pending.
 func (sb *ScrollBehavior) TickStep() {
 	if sb.stepCooldown > 0 {
 		sb.stepCooldown--
 	}
 }
 
-// BeginStepDrag starts a stepped thumb drag anchored at y. The caller decides
-// when to start it (e.g. on a press inside the thumb). Also raises VS.dragging
-// so Dragging()/capture logic sees the drag. Returns false (no capture) when
-// the content does not scroll.
+// Also raises VS.dragging so capture logic sees it; false when nothing scrolls.
 func (sb *ScrollBehavior) BeginStepDrag(y int) bool {
 	if !sb.HasScroll() {
 		return false
@@ -132,12 +112,7 @@ func (sb *ScrollBehavior) BeginStepDrag(y int) bool {
 	return true
 }
 
-// BeginStepDragNatural is BeginStepDrag with the direction inverted so the
-// CONTENT follows the finger (natural touch scrolling): dragging down slides the
-// content down and reveals earlier items, dragging up reveals later items. Use
-// this for a content/body grab; use BeginStepDrag for the scrollbar THUMB, where
-// the thumb itself must follow the finger. Returns false (no capture) when the
-// content does not scroll.
+// Natural: the CONTENT follows the finger, for a body grab; the thumb uses BeginStepDrag.
 func (sb *ScrollBehavior) BeginStepDragNatural(y int) bool {
 	if !sb.BeginStepDrag(y) {
 		return false
@@ -146,17 +121,13 @@ func (sb *ScrollBehavior) BeginStepDragNatural(y int) bool {
 	return true
 }
 
-// StepDragTo advances the scroll one item per stepPx of pointer travel from the
-// grab point, anchored so the drag is fully reversible and never jumps more
-// items than the distance dragged warrants. Returns true when VS.First changed.
+// Anchored at the grab point, so the drag is fully reversible and never jumps more than its travel warrants.
 func (sb *ScrollBehavior) StepDragTo(y, stepPx int) bool {
 	if !sb.stepDragging || stepPx <= 0 {
 		return false
 	}
 	rows := (y - sb.stepDragStartY) / stepPx
 	if sb.stepNatural {
-		// Content follows the finger: invert so dragging down reveals earlier
-		// items (First decreases) instead of advancing the list.
 		rows = -rows
 	}
 	newFirst := sb.stepFirst + rows
@@ -213,8 +184,7 @@ func (sb *ScrollBehavior) HandleTouchEnd() {
 	}
 }
 
-// UpdateMomentum applies per-frame momentum decay. Returns true if VS.First changed.
-// Call once per frame after the touch has ended.
+// Once per frame after the touch ends.
 func (sb *ScrollBehavior) UpdateMomentum() bool {
 	delta := sb.TS.UpdateMomentum()
 	if delta == 0 {
@@ -223,8 +193,6 @@ func (sb *ScrollBehavior) UpdateMomentum() bool {
 	return sb.applyPixelDelta(-delta)
 }
 
-// applyPixelDelta converts a pixel delta to item offset change using the
-// sub-item accumulator. Returns true if VS.First changed.
 func (sb *ScrollBehavior) applyPixelDelta(px float64) bool {
 	if sb.ItemHeight <= 0 {
 		return false

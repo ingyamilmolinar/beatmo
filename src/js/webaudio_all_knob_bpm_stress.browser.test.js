@@ -1,53 +1,6 @@
-/**
- * ALL-knob / all-settings live-edit stress during REAL sequencer playback,
- * across multiple BPMs (WASM).
- *
- * WHY THIS TEST EXISTS (coverage gap it closes)
- * ---------------------------------------------
- * The existing live-edit perf gates only spam a SINGLE param:
- *   - webaudio_synth_param_stress:  osc_type (synth) / GainDB (sampler),
- *     timer-driven notes — no sequencer, no BPM dimension.
- *   - webaudio_render_latency_bench: osc_type storms, timer-driven.
- *   - instrument_params_playback_stability: pitch on a drum.
- * Nothing exercised the OTHER ~50 user-facing synth knobs (filter, envelope,
- * FM, LFO, burst, unison, post…), none of the live-mutate mixer surfaces
- * (insert-FX params, EQ bands, HPF/LPF, sends, volume/pan) were ever edited
- * DURING playback with latency assertions, and no live-edit test ran under a
- * real sequencer at different tempos.
- *
- * WHAT THIS TEST DOES
- * -------------------
- * Builds a 3-row circuit (buildPerfRect) with a melodic waveguide voice
- * (cello), the heaviest additive/unison voice (organ-church) and a
- * config-kick drum (dnb-kick — the "Punch knob hang" instrument), starts REAL
- * playback, and for each BPM in ALL_KNOB_BPMS runs two spam phases:
- *
- *   1. synth-knobs: round-robin over EVERY user-facing ParamDef of every row
- *      instrument (enumerated live from instrumentParamDefs(id), group!=="hidden"
- *      — so new knobs are covered automatically, no drift), one set per
- *      instrument per 16 ms tick, values alternating within [min,max].
- *   2. mixer-fx: round-robin live edits over insert-FX params (from
- *      insertEffectCatalog()), EQ band gains, HPF/LPF, channel volume/pan,
- *      delay/reverb sends, row + master volume.
- *
- * Optionally repeats the synth-knobs phase under 4x CDP CPU throttle
- * (mobile-class; ALL_KNOB_THROTTLE=0 to skip).
- *
- * GATES
- * -----
- * PRIMARY (machine-independent, structural):
- *   - every visible knob of every instrument was actually written (>=1 pass)
- *   - the sequencer really advanced (currentBeat) at every BPM
- *   - mainThreadRenders === 0 — no heavy C render may run synchronously on
- *     the main thread during playback
- *   - overdue === 0 — no audio event scheduled into the past
- * SECONDARY (behavioural, env-tunable):
- *   - deferAbsMsP90 <= ALL_KNOB_DEFER_P90_MAX_MS (notes land on-grid)
- *   - worst event-loop gap <= ALL_KNOB_MAX_GAP_MS
- *
- * CHARTER: WebAudio scheduling + WASM bridge behavior under load — JS-only
- * surface (Go cannot observe AudioContext timing or the render worker).
- */
+/** EVERY user-facing knob of every row (enumerated live, so new knobs are covered) plus the mixer surfaces (insert-FX
+ * params, EQ bands, HPF/LPF, volumes) edited during REAL sequencer playback at several BPMs, optionally under 4× CPU
+ * throttle. Gates: every knob written, the sequencer advanced, no main-thread renders, nothing overdue; defer p90 and gaps tunable. */
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";
@@ -73,11 +26,8 @@ const GO = resolveGoBinary();
 const BPMS = (process.env.ALL_KNOB_BPMS || "60 174 300").split(/\s+/).map(Number);
 const PHASE_MS = Number(process.env.ALL_KNOB_PHASE_MS || 2600);
 const SPAM_INTERVAL_MS = Number(process.env.ALL_KNOB_SPAM_MS || 16); // ~60 Hz
-// maxGap must absorb one-off Go-WASM GC pauses (measured ~230–300 ms roaming
-// across phases at 180 knob-writes/s — each write clones + marshals the full
-// ~1088-entry modular block; see the delta-push improvement note in the
-// header). Sustained jank is caught by the much tighter p99 gate instead.
-// RATCHET both down once param pushes become deltas.
+// Absorbs one-off Go-WASM GC pauses at 180 writes/s (each clones and marshals the whole block); sustained jank is the
+// tighter p99 gate's.
 const MAX_GAP_MS = Number(process.env.ALL_KNOB_MAX_GAP_MS || 350);
 const P99_GAP_MS = Number(process.env.ALL_KNOB_P99_GAP_MS || 30);
 const DEFER_P90_MAX_MS = Number(process.env.ALL_KNOB_DEFER_P90_MAX_MS || 15);
@@ -85,8 +35,7 @@ const THROTTLE_RATE = Number(process.env.ALL_KNOB_THROTTLE || 4); // 0 = skip
 const THROTTLE_MAX_GAP_MS = Number(process.env.ALL_KNOB_THROTTLE_MAX_GAP_MS || 350);
 const THROTTLE_P99_GAP_MS = Number(process.env.ALL_KNOB_THROTTLE_P99_GAP_MS || 60);
 const THROTTLE_DEFER_P90_MAX_MS = Number(process.env.ALL_KNOB_THROTTLE_DEFER_P90_MAX_MS || 15);
-// ALL_KNOB_SOLO=<instrument-id>: restrict the synth-knob spam to one
-// instrument (realistic one-finger drag) instead of all rows at once.
+// One instrument only: a realistic one-finger drag.
 const SOLO_INSTRUMENT = process.env.ALL_KNOB_SOLO || "";
 
 // Rows: melodic waveguide / heaviest additive-unison / config-kick drum.
@@ -154,9 +103,7 @@ const setup = await page.evaluate(async (ROW_INSTRUMENTS) => {
   // Give warm-on-switch a moment before the storm starts.
   await new Promise((res) => setTimeout(res, 600));
 
-  // Enumerate every USER-FACING knob per instrument from its document's knob
-  // schema — group "hidden" is engine plumbing, everything else renders in the
-  // Synth tab.
+  // Group "hidden" is engine plumbing; everything else is in the Synth tab.
   const knobs = {};
   for (const id of ROW_INSTRUMENTS) {
     const params = instrumentParamDefs(id) || [];
@@ -177,18 +124,14 @@ const setup = await page.evaluate(async (ROW_INSTRUMENTS) => {
   return { knobs: Object.fromEntries(Object.entries(knobs).map(([k, v]) => [k, v.length])), fx: Object.fromEntries(Object.entries(fx).map(([k, v]) => [k, v.type])), fxTypes };
 }, ROW_INSTRUMENTS);
 console.log(`[TEST] knobs per instrument: ${JSON.stringify(setup.knobs)} insert-fx: ${JSON.stringify(setup.fx)}`);
-// The synth-knobs phase writes ONE knob per instrument per tick, so it must
-// last at least (visible knobs × tick). Sized from the live count — the knob
-// set grows with the engine (Phase C's FINISH stage added eight) and a fixed
-// window silently stopped covering it (2600 ms / 16 ms = 162 < 179). 1.6× slack
-// absorbs timer slip under the BPM load; ALL_KNOB_PHASE_MS stays a floor.
+// One knob per instrument per tick, so the phase must last (visible knobs × tick) from the live count, or a growing
+// knob set silently stops being covered. 1.6× absorbs timer slip; ALL_KNOB_PHASE_MS stays a floor.
 const phaseMs = Math.max(PHASE_MS, Math.ceil(Math.max(...Object.values(setup.knobs)) * SPAM_INTERVAL_MS * 1.6));
 for (const [id, n] of Object.entries(setup.knobs)) {
   if (!n || n < 5) throw new Error(`instrument ${id} exposes only ${n} visible knobs — enumeration broken`);
 }
 
-// runPhase spams live edits at SPAM_INTERVAL_MS while the sequencer plays.
-// mode: "synth-knobs" | "mixer-fx". Returns metrics.
+// mode "synth-knobs" | "mixer-fx".
 async function runPhase(mode, bpm, phaseOpts = {}) {
   return await page.evaluate(async ({ mode, bpm, ROW_INSTRUMENTS, PHASE_MS, SPAM_INTERVAL_MS, SOLO }) => {
     setBPM(bpm);
@@ -226,8 +169,7 @@ async function runPhase(mode, bpm, phaseOpts = {}) {
           const d = s.defs[s.idx % s.defs.length];
           const pass = Math.floor(s.idx / s.defs.length);
           const span = d.max - d.min;
-          // Alternate between two in-range values so the no-op coalesce
-          // layers never swallow the write; snap near-integer ranges.
+          // Two alternating values, so no-op coalescing never swallows a write.
           let v = d.min + (pass % 2 === 0 ? 0.3 : 0.75) * span;
           if (span <= 16 && Number.isInteger(d.min) && Number.isInteger(d.max)) {
             v = d.min + ((pass + s.idx) % (span + 1));
@@ -328,23 +270,13 @@ for (const bpm of BPMS) {
   evaluatePhase(`bpm=${bpm} mixer-fx`, mixer);
 }
 
-// ── Mobile-class CPU throttle scenarios (4x) at mid BPM ──
-// (a) GATED realistic mobile contract: ONE instrument's knobs dragged (a
-//     finger can only touch one knob) — must stay on-grid, no main-thread
-//     renders, bounded jank. This is the "synth edits are real-time on
-//     mobile WASM" guarantee.
-// (b) INFO-ONLY saturation probe: all 3 instruments spammed at once under
-//     throttle. Currently saturates the render pipeline (deferAbsMsP90
-//     measured ~715 ms); logged for tracking, not gated.
+// (a) GATED: one instrument's knobs, as a finger can touch only one: on grid, no main-thread renders, bounded jank. (b)
+// INFO only: all three at once saturates the render pipeline under throttle.
 if (THROTTLE_RATE > 1) {
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Emulation.setCPUThrottlingRate", { rate: THROTTLE_RATE });
-  // Throttle-onset warm-up (results discarded): engaging CDP throttling
-  // mid-session makes Chrome recalibrate timers / re-tier JIT, and the first
-  // spam phase after onset eats a one-off 100-700ms defer transient that a
-  // real always-slow device never sees (verified: whichever scenario runs
-  // first is bad, the second is clean regardless of scenario). Measure
-  // steady-state throttled editing, not the emulator transient.
+  // Discarded: throttling mid-session makes Chrome recalibrate timers and re-tier, and the first phase after onset eats a
+  // transient a really slow device never sees.
   await page.evaluate(() => setBPM(174));
   await runPhase("synth-knobs", 174, { solo: ROW_INSTRUMENTS[0] });
   const solo = await runPhase("synth-knobs", 174, { solo: ROW_INSTRUMENTS[0] });

@@ -8,19 +8,10 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// drawRectOp is the reusable DrawImageOptions for drawRect's pixel blits.
-// Update + Draw run on a single UI goroutine (same reuse contract as the
-// drawArcVS/drawArcIS scratch buffers in knob.go), and ebiten's DrawImage
-// copies the options before returning, so a package-level scratch is safe.
-// Pre-fix every drawRect call heap-allocated its options struct via the
-// escaping &op — drawRect is the universal fill primitive (thousands of
-// calls per frame on the audio-panel tabs), making it the single largest
-// avoidable per-frame allocation source on WASM where GC starvation is the
-// binding constraint.
+// One UI goroutine and DrawImage copies the options, so a package scratch is safe; a per-call &op made drawRect
+// (thousands of calls a frame) the largest avoidable allocation on WASM.
 var drawRectOp ebiten.DrawImageOptions
 
-// drawRectBlit blits the 1x1 pixel px scaled to (sx, sy) at (tx, ty) using
-// the shared drawRectOp scratch.
 func drawRectBlit(dst *ebiten.Image, px *ebiten.Image, sx, sy, tx, ty float64) {
 	bumpDrawCall()
 	drawRectOp.GeoM.Reset()
@@ -29,14 +20,12 @@ func drawRectBlit(dst *ebiten.Image, px *ebiten.Image, sx, sy, tx, ty float64) {
 	dst.DrawImage(px, &drawRectOp)
 }
 
-// drawRect draws a rectangle. It is defined as a variable so tests can
-// override it to capture draw calls.
+// A var so tests can capture draw calls.
 var drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
 	if r.Empty() {
 		return
 	}
-	// Fast path: draw axis-aligned rectangles via scaled 1x1 pixel blits.
-	// This avoids vector path overhead and is significantly faster in WASM.
+	// Scaled 1x1 pixel blits avoid vector-path overhead, much faster on WASM.
 	px := pixel(c)
 	if filled {
 		drawRectBlit(dst, px, float64(r.Dx()), float64(r.Dy()), float64(r.Min.X), float64(r.Min.Y))
@@ -49,13 +38,7 @@ var drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled 
 	drawRectBlit(dst, px, 1, float64(r.Dy()), float64(r.Max.X-1), float64(r.Min.Y))
 }
 
-// fillVerticalGradient paints rect with a smooth top→bottom gradient from
-// topCol to botCol as a stack of `bands` horizontal strips. Each strip is a
-// solid drawRect of a fixed interpolated color, so after the first frame the
-// per-band colors are served from pixelCache and the fill adds no per-frame
-// allocations. ~32 bands is visually indistinguishable from a true gradient
-// at panel scale while staying cheap. Used for the sunset grid-pane backdrop
-// (DESIGN.md colors.grid-horizon).
+// Fixed-colour strips are served from pixelCache, so after the first frame it allocates nothing.
 func fillVerticalGradient(dst *ebiten.Image, rect image.Rectangle, topCol, botCol color.Color, bands int) {
 	if rect.Empty() || bands < 1 {
 		return
@@ -87,17 +70,8 @@ func fillVerticalGradient(dst *ebiten.Image, rect image.Rectangle, topCol, botCo
 	}
 }
 
-// drawButton renders a filled rectangle with a border. It can be overridden in tests.
-// Uses flat rects for performance — rounded corners are reserved for cached
-// overlays/popups via drawRoundedButton. Each drawRoundedRect(radius=8) emits
-// 35+ DrawImage calls vs 6 for flat rects, and Ebiten's dependency-tracking
-// map iteration (runtime.mapiternext) scales O(N²) with draw-call count.
-//
-// topEdgeHighlight is a pure parameter: callers decide (via Profile() or
-// spec.TopEdgeHighlight at the boundary) whether to draw the 1-px depth
-// accent. Keeping the flag at the parameter line means drawButton itself
-// reads no globals — Render(spec, state) can be a pure function w.r.t. its
-// inputs once it has hoisted the Profile() read to its entry point.
+// Flat rects: a rounded rect emits 35+ DrawImage calls vs 6, and Ebiten's dependency tracking scales O(N²)
+// with draw calls. topEdgeHighlight is a parameter so drawButton reads no globals.
 var drawButton = func(dst *ebiten.Image, r image.Rectangle, fill, border color.Color, pressed, topEdgeHighlight bool) {
 	if r.Empty() {
 		return
@@ -125,9 +99,7 @@ type roundedBtnKey struct {
 
 var roundedBtnCache = map[roundedBtnKey]*ebiten.Image{}
 
-// drawRoundedButton renders a filled rounded rectangle with a border.
-// Same as drawButton but uses drawRoundedRect for fill and border.
-// Caches the composite output as a sprite so each button is 1 DrawImage blit.
+// The composite is cached as a sprite, so each button is one blit.
 var drawRoundedButton = func(dst *ebiten.Image, r image.Rectangle, fill, border color.Color, radius int, pressed bool) {
 	if r.Empty() {
 		return
@@ -189,9 +161,7 @@ func blendColor(base, accent color.RGBA, t float64) color.RGBA {
 	}
 }
 
-// Icon implementations live in drawing_icons.go. The IconID dispatch in
-// icons.go reaches the per-icon function-vars defined there; tests
-// override those vars to capture call counts.
+// Tests override the per-icon function vars to count calls.
 
 // cornerSpriteKey identifies a cached corner arc sprite.
 type cornerSpriteKey struct {
@@ -200,13 +170,9 @@ type cornerSpriteKey struct {
 	filled bool
 }
 
-// cornerSpriteCache caches pre-rendered corner arc sprites keyed by
-// (radius, color, filled). Each sprite is a radius×radius image containing
-// the top-left quadrant; the other 3 corners are drawn by flipping.
+// Only the top-left quadrant is stored; the other corners are drawn flipped.
 var cornerSpriteCache = map[cornerSpriteKey]*ebiten.Image{}
 
-// cornerSprite returns a cached radius×radius image containing a filled or
-// stroked top-left corner arc. The image is pre-rendered once and reused.
 func cornerSprite(radius int, c color.Color, filled bool) *ebiten.Image {
 	k := cornerSpriteKey{radius: radius, rgba: packRGBA(c), filled: filled}
 	if img, ok := cornerSpriteCache[k]; ok {
@@ -231,25 +197,13 @@ func cornerSprite(radius int, c color.Color, filled bool) *ebiten.Image {
 	return img
 }
 
-// maxRoundedRadius is the anti-pill ceiling for a rect of the given size: a
-// quarter of its shorter side. Single definition shared by the drawRoundedRect
-// clamp and TestNoPillShapedControls. See DESIGN.md "The anti-pill invariant".
+// A quarter of the shorter side; shared by the drawRoundedRect clamp and TestNoPillShapedControls.
 func maxRoundedRadius(w, h int) int {
 	return minI(w, h) / 4
 }
 
-// fitRadius returns a role radius bounded by what r can actually carry without
-// becoming a capsule.
-//
-// Shared chrome helpers (Button.Draw, drawPanel, the toast, the FX header) each
-// serve rects across a wide size range, so a fixed role radius would be right
-// for the common case and over-rounded for the small one. The rule this encodes
-// is "a container gets container rounding unless it is too short to carry it,
-// in which case it takes the ceiling" — the role still picks the intent, the
-// geometry just can't be violated.
-//
-// A call site drawing ONE known control should name its role token directly;
-// reach for this only where the size genuinely varies.
+// For shared helpers serving rects of every size: the role picks the intent, the geometry caps it. A call
+// site drawing ONE known control names its role token directly.
 func fitRadius(role int, r image.Rectangle) int {
 	if ceil := maxRoundedRadius(r.Dx(), r.Dy()); role > ceil {
 		return ceil
@@ -257,43 +211,23 @@ func fitRadius(role int, r image.Rectangle) int {
 	return role
 }
 
-// radiusCapsule is a sentinel radius meaning "semicircular ends, sized from the
-// rect". It is the ONE legitimate escape from the anti-pill ceiling, and being a
-// sentinel rather than a pixel value is the point: a call site cannot arrive at
-// it by typing a plausible number, so the escape is always deliberate.
+// The ONE escape from the anti-pill ceiling, a sentinel so no plausible number can reach it by accident.
 const radiusCapsule = -1
 
-// drawCapsule draws a fully-rounded bar — a shape whose ends are semicircles.
-// A drag handle, a slider rail and a slider thumb are capsules by design, not
-// buttons that someone over-rounded.
-//
-// It routes through drawRoundedRect rather than around it so that the package
-// keeps exactly ONE interceptable rounded-drawing chokepoint; tests that
-// capture draw calls see capsules too.
+// Drag handles and slider rails are capsules by design. Routed through drawRoundedRect so there stays one
+// interceptable rounded-drawing chokepoint.
 func drawCapsule(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
 	drawRoundedRect(dst, r, c, radiusCapsule, filled)
 }
 
-// drawRoundedRect draws a filled or stroked rectangle with rounded corners.
-// Uses sprite-cached corner arcs: the 4 corners are pre-rendered as small
-// radius×radius images and blitted with flips, reducing DrawImage calls from
-// 3 + 4×radius (filled) to 7 (body + 4 corners).
-//
-// The radius is clamped to the anti-pill ceiling — see maxRoundedRadius. A
-// shape that genuinely needs semicircular ends is a capsule; use drawCapsule.
+// Sprite-cached corners: 7 DrawImage calls instead of 3 + 4×radius. The radius is clamped to the anti-pill
+// ceiling; a shape that needs semicircular ends is a capsule.
 var drawRoundedRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, radius int, filled bool) {
 	if r.Empty() {
 		return
 	}
-	// The anti-pill invariant (DESIGN.md "Shapes"): a radius at half the
-	// shorter side IS a pill, so the ceiling is a QUARTER of it. This is the
-	// runtime backstop — a pill cannot reach the screen whatever a call site
-	// asks for. TestNoPillShapedControls intercepts this func var to catch the
-	// over-asking call site itself, since the clamp would otherwise hide it.
-	//
-	// A genuine capsule (drag handle, slider rail/thumb) is a different shape,
-	// not an over-rounded rect — it passes radiusCapsule and is sized from the
-	// rect instead of being clamped.
+	// The runtime backstop: no pill reaches the screen whatever a call site asks; TestNoPillShapedControls
+	// intercepts this var to catch the over-asking site.
 	if radius == radiusCapsule {
 		radius = minI(r.Dx(), r.Dy()) / 2
 	} else if maxR := maxRoundedRadius(r.Dx(), r.Dy()); radius > maxR {
@@ -355,9 +289,6 @@ func drawPanelShadow(dst *ebiten.Image, r image.Rectangle, offset int) {
 
 // (icon implementations live in drawing_icons.go)
 
-// SplitterHandleRect returns the pill handle rect centered at (cx, cy).
-// For horizontal dividers (horizontal=true) the pill is wider along X.
-// For vertical dividers (horizontal=false) the pill is taller along Y.
 func SplitterHandleRect(cx, cy int, horizontal bool) image.Rectangle {
 	hLen := SplitterHandleLen()
 	hThick := SplitterHandleThick()
@@ -371,11 +302,7 @@ func SplitterHandleRect(cx, cy int, horizontal bool) image.Rectangle {
 	return image.Rect(x0, y0, x0+hThick, y0+hLen)
 }
 
-// DrawSplitterHandle draws the divider handle at (cx, cy) using a single
-// unified render path on every platform: a square (sharp-cornered) handle
-// with a soft glow halo behind it. The former desktop-only grip-line variant
-// was retired so the same component renders identically everywhere; only the
-// handle color stays platform-parameterized (gray desktop / cyan mobile).
+// One render path on every platform; only the colour differs (gray desktop, cyan mobile).
 func DrawSplitterHandle(dst *ebiten.Image, cx, cy int, horizontal, hover bool) {
 	r := SplitterHandleRect(cx, cy, horizontal)
 	col := Profile().SplitterHandleColor
@@ -398,15 +325,12 @@ func DrawSplitterHandle(dst *ebiten.Image, cx, cy int, horizontal, hover bool) {
 // popupCornerRadius returns the corner radius for popup panels.
 func popupCornerRadius() int { return Profile().PopupCornerRadius }
 
-// drawScrim draws a semi-transparent backdrop behind a popup to create depth
-// and focus. The scrim covers the full destination image.
 func drawScrim(dst *ebiten.Image) {
 	b := dst.Bounds()
 	drawRect(dst, b, colScrim, true)
 }
 
-// drawPanel draws a rounded popup/menu panel with background, border, and
-// optional shadow. This is the unified drawing function for all overlay panels.
+// The single draw path for every overlay panel.
 func drawPanel(dst *ebiten.Image, r image.Rectangle) {
 	radius := fitRadius(popupCornerRadius(), r)
 	drawPanelShadow(dst, r, 6)
@@ -414,42 +338,25 @@ func drawPanel(dst *ebiten.Image, r image.Rectangle) {
 	drawRoundedRect(dst, r, colPanelBorder, radius, false)
 }
 
-// drawBottomSheetPanel draws a panel for mobile bottom sheets with rounded top
-// corners (RadiusSheet) and flat bottom corners (flush with screen bottom).
-// Achieves top-only rounding by drawing a rounded rect that extends past the
-// bottom of the destination, so the bottom corners are naturally clipped.
+// Top-only rounding: the rect extends past the bottom, so the bottom corners fall off-screen.
 func drawBottomSheetPanel(dst *ebiten.Image, r image.Rectangle) {
-	// Sheet rounding is sized for a SHEET. The same helper also paints the
-	// mobile bottom action bar, which is a ~38 px strip — 20 px corners on that
-	// would round away half its height, so a short surface takes the anti-pill
-	// ceiling instead. The rect the corners are actually drawn on is `extended`
-	// (r plus the radius that falls off-screen), so the ceiling is computed
-	// against r itself, the visible surface.
+	// The same helper paints the ~38 px mobile action bar, where sheet corners would eat half its height, so the
+	// ceiling is computed against the visible r.
 	radius := fitRadius(RadiusSheet, r)
 	// Shadow offset at top only (bottom is flush with screen edge).
 	shadowColor := color.NRGBA{0, 0, 0, 80}
 	shadow := image.Rect(r.Min.X+6, r.Min.Y+6, r.Max.X+6, r.Max.Y)
 	drawRoundedRect(dst, shadow, shadowColor, fitRadius(radius, shadow), true)
 
-	// Extend the rect below by radius so the bottom corners are drawn as
-	// straight edges (the rounded bottom corners fall off-screen).
 	extended := image.Rect(r.Min.X, r.Min.Y, r.Max.X, r.Max.Y+radius)
 	drawRoundedRect(dst, extended, colPanelBG, radius, true)
 
-	// Border: draw top rounded edge + sides only (skip bottom border
-	// since the sheet is flush with screen bottom).
+	// No bottom border: the sheet is flush with the screen bottom.
 	drawRoundedRect(dst, extended, colPanelBorder, radius, false)
 }
 
-// drawSparklineInRect renders dB samples (expected range ±24) as a connected
-// polyline within r, using col. Used by the mobile EQ peek strip
-// (drumview_draw.go) to expose the EQ shape at a glance — the polyline
-// midline corresponds to 0 dB and the rect's top/bottom edges to ±24 dB.
-//
-// Implementation rasterizes the polyline as a chain of 1×1 filled rects
-// via drawRect rather than vector.Path so it renders under the test
-// build's stubbed DrawTriangles (the icon vector pipeline is a no-op
-// there).
+// The midline is 0 dB, the edges ±24 dB. Rasterised with drawRect, not vector.Path, so it renders under the
+// test build's stubbed DrawTriangles.
 func drawSparklineInRect(dst *ebiten.Image, r image.Rectangle, samples []float64, col color.Color) {
 	if len(samples) < 2 || r.Empty() {
 		return
@@ -476,8 +383,6 @@ func drawSparklineInRect(dst *ebiten.Image, r image.Rectangle, samples []float64
 	}
 }
 
-// drawSparkLineSeg rasterizes a line from (x0,y0) to (x1,y1) as a chain
-// of 1×1 pixel rects using Bresenham's algorithm.
 func drawSparkLineSeg(dst *ebiten.Image, x0, y0, x1, y1 int, col color.Color) {
 	dx := absI(x1 - x0)
 	dy := absI(y1 - y0)
@@ -507,15 +412,10 @@ func drawSparkLineSeg(dst *ebiten.Image, x0, y0, x1, y1 int, col color.Color) {
 	}
 }
 
-// closeIconColor is the shared tint for every pop-up close "X" glyph:
-// on-surface-muted, per the DESIGN.md IconColor mapping ("Close (any panel)
-// → on-surface-muted"). Red stays reserved for stop/error text and
-// destructive fills (three-reds invariant) so a neutral dismiss never reads
-// as destructive.
+// Muted, never red: red is reserved for stop/error text and destructive fills, and a dismiss is neither.
 func closeIconColor() color.Color { return colTextSecondary }
 
-// closeButtonRect returns a rect at the top-right corner of panelRect.
-// Uses a smaller size on mobile for better proportioning.
+// Smaller on mobile.
 func closeButtonRect(panelRect image.Rectangle, pad int) image.Rectangle {
 	size := Profile().CloseButtonSize
 	return image.Rect(

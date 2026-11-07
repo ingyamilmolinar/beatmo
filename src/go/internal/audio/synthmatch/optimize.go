@@ -22,11 +22,7 @@ type Result struct {
 	BestFP    fingerprint.Fingerprint
 }
 
-// Match tunes instID toward ref by minimizing fingerprint.Distance. It renders
-// at the reference's detected pitch, runs Hooke–Jeeves coordinate descent over
-// SpecForInstrument(instID) with `restarts` seeded random restarts, bounded by
-// `budget` total evaluations. Deterministic for a given (instID, ref, budget,
-// restarts). Returns an error if the instrument has no spec or fails to render.
+// Hooke–Jeeves over SpecForInstrument with seeded restarts, bounded by budget evaluations: deterministic.
 func Match(instID instrument.ID, ref wave.Wave, budget, restarts int) (Result, error) {
 	// Step 1: get spec and validate keys.
 	spec, ok := SpecForInstrument(instID)
@@ -46,17 +42,8 @@ func Match(instID instrument.ID, ref wave.Wave, budget, restarts int) (Result, e
 	dur := ref.Duration()
 	// dur<=0 means use instrument default (resolveRender handles <=0 → instrument default)
 
-	// Detect the reference pitch and translate it into a render-pitch for the
-	// candidate. Naively `12*log2(f0/220)` assumes the synth emits exactly
-	// 220 Hz at pitch 0, but the modular voices carry a small fixed detune
-	// (e.g. sax renders ~221.35 Hz at pitch 0). Feeding the detected f0 through
-	// the ideal-220 formula then re-applies that detune on top of the voice's
-	// own, so the candidate renders a fraction of a semitone sharp relative to
-	// the reference — a systematic pitch mismatch that dominates the spectral
-	// fingerprint distance and biases every other tuned parameter (a filter
-	// sweep's loss minimum lands well off the true cutoff). Calibrate instead
-	// against the synth's OWN pitch-0 output so the candidate reproduces the
-	// reference's measured f0 in the voice's own tuning frame.
+	// Calibrated against the synth's OWN pitch-0 output: the voices carry a small fixed detune, and the ideal-220 formula
+	// would apply it twice, a systematic pitch error that dominates the distance and biases every other parameter.
 	f0 := fingerprint.DetectF0(ref)
 	pitch := 0.0
 	if f0 > 0 {
@@ -129,9 +116,7 @@ func Match(instID instrument.ID, ref wave.Wave, budget, restarts int) (Result, e
 		bestLoss = startLoss
 	}
 
-	// Divide the remaining budget evenly among initial run + restarts.
-	// Each of the (restarts+1) runs gets a fair share so restarts are not
-	// starved when the initial run converges quickly to a local minimum.
+	// Split evenly so restarts are not starved when the first run converges early.
 	totalRuns := restarts + 1
 	remainingAfterStart := budget - totalEvals
 	perRunBudget := remainingAfterStart / totalRuns
@@ -143,8 +128,7 @@ func Match(instID instrument.ID, ref wave.Wave, budget, restarts int) (Result, e
 	runCap := totalEvals + perRunBudget
 	hookeJeeves(startPt, params, evalFn, runCap, &totalEvals)
 
-	// Step 6: Restarts with seeded RNG. Use ONE rand.New(rand.NewSource(1))
-	// for all restarts — deterministic regardless of call order.
+	// ONE seeded source for all restarts: deterministic regardless of call order.
 	rng := rand.New(rand.NewSource(1))
 	for r := 0; r < restarts; r++ {
 		if totalEvals >= budget {
@@ -175,8 +159,6 @@ func Match(instID instrument.ID, ref wave.Wave, budget, restarts int) (Result, e
 	return res, nil
 }
 
-// hookeJeeves runs a single Hooke-Jeeves coordinate descent from startPt.
-// It uses evalFn and stops when *evals >= evalCap.
 func hookeJeeves(startPt []float64, params []Param, evalFn func([]float64) float64, evalCap int, evals *int) {
 	n := len(params)
 	if n == 0 {
@@ -269,8 +251,7 @@ func hookeJeeves(startPt []float64, params []Param, evalFn func([]float64) float
 	}
 }
 
-// exploratoryMove performs a coordinate search around base, trying ±step for
-// each param in sequence. Returns (improved bool, bestPoint []float64, bestLoss float64).
+// ±step per param in sequence.
 func exploratoryMove(
 	base []float64,
 	baseLoss float64,
@@ -327,8 +308,7 @@ func exploratoryMove(
 	return
 }
 
-// clampParam clamps v to p's [Min, Max] range, snaps to Discrete if non-empty,
-// and rounds to integer if p.Int is set.
+// Discrete snaps first; Int rounds.
 func clampParam(p Param, v float64) float64 {
 	if len(p.Discrete) > 0 {
 		best := p.Discrete[0]

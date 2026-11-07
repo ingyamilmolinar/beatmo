@@ -115,8 +115,6 @@ func (s *playbackSlate) highlightBeat(row, idx int, info model.BeatInfo, duratio
 	if row >= len(g.drum.Rows) {
 		return
 	}
-	// Respect mute/solo
-	// Suppress playback when row instrument is missing
 	instAvailable := true
 	if row >= 0 && row < len(g.drum.Rows) {
 		instAvailable = g.drum.IsInstrumentAvailable(g.drum.Rows[row].Instrument)
@@ -160,8 +158,7 @@ func (s *playbackSlate) highlightBeat(row, idx int, info model.BeatInfo, duratio
 		g.logger.Tracef("[game/highlight] played inst=%s node=%d beat=%d row=%d", inst, info.NodeID, idx, row)
 	} else {
 		g.setLastTriggered(row, info.NodeID, false)
-		// Explicitly clear any lingering animation on skipped triggers to
-		// satisfy tests that assert no visual pulse on a gated event.
+		// A gated event shows no pulse.
 		g.nodeAnimSet(info.NodeID, 0)
 		g.clearNodeHighlight(info.NodeID)
 	}

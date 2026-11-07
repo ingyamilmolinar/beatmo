@@ -1,7 +1,5 @@
 package ui
 
-// decayAnims drives the per-frame decay of all DrumView animation
-// counters. State-only — no drawing. Called from (*DrumView).Draw.
 func (dv *DrumView) decayAnims() {
 	decay := func(v *float64) {
 		*v *= 0.85
@@ -18,9 +16,7 @@ func (dv *DrumView) decayAnims() {
 		decay(&dv.uploadAnim)
 		decay(&dv.bpmErrorAnim)
 	} else {
-		// Bidirectional sync: BPM text input in DrumView.Update() may set
-		// dv.bpmErrorAnim directly; propagate the higher value between
-		// DrumView and zone so the toolbar cache sees it.
+		// Take the higher value so the toolbar cache sees errors raised on either side.
 		if dv.bpmErrorAnim > dv.transportZone.bpmErrorAnim {
 			dv.transportZone.bpmErrorAnim = dv.bpmErrorAnim
 		} else {

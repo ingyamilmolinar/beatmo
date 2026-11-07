@@ -7,29 +7,18 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/theme"
 )
 
-// Runtime theme engine — rebuild-in-place.
-//
-// The generated genColor* variables ARE the live palette. ApplyTheme resolves
-// a document to a full token map, overwrites the variables by name, re-runs
-// the two derivation steps that otherwise happen once at init (component
-// specs, then theme.go aliases/styles), and notifies listeners so caches that
-// baked colors can invalidate (Game.OnThemeChanged). Draw sites keep reading
-// the same variables: a theme costs nothing per frame.
-//
-// Always call ApplyTheme from the UI goroutine (it mutates package state read
-// by Draw).
+// The genColor* vars ARE the live palette: ApplyTheme overwrites them, re-runs the spec and alias derivations
+// and notifies caches, so a theme costs nothing per frame. UI goroutine only: Draw reads the state.
 var (
 	themeMu        sync.Mutex
 	themeActive    theme.Doc
 	themeGen       int
 	themeListeners []*func()
-	// themeWarnf receives non-fatal resolution warnings (unknown swatch,
-	// fixed token…). Game rebinds it to its logger.
+	// Game rebinds it to its logger.
 	themeWarnf = func(string, ...any) {}
 )
 
-// ApplyTheme makes doc the active theme. Unknown or fixed entries are skipped
-// and logged through themeWarnf.
+// Unknown or fixed entries are skipped and logged.
 func ApplyTheme(doc theme.Doc) {
 	tokens, warns := resolveThemeTokens(doc)
 	for _, w := range warns {
@@ -87,28 +76,15 @@ func OnThemeChange(fn func()) (cancel func()) {
 	}
 }
 
-// SetThemeForTest applies doc and returns a restore func that reapplies the
-// previous document. Tests must call restore so the package stays on the
-// default palette for the drift/discipline suites.
+// Tests must restore, so the drift/discipline suites see the default palette.
 func SetThemeForTest(doc theme.Doc) (restore func()) {
 	prev := ActiveTheme()
 	ApplyTheme(doc)
 	return func() { ApplyTheme(prev) }
 }
 
-// ── Captured token colors ────────────────────────────────────────────────
-//
-// Dozens of call sites copy a token into a widget at construction
-// (`b.IconColor = colTextSecondary`, profile fields, per-frame record tints).
-// When a theme is applied LATER (a circuit theme on import, an editor pick)
-// those copies would keep the previous value. liveCaptured maps a captured
-// opaque color back to the token it was copied from and returns that token's
-// CURRENT value; colors that never were a chrome token pass through.
-//
-// Only chrome tokens are remapped, in priority order, so a hex shared by a
-// text/accent token and a visualizer token (e.g. primary == viz-bar) resolves
-// to the chrome one — every capture site in the codebase copies a chrome
-// token (text, accent, semantic state, border, surface).
+// Call sites copy tokens at construction, which a later theme would leave stale; liveCaptured maps such a copy back
+// to its token's CURRENT value. Chrome tokens only, in priority order, so a hex shared with a viz token resolves to chrome.
 var themeCaptureTokens = []string{
 	"on-surface", "on-surface-muted", "on-surface-disabled", "on-surface-accent",
 	"primary", "primary-bright", "primary-dim",
@@ -121,10 +97,7 @@ var (
 	themeCaptureMap map[color.RGBA]string // a value a token has HELD → token name
 )
 
-// recordCaptureValuesLocked snapshots the current value of every chrome
-// token (called before tokens are overwritten, and lazily for the defaults).
-// Earlier mappings win so a value keeps pointing at the token that first
-// held it.
+// Earlier mappings win, so a value keeps pointing at the token that first held it.
 func recordCaptureValuesLocked() {
 	if themeCaptureMap == nil {
 		themeCaptureMap = map[color.RGBA]string{}
@@ -145,8 +118,7 @@ func recordCaptureValuesLocked() {
 	}
 }
 
-// liveCaptured returns the current value of the token c was captured from,
-// or c itself when it is nil, translucent, or not a chrome token value.
+// c itself when nil, translucent or not a chrome token value.
 func liveCaptured(c color.Color) color.Color {
 	if c == nil {
 		return nil

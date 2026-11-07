@@ -10,9 +10,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestMenuItemActiveBackgroundUsesAccent verifies the active menu-item stripe
-// is drawn in the supplied accent color, so per-instrument menus can tint their
-// active row with the instrument's hue instead of the fixed azure.
+// Per-instrument menus tint the active row with the instrument's hue.
 func TestMenuItemActiveBackgroundUsesAccent(t *testing.T) {
 	accent := color.RGBA{190, 120, 60, 255} // an instrument orange
 	r := image.Rect(10, 10, 210, 50)
@@ -34,8 +32,6 @@ func TestMenuItemActiveBackgroundUsesAccent(t *testing.T) {
 	}
 }
 
-// TestMenuHeaderBandAccentUsesAccent verifies the header underline is tinted by
-// the supplied accent color.
 func TestMenuHeaderBandAccentUsesAccent(t *testing.T) {
 	accent := color.RGBA{60, 150, 170, 255} // an instrument teal
 	r := image.Rect(0, 0, 200, 40)
@@ -45,9 +41,7 @@ func TestMenuHeaderBandAccentUsesAccent(t *testing.T) {
 		drawMenuHeaderBandAccent(img, r, accent)
 	})
 
-	// The 1px underline carries the accent hue (alpha-blended). Assert a thin
-	// bottom rect exists whose RGB derives from the accent (R/G/B nonzero match
-	// direction): teal has G,B > R.
+	// The 1 px underline carries the alpha-blended accent; teal has G,B > R.
 	found := false
 	for _, dr := range rects {
 		if dr.Rect.Dy() == 1 && dr.Rect.Max.Y == r.Max.Y {
@@ -61,8 +55,7 @@ func TestMenuHeaderBandAccentUsesAccent(t *testing.T) {
 	}
 }
 
-// TestMenuChromeDefaultsUnchanged verifies the original (non-accent) helpers
-// still draw with colAccent — global menus must be unaffected.
+// Global menus keep colAccent.
 func TestMenuChromeDefaultsUnchanged(t *testing.T) {
 	r := image.Rect(10, 10, 210, 50)
 	img := ebiten.NewImage(256, 64)

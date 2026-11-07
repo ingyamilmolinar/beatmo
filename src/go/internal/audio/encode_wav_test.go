@@ -190,19 +190,13 @@ func TestWAVClampSample(t *testing.T) {
 	if s0 != 32767 {
 		t.Errorf("clamped sample 0 = %d, want 32767", s0)
 	}
-	// Second sample clamped to -1.0 → -32768 (the reader's scale: it reads
-	// back as exactly -1.0)
+	// -32768 reads back as exactly -1.0.
 	s1 := int16(binary.LittleEndian.Uint16(data[46:48]))
 	if s1 != -32768 {
 		t.Errorf("clamped sample 1 = %d, want -32768", s1)
 	}
 }
 
-// TestWAVPCMRoundsToTheNearestStep: the PCM writers must ROUND to the nearest
-// step on the reader's own scale (2^(bits-1)). They truncated s*(2^(bits-1)-1)
-// toward zero instead: every positive sample one step low, an error
-// correlated with the signal (distortion, not noise), and a 16-bit value
-// written at 24 bits did not come back as itself.
 func TestWAVPCMRoundsToTheNearestStep(t *testing.T) {
 	for _, c := range []struct {
 		f    AudioFormat

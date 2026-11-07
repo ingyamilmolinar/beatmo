@@ -11,8 +11,6 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// newUpdateTestDV creates a DrumView suitable for Update() state transition tests.
-// It ensures at least one row, computed layout, and clean parity state.
 func newUpdateTestDV(t *testing.T) *DrumView {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -47,8 +45,6 @@ func dvAdvance(t *testing.T, dv *DrumView, n int) {
 	}
 }
 
-// TestDrumViewUpdateSeqIncrements verifies that updateSeq increments on each
-// Update() call.
 func TestDrumViewUpdateSeqIncrements(t *testing.T) {
 	dv := newUpdateTestDV(t)
 
@@ -61,8 +57,6 @@ func TestDrumViewUpdateSeqIncrements(t *testing.T) {
 	}
 }
 
-// TestDrumViewUpdateEmptyRows verifies that Update() with no rows does not
-// panic and returns early without incrementing updateSeq.
 func TestDrumViewUpdateEmptyRows(t *testing.T) {
 	dv := newUpdateTestDV(t)
 
@@ -78,8 +72,6 @@ func TestDrumViewUpdateEmptyRows(t *testing.T) {
 	}
 }
 
-// TestDrumViewUpdatePopupBlocksInput verifies that when a popup (contextMenu)
-// is open, mouse clicks on the timeline area do not start a drag.
 func TestDrumViewUpdatePopupBlocksInput(t *testing.T) {
 	dv := newUpdateTestDV(t)
 
@@ -118,8 +110,6 @@ func TestDrumViewUpdatePopupBlocksInput(t *testing.T) {
 	}
 }
 
-// TestDrumViewUpdateBPMDelta verifies that a pending bpmDelta is applied during
-// Update() and then reset to zero.
 func TestDrumViewUpdateBPMDelta(t *testing.T) {
 	dv := newUpdateTestDV(t)
 
@@ -136,8 +126,6 @@ func TestDrumViewUpdateBPMDelta(t *testing.T) {
 	}
 }
 
-// TestDrumViewUpdateLengthButtons verifies that setting lenIncPressed triggers
-// a length increase during Update() and resets the flag.
 func TestDrumViewUpdateLengthButtons(t *testing.T) {
 	dv := newUpdateTestDV(t)
 
@@ -157,8 +145,6 @@ func TestDrumViewUpdateLengthButtons(t *testing.T) {
 	}
 }
 
-// TestDrumViewUpdateDragging verifies that pressing the mouse inside the steps
-// area starts dragging, and releasing the mouse stops it.
 func TestDrumViewUpdateDragging(t *testing.T) {
 	dv := newUpdateTestDV(t)
 
@@ -225,8 +211,7 @@ func TestDrumViewUpdateDragging(t *testing.T) {
 	}
 }
 
-// TestDrumViewUpdateImportTimeout verifies that a stale import flag is
-// automatically cleared after 600 frames (~10s at 60fps).
+// ~10 s at 60 fps.
 func TestDrumViewUpdateImportTimeout(t *testing.T) {
 	dv := newUpdateTestDV(t)
 
@@ -250,9 +235,6 @@ func TestDrumViewUpdateImportTimeout(t *testing.T) {
 	}
 }
 
-// TestDrumViewUpdateSliderIsolationRelease verifies that the tree's capture
-// mechanism releases slider groups on mouse release. Slider dispatch now goes
-// through the zone tree's hit areas (TransportZone for main volume).
 func TestDrumViewUpdateSliderIsolationRelease(t *testing.T) {
 	dv := newUpdateTestDV(t)
 
@@ -299,8 +281,6 @@ func TestDrumViewUpdateSliderIsolationRelease(t *testing.T) {
 	}
 }
 
-// TestDrumViewUpdatePopupBlocksAll verifies that each popup flag causes
-// Update() to return early (no drag started).
 func TestDrumViewUpdatePopupBlocksAll(t *testing.T) {
 	popupFlags := []struct {
 		name   string

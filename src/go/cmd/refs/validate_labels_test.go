@@ -10,9 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio/fingerprint"
 )
 
-// TestAxisFlagAppendsDemoted: a demoted descriptor is measured and shown, but
-// it must never present itself as part of the trusted set -- the label has to
-// say so on the row itself, not only in a legend nobody reads.
+// The label says so on the row itself, not only in a legend nobody reads.
 func TestAxisFlagAppendsDemoted(t *testing.T) {
 	s := axisScore{AUC: 0.95, SE: 0.01, Comparable: true, FlagDemoted: true}
 	got := axisFlag(s)
@@ -25,9 +23,7 @@ func TestAxisFlagAppendsDemoted(t *testing.T) {
 	}
 }
 
-// TestAxisDemotesItselfOnTheGoodGroup is spec 2.2's self-demotion rule: an
-// axis that flags more than half the families the LISTENER accepted is
-// calling a defect where a human heard none.
+// An axis flagging more than half the families the LISTENER accepted calls a defect where a human heard none.
 func TestAxisDemotesItselfOnTheGoodGroup(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -93,9 +89,7 @@ func TestAxisFlagAppendsSaturated(t *testing.T) {
 	}
 }
 
-// TestCalLabelReportsHandWhenUncalibrated: the CAL column has three states and
-// "hand" is one of them -- a blank cell would read as missing data rather than
-// as "these thresholds were chosen by a person".
+// A blank cell would read as missing data, not "chosen by a person".
 func TestCalLabelReportsHandWhenUncalibrated(t *testing.T) {
 	if got := calLabel("no.such.descriptor"); got != "hand" {
 		t.Fatalf("calLabel(unknown) = %q, want hand", got)

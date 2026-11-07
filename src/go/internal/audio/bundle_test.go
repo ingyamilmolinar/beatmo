@@ -9,9 +9,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Spec 2026-10-31 §2.5–2.6: the audio bundle is a value read from and written
-// to the per-instrument stores, combined with a circuit bundle by one function.
-
 func eqWithGain(db float64) *EQSettings {
 	s := NewEQSettings()
 	s.GainsDB[3] = db
@@ -113,10 +110,7 @@ func TestUnsetFilterCutoffFiltersNothing(t *testing.T) {
 	}
 }
 
-// TestResetEQSettingsLeavesNoHiddenEQ: forgetting every instrument's EQ
-// settings (a new circuit) also takes their compiled EQ off the channels — a
-// store that reads flat over a channel that still filters would play an EQ
-// nobody can see.
+// A store reading flat over a channel that still filters would play an EQ nobody can see.
 func TestResetEQSettingsLeavesNoHiddenEQ(t *testing.T) {
 	id := roster.Kick
 	t.Cleanup(func() { ApplyAudioBundle(id, AudioBundle{}) })

@@ -9,14 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// verdict_supersede_test.go — re-auditioning a family must REPLACE its verdict,
-// not append a second one.
-//
-// Re-auditing is a first-class workflow, not an edge case: any change to the
-// render or level-match pipeline invalidates the affected families' recorded
-// judgements, and the fix is to listen again. A blind append leaves two rows
-// for one family in a file that is the labelled ground truth for downstream
-// metric validation, with nothing but line order to say which is current.
+// Re-auditioning REPLACES a verdict: two rows for one family in the labelled ground truth would differ only by line
+// order.
 
 func TestRecordVerdict_AppendsWhenNew(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "v.jsonl")

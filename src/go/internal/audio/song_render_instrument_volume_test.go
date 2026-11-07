@@ -9,17 +9,11 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestSongRenderInstrumentVolumeAppliedOnce guards against double-applying the
-// per-instrument volume in the offline song-render path. songrender/arrangement.go
-// already folds inst.Volume into every note's Gain; RenderSongOffline must NOT
-// also set the channel volume to inst.Volume, or the gain is squared (0.5 → 0.25).
-//
-// We simulate what render_prod.go passes: node volume 1.0, so note.Gain == inst.Volume.
-// Halving inst.Volume must halve the output RMS (−6 dB), not quarter it (−12 dB).
+// The arrangement already folds instrument volume into each note's Gain; setting the channel too would square it, so
+// halving volume must cost 6 dB, not 12.
 func TestSongRenderInstrumentVolumeAppliedOnce(t *testing.T) {
 	pinSampleRate(t, 44100)
-	// RenderSongOffline mutates global channel/effect/recipe state; restore the
-	// default instrument set afterwards so this test can't poison a later one.
+	// It mutates global channel, effect and recipe state.
 	t.Cleanup(ResetInstruments)
 
 	rms := func(x []float64) float64 {

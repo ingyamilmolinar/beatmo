@@ -5,19 +5,11 @@ import (
 	"sort"
 )
 
-// chord.go — the chord node's spec and the voice stack ("z-axis") derived
-// from it (docs/superpowers/specs/2026-10-09-chord-nodes-design.md).
-//
-// A node stores WHAT the user picked (ChordSpec); NodeLayers is the single
-// place that turns it into simultaneous voices. Everything below the model —
-// the audio lane, legacy dispatch, offline render — consumes only []Layer,
-// so the chord is just the first producer of a voice stack.
+// A node stores WHAT the user picked (ChordSpec); NodeLayers is the one place that turns it into simultaneous voices,
+// and everything below the model consumes only []Layer.
 
-// ChordSpec is a chord node's quality and voicing. The root is the node's
-// own Pitch, so ± and group transposition move the whole chord. The spec is
-// independent of the node type: it is read only while the type is
-// NodeTypeChord but kept on every type, so collapsing a chord to a single
-// note and back restores it.
+// The root is the node's own Pitch, so ± and group transposition move the whole chord. Kept on every type, so collapsing
+// a chord to a single note and back restores it.
 type ChordSpec struct {
 	Quality   string // key into ChordQualities; "" = no spec
 	Inversion int    // 0 = root position … len(intervals)-1
@@ -162,9 +154,7 @@ func effectiveChord(c ChordSpec) (ChordSpec, ChordQuality) {
 	return c, q
 }
 
-// NodeLayers returns the node's voice stack. nil means a single voice at the
-// node's own pitch and volume (every non-chord node — callers keep today's
-// path untouched for it).
+// nil = a single voice at the node's own pitch and volume (every non-chord node keeps its path).
 func NodeLayers(t NodeType, p NodeParams) []Layer {
 	if t != NodeTypeChord {
 		return nil

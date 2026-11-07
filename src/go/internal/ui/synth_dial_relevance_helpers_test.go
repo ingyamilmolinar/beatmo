@@ -5,9 +5,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// shownRootMacros is the category cards a shipped instrument's Synth root
-// shows: its config-live dials minus the ones the DSP found inert on its
-// sound (the generated verdict, synth_dial_relevance.go), at voiceSecs.
+// Config-live dials minus the ones the DSP found inert on the sound.
 func shownRootMacros(id instrument.ID, voiceSecs float64) []macroGroup {
 	schema := audio.InstrumentParamDefs(id)
 	merged := audio.MergedInstrumentParamsRO(id)

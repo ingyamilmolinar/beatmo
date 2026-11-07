@@ -7,8 +7,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// IconID names a glyph in the unified icon set. Using the typed constant
-// avoids typos at call sites ("ploy" silently rendered nothing).
+// Typed, so a typo ("ploy") is a compile error instead of a blank icon.
 type IconID string
 
 const (
@@ -67,10 +66,7 @@ const (
 	IconLoudest   IconID = "loudest"
 )
 
-// drawIconByID dispatches to the glyph's draw function. Returns true if the
-// icon is known. Kept as a switch (rather than a map[IconID]func) so that
-// test overrides of individual drawXxxIcon vars still take effect — a map
-// populated at init-time would snapshot the original function values.
+// A switch, not a map built at init, so test overrides of the drawXxxIcon vars still take effect.
 func drawIconByID(dst *ebiten.Image, id IconID, r image.Rectangle, col color.Color) bool {
 	switch id {
 	case IconPlay:
@@ -181,9 +177,7 @@ func drawIconByID(dst *ebiten.Image, id IconID, r image.Rectangle, col color.Col
 	return true
 }
 
-// DrawIcon renders the named glyph centered in r using col. Callers that
-// already have a glyph rectangle (e.g., buttons inset by padding) pass it
-// directly; there is no extra inset here.
+// No extra inset: callers pass the glyph rect.
 func DrawIcon(dst *ebiten.Image, id IconID, r image.Rectangle, col color.Color) bool {
 	return drawIconByID(dst, id, r, col)
 }

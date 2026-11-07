@@ -7,11 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// These tests pin the behavior requested in the node pop-up menu: every
-// collapsed category section should surface its current value as a badge —
-// including when the value is at its default — using the same formatting that
-// non-default / updated values already use. Previously sectionBadgeText()
-// returned "" for defaults, so default categories showed no badge at all.
+// Every collapsed section shows its current value as a badge, defaults included, formatted like edited values.
 
 // setNodeParams is a tiny helper that overwrites a node's params via the graph.
 func setNodeParams(t *testing.T, g *Game, id model.NodeID, p model.NodeParams) {
@@ -19,9 +15,6 @@ func setNodeParams(t *testing.T, g *Game, id model.NodeID, p model.NodeParams) {
 	g.graph.SetNodeParams(id, p)
 }
 
-// TestSectionBadgeShowsDefaultValues verifies that a freshly-added regular node
-// (all params at their defaults) shows a value badge for every category instead
-// of an empty string.
 func TestSectionBadgeShowsDefaultValues(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -51,13 +44,7 @@ func TestSectionBadgeShowsDefaultValues(t *testing.T) {
 		}
 	}
 
-	// "pit" is asserted against the note label rather than a literal. Since note
-	// display went universal the badge shows the sounding NOTE for almost every
-	// instrument (this node's row is the demo's snare, so "F#3"), and the bare
-	// "+0" semitone form survives only for unpitched noise. Pinning the literal
-	// here would make an unrelated instrument retune fail this test, which is
-	// about badge formatting; TestInstrumentFundamentalsUpToDate is what guards
-	// the pitch itself.
+	// Against the note label, not a literal: a retune of the row's instrument must not fail a badge-format test.
 	gotPit := g.sidebar.sectionBadgeText(secPit)
 	if want := g.nodeNoteLabel(n.ID, 0); want != "" && gotPit != want {
 		t.Errorf("default badge for section \"pit\": got %q, want the sounding note %q", gotPit, want)
@@ -67,10 +54,7 @@ func TestSectionBadgeShowsDefaultValues(t *testing.T) {
 	}
 }
 
-// TestSectionBadgePitchFallsBackToSemitones pins the other half of the pitch
-// badge: an UNPITCHED row has no note to show, so the badge keeps the signed
-// semitone form. This is what stops "universal note names" from meaning the
-// semitone readout was simply deleted.
+// An unpitched row has no note, so its badge keeps the signed semitone form.
 func TestSectionBadgePitchFallsBackToSemitones(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -91,8 +75,6 @@ func TestSectionBadgePitchFallsBackToSemitones(t *testing.T) {
 	}
 }
 
-// TestSectionBadgeNonDefaultValuesUnchanged locks the existing non-default
-// formatting so the default-value change above does not regress updated values.
 func TestSectionBadgeNonDefaultValuesUnchanged(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -138,8 +120,7 @@ func TestSectionBadgeNonDefaultValuesUnchanged(t *testing.T) {
 	}
 }
 
-// TestSectionBadgeAudibleVariants verifies the audible category badge reflects
-// each node type, including the default (regular → "Audible").
+// Regular reads "Audible".
 func TestSectionBadgeAudibleVariants(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

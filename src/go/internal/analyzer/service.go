@@ -16,13 +16,8 @@ type instSlot struct {
 	ring *RingBuffer
 }
 
-// pendingCap holds a trigger notification waiting to be processed. The
-// buffer is kept as []float32 — the same shared, immutable reference to
-// the cached recipe voice buffer the audio thread already holds. The
-// audio thread does NOT allocate or convert here; conversion to
-// []float64 happens lazily in processTick, and only for triggers that
-// are actually consumed (dropped triggers — overwritten before the next
-// tick — never pay the conversion cost).
+// The same shared, immutable voice buffer the audio thread holds: no allocation or conversion there. processTick
+// converts only triggers it consumes, so overwritten ones never pay.
 type pendingCap struct {
 	instID channel.ID
 	bufF32 []float32
@@ -56,14 +51,11 @@ type Service struct {
 	// Monotonic trigger index for capture ordering.
 	triggerIdx atomic.Int64
 
-	// lastCapture holds the most recent capture for carry-forward across ticks.
-	// Stored atomically (was a Run-loop local) so Reset can clear it from the UI
-	// goroutine when a circuit loads.
+	// Atomic so Reset can clear it from the UI goroutine when a circuit loads.
 	lastCapture atomic.Pointer[CaptureBuffer]
 
-	// clearGen is bumped by Reset to tell the Run loop to drain the ring buffers
-	// and reset observer ballistics on its next tick, so a freshly loaded,
-	// stopped circuit reads flat instead of replaying the previous circuit.
+	// Bumped by Reset: the Run loop drains the rings and resets ballistics on its next tick, so a freshly loaded, stopped
+	// circuit reads flat instead of replaying the previous one.
 	clearGen atomic.Int64
 
 	// Lifecycle.
@@ -113,14 +105,10 @@ func (s *Service) RegisterInstrument(slot int, id channel.ID, name string) {
 	}
 }
 
-// PushInstBuf pushes audio samples into an instrument's ring buffer.
-// Called from the audio thread — memcopy only.
+// Audio thread: memcopy only.
 func (s *Service) PushInstBuf(slot int, buf []float64) {
-	// The mixer allocates an ever-increasing slot index per unique instrument
-	// ID (engine_mixer.go instrumentSlot) with no cap, so slot can exceed the
-	// fixed slots array once a session cycles through more than MaxInstruments
-	// distinct instruments. Mirror RegisterInstrument's bounds check: an
-	// out-of-range slot was never registered (no ring), so drop it silently.
+	// The mixer mints a slot per unique instrument with no cap, so a session cycling many instruments exceeds the array; an
+	// out-of-range slot was never registered, so it is dropped.
 	if slot < 0 || slot >= len(s.slots) {
 		return
 	}
@@ -133,23 +121,13 @@ func (s *Service) PushInstBuf(slot int, buf []float64) {
 	sl.ring.Write(buf)
 }
 
-// PushMasterBuf pushes audio samples into the master ring buffer.
-// Called from the audio thread — memcopy only.
+// Audio thread: memcopy only.
 func (s *Service) PushMasterBuf(buf []float64) {
 	s.masterRing.Write(buf)
 }
 
-// NotifyTrigger notifies the service of a capture trigger from the audio
-// thread. rawBuf is captured BY REFERENCE — it points at the cached,
-// immutable recipe-rendered voice buffer (see tryRecipeVoice; the same
-// []float32 is shared with cVoice.buf via the same read-only contract).
-// Conversion to []float64 is deferred until processTick consumes the
-// trigger, so dropped triggers (overwritten before the next tick) skip
-// the conversion entirely.
-//
-// Previously this allocated a ~80 KB []float64 per call; the synth-tab
-// profile attributed 252 MB of cumulative allocations to this single
-// function over 60 seconds.
+// rawBuf is captured BY REFERENCE (the cached, immutable voice buffer, read-only by contract); processTick converts
+// only triggers it consumes, so the audio thread never allocates a per-trigger copy.
 func (s *Service) NotifyTrigger(instID channel.ID, rawBuf []float32) {
 	idx := s.triggerIdx.Add(1)
 	cap := &pendingCap{
@@ -239,11 +217,8 @@ func (s *Service) Run() {
 	}
 }
 
-// Reset flushes the analyzer so the audio-panel tabs read flat until the new
-// circuit is played. It drops any queued/carried-forward capture and publishes
-// an empty state immediately (so readers see flat data the moment a circuit
-// load completes), then signals the Run loop to drain the ring buffers and
-// reset observer state on its next tick. Safe to call from the UI goroutine.
+// Publishes an empty state at once (readers see flat data the moment a load completes) and signals Run to drain the rings
+// and reset observers on its next tick. Safe from the UI goroutine.
 func (s *Service) Reset() {
 	s.pending.Store(nil)
 	s.lastCapture.Store(nil)
@@ -292,9 +267,7 @@ func (s *Service) processTick(
 		master.HeadroomDB = -prObs.PeakDB
 		master.ClipCount = prObs.ClipCount
 		master.Active = true
-		// Phase 2 audio-panel redesign: pull LUFS-S from the audio
-		// package's K-weighted integrator (audio/loudness.go) via the
-		// Config getter callback. Nil-safe.
+		// The audio package owns the K-weighted integrator, reached through the Config getter (nil-safe).
 		if s.cfg.MasterLUFSGetter != nil {
 			master.LUFSShortTermDB = s.cfg.MasterLUFSGetter()
 		}
@@ -355,9 +328,7 @@ func (s *Service) processTick(
 
 			// If this is the detail channel, compute full analysis.
 			if sl.id == detailID {
-				// Derived fields. TruePeakDB equals PeakDB until ISP
-				// oversampling lands; HeadroomDB = 0 - PeakDB (so a -3 dB
-				// peak yields 3 dB of headroom; negative on clip).
+				// TruePeakDB is PeakDB (no oversampling); HeadroomDB = -PeakDB (a -3 dB peak is 3 dB of headroom, negative on clip).
 				headroom := -im.PeakDB
 				dm := &ChannelMetrics{
 					ID:         sl.id,
@@ -389,11 +360,7 @@ func (s *Service) processTick(
 	// --- Capture ---
 	var capture *CaptureBuffer
 
-	// Check for pending trigger (atomic swap to nil). Convert the cached
-	// float32 buffer to float64 lazily here — this is the first point in
-	// the trigger pipeline where the conversion is unavoidable (wave.Wave
-	// holds []float64). Allocation rate is bounded by the processTick rate
-	// rather than the trigger rate; dropped triggers never pay this cost.
+	// The first point the conversion is unavoidable (wave.Wave holds float64): bounded by the tick rate, not the trigger rate.
 	if pc := s.pending.Swap(nil); pc != nil && !s.frozen.Load() {
 		samples := make([]float64, len(pc.bufF32))
 		for i, v := range pc.bufF32 {

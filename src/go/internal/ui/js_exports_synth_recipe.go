@@ -10,13 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Phase 5: JS exports for the SynthRecipe registry + per-instrument
-// param manager. Mirrors js_exports_insert_effects.go in shape so browser
-// tests can drive the registry the same way they drive insert effects.
-
-// recipeParamsToJS converts an audio.RecipeParams map into a plain JS
-// object. Used by getInstrumentParams's return value so callers don't
-// need to JSON.parse anything.
+// Plain JS object, so callers need not JSON.parse.
 func recipeParamsToJS(p audio.RecipeParams) js.Value {
 	obj := js.Global().Get("Object").New()
 	for k, v := range p {
@@ -67,8 +61,7 @@ func (g *Game) initJSSynthRecipe() {
 		return nil
 	}))
 
-	// setInstrumentParams(instrumentID, paramsObject) — bulk set, replaces
-	// the entire per-instrument param map (mirrors audio.SetInstrumentParams).
+	// setInstrumentParams(id, params): replaces the whole param map.
 	js.Global().Set("setInstrumentParams", jsFn(func(args jsArgs) any {
 		if args.Len() < 2 {
 			return nil
@@ -88,12 +81,7 @@ func (g *Game) initJSSynthRecipe() {
 		return nil
 	}))
 
-	// setSampleEdit(instrumentID, fieldsObject) — applies a non-destructive
-	// Sampler edit descriptor (the flat field map the project file carries under
-	// "sample_edit": start/end, transpose, gain_db, reverse, …) and announces it.
-	// The same audio write the Sampler tab's Save performs; an empty object
-	// clears the edit. Lets browser tests reach the sample-edit half of the
-	// edit → export → import contract without driving the Sampler UI.
+	// setSampleEdit(id, fields): the Sampler's own audio write, announced; {} clears the edit.
 	js.Global().Set("setSampleEdit", jsFn(func(args jsArgs) any {
 		if args.Len() < 2 {
 			return nil
@@ -117,9 +105,7 @@ func (g *Game) initJSSynthRecipe() {
 		return nil
 	}))
 
-	// getInstrumentParams(instrumentID) -> {name: value, ...}
-	// getInstrumentDoc(id) → the instrument's project document as JSON ("" when
-	// it has none) — the single source of a synth voice (spec 2026-10-04 §3).
+	// getInstrumentDoc(id) -> the project document as JSON, "" when none.
 	js.Global().Set("getInstrumentDoc", jsFn(func(args jsArgs) any {
 		if args.Len() < 1 || args.At(0).Type() != js.TypeString {
 			return ""
@@ -152,25 +138,17 @@ func (g *Game) initJSSynthRecipe() {
 		return nil
 	}))
 
-	// __setSynthDragDebug(bool) — flip verbose Synth-tab drag/schema-swap logging
-	// (sdbg) on/off at runtime so a browser repro can capture the full UI→audio
-	// cascade in the console. Debug-only; never called by production JS.
+	// __setSynthDragDebug(bool): debug only, never called by production JS.
 	js.Global().Set("__setSynthDragDebug", jsFn(func(args jsArgs) any {
 		synthDragDebug = args.Len() > 0 && args.At(0).Truthy()
-		// One call enables the WHOLE cascade: the Go [synthdrag] stream AND the
-		// JS-side audio.js streams ([SYNTH-DISPATCH]/[SYNTH-UPD]/[SYNTH-EVT]/
-		// [SYNTH-RDY]/[SYNTH-ERS]). Saves the user from setting three globals.
+		// One switch for the Go stream and audio.js's dispatch streams together.
 		js.Global().Set("__beatmoDebugSynthDispatch", synthDragDebug)
 		js.Global().Set("__synthEvtTrace", synthDragDebug)
 		lastSynthBuildSig = ""
 		return synthDragDebug
 	}))
 
-	// setActiveEQTab(name) — open one of the bottom audio-panel tabs
-	// ("synth","eq","wave","spectrum","levels","chain","sampler"). Lets e2e
-	// browser tests drive the Synth tab so its live re-layout (generator
-	// re-voicing swaps the section schema every frame) runs against a playing
-	// engine — the exact path the user exercises when audio stopped.
+	// setActiveEQTab(name): synth/eq/wave/spectrum/levels/chain/sampler.
 	js.Global().Set("setActiveEQTab", jsFn(func(args jsArgs) any {
 		if args.Len() < 1 || args.At(0).Type() != js.TypeString {
 			return false
@@ -181,11 +159,7 @@ func (g *Game) initJSSynthRecipe() {
 		return true
 	}))
 
-	// saveActiveRecipe(instrumentID) -> library id
-	// Save As "over" for an explicit instrument id: the project copy and its
-	// audio bundle become a new version of the library instrument it comes
-	// from (persisted). The copy itself is untouched, so the voice does not
-	// change. Same Go core as the dialog.
+	// saveActiveRecipe(id) -> library id: Save As "over"; the copy is untouched, so the voice does not change.
 	js.Global().Set("saveActiveRecipe", jsFn(func(args jsArgs) any {
 		if args.Len() < 1 || args.At(0).Type() != js.TypeString {
 			return ""
@@ -193,9 +167,7 @@ func (g *Game) initJSSynthRecipe() {
 		return saveRecipeForInstrument(args.Instrument(0))
 	}))
 
-	// saveActiveRecipeAs(instrumentID, name) -> new library id
-	// Save As "new" for an explicit instrument id: a new
-	// content-addressed user instrument, with the project copy repointed at it.
+	// saveActiveRecipeAs(id, name) -> new library id: Save As "new"; the copy is repointed at it.
 	js.Global().Set("saveActiveRecipeAs", jsFn(func(args jsArgs) any {
 		if args.Len() < 2 || args.At(0).Type() != js.TypeString || g.drum == nil {
 			return ""
@@ -203,10 +175,7 @@ func (g *Game) initJSSynthRecipe() {
 		return g.drum.SaveActiveRecipeAsFor(args.Instrument(0), args.Str(1))
 	}))
 
-	// instrumentParamDefs(instrumentID) -> [paramDef...]
-	// The knob definitions of the instrument's document — the same schema the
-	// Synth tab builds its controls from (audio.InstrumentParamDefs). [] for an
-	// id without a document.
+	// instrumentParamDefs(id) -> [paramDef]: the Synth tab's schema; [] without a document.
 	js.Global().Set("instrumentParamDefs", jsFn(func(args jsArgs) any {
 		if args.Len() < 1 {
 			return js.Global().Get("Array").New(0)
@@ -221,16 +190,12 @@ func (g *Game) initJSSynthRecipe() {
 
 	g.initJSKitManagement()
 
-	// Push every instrument document's flattened block into audio.js now that
-	// window.setInstrumentBlock is defined (audio.js evaluates before the Go
-	// runtime starts). Every later document change pushes itself
-	// (SetInstrumentDoc → platformInstrumentDocChanged).
+	// audio.js evaluates before Go starts, so the blocks are pushed once setInstrumentBlock exists; later changes
+	// push themselves.
 	audio.PushAllInstrumentDocsToPlatform()
 }
 
-// jsObjectToParams converts a plain-object JS value (param map) into a
-// Go map[string]float64. Non-finite or non-numeric values are silently
-// skipped — same boundary discipline as the userprefs + audio layers.
+// Non-finite or non-numeric values are skipped, as at the userprefs and audio boundaries.
 func jsObjectToParams(obj js.Value) map[string]float64 {
 	if obj.Type() != js.TypeObject {
 		return nil
@@ -254,9 +219,7 @@ func jsObjectToParams(obj js.Value) map[string]float64 {
 	return out
 }
 
-// // kitsJSValue serialises every registered kit into a JS array of
-// { id, displayName, members } objects. Used by listKits to give
-// browser tests + future picker UI a single read-only view.
+// [{id, displayName, members}], read-only.
 func kitsJSValue() js.Value {
 	all := audio.KitsForExport()
 	arr := js.Global().Get("Array").New(len(all))
@@ -274,19 +237,13 @@ func kitsJSValue() js.Value {
 	return arr
 }
 
-// initJSKitManagement wires the Phase 6 kit JS surface. No UI consumer
-// in this round; the exports exist so browser-side tests and future
-// kit-picker UI can drive the registry today. createKit / setKitMember
-// / applyKit mutate in-process state; persistence to project JSON lands
-// in a later phase when the export.go schema picks up the Kits field.
 func (g *Game) initJSKitManagement() {
 	// listKits() → [{id, displayName, members: {role: instID}}]
 	js.Global().Set("listKits", jsFn(func(args jsArgs) any {
 		return kitsJSValue()
 	}))
 
-	// createKit(kitID, displayName, membersObj) → kitID
-	// Registers (or replaces) a kit. membersObj is {role: instID, ...}.
+	// createKit(kitID, displayName, {role: instID}) -> kitID; registers or replaces.
 	js.Global().Set("createKit", jsFn(func(args jsArgs) any {
 		if args.Len() < 1 || args.At(0).Type() != js.TypeString {
 			return ""
@@ -315,8 +272,7 @@ func (g *Game) initJSKitManagement() {
 		return kit.ID
 	}))
 
-	// setKitMember(kitID, role, instID) — upsert one role's instrument
-	// on an existing kit. Returns false if the kit isn't registered.
+	// setKitMember(kitID, role, instID) -> bool; false for an unknown kit.
 	js.Global().Set("setKitMember", jsFn(func(args jsArgs) any {
 		if args.Len() < 3 || args.At(0).Type() != js.TypeString || args.At(1).Type() != js.TypeString || args.At(2).Type() != js.TypeString {
 			return false
@@ -348,9 +304,7 @@ func (g *Game) initJSKitManagement() {
 		return true
 	}))
 
-	// applyKit(kitID) — rebind the active DrumView's rows per the
-	// kit's role → instrument map. Returns the rebound row count.
-	// Mix state (volume/pan/sends/EQ/effects) is preserved per Phase 6.
+	// applyKit(kitID) -> rebound row count; each row's mix settings are kept.
 	js.Global().Set("applyKit", jsFn(func(args jsArgs) any {
 		if args.Len() < 1 || args.At(0).Type() != js.TypeString {
 			return 0

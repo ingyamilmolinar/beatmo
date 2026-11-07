@@ -8,15 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// pitch_support_test.go — the pitched-vs-unpitched verdict against SYNTHETIC
-// signals of known character.
-//
-// The roster tests (cmd/gen-fundamentals) check the verdict against the
-// instruments that happen to ship today. These check it against signal classes
-// chosen so that the right answer is known by construction, including the ones
-// no shipped instrument produces: DC, impulses, chirps, clipping, denormals,
-// NaN. A detector that is only exercised by its own corpus is only known to
-// work on its own corpus.
+// Signal classes whose right answer is known by construction, including ones no shipped instrument produces (DC,
+// impulses, chirps, clipping, denormals, NaN): a detector exercised only by its own corpus is only known to work there.
 
 const supportTestSR = 48000
 
@@ -30,8 +23,7 @@ func synth(sr int, dur float64, f func(t float64) float64) wave.Wave {
 	return wave.Wave{Samples: s, SampleRate: sr}
 }
 
-// harmonics builds a tone at f0 with the given harmonic numbers and amplitudes.
-// Passing numbers that skip 1 gives a missing-fundamental tone.
+// Numbers that skip 1 give a missing fundamental.
 func harmonics(sr int, dur, f0 float64, numbers, amps []float64) wave.Wave {
 	return synth(sr, dur, func(t float64) float64 {
 		v := 0.0
@@ -42,9 +34,7 @@ func harmonics(sr int, dur, f0 float64, numbers, amps []float64) wave.Wave {
 	})
 }
 
-// TestAnalyzeF0Support_PitchedSignals: every signal here has a genuine pitch at
-// 220 Hz, and the verdict must say so. The set walks from the easiest case to
-// the ones that have historically fooled pitch detectors.
+// From the easiest case to the ones that fool detectors.
 func TestAnalyzeF0Support_PitchedSignals(t *testing.T) {
 	cases := []struct {
 		name string
@@ -65,8 +55,7 @@ func TestAnalyzeF0Support_PitchedSignals(t *testing.T) {
 			return math.Exp(-3*t) * (math.Sin(2*math.Pi*220*t) + .5*math.Sin(2*math.Pi*440*t))
 		})},
 		{"vibrato (6 Hz, +/-30 cents)", synth(supportTestSR, 1.5, func(t float64) float64 {
-			// Integrated phase, so the instantaneous frequency really is
-			// modulated rather than the phase merely wobbling.
+			// Integrated phase, so the instantaneous frequency really is modulated.
 			return math.Sin(2*math.Pi*220*t + 0.03*math.Sin(2*math.Pi*6*t))
 		})},
 		{"hard-clipped sine", synth(supportTestSR, 1.5, func(t float64) float64 {
@@ -98,10 +87,7 @@ func TestAnalyzeF0Support_PitchedSignals(t *testing.T) {
 	}
 }
 
-// TestAnalyzeF0Support_UnpitchedSignals: nothing here has a pitch, so whatever
-// number the detector returns must not be usable as one. "cymbal-like" is the
-// case this gate exists for — a dense inharmonic cluster high above whatever
-// subharmonic the octave guard settles on.
+// "cymbal-like" is the case this gate exists for.
 func TestAnalyzeF0Support_UnpitchedSignals(t *testing.T) {
 	rng := rand.New(rand.NewSource(7))
 	cases := []struct {
@@ -112,8 +98,7 @@ func TestAnalyzeF0Support_UnpitchedSignals(t *testing.T) {
 			return rng.Float64()*2 - 1
 		})},
 		{"cymbal-like dense inharmonic cluster", harmonics(supportTestSR, 1.5, 100,
-			// Every partial is 30x-70x the nominal f0: there is no energy
-			// anywhere near 100 Hz, exactly the ride/crash shape.
+			// Every partial 30×–70× the nominal f0: the ride/crash shape.
 			[]float64{31.7, 38.3, 44.1, 52.9, 61.3, 70.7},
 			[]float64{1, .9, .85, .8, .7, .6})},
 		{"band-limited high noise", func() wave.Wave {
@@ -153,9 +138,7 @@ func TestAnalyzeF0Support_UnpitchedSignals(t *testing.T) {
 	}
 }
 
-// TestAnalyzeF0Support_DegenerateInputs: none of these may panic, and none may
-// report a usable pitch. They are the inputs a caller reaches by accident —
-// an empty buffer, a muted channel, a DC-offset track, a corrupted sample.
+// Inputs reached by accident: an empty buffer, a muted channel, DC offset, a corrupted sample.
 func TestAnalyzeF0Support_DegenerateInputs(t *testing.T) {
 	cases := []struct {
 		name string
@@ -195,12 +178,9 @@ func TestAnalyzeF0Support_DegenerateInputs(t *testing.T) {
 	}
 }
 
-// TestUsableAsPitch_GatesAreIndependent proves each of the three gates catches
-// something the others do not, so none can be dropped as redundant. Each case
-// names the ONE gate that must reject it.
+// Each case names the ONE gate that must reject it, so none can be dropped as redundant.
 func TestUsableAsPitch_GatesAreIndependent(t *testing.T) {
-	// Reliable() rejects this, support does not: white noise still peak-picks
-	// partials, and its lowest can land inside the ratio bound by chance.
+	// White noise still peak-picks partials, and its lowest can land inside the bound by chance.
 	noise := func() wave.Wave {
 		rng := rand.New(rand.NewSource(3))
 		return synth(supportTestSR, 1.5, func(float64) float64 { return rng.Float64()*2 - 1 })
@@ -209,10 +189,7 @@ func TestUsableAsPitch_GatesAreIndependent(t *testing.T) {
 		t.Errorf("white noise passed Reliable() at confidence %.3f", est.Confidence)
 	}
 
-	// F0AtSearchFloor() rejects this, and NEITHER other gate does: a 30 Hz tone
-	// is perfectly periodic and perfectly supported — it is simply below what
-	// the detector can see, so it pins at the floor and reports ~50 Hz with
-	// high confidence. This is the gate that is easiest to believe redundant.
+	// Periodic and supported, merely below what the detector sees: it pins at the floor with high confidence.
 	low := synth(supportTestSR, 1.5, func(t float64) float64 {
 		return math.Sin(2*math.Pi*30*t) + 0.5*math.Sin(2*math.Pi*60*t)
 	})
@@ -224,9 +201,7 @@ func TestUsableAsPitch_GatesAreIndependent(t *testing.T) {
 		t.Errorf("a sub-floor tone was reported usable at %.2f Hz", lowEst.Hz)
 	}
 
-	// AnalyzeF0Support() rejects this, and neither other gate does: a dense
-	// inharmonic cluster is periodic enough for YIN and sits well inside the
-	// search range. This is the cymbal case.
+	// A dense inharmonic cluster is periodic enough for YIN and inside the search range.
 	cymbal := harmonics(supportTestSR, 1.5, 100,
 		[]float64{31.7, 38.3, 44.1, 52.9, 61.3, 70.7},
 		[]float64{1, .9, .85, .8, .7, .6})
@@ -238,14 +213,7 @@ func TestUsableAsPitch_GatesAreIndependent(t *testing.T) {
 	}
 }
 
-// TestAnalyzeF0Support_UsesTheSustainWindow pins that support is measured over
-// the same window the f0 came from.
-//
-// wave.MagnitudeSpectrum reads from the START of whatever it is handed, so a
-// naive implementation measures the ATTACK — which for a struck instrument is
-// broadband noise that looks nothing like the tone that follows. This builds
-// exactly that signal: a noise burst, then a clean 220 Hz tone. Judged on its
-// attack it has no pitch; judged on its sustain it plainly does.
+// A noise burst then a clean 220 Hz tone: judged on its attack it has no pitch, on its sustain it plainly does.
 func TestAnalyzeF0Support_UsesTheSustainWindow(t *testing.T) {
 	rng := rand.New(rand.NewSource(5))
 	attackSec := SustainSkipSec * 0.9
@@ -264,11 +232,7 @@ func TestAnalyzeF0Support_UsesTheSustainWindow(t *testing.T) {
 	}
 }
 
-// TestAnalyzeF0Support_SeriesDeviationIsReportedNotGated pins the design
-// decision recorded in the file doc: struck metal is genuinely inharmonic, so
-// SeriesDeviation cannot separate a glockenspiel from a cymbal and must not be
-// part of the verdict. A bell-like tone WITH its fundamental present has a high
-// deviation and must still be supported.
+// A bell-like tone with its fundamental has high deviation and must still be supported.
 func TestAnalyzeF0Support_SeriesDeviationIsReportedNotGated(t *testing.T) {
 	bell := harmonics(supportTestSR, 1.5, 220,
 		[]float64{1, 5.4, 10.4}, []float64{1, .8, .6}) // glockenspiel-shaped
@@ -283,9 +247,7 @@ func TestAnalyzeF0Support_SeriesDeviationIsReportedNotGated(t *testing.T) {
 	}
 }
 
-// TestAnalyzeF0Support_RatioScalesWithF0 checks the measure is a RATIO and not
-// an absolute frequency: the same spectral shape at two different pitches must
-// give the same verdict and the same lowest-partial ratio.
+// The same shape at two pitches gives the same verdict and ratio.
 func TestAnalyzeF0Support_RatioScalesWithF0(t *testing.T) {
 	for _, f0 := range []float64{110, 220, 440, 880} {
 		w := harmonics(supportTestSR, 1.5, f0, []float64{2, 3, 4}, []float64{1, .7, .5})
@@ -300,14 +262,8 @@ func TestAnalyzeF0Support_RatioScalesWithF0(t *testing.T) {
 	}
 }
 
-// TestAnalyzeF0Support_RejectsDegenerateF0Argument covers the other half of the
-// input space: a fine signal with a nonsense f0 handed in.
-//
-// It is kept apart from the degenerate-WAVE table deliberately. Those rows
-// assert that UsableAsPitch says no, which re-detects f0 from the wave — a
-// correct answer of "yes" for a clean 220 Hz sine, whatever f0 the caller
-// passed alongside it. Mixing the two made this test fail for a reason that had
-// nothing to do with the code.
+// Apart from the degenerate-wave table: UsableAsPitch re-detects f0 from the wave, so it would answer for the wave, not
+// for the nonsense f0 passed in.
 func TestAnalyzeF0Support_RejectsDegenerateF0Argument(t *testing.T) {
 	good := synth(supportTestSR, 1.5, func(t float64) float64 {
 		return math.Sin(2 * math.Pi * 220 * t)
@@ -319,8 +275,7 @@ func TestAnalyzeF0Support_RejectsDegenerateF0Argument(t *testing.T) {
 		}
 	}
 
-	// A f0 the signal does not contain must also be rejected, even though it is
-	// a perfectly ordinary number: 7000 Hz is nowhere in a 220 Hz sine.
+	// An ordinary number the signal does not contain.
 	if sup := AnalyzeF0Support(good, 7000); sup.Supported {
 		t.Errorf("an f0 absent from the signal reported supported: %+v", sup)
 	}

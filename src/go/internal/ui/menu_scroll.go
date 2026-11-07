@@ -6,25 +6,17 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// MenuScroll bundles a ScrollBehavior and a DeferredTap into the single shared
-// scroll component used by every list menu (context, overflow, subdivision,
-// instrument). It owns the one correct wheel / thumb-drag / touch-scroll input
-// state machine — the overflow menu previously hand-rolled this glue and got it
-// half-wired (no offset applied, no drag/touch), which is the bug this fixes.
+// The one correct wheel / thumb / touch-scroll state machine for every list menu.
 type MenuScroll struct {
 	sb  *ScrollBehavior
 	tap DeferredTap
 }
 
-// NewMenuScroll creates a MenuScroll with the given scrollbar style and the
-// per-item pixel height used for offset and pixel<->item conversion.
 func NewMenuScroll(style ScrollbarStyle, itemHeight int) *MenuScroll {
 	return &MenuScroll{sb: NewScrollBehavior(style, itemHeight)}
 }
 
-// Configure refreshes the scroll viewport and item counts for the current
-// layout. Safe to call every frame: it preserves the current scroll position
-// (VS.First) via Clamp. Call whenever item count, viewport, or page changes.
+// Safe every frame: Clamp preserves VS.First.
 func (m *MenuScroll) Configure(view image.Rectangle, total, visible int) {
 	m.sb.VS.View = view
 	m.sb.VS.Total = total
@@ -38,20 +30,13 @@ func (m *MenuScroll) OffsetPx() int { return m.sb.VS.First * m.sb.ItemHeight }
 // HasScroll reports whether the content overflows the viewport.
 func (m *MenuScroll) HasScroll() bool { return m.sb.HasScroll() }
 
-// HandleWheel applies a wheel event with the smooth, continuous instrument-menu
-// cadence: it RESPECTS the wheel magnitude (a hi-res wheel / trackpad flick of
-// |steps|=n moves n rows in one event) and has NO per-notch cooldown lock, so
-// consecutive notches scroll on consecutive frames. This is the single shared
-// wheel path for every list/dropdown menu. (The row rack and synth control grids
-// deliberately keep the clicky WheelStep path — they are grids of controls where
-// one-item-per-notch stepping is desired.) Returns true when the offset changed.
+// Respects magnitude with no cooldown: the one wheel path for list menus. The rack and control
+// grids keep the clicky WheelStep on purpose.
 func (m *MenuScroll) HandleWheel(steps int) bool {
 	return m.sb.HandleWheel(steps)
 }
 
-// UpdateMomentum applies one frame of touch-fling momentum decay, carrying the
-// list after the finger lifts (the inertial part of the instrument-menu feel).
-// Call once per frame while the menu exists. Returns true when the offset changed.
+// Once per frame while the menu exists.
 func (m *MenuScroll) UpdateMomentum() bool {
 	if !m.sb.HasMomentum() {
 		return false
@@ -59,12 +44,7 @@ func (m *MenuScroll) UpdateMomentum() bool {
 	return m.sb.UpdateMomentum()
 }
 
-// Tick is the single shared per-frame momentum driver for every list menu: it
-// advances one frame of touch-fling inertia and invokes rebuild (when non-nil
-// and the offset actually changed) so the menu re-lays-out its windowed rows.
-// Each menu calls this from its own per-frame update hook with its own rebuild
-// closure — the physics lives here, not copied into each menu. Returns true when
-// the offset changed this frame.
+// The shared momentum driver; rebuild runs only when the offset changed.
 func (m *MenuScroll) Tick(rebuild func()) bool {
 	if !m.UpdateMomentum() {
 		return false
@@ -78,22 +58,16 @@ func (m *MenuScroll) Tick(rebuild func()) bool {
 // Draw renders the scrollbar (no-op when content fits).
 func (m *MenuScroll) Draw(dst *ebiten.Image) { m.sb.Draw(dst) }
 
-// ScrollBehavior exposes the underlying engine for menus (instrument menu) whose
-// bespoke content layout drives VS.View / VS.First directly.
+// For menus whose layout drives VS.View / VS.First directly.
 func (m *MenuScroll) ScrollBehavior() *ScrollBehavior { return m.sb }
 
 // DeferredTap exposes the tap helper for callers that need to cancel it.
 func (m *MenuScroll) DeferredTap() *DeferredTap { return &m.tap }
 
-// TapActive reports an in-flight mobile deferred tap. Callers map this to
-// InputCaptured (vs InputConsumed) for the overlay portal.
+// Callers map it to InputCaptured rather than InputConsumed.
 func (m *MenuScroll) TapActive() bool { return m.tap.Active() }
 
-// HandleScrollbarDrag processes scrollbar thumb interaction only (start on press
-// inside the thumb, continue/end on subsequent events). It is the shared
-// primitive for menus that keep their own immediate-tap content-input
-// (subdivision, instrument). Returns true when the scrollbar consumed the event.
-// relayout (may be nil) is called when the offset changes mid-drag.
+// For menus that keep immediate-tap content input; relayout may be nil.
 func (m *MenuScroll) HandleScrollbarDrag(pt image.Point, pressed bool, relayout func()) bool {
 	sb := m.sb
 	if sb.Dragging() {
@@ -113,30 +87,23 @@ func (m *MenuScroll) HandleScrollbarDrag(pt image.Point, pressed bool, relayout 
 	return false
 }
 
-// MenuScrollInput carries the per-event inputs and content callbacks for one
-// HandleInput call. Each menu keeps its own content layout/draw; MenuScroll owns
-// only the scroll mechanics.
+// Menus keep their own content layout and draw; this owns only the scroll mechanics.
 type MenuScrollInput struct {
 	Pt        image.Point
 	Pressed   bool
 	PopupRect image.Rectangle // whole popup; taps inside are consumed
 	ItemView  image.Rectangle // scroll viewport (excludes any pinned header)
 
-	// Relayout re-applies OffsetPx() to cached item buttons after the offset
-	// changes. Menus that rebuild their buttons every frame may pass nil.
+	// nil for menus that rebuild buttons every frame.
 	Relayout func()
 	// FireTapAt fires the menu button under (x,y) on a committed mobile tap.
-	FireTapAt func(x, y int)
-	// DesktopHit performs immediate hit-testing of the menu's buttons on
-	// desktop; returns true when a button consumed the event.
+	FireTapAt  func(x, y int)
 	DesktopHit func(pt image.Point, pressed bool) bool
 	// CloseBtn, when non-nil, is checked before items on mobile (highest z).
 	CloseBtn *Button
 }
 
-// HandleInput runs the complete desktop+mobile scroll input state machine,
-// behavior-identical to the (correct) context menu reference implementation.
-// Returns true when the event was handled (consumed/captured).
+// The full desktop + mobile state machine, matching the context menu's reference behaviour.
 func (m *MenuScroll) HandleInput(in MenuScrollInput) bool {
 	pt := in.Pt
 	left := in.Pressed

@@ -9,8 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// The Spacious (mobile) icon-readout column must be narrow enough to leave the
-// bars room. Pin the reduced token value.
+// Narrow enough that the bars keep room.
 func TestSpaciousLevelsReadoutWIconsReduced(t *testing.T) {
 	restore := SetDensityForTest(DensitySpacious)
 	defer restore()
@@ -20,9 +19,7 @@ func TestSpaciousLevelsReadoutWIconsReduced(t *testing.T) {
 	}
 }
 
-// At a typical mobile panel width the Levels renderer must still draw (icon
-// mode), leaving the bars the rest of the width. Smoke check that the narrowed
-// column does not break rendering.
+// Still draws in icon mode at a typical mobile width.
 func TestLevelsMobileReadoutModeLeavesBarRoom(t *testing.T) {
 	restore := SetDensityForTest(DensitySpacious)
 	defer restore()

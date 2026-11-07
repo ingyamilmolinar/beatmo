@@ -8,10 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// These tests live on the native-build path because they exercise the real
-// globalVoiceCache and the voiceCacheInvalidate hook wired up in
-// voice_cache.go init(). Under -tags test the cache is stubbed out, so the
-// hook is a no-op and these scenarios are vacuously true.
+// Native only: under -tags test the cache is stubbed and these would pass vacuously.
 
 func TestVoiceCache_ClearInstrumentRemovesAllItsEntries(t *testing.T) {
 	vc := newTestCache()
@@ -48,15 +45,8 @@ func TestVoiceCache_ClearInstrumentUnknownIsNoop(t *testing.T) {
 	}
 }
 
-// TestSetInstrumentParam_DoesNotBlanketInvalidate documents the neighborhood-
-// cache behavior change: a single live param edit (the knob-drag hot path) no
-// longer clears the whole instrument's cached voices. The edited params map to a
-// DIFFERENT cache key (full paramsHash), so dispatch renders the new sound under
-// that key while old-value entries are RETAINED (bounded by the LRU byte
-// budget). Retaining them is what lets a pre-warmed neighbor survive a drag and
-// hit instead of cold-rendering. Blanket-clearing here was the root of the
-// 93%-miss knob-drag storm. Contrast ResetInstrumentParams (below), which still
-// clears.
+// The edited params map to a DIFFERENT key, so old entries are retained within the LRU budget: that is what lets a
+// pre-warmed neighbour survive a drag. Blanket clearing caused the knob-drag miss storm.
 func TestSetInstrumentParam_DoesNotBlanketInvalidate(t *testing.T) {
 	t.Cleanup(func() { ResetInstrumentParams("test-cache-snare") })
 

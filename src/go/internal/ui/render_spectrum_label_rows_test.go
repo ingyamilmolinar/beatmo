@@ -7,11 +7,7 @@ import (
 	"testing"
 )
 
-// TestSpectrumLabelRowsNonOverlapping pins the spectrum layout chokepoint that
-// fixed the bracket-label/Hz-label collision (Bass/Mids/Treble brackets used to
-// stamp over the 1k/8k Hz tick labels). spectrumLabelRows must split the panel
-// into three vertically-stacked, edge-to-edge, non-overlapping rows:
-// barRect (plot) above bracketRow above hzRow, all inside the panel.
+// Plot above brackets above Hz ticks, edge to edge and non-overlapping, all inside the panel.
 func TestSpectrumLabelRowsNonOverlapping(t *testing.T) {
 	sizes := []struct{ w, h int }{
 		{400, 220}, // mobile-ish

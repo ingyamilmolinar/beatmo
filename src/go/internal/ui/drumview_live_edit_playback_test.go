@@ -8,16 +8,14 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Regression: deleting + re-adding a node during playback must update the
-// DrumView window immediately for abs>=pastExclusive (past is immutable).
+// Delete + re-add during playback must update the future window at once; the past stays immutable.
 func TestDrumView_LiveReaddDuringPlaybackUpdatesFutureWindow(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	assertDefaultParityState(t)
 	g.Layout(1024, 720)
 
-	// Small loop with adjacent nodes (no synthesized invisible steps) so
-	// beatInfo neighbors are stable for reconnect.
+	// Adjacent nodes (no synthesized invisible steps) keep the neighbours stable for reconnect.
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	b := g.tryAddNode(1, 0, model.NodeTypeRegular)
 	c := g.tryAddNode(1, 1, model.NodeTypeRegular)
@@ -47,8 +45,7 @@ func TestDrumView_LiveReaddDuringPlaybackUpdatesFutureWindow(t *testing.T) {
 	if row < len(g.seqNextIdxs) && g.seqNextIdxs[row] > pastExclusive {
 		pastExclusive = g.seqNextIdxs[row]
 	}
-	// Snapshot the past portion of the visible window so we can assert it remains
-	// immutable across the edit (only abs>=pastExclusive may change).
+	// Only abs >= pastExclusive may change.
 	off0 := g.drum.Offset
 	pastEnd0 := pastExclusive
 	if max := off0 + g.drum.Length; pastEnd0 > max {
@@ -95,13 +92,11 @@ func TestDrumView_LiveReaddDuringPlaybackUpdatesFutureWindow(t *testing.T) {
 	}
 	gen0 := g.drum.rowCacheGen[0]
 
-	// Simulate the "follow" scroll happening in the same frame as the edit so
-	// cache rebuilds can't hide behind a dx==0 full redraw.
+	// A same-frame follow scroll, so a dx==0 full redraw cannot hide a stale cache.
 	g.drum.Offset = g.drum.Offset + 1
 	g.drum.markRowsShiftDirty()
 
-	// Delete the node at targetAbs and re-add as silent (visible change) with
-	// the same neighbors to keep the circuit intact.
+	// Re-added as silent (a visible change) with the same neighbours, keeping the circuit intact.
 	g.deleteNode(n)
 	g.pendingStartRow = row
 	re := g.tryAddNode(bi.I, bi.J, model.NodeTypeSilent)
@@ -115,8 +110,7 @@ func TestDrumView_LiveReaddDuringPlaybackUpdatesFutureWindow(t *testing.T) {
 	g.updateBeatInfos()
 	g.refreshDrumRow()
 
-	// Rebuild caches: the edited row must force a full rebuild so changes are
-	// visible immediately (not only in the newly revealed strip on the right).
+	// The edited row must rebuild fully, not only in the newly revealed strip.
 	g.drum.Draw(dst, nil, 0, nil, 0)
 	if g.drum.rowCacheGen[0] == gen0 {
 		t.Fatalf("row cache reused sprite after live re-add during shift; gen=%d", gen0)
@@ -183,11 +177,8 @@ func TestDrumView_LiveReaddNonPrimaryRowDuringPlaybackUpdatesFutureWindow(t *tes
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	assertDefaultParityState(t)
-	// Bypass the bounded audioCh so seqScheduleTime is not throttled by
-	// audioChNearFull when the real-audio backend is slow to drain. Without
-	// this, applySequencerHighlight may not fire for every past beat under
-	// `make test-real`, leaving the timeline with mutable Released commits
-	// instead of immutable Playback commits and breaking past-immutability.
+	// A slow real-audio backend would throttle scheduling, leaving Released commits instead of Playback ones
+	// under make test-real.
 	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	g.Layout(1024, 720)
 
@@ -365,8 +356,7 @@ func TestDrumView_LiveInsertDuringPlaybackUpdatesFutureWindow(t *testing.T) {
 	assertDefaultParityState(t)
 	g.Layout(1024, 720)
 
-	// Circuit with longer orthogonal edges so the traversal includes synthesized
-	// invisible steps that can be turned into an explicit node by insertion.
+	// Longer edges, so the traversal includes synthesized invisible steps an insertion can turn into a node.
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	b := g.tryAddNode(4, 0, model.NodeTypeRegular)
 	c := g.tryAddNode(4, 4, model.NodeTypeRegular)
@@ -405,14 +395,12 @@ func TestDrumView_LiveInsertDuringPlaybackUpdatesFutureWindow(t *testing.T) {
 	g.drum.Offset = g.drum.Offset + 1
 	g.drum.markRowsShiftDirty()
 
-	// Insert a node along the A->B edge (at 2,0). tryAddNode will auto-stitch
-	// that edge into A->new->B and refresh paths.
+	// tryAddNode stitches A->B into A->new->B.
 	g.tryAddNode(2, 0, model.NodeTypeRegular)
 	g.updateBeatInfos()
 	g.refreshDrumRow()
 
-	// Cache must fully rebuild so the inserted node's visible effect doesn't
-	// appear only at the right edge during incremental scrolling.
+	// A full rebuild, so the insertion shows everywhere, not only at the right edge while scrolling.
 	g.drum.Draw(dst, nil, 0, nil, 0)
 	if g.drum.rowCacheGen[row] == gen0 {
 		t.Fatalf("row cache reused sprite after live insert during shift; gen=%d", gen0)

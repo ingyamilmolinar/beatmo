@@ -22,12 +22,8 @@ import (
 // dialRelevanceTablePath is the generated table, relative to this package.
 var dialRelevanceTablePath = filepath.Join("..", "assets", "synth_dial_relevance.gen.json")
 
-// TestDialRelevanceTableIsCurrent re-measures, on the real engine, which dials
-// every shipped instrument's sound makes inert (synth_dial_relevance.go) and
-// compares the result with the generated table the app reads. A tuning pass,
-// a new instrument, a dial edit or an engine change makes it stale; the fix is
-// one command, never an exception: `make gen-dial-relevance`
-// (DIAL_RELEVANCE_UPDATE=1 rewrites the table).
+// Re-measures on the real engine and compares with the generated table; when stale the fix is
+// `make gen-dial-relevance` (DIAL_RELEVANCE_UPDATE=1), never an exception.
 func TestDialRelevanceTableIsCurrent(t *testing.T) {
 	withPrivateInstrumentLibrary(t)
 	audio.ResetInstrumentDocs()
@@ -78,10 +74,8 @@ func TestDialRelevanceTableIsCurrent(t *testing.T) {
 	got := marshalDialRelevance(dialRelevanceFile{Envelope: schema.Current(), Instruments: entries})
 
 	if os.Getenv("DIAL_RELEVANCE_UPDATE") == "1" {
-		// The startup demo's own sounds (it hand-edits some instruments) are
-		// measured too, as a cache: the first Synth-tab visit then renders
-		// nothing extra. Never checked for staleness — an edited demo sound is
-		// simply measured at runtime.
+		// The startup demo's hand-edited sounds are measured as a cache, never checked for staleness: an edited one is
+		// measured at runtime.
 		all := append(entries, measureStartupDemoRelevance(t, entries)...)
 		got = marshalDialRelevance(dialRelevanceFile{Envelope: schema.Current(), Instruments: all})
 		if err := os.WriteFile(dialRelevanceTablePath, got, 0o644); err != nil {
@@ -136,8 +130,7 @@ func TestDialRelevanceTableIsCurrent(t *testing.T) {
 	t.Fatalf("the dial relevance table is stale — run `make gen-dial-relevance`:\n  %s", strings.Join(diffs, "\n  "))
 }
 
-// marshalDialRelevance writes the table compactly, one instrument per line
-// (it is embedded in the shipped WASM).
+// Compact, one instrument per line: it ships in the WASM.
 func marshalDialRelevance(f dialRelevanceFile) []byte {
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "{\"schema_version\": %q, \"instruments\": [\n", f.SchemaVersion)
@@ -153,8 +146,7 @@ func marshalDialRelevance(f dialRelevanceFile) []byte {
 	return b.Bytes()
 }
 
-// measureStartupDemoRelevance measures the startup demo's sounds that no
-// shipped entry already covers (its hand-edited instruments).
+// Only those no shipped entry covers.
 func measureStartupDemoRelevance(t *testing.T, shipped []dialRelevanceEntry) []dialRelevanceEntry {
 	t.Helper()
 	known := map[string]bool{}

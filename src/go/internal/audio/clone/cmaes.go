@@ -8,11 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio/clone/linalg"
 )
 
-// cmaes.go — (μ/μ_w, λ)-CMA-ES after Hansen 2016, "The CMA Evolution
-// Strategy: A Tutorial" (the purecmaes reference listing), unconstrained;
-// Refine maps it into a box. All randomness is consumed in Ask, so a run is a
-// pure function of the seed and of the fitness values — whatever evaluates
-// them, in whatever order.
+// (μ/μ_w, λ)-CMA-ES after Hansen's 2016 tutorial, unconstrained; Refine maps it into a box. All randomness is drawn
+// in Ask, so a run is a pure function of the seed and the fitness values, whatever evaluates them in whatever order.
 
 // CMAES is one optimizer state.
 type CMAES struct {
@@ -37,8 +34,7 @@ type CMAES struct {
 	z                [][]float64
 }
 
-// NewCMAES starts at the origin with step sigma; lambda ≤ 0 picks
-// 4 + ⌊3 ln n⌋.
+// lambda ≤ 0 picks 4 + ⌊3 ln n⌋.
 func NewCMAES(n int, sigma float64, lambda int, seed uint64) *CMAES {
 	if lambda <= 0 {
 		lambda = 4 + int(3*math.Log(float64(n)))
@@ -182,8 +178,7 @@ func (o *CMAES) decompose() {
 	vals, vecs := linalg.EigHermitian(m)
 	for j := 0; j < n; j++ {
 		o.d[j] = math.Sqrt(math.Max(vals[j], 1e-20))
-		// A real symmetric matrix's eigenvectors are real up to a unit phase:
-		// rotate each column so its largest entry is real.
+		// Eigenvectors of a real symmetric matrix are real up to a unit phase.
 		ph := complex(1, 0)
 		best := 0.0
 		for i := 0; i < n; i++ {

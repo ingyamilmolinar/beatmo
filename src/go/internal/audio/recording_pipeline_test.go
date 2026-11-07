@@ -31,10 +31,7 @@ func newTestPipeline(t *testing.T, instruments []InstrumentMeta) *pipeline {
 	return pipe
 }
 
-// TestPipelineHotPathNoAlloc verifies that the audio-thread Tap call does
-// not allocate on the steady-state hot path. This is the central
-// performance invariant — any allocation in Tap regresses the desktop
-// recording stutter fix.
+// Any allocation in Tap brings back recording stutter.
 func TestPipelineHotPathNoAlloc(t *testing.T) {
 	pipe := newTestPipeline(t, []InstrumentMeta{
 		{ID: channel.Of(roster.Kick), Name: "Kick"},
@@ -62,8 +59,7 @@ func TestPipelineHotPathNoAlloc(t *testing.T) {
 	for i := 0; i < 8; i++ {
 		pipe.Tap(slotIDs, activeSlots, instBufs, workBuf, blockLen)
 	}
-	// Let the workers drain so blocks return to the pool before the alloc
-	// run — otherwise we measure pool-empty allocations from the hot path.
+	// Otherwise the run measures pool-empty allocations.
 	for pipe.dropsTotal.Load() == 0 && len(pipe.blockPool) < 16 {
 		runtime.Gosched()
 		time.Sleep(time.Millisecond)
@@ -79,8 +75,7 @@ func TestPipelineHotPathNoAlloc(t *testing.T) {
 	}
 }
 
-// TestPipelineDropsOnBackpressure forces the per-channel queue and the
-// block pool to saturate, then verifies drops are counted (not queued).
+// Counted as drops, not queued.
 func TestPipelineDropsOnBackpressure(t *testing.T) {
 	dir := t.TempDir()
 	pipe, err := newPipeline(pipelineConfig{
@@ -113,8 +108,6 @@ func TestPipelineDropsOnBackpressure(t *testing.T) {
 	}
 }
 
-// TestPipelineWritesWAVFiles end-to-end test: tap a few blocks of a tone
-// and verify per-channel WAV files exist on disk after Stop.
 func TestPipelineWritesWAVFiles(t *testing.T) {
 	pipe := newTestPipeline(t, []InstrumentMeta{
 		{ID: channel.Of(roster.Kick), Name: "Kick"},
@@ -169,9 +162,7 @@ func TestPipelineWritesWAVFiles(t *testing.T) {
 	}
 }
 
-// TestPipelineUnknownInstrumentDropped: tap with a slotID not in the
-// pre-registered channel list. The block must be silently ignored
-// (counted as a no-op, no panic, no allocation explosion).
+// Ignored: no panic, no allocation.
 func TestPipelineUnknownInstrumentDropped(t *testing.T) {
 	pipe := newTestPipeline(t, []InstrumentMeta{{ID: channel.Of(roster.Kick), Name: "Kick"}})
 	t.Cleanup(func() { pipe.Stop() })
@@ -182,8 +173,6 @@ func TestPipelineUnknownInstrumentDropped(t *testing.T) {
 	// "snare" is not registered — should be silently skipped.
 	pipe.Tap([]channel.ID{channel.Of(roster.Snare)}, []int{0}, instBufs, workBuf, blockLen)
 
-	// Nothing should have been written to the kick channel either, since
-	// the only active slot was snare.
 	if pipe.channels[channel.Of(roster.Kick)].count.Load() != 0 {
 		t.Fatal("kick should not have received any samples")
 	}

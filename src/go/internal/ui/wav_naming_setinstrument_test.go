@@ -2,8 +2,7 @@ package ui
 
 import "testing"
 
-// Ensure SetInstrument safely handles an out-of-range selRow (e.g., after
-// rows changed via import/upload flows) without panicking.
+// Rows can change under selRow through import or upload.
 func TestSetInstrumentSelRowClamp(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

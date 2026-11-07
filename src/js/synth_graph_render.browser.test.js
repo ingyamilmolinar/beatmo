@@ -1,15 +1,5 @@
-// synth_graph_render.browser.test.js
-//
-// The Synth tab's graphs are drawn from window.renderDocPCM (Go
-// audio.RenderDocForGraph's browser half). This pins that the graph render IS
-// the played voice: for an instrument's current flattened block,
-// renderDocPCM returns bit for bit the buffer playback caches
-// (ensureRenderedSample → captureInstrumentPCM), with and without a Sampler
-// edit (spec docs/superpowers/specs/2026-10-24-synth-graphs-and-devtools-design.md §5 T5).
-//
-// COVERED-BY-GO: the desktop half (TestGraphRenderIsThePlayedVoice,
-// internal/audio, real build) and the graph pipeline (internal/ui). JS-owned
-// here: the render worker + postProcessVoiceRender seam.
+// The Synth graphs are drawn from renderDocPCM, which must return bit for bit the buffer playback caches, with and
+// without a Sampler edit. COVERED-BY-GO: TestGraphRenderIsThePlayedVoice (desktop) and the internal/ui pipeline.
 
 import { setupFullWasm } from "./real_input_test_helpers.js";
 

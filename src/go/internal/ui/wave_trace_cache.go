@@ -9,10 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 )
 
-// waveTraceCacheEnabled gates the Wave-tab waveform cache (test seam, mirrors
-// chainTraceCacheEnabled / SetRowsLayerWindowingForTest). Tests that count the
-// per-frame trace rects at on-screen coordinates flip it off so Draw renders
-// the waveform directly instead of into the (0,0)-origin cache.
+// Test seam: tests counting trace rects at screen coordinates turn it off.
 var waveTraceCacheEnabled = true
 
 // SetWaveTraceCacheForTest toggles the Wave-tab cache and returns a restore func.
@@ -22,21 +19,8 @@ func SetWaveTraceCacheForTest(on bool) func() {
 	return func() { waveTraceCacheEnabled = prev }
 }
 
-// drawWaveformCached renders the Wave-tab waveform into screen at cr, going
-// through an offscreen cache when the analyzer data and layout are unchanged.
-//
-// The cache key is the (analyzer-state, channel, capture) POINTER identity plus
-// the frozen flag and cr size — NOT any timestamp (the WASM analyzer path, like
-// the scope path, doesn't stamp one). ScopeState/AnalyzerState hand back a fresh
-// *analyzer.State whenever the data refreshes (every ~30 Hz tick on desktop /
-// stateCacheTTL on WASM), so a changed pointer is the freshness signal; holding
-// the state ref also keeps the &state.Master / state.Detail / state.Capture
-// pointers alive and prevents address reuse.
-//
-// The beat-grid overlay is rendered INTO the cache (preserving its exact
-// behind-the-trace z-order) and so refreshes at the 30 Hz data rate — coherent
-// with the waveform, which already updates at 30 Hz. The mouse cursor crosshair
-// is NOT part of this; the caller draws it live over the returned blit.
+// Keyed on pointer identity, not a timestamp (WASM stamps none): a refresh hands back a fresh *State, and
+// holding it prevents address reuse. The beat grid is baked in; the cursor is drawn live over the blit.
 func (z *EQPanelZone) drawWaveformCached(screen *ebiten.Image, cr image.Rectangle, state *analyzer.State, ch *analyzer.ChannelMetrics, cap *analyzer.CaptureBuffer, beatGrid []float64) {
 	w, h := cr.Dx(), cr.Dy()
 	if w < 1 || h < 1 {

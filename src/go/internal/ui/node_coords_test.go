@@ -94,11 +94,7 @@ func TestNodeLiveTimingPrevFromTimeline(t *testing.T) {
 	g.SetPlaying(true)
 	advanceFrames(g, 2)
 
-	// Place the playhead exactly one loop period past node a's home index and
-	// record a past fire of node a at that home index. The prev scan covers
-	// [playhead-period, playhead-1] = [homeA, homeA+period-1], which includes
-	// homeA (node a's only occurrence in that window). Using +period (not
-	// +period+1) keeps homeA inside the window.
+	// One period past a's home index, so the prev scan [playhead-period, playhead-1] includes homeA.
 	period := len(g.beatInfosByRow[0])
 	if g.isLoopByRow[0] {
 		period = len(g.beatInfosByRow[0]) - g.loopStartByRow[0]
@@ -131,8 +127,7 @@ func TestNodeLiveTimingMemoReuse(t *testing.T) {
 func TestFormatNodeCoordLines(t *testing.T) {
 	g, a, b := buildLoopGame(t)
 
-	// Home line: grid coords + circuit beat/subdivision. Node a is at grid (0,0),
-	// home idx 0 -> exactly on Beat 1 (fraction dropped when on the beat).
+	// Exactly on Beat 1, where the fraction is dropped.
 	ta := g.nodeLiveTiming(a.ID)
 	home := g.formatNodeCoordHome(a.I, a.J, ta)
 	if home != "(0, 0) · Beat 1" {
@@ -157,10 +152,7 @@ func TestFormatNodeCoordLines(t *testing.T) {
 		t.Fatalf("stopped fire line = %q, want %q", stopped, "next  Beat 1")
 	}
 
-	// A mid-beat node reads as the raw fraction "k/D", not a reduced or
-	// off-by-one slot. b sits 4 subdivisions after a (grid midpoint at x=4, div
-	// 8), so its home is exactly 4/8 into beat 1 — the case the user reported as
-	// wrongly showing 5/8.
+	// The raw fraction "k/D", never reduced or off by one: b sits exactly 4/8 into beat 1.
 	hb, _, _, _ := g.nodeCircuitPosition(b.ID)
 	if hb != 4 {
 		t.Fatalf("precondition: b homeIdx = %d, want 4 (grid midpoint)", hb)

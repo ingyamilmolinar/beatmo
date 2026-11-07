@@ -7,14 +7,10 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// indicatorMinWidth is the narrowest button that still gets a level gauge.
 // Below this the strip is not legible.
 const indicatorMinWidth = 8
 
-// volumeGaugeRect is the DESIGN.md "gauge" strip of a volume button: a
-// hairline (densities.paramCardGaugeH) on the body's bottom inner edge,
-// spanning the body width minus a side inset. Empty when the button is too
-// small to carry one.
+// Empty when the button is too small to carry one.
 func volumeGaugeRect(btnR image.Rectangle) image.Rectangle {
 	if btnR.Dx() < indicatorMinWidth {
 		return image.Rectangle{}
@@ -35,14 +31,8 @@ func volumeGaugeRect(btnR image.Rectangle) image.Rectangle {
 	return image.Rect(btnR.Min.X+side, y0, btnR.Max.X-side, y1)
 }
 
-// drawSliderLevelIndicator draws the at-a-glance level gauge of a volume
-// button: the shared gauge strip (drawGaugeStrip — the same renderer the
-// Synth param cards use) along the bottom inner edge of btnR. The fill
-// carries fgCol (the instrument color on a row, the volume glyph color on
-// master); when off (muted/zero) the track renders alone — "this control
-// exists, currently silent." Value is clamped to [0,1]; a button narrower
-// than indicatorMinWidth gets no gauge. iconR is accepted for the callers'
-// symmetry and as the "is there a glyph" guard.
+// The shared gauge renderer; a muted/zero level shows the track alone: "this control exists, currently silent".
+// iconR only guards "is there a glyph".
 func drawSliderLevelIndicator(dst *ebiten.Image, btnR, iconR image.Rectangle, value float64, fgCol color.Color, off bool) {
 	if iconR.Empty() {
 		return
@@ -58,18 +48,8 @@ func drawSliderLevelIndicator(dst *ebiten.Image, btnR, iconR image.Rectangle, va
 	drawGaugeStrip(dst, gr, paramCardGauge{kind: gaugeFill, frac: v}, fgCol)
 }
 
-// drawVolumeButton renders the canonical volume control: a speaker glyph
-// (on/off variant by mute or zero level) centered above the level gauge. This
-// is the SINGLE source of truth for both the per-row volume cells AND the
-// master volume button — they differ only in which channel they're wired to.
-// Any visual tweak (icon size, gauge, off-state behavior) propagates to both
-// surfaces automatically.
-//
-// btnR is the button hit-area; the speaker glyph is 60% of its height
-// (clamped on mobile to IconSizeMD), centered in the band above the gauge.
-// rowColor optionally tints the glyph and gauge (per-row uses the row's
-// instrument color); pass nil for the master button to fall back to
-// colVolumeIconOn.
+// The SINGLE renderer for row and master volume, so a visual tweak reaches both. rowColor tints glyph and gauge;
+// nil for master.
 func drawVolumeButton(dst *ebiten.Image, btnR image.Rectangle, vol float64, muted bool, rowColor color.Color) {
 	if btnR.Empty() {
 		return
@@ -94,13 +74,8 @@ func drawVolumeButton(dst *ebiten.Image, btnR image.Rectangle, vol float64, mute
 	cy := btnR.Min.Y + (bandBottom-btnR.Min.Y)/2
 	iconR := image.Rect(cx-iconH/2, cy-iconH/2, cx+iconH/2, cy+iconH/2)
 
-	// Keycap body first: the volume button is a pressable control and shares
-	// the button-secondary spec body with every neighbouring keycap (transport
-	// Play/Stop/undo, the per-row M/S/FX cells). Static state — the volume hit
-	// adapter opens the popup on press, so there is no hover/press tint here.
-	// Guard: TestVolumeButtonsAndInputsShareKeycapBody.
-	// fitRadius: narrow mobile cells (14 px wide) fall under the anti-pill
-	// ceiling min(w,h)/4 at the spec's radius (TestNoPillShapedControls).
+	// The keycap body every neighbouring control shares; no hover/press tint, since a press opens the popup. fitRadius:
+	// narrow 14 px mobile cells.
 	spec := Spec(ComponentButtonSecondary)
 	spec.Radius = fitRadius(spec.Radius, btnR)
 	Render(dst, btnR, spec, ComponentState{})

@@ -1,6 +1,4 @@
-// Package rank measures a Go module per build configuration and ranks
-// refactoring candidates. See
-// docs/superpowers/specs/2026-10-19-refactor-rank-design.md.
+// Package rank measures a Go module per build configuration and ranks refactoring candidates.
 package rank
 
 import (
@@ -29,12 +27,8 @@ func Cyclomatic(body ast.Node) int {
 	return cc
 }
 
-// Cognitive is Sonar cognitive complexity. Each structure (if, switch, select,
-// for, range) scores 1 plus its nesting level. else and else-if score 1 each.
-// Each run of identical &&/|| operators scores 1. Labelled break/continue and
-// goto score 1 each. Direct recursion on selfName scores 1. Function literals
-// are their own units and are skipped. nestingBonus is the part of the total
-// that came from nesting levels. That part is what flattening removes.
+// Cognitive is Sonar cognitive complexity (structures score 1 + nesting; else, else-if, each &&/|| run, labelled jumps
+// and direct recursion score 1; function literals are their own units). nestingBonus is the part flattening removes.
 func Cognitive(body *ast.BlockStmt, selfName string) (total, nestingBonus int) {
 	if body == nil {
 		return 0, 0

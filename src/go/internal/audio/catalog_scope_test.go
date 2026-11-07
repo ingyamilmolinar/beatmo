@@ -10,10 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestCatalogScope_BuiltinsAreBuiltin pins the contract that synth ids carry
-// Scope == "builtin" — the marker that signals "rendered in-binary, no asset
-// lookup needed". The favorites view and any future Scope-aware filter rely
-// on this.
+// "builtin" means rendered in-binary with no asset lookup; scope-aware filters rely on it.
 func TestCatalogScope_BuiltinsAreBuiltin(t *testing.T) {
 	withDefaultAudio(t)
 	ResetCatalogForTest(nil)
@@ -31,9 +28,6 @@ func TestCatalogScope_BuiltinsAreBuiltin(t *testing.T) {
 	}
 }
 
-// TestCatalogScope_OnDiskShippedFolderIsShipped pins that on-disk WAVs in any
-// non-Saved folder are tagged Scope == "shipped". This is the bundled-asset
-// scope; future "remote" packs will use a different value.
 func TestCatalogScope_OnDiskShippedFolderIsShipped(t *testing.T) {
 	withDefaultAudio(t)
 	ResetCatalogForTest(nil)
@@ -60,12 +54,7 @@ func TestCatalogScope_OnDiskShippedFolderIsShipped(t *testing.T) {
 	}
 }
 
-// TestCatalogScope_NoSavedCategory pins that the legacy assets/Saved/ folder
-// is filtered out of the catalog scan even when a developer accidentally
-// re-creates it. Once the directory is removed from the repo, the only way
-// for entries to leak in is via a stale local copy — this test guards against
-// that. It also implicitly proves wavCategoryStub no longer maps "saved" to
-// "Saved (WAV)".
+// A stale local assets/Saved/ must never leak into the catalog.
 func TestCatalogScope_NoSavedCategory(t *testing.T) {
 	withDefaultAudio(t)
 	ResetCatalogForTest(nil)

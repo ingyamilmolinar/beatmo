@@ -7,10 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
-// Regression: released timeline commits should not suppress predictor values
-// for future windows after a path change. In an earlier bug, steps inherited
-// false from the previous window even though the released commit and predictor
-// both said true.
+// A released commit never suppresses the predictor for future windows after a path change.
 func TestBuildRowWindowReleasedCommitUsesPredictor(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)

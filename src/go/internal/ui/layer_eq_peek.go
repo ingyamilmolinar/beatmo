@@ -2,12 +2,7 @@ package ui
 
 import "github.com/hajimehoshi/ebiten/v2"
 
-// EQPeekLayer paints the mobile EQ peek sparkline strip just above the
-// bottom action bar. Repaints the strip's surface first so any earlier
-// widget bg painted into this region is replaced — the peek strip is the
-// canonical owner of these pixels.
-//
-// Z = ZEQPeek (60) — above background, below transport.
+// It repaints its surface first: the peek strip owns these pixels.
 type EQPeekLayer struct {
 	dv *DrumView
 }

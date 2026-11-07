@@ -9,10 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestRecordingMIDIEventsHardCapped drives more events than the configured
-// hard cap and asserts that the buffer never exceeds maxMIDIEventsPerSession.
-// Without the cap, a runaway MIDI input (or a bug producing high-rate events)
-// could grow the buffer to OOM during long sessions.
+// A runaway MIDI input could otherwise grow the buffer to OOM.
 func TestRecordingMIDIEventsHardCapped(t *testing.T) {
 	pipe := newTestPipeline(t, []InstrumentMeta{{ID: channel.Of(roster.Kick), Name: "Kick"}})
 	t.Cleanup(func() { pipe.Stop() })
@@ -29,10 +26,7 @@ func TestRecordingMIDIEventsHardCapped(t *testing.T) {
 	}
 }
 
-// TestRecordingMIDIEventsKeepsRecent appends with monotonically increasing
-// Note values and asserts the most recent events survive the drop-oldest
-// policy. The last 100 entries must contain the highest 100 Note values
-// (modulo MIDI's 127 ceiling — we use Velocity instead since it's also int).
+// Velocity carries the sequence, since Note tops out at 127.
 func TestRecordingMIDIEventsKeepsRecent(t *testing.T) {
 	pipe := newTestPipeline(t, []InstrumentMeta{{ID: channel.Of(roster.Kick), Name: "Kick"}})
 	t.Cleanup(func() { pipe.Stop() })

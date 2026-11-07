@@ -1,16 +1,8 @@
 //go:build !test && !js
 
-// Command wavgen produces WAV files for tests and manual use WITHOUT any
-// real/copyrighted audio: a sine tone, deterministic white noise, or a one-shot
-// hit of one of the app's synth instruments. Encoding reuses the app's recording
-// WAV encoder (via internal/wavgen); the synth-hit render reuses the Sampler's
-// "capture from synth" path (audio.RenderInstrumentOneShot).
-//
-// Usage (run from src/go):
-//
-//	../../.tools/go/bin/go run ./cmd/wavgen -mode sine  -freq 440 -dur 1 -out sine.wav
-//	../../.tools/go/bin/go run ./cmd/wavgen -mode noise -seed 7  -dur 0.5 -out noise.wav
-//	../../.tools/go/bin/go run ./cmd/wavgen -mode synth -inst kick -out kick.wav
+// Command wavgen makes test WAVs with no real audio: a sine, seeded white noise, or a one-shot synth hit (the Sampler's
+// capture-from-synth render), through the app's own WAV encoder.
+// go run ./cmd/wavgen -mode sine|noise|synth [-freq 440] [-seed 7] [-inst kick] -dur 1 -out x.wav
 package main
 
 import (

@@ -7,8 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// twoDecayingModes: 440 Hz decaying at -20 dB/s and 1215 Hz (2.76x, a free
-// bar's second mode) decaying at -60 dB/s. Both start at equal amplitude.
+// 1215 Hz is 2.76×, a free bar's second mode; equal starting amplitudes.
 func twoDecayingModes(sr int, dur float64) wave.Wave {
 	n := int(dur * float64(sr))
 	s := make([]float64, n)
@@ -45,14 +44,8 @@ func TestAnalyzeModes_FindsTwoModesWithRatioAndDecay(t *testing.T) {
 	}
 }
 
-// fundamentalPlusDriftingPartial: a stable 440 Hz fundamental plus a 4 kHz
-// partial with slow +/-0.3% pitch drift at a 1 Hz rate (sinusoidal FM,
-// phase-integrated sample-by-sample so the modulation is clean rather than a
-// discontinuous approximation). This is the regime that motivates modes.go
-// in the first place — a bell/bar's upper partials drift slightly rather
-// than holding an exact bin-locked frequency — and the frame-link tolerance
-// must be loose enough to follow that drift as ONE mode without fragmenting
-// it into several sub-modeMinFrames tracks that then vanish from Strong().
+// A 4 kHz partial drifting ±0.3 % at 1 Hz (phase-integrated FM), as a bell's upper partials do: the link tolerance
+// must follow it as ONE mode rather than fragment it.
 func fundamentalPlusDriftingPartial(sr int, dur float64) wave.Wave {
 	n := int(dur * float64(sr))
 	s := make([]float64, n)
@@ -114,21 +107,8 @@ func TestModes_MemoizedOnce(t *testing.T) {
 	}
 }
 
-// TestBuildMode_DecayFitSkipsGapFrames is the regression for the interaction
-// between modeMaxMissFrames (the tracker's one-frame gap tolerance) and the
-// decay fit.
-//
-// A beating partial's composite peak dips below the peak-picker's gate at
-// each amplitude null, so its Track carries an isolated NaN mid-decay. The
-// fit used to `break` at that NaN, discarding every frame after it — exactly
-// the frames the tracker had gone to the trouble of keeping. The fitted rate
-// therefore came from the handful of frames before the first null.
-//
-// The construction below makes the two answers unmistakably different: the
-// frames BEFORE the gap fall at -20 dB/s, the frames AFTER it at -100 dB/s.
-// A fit that stops at the gap reads about -20; a fit that uses the whole
-// track reads far steeper. Nothing is interpolated — the gap frame
-// contributes no sample at all.
+// A beating partial carries an isolated NaN mid-decay; frames before it fall at -20 dB/s and after at -100 dB/s, so a
+// fit stopping at the gap reads about -20 and one using the whole track far steeper.
 func TestBuildMode_DecayFitSkipsGapFrames(t *testing.T) {
 	const (
 		hop       = 0.01
@@ -167,21 +147,17 @@ func TestBuildMode_DecayFitSkipsGapFrames(t *testing.T) {
 		t.Errorf("decay fit = %.1f dB/s — it stopped at the gap instead of skipping it "+
 			"(frames after the gap fall at -100 dB/s)", m.DecayDBPerSec)
 	}
-	// And it really used the post-gap frames: with all 11 measured frames the
-	// OLS slope over this piecewise track is steeper than -60 dB/s.
+	// With all 11 measured frames the slope is steeper than -60 dB/s.
 	if m.DecayDBPerSec < -110 {
 		t.Errorf("decay fit = %.1f dB/s — implausibly steep; the fit should span the whole track", m.DecayDBPerSec)
 	}
 }
 
-// TestBuildMode_DecayFitStillStopsAtTheFloor: skipping gaps must not have
-// removed the -40 dB floor, which is the fit's real ending — below it the
-// level track is reading the noise floor, not a decay.
+// Below the -40 dB floor the track reads noise, not decay.
 func TestBuildMode_DecayFitStillStopsAtTheFloor(t *testing.T) {
 	const hop = 0.01
 	tr := &modeTrack{}
-	// Four frames of clean decay, then a plunge far below the floor followed
-	// by frames that would flatten the slope if they were fitted.
+	// Clean decay, then a plunge whose frames would flatten the slope if fitted.
 	levels := []float64{-10, -20, -30, -39, -95, -95, -95, -95}
 	for f, l := range levels {
 		tr.frames = append(tr.frames, f)
@@ -192,13 +168,11 @@ func TestBuildMode_DecayFitStillStopsAtTheFloor(t *testing.T) {
 	if !m.DecayOK {
 		t.Fatal("decay fit did not run")
 	}
-	// Frames 0..3 alone slope at about -970 dB/s. Including the -95 frames
-	// would drag it toward -1400 and beyond.
+	// Frames 0..3 alone slope at about -970 dB/s.
 	if m.DecayDBPerSec < -1100 {
 		t.Errorf("decay fit = %.1f dB/s — the below-floor frames were fitted", m.DecayDBPerSec)
 	}
 }
 
-// dbToAmpForTest inverts ampToDBFloor for the levels these tests use (all
-// comfortably above the floor).
+// All levels sit above the floor.
 func dbToAmpForTest(db float64) float64 { return math.Pow(10, db/20) }

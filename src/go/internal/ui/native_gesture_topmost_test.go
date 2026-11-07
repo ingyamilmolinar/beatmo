@@ -6,9 +6,7 @@ import (
 	"testing"
 )
 
-// A press over the open overflow menu resolves to the menu's overlay owner, and
-// a press over a base-zone control resolves to that zone — proving TopmostOwnerAt
-// mirrors real dispatch precedence (blocking portal wins).
+// TopmostOwnerAt mirrors dispatch precedence: a blocking portal wins.
 func TestTopmostOwnerAt_BlockingPortalOwnsPoint(t *testing.T) {
 	assertDefaultParityState(t)
 	restore := SetRuntimeProfileForTest(browserRuntimeProfile())

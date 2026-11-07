@@ -7,8 +7,7 @@ import (
 	"testing"
 )
 
-// TestRowVolIconOnPressReturnsInputCaptured verifies that OnPress returns
-// InputCaptured (not InputConsumed) so the hit tree routes drag/release events.
+// InputCaptured, so the tree routes the drag and release.
 func TestRowVolIconOnPressReturnsInputCaptured(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -19,8 +18,7 @@ func TestRowVolIconOnPressReturnsInputCaptured(t *testing.T) {
 	}
 }
 
-// TestRowVolIconDragForwardsToPopup verifies that dragging after press
-// forwards to the SliderPopup, enabling tap-and-slide in one gesture.
+// Tap and slide in one gesture.
 func TestRowVolIconDragForwardsToPopup(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -55,8 +53,7 @@ func TestRowVolIconDragForwardsToPopup(t *testing.T) {
 	}
 }
 
-// TestRowVolIconDragOutsidePopupNoValueJump verifies that dragging while
-// outside the popup rect does not change the value (no jump on open).
+// No value jump on open.
 func TestRowVolIconDragOutsidePopupNoValueJump(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -86,8 +83,6 @@ func TestRowVolIconDragOutsidePopupNoValueJump(t *testing.T) {
 	}
 }
 
-// TestRowVolIconReleaseForwardsToPopup verifies that releasing after a drag
-// stops the popup's drag state.
 func TestRowVolIconReleaseForwardsToPopup(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -121,8 +116,6 @@ func TestRowVolIconReleaseForwardsToPopup(t *testing.T) {
 	}
 }
 
-// TestTransportVolIconDragForwardsToPopup verifies the master volume icon
-// adapter forwards drag events to its popup.
 func TestTransportVolIconDragForwardsToPopup(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -154,8 +147,6 @@ func TestTransportVolIconDragForwardsToPopup(t *testing.T) {
 	}
 }
 
-// TestTransportVolIconReleaseStopsDrag verifies that releasing after a drag
-// stops the master volume popup's drag state.
 func TestTransportVolIconReleaseStopsDrag(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -187,8 +178,6 @@ func TestTransportVolIconReleaseStopsDrag(t *testing.T) {
 	}
 }
 
-// TestVolIconDragNilPopupNoPanic verifies that both adapters with nil popup
-// do not panic on OnDrag/OnRelease.
 func TestVolIconDragNilPopupNoPanic(t *testing.T) {
 	assertDefaultParityState(t)
 

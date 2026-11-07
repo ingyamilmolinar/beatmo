@@ -7,11 +7,7 @@ import (
 	"testing"
 )
 
-// TestStickyBarTabsNeverOverlapChannel guards the desktop audio sticky-bar
-// overlap: the tab pills are placed right-to-left and used to march straight
-// over the left-anchored channel pill at narrow widths, producing garbled
-// overlapping text ("WaMaSspectrum"). No visible tab pill may overlap the
-// channel pill at any width.
+// Placed right to left, the tabs once marched over the channel pill at narrow widths.
 func TestStickyBarTabsNeverOverlapChannel(t *testing.T) {
 	assertDefaultParityState(t)
 	UpdateProfile()

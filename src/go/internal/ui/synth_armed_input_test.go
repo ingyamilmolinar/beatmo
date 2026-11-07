@@ -4,14 +4,10 @@ package ui
 
 import "testing"
 
-// synth_armed_input_test.go — Task 9. Pins the armed-model wiring of
-// synthControlHitAdapter: not-armed input scrolls the section grid / arms the
-// control on a stationary tap; armed input spins the hovered barrel lane and
-// a second stationary tap locks it back out.
+// Unarmed, a wheel scrolls the grid and a still tap arms; armed, input spins the hovered lane and a second still
+// tap locks it.
 
-// TestNotArmedWheelScrollsRow: a wheel notch over a control that is NOT armed
-// must scroll the section's ControlGrid and must NOT change the control's
-// value (the "desktop behavior change" — wheel used to nudge the value).
+// Scrolls the section's grid and leaves the value alone.
 func TestNotArmedWheelScrollsRow(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	dv := g.drum
@@ -47,10 +43,7 @@ func TestNotArmedWheelScrollsRow(t *testing.T) {
 	}
 }
 
-// TestTapArmsThenWheelEditsValue: a stationary press+release arms the
-// control (was: opens the value-wheel popup); a wheel over the armed
-// editor's value lane then changes the value; a second stationary tap locks
-// the control back out.
+// A still tap arms, a wheel over the value lane edits, a second still tap locks.
 func TestTapArmsThenWheelEditsValue(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	dv := g.drum
@@ -97,12 +90,8 @@ func TestTapArmsThenWheelEditsValue(t *testing.T) {
 	}
 }
 
-// TestSynthControlArmedSubDetentDragStaysArmed: Finding 1 regression. An
-// armed drag that travels PAST the tap slop (tapMaxMovePx=10) but hasn't
-// crossed a whole barrel detent (SynthWheelRowH=22-32) must NOT lock the
-// control on release — only cumulative pointer displacement decides "moved",
-// not whether ArmedControlEditor.DragTo/BarrelWheel reported a detent
-// crossing.
+// A drag past the tap slop (10 px) but short of a whole detent (22-32 px) does not lock on release: pointer
+// displacement decides "moved", not a detent crossing.
 func TestSynthControlArmedSubDetentDragStaysArmed(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	dv := g.drum
@@ -126,8 +115,7 @@ func TestSynthControlArmedSubDetentDragStaysArmed(t *testing.T) {
 		t.Fatalf("stationary tap should arm the control (idx=%d armed=%v got idx=%d)", idx, armed, aidx)
 	}
 
-	// Sanity: the sub-detent drag distance must clear tapMaxMovePx but stay
-	// under the smallest SynthWheelRowH across densities (22px).
+	// Past tapMaxMovePx, under the smallest SynthWheelRowH (22 px).
 	const dragDelta = 14
 	if dragDelta <= tapMaxMovePx {
 		t.Fatalf("dragDelta=%d must exceed tapMaxMovePx=%d", dragDelta, tapMaxMovePx)

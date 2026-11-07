@@ -6,18 +6,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// bundle.go — every artifact derived from one wave, computed at most once.
-//
-// Descriptors are cheap lookups over a Bundle rather than self-contained
-// analyzers, because the battery shares expensive artifacts: one STFT feeds
-// the frame tracks, the modulation spectra and several spectral descriptors;
-// the envelope segmentation feeds every temporal descriptor. Recomputing
-// those per descriptor would make a 150-row report quadratically slower than
-// it needs to be, and the cepstral HNR path alone is ~1.8M operations.
-//
-// Go's call graph is the dependency graph here, and memoization makes each
-// artifact once-only, so no separate dependency-resolution engine is needed.
-// Adding a new analysis is one accessor.
+// Every artefact derived from one wave, computed at most once: one STFT feeds the frame tracks, modulation spectra and
+// spectral descriptors, one envelope segmentation every temporal one, so per-descriptor recomputation would make a
+// report quadratically slower. Go's call graph is the dependency graph; a new analysis is one accessor.
 type Bundle struct {
 	w     wave.Wave
 	label string
@@ -46,8 +37,7 @@ type Bundle struct {
 	modesOnce sync.Once
 	modes     *ModeSet
 
-	// Test-only instrumentation proving the memoization actually holds.
-	// Written under the same guards as the artifacts they count.
+	// Written under the same guards as the artefacts they count.
 	fingerprintCalls int
 	segmentCalls     int
 	stftCalls        int
@@ -55,21 +45,15 @@ type Bundle struct {
 
 type stftKey struct{ size, hop int }
 
-// STFTFrames is a magnitude spectrogram. Frames[i] is one frame's linear
-// magnitude spectrum with BinHz between bins, and HopSec elapses between
-// consecutive frames.
+// Frames[i] is one frame's linear magnitude spectrum, BinHz apart, HopSec between frames.
 type STFTFrames struct {
 	Frames [][]float64
 	BinHz  float64
 	HopSec float64
 }
 
-// NewBundle prepares an analysis bundle over w. Nothing is computed until an
-// accessor is called.
-//
-// A Bundle is intended for single-goroutine use. The sync guards make the
-// memoization safe if it is shared, but the test counters are not guarded
-// beyond that and no accessor is designed for contention.
+// Nothing is computed until an accessor is called. Meant for one goroutine: the guards make sharing safe, but the
+// test counters are not guarded and nothing is built for contention.
 func NewBundle(w wave.Wave, label string) *Bundle {
 	return &Bundle{w: w, label: label, stfts: make(map[stftKey]*STFTFrames)}
 }
@@ -80,8 +64,7 @@ func (b *Bundle) Wave() wave.Wave { return b.w }
 // Label returns the bundle's label (a reference id or instrument id).
 func (b *Bundle) Label() string { return b.label }
 
-// SampleRate returns the source sample rate, defaulting to 44100 when the
-// wave carries none — matching every other analyzer in this package.
+// 44100 when the wave carries none, like every analyzer here.
 func (b *Bundle) SampleRate() int {
 	if b.w.SampleRate <= 0 {
 		return 44100
@@ -107,13 +90,8 @@ func (b *Bundle) Segments() EnvelopeSegments {
 	return b.seg
 }
 
-// STFT returns the magnitude spectrogram at the given frame size and hop,
-// computed once per distinct (size, hop) pair.
-//
-// A wave shorter than one full frame yields zero frames rather than a
-// zero-padded pseudo-frame: padding a 2-sample clip out to 2048 would report
-// a spectrum that is almost entirely window taper, which is a fabricated
-// measurement rather than a short one.
+// Once per (size, hop). A wave shorter than one frame yields no frames: padding would report a spectrum that is
+// almost all window taper, a fabricated measurement.
 func (b *Bundle) STFT(size, hop int) *STFTFrames {
 	if size < 2 {
 		size = 2048
@@ -150,12 +128,8 @@ func (b *Bundle) Snare() SnareMetrics {
 	return b.snare
 }
 
-// Piano returns the struck-string analysis, computed once.
-//
-// AnalyzePiano needs a fundamental, which it takes from the already-memoized
-// Fingerprint rather than re-detecting: running two independent F0 detections
-// over one wave is how a report ends up quoting two different pitches for the
-// same signal.
+// Takes the fundamental from the memoised Fingerprint: two independent F0 detections let a report quote two pitches
+// for one signal.
 func (b *Bundle) Piano() PianoMetrics {
 	b.pianoOnce.Do(func() { b.piano = AnalyzePiano(b.w, b.Fingerprint().F0Hz) })
 	return b.piano

@@ -164,9 +164,7 @@ func TestInstrumentMenuComponent_OnSelectCallback(t *testing.T) {
 		t.Error("expected input to be consumed on button release")
 	}
 
-	// Audition contract: menu must STAY open after selection so the user can
-	// rapidly try multiple instruments. Dismissal is explicit (X / Esc /
-	// click-outside / row switch). See inst_menu_audition_test.go.
+	// The menu stays open after a pick so the user can audition quickly; dismissal is explicit.
 	if !comp.IsOpen() {
 		t.Error("expected menu to stay open after selection (audition contract)")
 	}
@@ -368,8 +366,6 @@ func TestInstrumentMenuComponent_EmptyInstruments(t *testing.T) {
 	})
 	comp.Open()
 
-	// Should handle empty instruments gracefully
-	// In instruments mode, should show "No matches" placeholder
 	if comp.Mode() != InstMenuModeInstruments {
 		t.Errorf("expected instruments mode, got %s", comp.Mode())
 	}
@@ -413,8 +409,7 @@ func TestInstrumentMenuComponent_AnchorRectConsumed(t *testing.T) {
 	clearClickSuppressionInst(t)
 	comp := NewInstrumentMenuComponent()
 
-	// Use a layout where the anchor rect does NOT overlap the scroll view
-	// (desktop-like: menu opens downward, anchor is above the menu).
+	// The anchor does not overlap the scroll view (desktop: the menu opens downward).
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect: image.Rect(10, 50, 100, 74),
 		VertBounds: image.Rect(0, 0, 300, 500),
@@ -443,11 +438,8 @@ func TestInstrumentMenuComponent_AnchorRectConsumed(t *testing.T) {
 		t.Skipf("anchor overlaps fullRect in this layout — test not applicable")
 	}
 
-	// Press at the anchor rect. The "click outside" check at line 771
-	// explicitly excludes AnchorRect. Without a consuming guard, this would
-	// return InputIgnored and fall through to the row label.
-	// With the suppression guard: when suppression is active, it is consumed.
-	// Without suppression: it returns InputIgnored (allowing toggle on deliberate click).
+	// Click-outside excludes the anchor; with suppression active the press is consumed, otherwise ignored so a
+	// deliberate click can toggle.
 	result := comp.HandleInput(ax, ay, true)
 	// Without suppression, anchor rect press should be InputIgnored (allows toggle).
 	if result != InputIgnored {
@@ -479,13 +471,10 @@ func TestInstrumentMenuComponent_SuppressedPressConsumed(t *testing.T) {
 		RowHeight: 24,
 	})
 	comp.Open()
-	// Suppress is now owned by the tree, not the global flag.
-	// Simulate the tree's suppress being active (as it would be after Open).
+	// Simulates the tree's suppress after Open.
 	suppressClicksUntilRelease = true
 
-	// Press at a point outside both fullRect and anchorRect.
-	// With suppression active, this must still be consumed (not ignored)
-	// to prevent fall-through to other handlers during geometry transitions.
+	// Consumed during suppression, so nothing falls through during geometry transitions.
 	result := comp.HandleInput(500, 500, true)
 	if result != InputConsumed {
 		t.Errorf("expected InputConsumed for suppressed press outside menu, got %v", result)
@@ -497,8 +486,6 @@ func TestInstrumentMenuComponent_SuppressedPressConsumed(t *testing.T) {
 
 // ---------- Search box keyboard input tests ----------
 
-// newInstMenuInInstrumentsMode creates an InstrumentMenuComponent already open
-// in instruments mode with a search box, ready for search tests.
 func newInstMenuInInstrumentsMode(t *testing.T) *InstrumentMenuComponent {
 	t.Helper()
 	clearClickSuppressionInst(t)

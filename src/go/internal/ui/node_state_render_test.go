@@ -12,14 +12,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// nodeColorSignature collects the sorted set of distinct filled-rect colors
-// whose rects contain (or closely surround) the node center. The signature is
-// used to prove that Regular / Muted / Silent / Invisible nodes render
-// distinctly — pixel-diff verified via the drawRect interceptor.
+// The sorted distinct fill colours around the node centre, so the four node states can be told apart.
 func nodeColorSignature(rects []drawnRect, cx, cy int) string {
 	seen := map[color.RGBA]bool{}
-	// Sample the node center plus a small neighborhood so border / slash /
-	// dashed-outline pixels (a few px off-center) are captured too.
+	// A small neighbourhood catches the border, slash and dashed outline a few px off-centre.
 	for dx := -6; dx <= 6; dx += 2 {
 		for dy := -6; dy <= 6; dy += 2 {
 			pt := image.Pt(cx+dx, cy+dy)
@@ -42,10 +38,7 @@ func nodeColorSignature(rects []drawnRect, cx, cy int) string {
 	return sig
 }
 
-// TestNodeStateRenderingDistinct verifies that a node in each of the four
-// states (Regular, Muted, Silent, Invisible) renders with a distinct set of
-// drawn colors at its position. Uses RENDER_SAFE so node bodies + the
-// state overlays both flow through drawRect and are interceptable.
+// RENDER_SAFE routes the bodies and state overlays through drawRect, where they are interceptable.
 func TestNodeStateRenderingDistinct(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -112,9 +105,7 @@ func TestNodeStateRenderingDistinct(t *testing.T) {
 	}
 }
 
-// TestSelectedNodeHasHalo verifies the selected node gains a soft-glow halo
-// (WithAlpha(primary, AlphaSubtle)) that an unselected node lacks. Drawn via
-// drawRect in the RENDER_SAFE selection path.
+// WithAlpha(primary, AlphaSubtle), drawn via drawRect on the RENDER_SAFE path.
 func TestSelectedNodeHasHalo(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)

@@ -5,9 +5,8 @@ import (
 	"sort"
 )
 
-// NoiseBand is the residual's envelope in one third-octave band (spec §2d):
-// level, attack, and a two-rate decay A·(mix·e^{−fast·t} + (1−mix)·e^{−tail·t})
-// after the peak. A MEASUREMENT of the residual, never the residual itself.
+// Level, attack, and a two-rate decay A·(mix·e^{−fast·t} + (1−mix)·e^{−tail·t}) after the peak: a MEASUREMENT of the
+// residual, never the residual itself.
 type NoiseBand struct {
 	CenterHz  float64 `json:"center_hz"`
 	Q         float64 `json:"q"`
@@ -31,10 +30,7 @@ const (
 	residualHopSec = 0.004
 )
 
-// MeasureResidual subtracts the modal resynthesis from the reference over
-// [onset, window end) and measures the remainder per third-octave band
-// (centres 31.5·2^(k/3) Hz below 0.45·rate). clickSec is the contact length
-// the click level is measured over.
+// Third-octave centres 31.5·2^(k/3) Hz below 0.45·rate; clickSec is the contact length the click level is read over.
 func MeasureResidual(p Prepared, modes []Mode, clickSec float64) Residual {
 	ref := p.Samples[p.Onset:p.WindowEnd]
 	syn := Synthesize(modes, p.Rate, len(ref))
@@ -71,8 +67,7 @@ func measureBand(x []float64, rate int, fc float64) NoiseBand {
 	tail := append([]float64(nil), env[len(env)*4/5:]...)
 	sort.Float64s(tail)
 	floor := tail[len(tail)/2]
-	// Peak on a 3-frame smoothed envelope: band-limited noise fluctuates
-	// several dB frame to frame, and the raw maximum lands on a fluctuation.
+	// Band-limited noise fluctuates several dB per frame, so the raw maximum lands on a fluctuation.
 	ip := 0
 	sm := func(i int) float64 {
 		lo, hi := max(0, i-1), min(len(env)-1, i+1)
@@ -91,8 +86,7 @@ func measureBand(x []float64, rate int, fc float64) NoiseBand {
 	if peak <= 2*floor || peak == 0 {
 		return nb
 	}
-	// The attack ends at the first frame within 3 dB of the peak — a later
-	// jitter maximum must not swallow the fast decay that starts at once.
+	// The first frame within 3 dB of the peak: a later jitter maximum must not swallow the fast decay.
 	for i := 0; i < ip; i++ {
 		if sm(i) >= peak/math.Sqrt2 {
 			ip = i
@@ -109,9 +103,7 @@ func measureBand(x []float64, rate int, fc float64) NoiseBand {
 	nb.Active = true
 	nb.AttackSec = float64(ip) * dt
 	if last-ip < 6 {
-		// A burst shorter than ~24 ms: no two-rate shape to fit, but it DOES
-		// end — a rate of 0 would render as noise that never decays. Decay to
-		// the floor over the burst.
+		// Too short for a two-rate fit, but it DOES end: a rate of 0 would never decay.
 		nb.LevelDB = dB(peak)
 		nb.TailRate = math.Log(peak/math.Max(floor, peak*1e-3)) / (float64(last-ip+1) * residualHopSec)
 		nb.FastRate = nb.TailRate
@@ -133,13 +125,8 @@ func measureBand(x []float64, rate int, fc float64) NoiseBand {
 	return nb
 }
 
-// fitTwoRate fits env[k] ≈ a1·e^{−r1·t} + a2·e^{−r2·t} (t = k·dt, r2 given)
-// minimising the RELATIVE error — the envelope jitter of band-limited noise is
-// multiplicative. The weights come from the MODEL (iteratively reweighted
-// least squares), not from the data: weighting by 1/env over-trusts the frames
-// that happened to dip low and biased the fast rate upward. A log grid over
-// r1 ∈ (r2, 2000] with a non-negative linear solve for (a1, a2) at each r1; a
-// pure tail (a1 = 0) competes too.
+// RELATIVE error, since band-noise jitter is multiplicative; IRLS weights come from the MODEL, because 1/env over-trusts
+// frames that dipped low and biases the fast rate up. A pure tail (a1 = 0) competes too.
 func fitTwoRate(env []float64, dt, r2 float64) (a1, a2, r1 float64) {
 	n := len(env)
 	e2s := make([]float64, n)
@@ -206,11 +193,8 @@ func fitTwoRate(env []float64, dt, r2 float64) (a1, a2, r1 float64) {
 		}
 		return c, x1, x2
 	}
-	// The model's value at t = 0 must stay near the measured onset level: the
-	// relative cost of ONE frame is bounded by 1 however far the model
-	// overshoots, so an instantly decaying spike hundreds of times the peak
-	// otherwise wins on a non-exponential envelope (a WAV-clone round trip
-	// measured +38 dB "noise" bands in a document with no noise at all).
+	// The value at t = 0 must stay near the measured onset: one frame's relative cost is bounded by 1 however far the model
+	// overshoots, so an instant spike far above the peak would otherwise win.
 	peak0 := 0.0
 	for _, v := range env[:min(3, n)] {
 		peak0 = math.Max(peak0, v)

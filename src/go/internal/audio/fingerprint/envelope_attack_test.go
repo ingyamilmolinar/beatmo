@@ -7,35 +7,11 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// envelope_attack_test.go — the attack must be the ONSET RISE, not the time to
-// whichever sample happens to be loudest.
-//
-// THE BUG THIS PINS
-// -----------------
-// AttackSec was onset -> argmax(env), the GLOBAL envelope maximum. That is
-// correct only for a signal whose loudest moment IS its initial peak. Any
-// sustained tone carrying amplitude modulation -- tremolo, a bow swell, two
-// partials beating -- has its global maximum somewhere in the middle, and the
-// "attack" then measures the swell.
-//
-// Measured on the shipped instruments: the synth cello reported a 1.62 s attack
-// and the synth violin 1.70 s, against references at 0.09-0.18 s, producing a
-// headline "18.6x too long" that was pure artifact. Both signals actually rise
-// within ~200 ms and then dip and swell back to a later, higher peak. The
-// diagnostic's single most-fired axis (37 of 57 instruments) was partly
-// measuring this.
+// The attack is the ONSET RISE, not the time to the loudest sample: a tone with tremolo, a bow swell or beating
+// peaks mid-note, and onset → global maximum then measures the swell (synth strings read ~1.6 s against 0.1–0.2 s).
 
-// attackSwellProbe reproduces the shape measured on the shipped cello: a fast
-// onset to a local peak, a dip to well below it, then a slow swell to a LATER,
-// HIGHER global maximum.
-//
-// The per-100ms mean-square of the real synth cello was
-//
-//	0.409 0.519 0.460 0.300 0.263 0.163 0.107 0.106 0.130 0.138 0.232 ... 0.636
-//
-// i.e. it starts strong, troughs at ~600 ms, and crests at ~1.6 s. A probe that
-// merely rises monotonically to a late peak does NOT exercise the bug -- there
-// is no dip to find -- so the envelope here is modelled on the measurement.
+// A fast onset to a local peak, a dip well below it, then a slow swell to a LATER, HIGHER maximum, modelled on the
+// measured synth cello: a probe that merely rises to a late peak has no dip and never exercises the rule.
 func attackSwellProbe(sr int, f0, sec float64) wave.Wave {
 	n := int(float64(sr) * sec)
 	s := make([]float64, n)
@@ -55,8 +31,7 @@ func attackSwellProbe(sr int, f0, sec float64) wave.Wave {
 	return wave.Wave{Samples: s, SampleRate: sr}
 }
 
-// attackHitProbe peaks immediately and decays -- the case where attack-to-global
-// -peak was always right, and must stay right.
+// The case the global-peak rule always got right, and must keep right.
 func attackHitProbe(sr int, f0, sec float64) wave.Wave {
 	n := int(float64(sr) * sec)
 	s := make([]float64, n)
@@ -73,11 +48,8 @@ func attackHitProbe(sr int, f0, sec float64) wave.Wave {
 	return wave.Wave{Samples: s, SampleRate: sr}
 }
 
-// attackPlateauProbe rises in 5 ms to a plateau that ripples ±0.4 dB (a bow,
-// vibrato) and drifts up a little, so its LOUDEST crest is near the end. The
-// shape is the shipped double bass at Fade-in 0: within 1.3 dB of full level
-// from the first 10 ms, crests 0.1 dB apart — at 48 kHz the 180 ms crest won
-// by 0.1 dB and the attack read 0.18 s, at 44.1 kHz the 80 ms one did.
+// A 5 ms rise to a plateau rippling ±0.4 dB whose loudest crest is near the end: which crest wins depended on the
+// sample rate.
 func attackPlateauProbe(sr int, f0, sec float64) wave.Wave {
 	n := int(float64(sr) * sec)
 	s := make([]float64, n)
@@ -92,10 +64,8 @@ func attackPlateauProbe(sr int, f0, sec float64) wave.Wave {
 	return wave.Wave{Samples: s, SampleRate: sr}
 }
 
-// TestAttackSec_EndsWhereARipplingPlateauBegins: no dip ever reaches 12 %, so
-// the rule used to fall back to the GLOBAL peak — whichever ripple crest
-// happens to be loudest, anywhere in the note. Once the rise is within that
-// tolerance of the top and stops rising for attackRiseMinSec, it has ended.
+// No dip reaches 12 %, so the rise ends once it is within that tolerance of the top and stops rising for
+// attackRiseMinSec, not at whichever crest is loudest.
 func TestAttackSec_EndsWhereARipplingPlateauBegins(t *testing.T) {
 	for _, sr := range []int{44100, 48000} {
 		seg := AnalyzeEnvelopeSegments(attackPlateauProbe(sr, 110, 2.0))
@@ -114,8 +84,7 @@ func TestAttackSec_IgnoresALaterLouderSwell(t *testing.T) {
 	if seg.Silent {
 		t.Fatal("probe must not be silent")
 	}
-	// The onset rise is 50 ms. Allow generous slack for block-RMS resolution,
-	// but nothing close to the ~1.6 s the global-peak rule produced.
+	// Generous slack for block-RMS resolution, nothing near the global-peak reading.
 	if seg.AttackSec > 0.30 {
 		t.Errorf("AttackSec = %.3fs for a 50 ms onset followed by a slow swell -- "+
 			"the attack is still being measured to the global peak (PeakSec=%.3fs)",
@@ -138,9 +107,7 @@ func TestAttackSec_UnchangedForAPercussiveHit(t *testing.T) {
 	}
 }
 
-// AttackPeakSec is the local peak the attack rise terminates at. It is distinct
-// from PeakSec (the global maximum) precisely when a later swell exists, and
-// that gap is itself worth reporting.
+// Distinct from PeakSec exactly when a later swell exists, and that gap is worth reporting.
 func TestAttackPeakSec_SeparatesOnsetPeakFromGlobalPeak(t *testing.T) {
 	mod := AnalyzeEnvelopeSegments(attackSwellProbe(44100, 220, 2.0))
 	if mod.AttackPeakSec >= mod.PeakSec {

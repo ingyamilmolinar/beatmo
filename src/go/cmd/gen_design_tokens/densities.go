@@ -1,16 +1,7 @@
 package main
 
-// densities.go — Phase 0 (audio-panel design-system compliance) generator:
-// parse the `densities:` block of DESIGN.md and emit
-// `design_density.gen.go` with one `densityValues` struct + one
-// genXxxDensity variable per density (compact / comfortable / spacious).
-//
-// Mechanically identical to profiles.go but populates a parallel,
-// orthogonal axis: `profileOverrides:` carries layout-arrangement
-// decisions (panel orientation, hide-on-mobile chrome) while
-// `densities:` carries control-sizing decisions (button heights,
-// touch targets, knob diameters). The generated container is consumed
-// by `internal/ui/density_profile.go`'s `densityValuesFor()` switch.
+// Emits design_density.gen.go from DESIGN.md's densities: block: control SIZING (button heights, touch targets, knob
+// diameters), an axis orthogonal to profileOverrides:'s layout arrangement.
 
 import (
 	"bytes"
@@ -23,10 +14,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// densitySet is the parsed shape: map of density name → field name →
-// integer value. Order is preserved by the generator's emit step
-// (alphabetical by density, alphabetical by field within) for stable
-// diffs.
+// Emitted alphabetically by density, then field, for stable diffs.
 type densitySet map[string]map[string]int
 
 func parseDensities(node *yaml.Node) (densitySet, error) {
@@ -62,9 +50,7 @@ func parseDensities(node *yaml.Node) (densitySet, error) {
 }
 
 func emitDensities(densities densitySet) ([]byte, error) {
-	// Field union across all densities — every density must set every
-	// field for stable struct emission. Missing fields error out so a
-	// silent zero-default can't sneak in via a forgotten copy.
+	// Every density must set every field, so a forgotten copy errors instead of a silent zero.
 	fieldSet := map[string]bool{}
 	for _, d := range densities {
 		for k := range d {

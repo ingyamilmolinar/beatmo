@@ -18,8 +18,7 @@ type RowPaths struct {
 	RowInst   []instrument.ID
 }
 
-// BuildGraph constructs a model.Graph from the parsed template and computes one
-// traversal path per instrument (from that instrument's Origin node).
+// One path per instrument, from its Origin node.
 func BuildGraph(pt ParsedTemplate) (RowPaths, error) {
 	g := model.NewGraph(game_log.New(io.Discard, game_log.LevelError))
 	idMap := make(map[int]model.NodeID, len(pt.Nodes))

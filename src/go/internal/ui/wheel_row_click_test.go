@@ -46,8 +46,7 @@ func tapAt(w *MobileWheelPopup, x, y int) {
 	w.HandleInput(x, y, false)
 }
 
-// barrelRowPoint returns a point centered on barrel row n (positive = rows
-// ABOVE the center selector, which show LARGER values).
+// Positive n = rows ABOVE the centre selector, which show LARGER values.
 func barrelRowPoint(w *MobileWheelPopup, n int) (int, int) {
 	cx := (w.valRect.Min.X + w.valRect.Max.X) / 2
 	cy := (w.valRect.Min.Y + w.valRect.Max.Y) / 2
@@ -56,8 +55,7 @@ func barrelRowPoint(w *MobileWheelPopup, n int) (int, int) {
 
 // --- row click-to-select ----------------------------------------------------
 
-// Clicking a visible barrel row above the center selects that (larger) value:
-// desktop users can click values directly instead of scrolling to them.
+// Desktop users click a value directly instead of scrolling to it.
 func TestWheelBarrelRowClickSelectsLargerValue(t *testing.T) {
 	w, k := openContinuousWheel(t)
 	before := k.Value
@@ -99,8 +97,6 @@ func TestWheelBarrelRowClickSelectsEnumItem(t *testing.T) {
 	}
 }
 
-// A drag that starts on a row must stay a drag: after real movement the
-// release must NOT additionally jump to the pressed row.
 func TestWheelBarrelDragDoesNotRowJumpOnRelease(t *testing.T) {
 	w, k := openContinuousWheel(t)
 	x, y := barrelRowPoint(w, 1)
@@ -118,9 +114,7 @@ func TestWheelBarrelDragDoesNotRowJumpOnRelease(t *testing.T) {
 
 // --- center click accepts + closes -----------------------------------------
 
-// Clicking the center value of a DISCRETE wheel (e.g. FM algorithm) selects
-// the shown value and closes the wheel — same "click the middle to confirm"
-// contract the continuous wheels already expose.
+// Clicking the middle confirms, on discrete wheels as on continuous ones.
 func TestWheelCenterClickAcceptsAndClosesDiscrete(t *testing.T) {
 	w, k, def := openEnumWheel(t, nil)
 	before := enumIndex(k.Value, len(def.Enum))
@@ -153,9 +147,7 @@ func TestWheelCenterClickCommitsDirtyDiscreteOnce(t *testing.T) {
 	}
 }
 
-// Continuous wheels share the centre contract: a click CONFIRMS — accepts
-// (commits once when dirty) and closes. (It used to hand off to a typed numeric
-// editor; typed entry was retired.)
+// A centre click confirms: accept (committing once when dirty) and close.
 func TestWheelCenterClickContinuousConfirms(t *testing.T) {
 	w, _ := openContinuousWheel(t)
 	commits := 0

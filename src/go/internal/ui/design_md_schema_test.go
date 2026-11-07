@@ -1,10 +1,5 @@
-// Code review follow-up (B2): independent JSON Schema validation of
-// DESIGN.md. The generator runs the same check at codegen time; this
-// test runs it from the test binary so a CI run that doesn't shell out
-// to `make gen-design-tokens` still catches schema-level authoring
-// errors. It also verifies the validator's rejection paths — missing
-// required fields, type mismatches, unknown keys, format violations —
-// using mutated copies of DESIGN.md.
+// The generator's schema check, run from the test binary so a run that skips codegen still catches authoring
+// errors, plus its rejection paths on mutated copies.
 
 package ui
 
@@ -21,11 +16,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// TestDesignMDValidatesAgainstSchema asserts the unmodified DESIGN.md
-// front matter passes the schema. This is the same check the generator
-// runs at `make gen-design-tokens` time; running it here catches drift
-// in environments where the codegen step is skipped (read-only CI runs,
-// editor go-test integrations, fresh checkout before `make`).
+// Catches drift where codegen is skipped (read-only CI, editor go test, a fresh checkout).
 func TestDesignMDValidatesAgainstSchema(t *testing.T) {
 	docJSON, schemaURI := loadDesignAndSchema(t)
 	docLoader := gojsonschema.NewBytesLoader(docJSON)
@@ -43,28 +34,15 @@ func TestDesignMDValidatesAgainstSchema(t *testing.T) {
 	}
 }
 
-// schemaRejectionCase parametrises a negative test: a mutator that
-// deliberately corrupts the parsed YAML map, plus the substring we
-// expect to see in at least one validation error description.
-//
-// The "want" substring tracks the gojsonschema error format. Test
-// failure messages include the full error list so the substring can be
-// updated in step with library upgrades.
+// The substring tracks gojsonschema's message format; failures print the full list for upgrades.
 type schemaRejectionCase struct {
 	name   string
 	mutate func(map[string]any)
 	want   string
 }
 
-// TestSchemaRejectsAuthoringErrors covers the four classes of
-// authoring mistake that strict yaml.v3 unmarshal cannot catch on its
-// own: missing required keys, type mismatches, format/pattern
-// violations, and value-range violations. Each case mutates a fresh
-// in-memory copy of DESIGN.md and asserts the schema rejects it.
-//
-// If a future schema change relaxes one of these rules, the test
-// should be updated in the same PR — the rule deletion is then a
-// deliberate, reviewed change rather than an invisible regression.
+// What strict unmarshal cannot catch: missing keys, type mismatches, format/pattern and range violations. Relaxing a
+// rule means updating this in the same change.
 func TestSchemaRejectsAuthoringErrors(t *testing.T) {
 	docMap, schemaURI := loadDesignMapAndSchema(t)
 
@@ -287,10 +265,7 @@ func TestSchemaRejectsAuthoringErrors(t *testing.T) {
 	}
 }
 
-// loadDesignAndSchema reads DESIGN.md, extracts the YAML front matter,
-// converts it to JSON via the same path the generator uses, and returns
-// the JSON bytes plus the file:// URI of the schema. Used by the
-// pass-case test.
+// Converted the way the generator converts it.
 func loadDesignAndSchema(t *testing.T) ([]byte, string) {
 	t.Helper()
 	docMap, uri := loadDesignMapAndSchema(t)
@@ -301,9 +276,7 @@ func loadDesignAndSchema(t *testing.T) ([]byte, string) {
 	return jsonBytes, uri
 }
 
-// loadDesignMapAndSchema returns the parsed YAML front matter as a
-// JSON-friendly map plus the schema's file:// URI. Used by the
-// rejection-case test which mutates the map before re-marshalling.
+// A map the rejection cases mutate before re-marshalling.
 func loadDesignMapAndSchema(t *testing.T) (map[string]any, string) {
 	t.Helper()
 	designPath := findDesignMD(t)
@@ -326,11 +299,7 @@ func loadDesignMapAndSchema(t *testing.T) (map[string]any, string) {
 	return doc, "file://" + schemaPath
 }
 
-// normalizeForJSONTest mirrors the generator's normalizeForJSON
-// helper. Duplicated here rather than imported because the generator
-// lives in package main; pulling it into a shared library would
-// expand the scope of this PR. Both functions must stay equivalent —
-// if either changes, update the other.
+// The generator is package main, so this mirrors its normalizeForJSON; keep the two equivalent.
 func normalizeForJSONTest(in any) any {
 	switch v := in.(type) {
 	case map[any]any:
@@ -355,10 +324,7 @@ func normalizeForJSONTest(in any) any {
 	}
 }
 
-// findSchemaJSON walks up from designPath looking for the schema file
-// the generator uses. Lives here in test code so that breaking the
-// schema location (moving the file or renaming it) is a test failure
-// rather than an opaque generator panic.
+// A moved schema fails here rather than as an opaque generator panic.
 func findSchemaJSON(t *testing.T, designPath string) string {
 	t.Helper()
 	dir := filepath.Dir(designPath)
@@ -377,10 +343,7 @@ func findSchemaJSON(t *testing.T, designPath string) string {
 	return ""
 }
 
-// deepCopyMap clones a map[string]any tree by JSON round-trip. This
-// is acceptable for the schema-test fixture which is small and only
-// runs in tests; production code paths use the generator's typed
-// decode instead.
+// A JSON round trip, fine for a small test fixture.
 func deepCopyMap(m map[string]any) map[string]any {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)

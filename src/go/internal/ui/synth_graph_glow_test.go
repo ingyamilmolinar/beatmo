@@ -14,8 +14,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/theme"
 )
 
-// The trigger glow (spec 2026-10-24 §4.7) shines for as long as the note
-// sounds — its own envelope — and never hides the resting picture.
+// The glow lasts as long as the note's own envelope and never hides the resting picture.
 
 func TestGlowFollowsTheNoteEnvelope(t *testing.T) {
 	const sr = 48000
@@ -81,9 +80,7 @@ func TestTriggerFromAMutedRowDoesNotGlow(t *testing.T) {
 	}
 }
 
-// A glowing frame costs one blit: the glow is baked once per picture and
-// theme, never re-tessellated each frame (with a beat playing the glow is on
-// almost every frame).
+// Baked once per picture and theme, never re-tessellated: with a beat playing the glow is on almost every frame.
 func TestGlowIsBakedOncePerPicture(t *testing.T) {
 	g := newDialGame(t)
 	pipe, _ := manualGraphPipe(t, g)

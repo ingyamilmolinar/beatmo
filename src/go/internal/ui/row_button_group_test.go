@@ -7,16 +7,12 @@ import (
 	"testing"
 )
 
-// makeTestButton creates a Button with the given rect and a callback that
-// increments *count when clicked.
 func makeTestButton(label string, r image.Rectangle, count *int) *Button {
 	b := NewButton(label, ButtonStyle{}, func() { *count++ })
 	b.SetRect(r)
 	return b
 }
 
-// TestRowButtonGroup_AllNil verifies HandleInput returns false when every
-// button in the group is nil.
 func TestRowButtonGroup_AllNil(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -28,8 +24,6 @@ func TestRowButtonGroup_AllNil(t *testing.T) {
 	}
 }
 
-// TestRowButtonGroup_SingleMatch verifies HandleInput returns true when a
-// click lands inside a single non-nil button, and fires its callback.
 func TestRowButtonGroup_SingleMatch(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -48,8 +42,7 @@ func TestRowButtonGroup_SingleMatch(t *testing.T) {
 	}
 }
 
-// TestRowButtonGroup_PriorityOrder verifies that when two buttons overlap,
-// the earlier one in priority order (Mute before Solo) wins.
+// Mute before Solo.
 func TestRowButtonGroup_PriorityOrder(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -73,8 +66,6 @@ func TestRowButtonGroup_PriorityOrder(t *testing.T) {
 	}
 }
 
-// TestRowButtonGroup_NonMatchingPosition verifies HandleInput returns false
-// when the click position is outside all button rects.
 func TestRowButtonGroup_NonMatchingPosition(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -96,8 +87,6 @@ func TestRowButtonGroup_NonMatchingPosition(t *testing.T) {
 	}
 }
 
-// TestRowButtonGroup_MixedNilAndNonNil verifies that nil buttons are skipped
-// and non-nil buttons are still checked correctly.
 func TestRowButtonGroup_MixedNilAndNonNil(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false

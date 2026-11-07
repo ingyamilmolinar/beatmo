@@ -32,8 +32,7 @@ func normBands(b []float64) []float64 {
 	return out
 }
 
-// BandAttribution finds, per imbalanced band, the dominant rendered stem and emits
-// a brighten/cut hint. Deterministic (instruments sorted).
+// Instruments sorted, so deterministic.
 func BandAttribution(ref fingerprint.SongFingerprint, rendered songrender.Rendered, cfg fingerprint.AnalysisConfig) []TuningHint {
 	sr := rendered.Arrangement.SampleRate
 	if sr == 0 {

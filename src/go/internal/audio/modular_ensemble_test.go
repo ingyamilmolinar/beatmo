@@ -18,8 +18,7 @@ func TestEnsemble_IdentityIsExactBypass(t *testing.T) {
 	}
 }
 
-// Scatter and vibrato must change the output; two renders with the same seed
-// must be identical (determinism).
+// Same seed, identical renders.
 func TestEnsemble_HumanizeChangesOutputDeterministically(t *testing.T) {
 	hum := RecipeParams{"osc_type": 1, "osc_enabled": 1, "unison_voices": 5, "unison_detune": 8,
 		"ens_scatter": 10, "ens_vib_rate": 5.5, "ens_vib_depth": 8, "ens_humanize": 0.8}

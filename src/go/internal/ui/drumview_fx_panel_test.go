@@ -88,8 +88,7 @@ func TestFXPanelOpenClose(t *testing.T) {
 	}
 }
 
-// TestFXAddMenu_TitleUsesMiddot verifies the add-menu header reads "FX · <row>"
-// (middot), matching the DESIGN.md menu anatomy, not the old "FX:" colon.
+// The DESIGN.md menu anatomy.
 func TestFXAddMenu_TitleUsesMiddot(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -111,11 +110,7 @@ func TestFXAddMenu_TitleUsesMiddot(t *testing.T) {
 	}
 }
 
-// TestFXAddMenu_RowsAreFlatMenuRows verifies the effect-picker rows are
-// tracked via the fxAddRowEffect/fxAddRowBtn parallel slices (one per
-// registered effect type, resolvable via dv.fxAddRowEffectFor for the
-// drawMenuRow routing) and span the full row width, left-aligned — not the
-// narrower centered rect the old InstButtonStyle keycap used.
+// Full-width, left-aligned flat rows, not a centred keycap.
 func TestFXAddMenu_RowsAreFlatMenuRows(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -138,8 +133,6 @@ func TestFXAddMenu_RowsAreFlatMenuRows(t *testing.T) {
 		if et, ok := dv.fxAddRowEffectFor(btn); !ok || et != dv.fxAddRowEffect[i] {
 			t.Errorf("fxAddRowEffectFor(fxAddRowBtn[%d]) should resolve back to %v, got %v ok=%v", i, dv.fxAddRowEffect[i], et, ok)
 		}
-		// Left-aligned, spanning (close to) the full row width — the flat
-		// menu-row geometry, not a centered keycap.
 		r := btn.Rect()
 		if r.Dx() < dv.fxPanelRect.Dx()-4*SpaceXS {
 			t.Errorf("fxAddRowBtn[%d] rect width %d should span the full row width (panel width %d)", i, r.Dx(), dv.fxPanelRect.Dx())
@@ -147,10 +140,7 @@ func TestFXAddMenu_RowsAreFlatMenuRows(t *testing.T) {
 	}
 }
 
-// TestFXAddMenu_BackRowReplacesCancel verifies the add-menu's dismiss row is
-// a Back row (leading chevron-left, i18n "Back" label via a blank-Text
-// button) instead of the legacy "Cancel" keycap, and that clicking it closes
-// the picker back to the effect list.
+// A Back row with a chevron, not a Cancel keycap; it returns to the effect list.
 func TestFXAddMenu_BackRowReplacesCancel(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -223,8 +213,7 @@ func TestFXPanelAddEffect(t *testing.T) {
 		t.Error("clicking '+ Add Effect' should not add an effect immediately")
 	}
 
-	// Now pick "Distortion" from the picker (rows are flat drawMenuRow rows
-	// with blank Text — find by the effect type tracked in fxAddRowEffect).
+	// The rows have blank Text: find by the tracked effect type.
 	var distBtn *Button
 	for i, et := range dv.fxAddRowEffect {
 		if et == audio.EffectDistortion {
@@ -267,8 +256,7 @@ func TestFXPanelAddEffectCancel(t *testing.T) {
 		t.Fatal("type picker did not open")
 	}
 
-	// Close the picker by setting fxAddMenuOpen = false directly,
-	// since the Cancel button may be off-screen with many effect types.
+	// Direct, since Back may be off-screen with many effect types.
 	dv.fxAddMenuOpen = false
 	dv.buildFXPanel()
 
@@ -296,9 +284,7 @@ func TestFXPanelPickerShowsAllTypes(t *testing.T) {
 	addBtn.OnClick()
 	suppressClicksUntilRelease = false // clear for test
 
-	// Verify effect type rows are present (rows are flat drawMenuRow rows with
-	// blank Text — tracked via fxAddRowEffect, some may be off-screen with
-	// many types).
+	// Blank-Text flat rows, tracked via fxAddRowEffect.
 	if len(dv.fxAddRowEffect) == 0 {
 		t.Error("no effect type rows found in picker")
 	}
@@ -319,8 +305,7 @@ func TestFXPanelRemoveEffect(t *testing.T) {
 		t.Fatal("FX panel did not open")
 	}
 
-	// Should have toggle, remove, and add buttons.
-	// Find the remove button (icon IconClose per DESIGN.md §5c).
+	// The remove button carries IconClose.
 	var removeBtn *Button
 	for _, btn := range dv.fxPanelBtns {
 		if btn.Icon == string(IconClose) {
@@ -750,8 +735,7 @@ func TestFXPanelDesktopAlwaysExpanded(t *testing.T) {
 		t.Fatal("expected sliders on desktop for enabled effect")
 	}
 
-	// No expand/collapse chevron button should exist on desktop.
-	// (Only 1 effect added so no move buttons either — chevron absence is unambiguous.)
+	// One effect means no move buttons either, so the absence is unambiguous.
 	for _, btn := range dv.fxPanelBtns {
 		if btn.Icon == string(IconChevronRight) || btn.Icon == string(IconChevronDown) {
 			t.Error("expand/collapse chevron should not exist on desktop")
@@ -825,11 +809,7 @@ func TestFXPanelScrollOffsetClamps(t *testing.T) {
 	}
 }
 
-// TestFXPanelSliderClickWithSuppressActive verifies that a new press on an
-// FX panel slider works even when suppressClicksUntilRelease is true.
-// Before the fix, the tree did not clear the global suppress flag around
-// OnPress dispatch (unlike OnDrag at line 192-195), causing
-// Slider.HandleInputResult to return InputIgnored.
+// The tree must clear the global suppress flag around OnPress, as around OnDrag, or the slider ignores the press.
 func TestFXPanelSliderClickWithSuppressActive(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -873,8 +853,7 @@ func TestFXPanelSliderClickWithSuppressActive(t *testing.T) {
 	)
 	t.Cleanup(restore)
 
-	// Simulate the timing window: suppress is true from a prior interaction
-	// but the tree's own suppress has been cleared (e.g., release frame).
+	// Suppress is still set from a prior interaction while the tree's own is cleared.
 	suppressClicksUntilRelease = true
 
 	dv.Update()
@@ -939,9 +918,7 @@ func TestFXPanelContentFitsInBoundsMobile(t *testing.T) {
 	}
 }
 
-// TestFXPanelSliderClickBlocksRowCallback verifies that clicking on an FX
-// panel slider is handled by the portal (z=300) and does NOT leak to the
-// underlying RowRackZone (z=120).
+// The portal (z=300) handles it; the row rack (z=120) beneath must see nothing.
 func TestFXPanelSliderClickBlocksRowCallback(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -1023,9 +1000,6 @@ func TestFXPanelSliderClickBlocksRowCallback(t *testing.T) {
 	}
 }
 
-// TestFXPanelHeaderClickBlocksRowCallback verifies that clicking on the FX
-// panel header (the title bar area, NOT the close button) is consumed by the
-// portal and does NOT leak through to the underlying RowRackZone callbacks.
 func TestFXPanelHeaderClickBlocksRowCallback(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -1041,8 +1015,7 @@ func TestFXPanelHeaderClickBlocksRowCallback(t *testing.T) {
 	// Advance frames to clear debounce window.
 	fxAdvanceFrames(t, dv, 3)
 
-	// Compute header center — 16px down from panel top (center of 32px header),
-	// offset left from center to avoid the close button on the right.
+	// Left of centre, away from the close button.
 	hx := dv.fxPanelRect.Min.X + 30 // left side of header, away from close button
 	hy := dv.fxPanelRect.Min.Y + 16 // vertical center of 32px header
 
@@ -1096,9 +1069,7 @@ func TestFXPanelHeaderClickBlocksRowCallback(t *testing.T) {
 	fxReleaseInput(t, dv)
 }
 
-// TestFXPanelUnionRectGapClickConsumed verifies that clicking an FX button
-// outside fxPanelRect triggers the tree's click-outside mechanism, closing
-// the panel without leaking to the row-rack zone.
+// Outside the panel the tree's click-outside closes it, without leaking to the rack.
 func TestFXPanelUnionRectGapClickConsumed(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -1130,8 +1101,6 @@ func TestFXPanelUnionRectGapClickConsumed(t *testing.T) {
 		}
 		cx := (br.Min.X + br.Max.X) / 2
 		cy := (br.Min.Y + br.Max.Y) / 2
-		// We need a point that is outside fxPanelRect (triggers
-		// click-outside via the tree).
 		if !image.Pt(cx, cy).In(dv.fxPanelRect) {
 			gapX, gapY = cx, cy
 			found = true
@@ -1173,10 +1142,7 @@ func TestFXPanelUnionRectGapClickConsumed(t *testing.T) {
 	fxReleaseInput(t, dv)
 }
 
-// TestFXPanelSliderDragSurvivesSuppressOnDrag verifies that an active slider
-// drag is not killed by a stale suppressClicksUntilRelease flag. The tree
-// must clear the global flag during OnDrag dispatch so the slider's
-// HandleInputResult does not bail.
+// The tree must clear the stale global suppress during OnDrag, or the drag dies.
 func TestFXPanelSliderDragSurvivesSuppressOnDrag(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -1233,12 +1199,8 @@ func TestFXPanelSliderDragSurvivesSuppressOnDrag(t *testing.T) {
 	}
 }
 
-// TestFXPanelHeaderClickAfterReopenDifferentRow verifies that reopening the
-// FX panel for a different row (different anchor position) registers the
-// correct hit area immediately so header clicks don't leak to the underlying
-// RowRackZone. This catches the stale fxPanelRect bug where closeFXPanel()
-// didn't zero the rect and openFXPanel() registered the portal before
-// buildFXPanel() computed the new rect.
+// The rect must be zeroed on close and computed before the portal registers, or the first header click after
+// reopening on another row leaks.
 func TestFXPanelHeaderClickAfterReopenDifferentRow(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -1304,9 +1266,6 @@ func TestFXPanelHeaderClickAfterReopenDifferentRow(t *testing.T) {
 	fxReleaseInput(t, dv)
 }
 
-// TestFXPanelScrimClickAbsorbedByPortal verifies that clicking on the scrim
-// area (outside fxPanelRect and FX buttons, but inside dv.Bounds) is absorbed
-// by the portal handler and does NOT leak to the underlying RowRackZone.
 func TestFXPanelScrimClickAbsorbedByPortal(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -1322,9 +1281,7 @@ func TestFXPanelScrimClickAbsorbedByPortal(t *testing.T) {
 	// Advance 3 frames to clear the debounce window.
 	fxAdvanceFrames(t, dv, 3)
 
-	// Find a point OUTSIDE fxPanelRect and FX buttons but INSIDE dv.Bounds.
-	// Use a point near the bottom-right corner of dv.Bounds, far from all
-	// panel and button rects.
+	// The bottom-right corner, far from every panel and button rect.
 	scrimPt := image.Pt(dv.Bounds.Max.X-5, dv.Bounds.Max.Y-5)
 	if scrimPt.In(dv.fxPanelRect) {
 		t.Fatal("test point should be outside fxPanelRect")
@@ -1382,9 +1339,6 @@ func TestFXPanelScrimClickAbsorbedByPortal(t *testing.T) {
 	fxReleaseInput(t, dv)
 }
 
-// TestFXPanelEmptySpaceDoesNotLeakToRowRack verifies that clicking empty
-// space inside fxPanelRect (between buttons) is consumed by the portal and
-// does NOT leak to the underlying RowRackZone.
 func TestFXPanelEmptySpaceDoesNotLeakToRowRack(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -1471,9 +1425,6 @@ func TestFXPanelEmptySpaceDoesNotLeakToRowRack(t *testing.T) {
 	fxReleaseInput(t, dv)
 }
 
-// TestFXPanelClickOutsideClosesWithoutLeak verifies that clicking outside
-// fxPanelRect but inside dv.Bounds (scrim area) closes the panel via the
-// tree's click-outside mechanism without leaking to the row-rack zone.
 func TestFXPanelClickOutsideClosesWithoutLeak(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -1541,11 +1492,7 @@ func TestFXPanelClickOutsideClosesWithoutLeak(t *testing.T) {
 	fxReleaseInput(t, dv)
 }
 
-// TestFXPanelHeaderClickAfterAddEffect verifies that after adding an effect
-// (which calls buildFXPanel() changing panel height), clicking the header
-// does not leak to the underlying RowRackZone. This catches the stale hit
-// area bug where the portal's registered hit areas weren't refreshed until
-// the next frame's Update().
+// Adding an effect resizes the panel; the hit areas must refresh before the next frame.
 func TestFXPanelHeaderClickAfterAddEffect(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -1628,8 +1575,6 @@ func fxEffectNames(ets []audio.EffectType, regs map[audio.EffectType]*audio.Effe
 	return out
 }
 
-// TestFXAddMenu_SearchFiltersEffects verifies typing narrows the effect list by
-// fuzzy match over DisplayName.
 func TestFXAddMenu_SearchFiltersEffects(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -1654,8 +1599,6 @@ func TestFXAddMenu_SearchFiltersEffects(t *testing.T) {
 	}
 }
 
-// TestFXAddMenu_EmptyStateWhenNoMatch verifies a no-match query yields an empty
-// visible list (so the empty-state renders).
 func TestFXAddMenu_EmptyStateWhenNoMatch(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -1674,8 +1617,6 @@ func TestFXAddMenu_EmptyStateWhenNoMatch(t *testing.T) {
 	}
 }
 
-// TestFXAddMenu_AutoFocusOnOpen verifies opening the add-menu via the "+ Add
-// Effect" button auto-focuses the search box (improvement C).
 func TestFXAddMenu_AutoFocusOnOpen(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 || len(dv.rowFXBtns()) == 0 {
@@ -1698,9 +1639,7 @@ func TestFXAddMenu_AutoFocusOnOpen(t *testing.T) {
 	}
 }
 
-// TestFXAddMenu_EscClearsQueryThenCloses verifies fxPanelHandleEscape clears a
-// non-empty query first, then closes the add-menu back to the effect list on
-// the next Esc — mirroring handleTemplateSearchEscape.
+// The first Esc clears the query, the next closes the menu.
 func TestFXAddMenu_EscClearsQueryThenCloses(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -1729,8 +1668,6 @@ func TestFXAddMenu_EscClearsQueryThenCloses(t *testing.T) {
 	}
 }
 
-// TestFXAddMenu_GroupHeadersIdleOnly verifies category headers appear when
-// idle and are suppressed while searching (flat filtered list instead).
 func TestFXAddMenu_GroupHeadersIdleOnly(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -1748,9 +1685,7 @@ func TestFXAddMenu_GroupHeadersIdleOnly(t *testing.T) {
 	}
 }
 
-// TestFXAddMenu_InstanceCountBadge verifies an already-present effect shows
-// a ×N trailing badge while idle, and shows the effect's category caption
-// while searching instead.
+// ×N while idle; the category caption while searching.
 func TestFXAddMenu_InstanceCountBadge(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -1778,24 +1713,15 @@ func TestFXAddMenu_InstanceCountBadge(t *testing.T) {
 	}
 }
 
-// TestFXAddMenu_HeaderCountMatchesComputedCount is a regression guard for the
-// two independent computations of the idle add-menu's category-header set:
-// fxAddCategoryHeaderCount (sizes contentH/scroll height) and buildFXPanel's
-// inline category-transition block (populates dv.fxAddHeaderRows). They must
-// always agree — a drift here means the scroll height and the actually-drawn
-// headers disagree, producing clipped or misplaced rows. It also pins the
-// fixed category order + full coverage end-to-end via fxAddGroupHeaders,
-// deriving the expected labels from fxCategoryOrder + fxCategoryDisplay (the
-// source of truth) rather than hardcoding strings.
+// Two independent computations of the header set (scroll height vs drawn headers) must agree, or rows clip;
+// expectations derive from fxCategoryOrder + fxCategoryDisplay, not literals.
 func TestFXAddMenu_HeaderCountMatchesComputedCount(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
 		t.Skip("no rows")
 	}
 
-	// Sanity: the default registry actually populates all four categories,
-	// otherwise the "all four must appear" assertion below would be
-	// vacuously true for missing categories.
+	// Otherwise "all four must appear" would pass vacuously.
 	regs := audio.EffectRegistrations()
 	seen := map[string]bool{}
 	for _, r := range regs {
@@ -1813,8 +1739,6 @@ func TestFXAddMenu_HeaderCountMatchesComputedCount(t *testing.T) {
 	dv.fxAddMenuOpen = true
 	dv.buildFXPanel()
 
-	// The sync invariant: the two independent header-count computations
-	// must never drift.
 	gotHeaders := len(dv.fxAddHeaderRows)
 	wantHeaders := fxAddCategoryHeaderCount(dv.fxAddVisibleEffects())
 	if gotHeaders != wantHeaders {
@@ -1822,8 +1746,6 @@ func TestFXAddMenu_HeaderCountMatchesComputedCount(t *testing.T) {
 			gotHeaders, wantHeaders)
 	}
 
-	// End-to-end: fixed order + all four categories present, derived from
-	// the source-of-truth tables rather than hardcoded literals.
 	wantLabels := make([]string, len(fxCategoryOrder))
 	for i, cat := range fxCategoryOrder {
 		wantLabels[i] = fxCategoryDisplay[cat]

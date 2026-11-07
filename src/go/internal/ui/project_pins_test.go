@@ -12,10 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
-// TestProjectPins_JSONRoundTrip pins the contract that PinnedInstruments
-// survives an export → import cycle without reordering or duplication.
-// Project pins live alongside the graph in the project JSON; user favorites
-// (the ★ store) live in userprefs and never round-trip through this file.
+// Pins live in the project; the ★ favourites live in userprefs and never travel in this file.
 func TestProjectPins_JSONRoundTrip(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
@@ -26,8 +23,7 @@ func TestProjectPins_JSONRoundTrip(t *testing.T) {
 	g.drum.Rows[0].Origin = ui.ID
 	g.drum.Rows[0].Node = ui
 
-	// Seed pins on the source DrumView. SetProjectPins dedupes empty strings;
-	// the helper itself sorts on export, so the JSON will hold them sorted.
+	// Export sorts them, so the JSON holds them sorted.
 	g.drum.SetProjectPins([]instrument.ID{roster.Kick808, roster.SnareFat, roster.HihatPedal})
 
 	data, err := g.drum.exportBytes()
@@ -67,10 +63,7 @@ func TestProjectPins_JSONRoundTrip(t *testing.T) {
 	}
 }
 
-// TestProjectPins_OmitWhenEmpty pins the omitempty contract on
-// `pinned_instruments`: an empty / nil pin set must produce an absent JSON
-// field so projects authored before this PR remain byte-identical when
-// re-exported.
+// An empty set leaves the field absent.
 func TestProjectPins_OmitWhenEmpty(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
@@ -91,18 +84,13 @@ func TestProjectPins_OmitWhenEmpty(t *testing.T) {
 	}
 }
 
-// TestProjectPins_BackwardCompatible pins the contract that v1 projects
-// without the field still parse cleanly and produce an empty pin set.
-// Hand-rolled JSON to avoid depending on the export path's other fields.
 func TestProjectPins_BackwardCompatible(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
 	g := New(logger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
-	// Seed with pins so we can prove import resets them when the field is
-	// absent (avoids the "pin set silently inherited from previous project"
-	// failure mode).
+	// Seeded so the test proves a file without the field resets the pins instead of inheriting them.
 	g.drum.SetProjectPins([]instrument.ID{"will-be-cleared"})
 
 	legacy := `{"schema_version":"` + schema.Version + `","subdiv":32,"bpm":120,"instruments":[],"nodes":[]}`
@@ -114,11 +102,7 @@ func TestProjectPins_BackwardCompatible(t *testing.T) {
 	}
 }
 
-// TestProjectPins_SetProjectPinsDedupesEmpty pins that empty strings in the
-// input slice are filtered. Future code paths (manual edits to project JSON,
-// deserialised pinned_instruments arrays with placeholder entries) shouldn't
-// be able to inject zero-id pins that would otherwise match every menu row
-// failing PinSource.Tier lookup.
+// An empty id would match every menu row that fails PinSource.Tier.
 func TestProjectPins_SetProjectPinsDedupesEmpty(t *testing.T) {
 	dv := &DrumView{}
 	dv.SetProjectPins([]instrument.ID{roster.Kick808, "", roster.SnareFat, ""})

@@ -10,17 +10,9 @@ import (
 	"testing"
 )
 
-// Playwright's signature is page.waitForFunction(pageFunction, arg, options).
-// Writing waitForFunction(fn, { timeout: 90000 }) passes the options as the
-// page function's ARGUMENT — the timeout and polling are silently ignored and
-// the wait runs on Playwright's 30 s default with requestAnimationFrame polling.
-// 66 call sites did that: a 90 s boot budget was really 30 s (Firefox under load
-// missed it and the cross-engine test reported the engine "unavailable"), and a
-// "2000 ms, poll every 50 ms" probe was really 30 s on rAF. The options belong
-// in the THIRD slot: waitForFunction(fn, null, { timeout }).
-//
-// The fails-open shape is why this is a guard and not a code-review note: the
-// wrong call never throws and never times out early, so nothing surfaces it.
+// Playwright's signature is (fn, arg, options): options in the second slot become the page function's
+// ARGUMENT and the wait silently runs on the 30 s default with rAF polling. The wrong call never throws or
+// times out early, so only a guard surfaces it.
 func TestWaitForFunctionOptionsAreNotPassedAsTheArgument(t *testing.T) {
 	jsFiles, err := filepath.Glob(repoPath("js", "*.js"))
 	if err != nil || len(jsFiles) == 0 {
@@ -37,8 +29,7 @@ func TestWaitForFunctionOptionsAreNotPassedAsTheArgument(t *testing.T) {
 		src := string(data)
 		for _, loc := range call.FindAllStringIndex(src, -1) {
 			args, ok := jsCallArgs(src, loc[1]-1)
-			// A trailing comma — waitForFunction(fn, { timeout },) — leaves an
-			// empty last "argument"; it is still the two-argument form.
+			// A trailing comma leaves an empty last argument; still the two-argument form.
 			if ok && len(args) > 0 && strings.TrimSpace(args[len(args)-1]) == "" {
 				args = args[:len(args)-1]
 			}
@@ -56,17 +47,9 @@ func TestWaitForFunctionOptionsAreNotPassedAsTheArgument(t *testing.T) {
 	}
 }
 
-// A browser test must never await window.audioReady THROUGH THE PROTOCOL —
-// neither page.evaluate(() => window.audioReady) nor an evaluate body that
-// awaits it. Chromium's inspector reports "Promise was collected" for an async
-// evaluate wrapper still pending on audioReady when the engine-warm worker
-// renders resolve it (raw CDP reproduced it 4/5 while an in-page async waiter
-// on the same promise resumed every time), and Playwright rewrites that error
-// into "Execution context was destroyed, most likely because of a navigation"
-// — nothing navigated. It failed webaudio_mixer_eq_parity 2 runs in 3 and sits
-// latent in every test whose evaluate lands just before the warm finishes. Use
-// waitForAudioReady(page) (browser_test_helpers.js), which observes settlement
-// through an in-page flag and waitForFunction polling.
+// Chromium reports "Promise was collected" when the engine warm resolves audioReady under a pending evaluate,
+// and Playwright rewrites it into a false "context destroyed by a navigation". waitForAudioReady(page) observes
+// settlement through an in-page flag instead.
 func TestBrowserTestsNeverAwaitAudioReadyOverTheProtocol(t *testing.T) {
 	jsFiles, err := filepath.Glob(repoPath("js", "*.browser.test.js"))
 	if err != nil || len(jsFiles) == 0 {
@@ -97,9 +80,7 @@ func TestBrowserTestsNeverAwaitAudioReadyOverTheProtocol(t *testing.T) {
 	}
 }
 
-// jsCallArgs splits the top-level arguments of the call whose '(' is at open,
-// skipping strings, template literals (including ${…}), and comments. ok=false
-// when the call is unterminated.
+// Skips strings, template literals (with ${…}) and comments; ok=false when the call is unterminated.
 func jsCallArgs(s string, open int) ([]string, bool) {
 	depth, start := 0, open+1
 	var args []string

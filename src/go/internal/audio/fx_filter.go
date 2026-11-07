@@ -4,12 +4,8 @@ package audio
 
 import "math"
 
-// filter wraps a biquad filter with user-facing parameters for LP/HP/BP modes.
-// Mode 0=lowpass, 1=highpass, 2=bandpass.
-//
-// On cutoff/Q/mode changes, the filter crossfades between the old and new biquad
-// outputs over ~5ms to avoid the transient spike from abrupt coefficient changes.
-// The mix parameter is smoothed with a one-pole smoother.
+// Mode 0 = lowpass, 1 = highpass, 2 = bandpass. A cutoff/Q/mode change crossfades old and new biquads over ~5 ms,
+// hiding the transient an abrupt coefficient change makes.
 type filter struct {
 	mode   float64 // 0=LP, 1=HP, 2=BP
 	cutoff float64 // Hz
@@ -54,8 +50,6 @@ func (f *filter) rebuildBiquad() {
 	f.bq = makeBiquad(f.eqKind(), f.sr, f.cutoff, f.q, 0)
 }
 
-// startCrossfade preserves the current biquad and creates a new one,
-// then crossfades between them over xfadeLen samples.
 func (f *filter) startCrossfade() {
 	if f.bq != nil {
 		// Clone current biquad with its state.

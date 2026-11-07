@@ -6,8 +6,7 @@ import (
 	"testing"
 )
 
-// TestEachFrameMatchesADirectDFT: the two-frames-per-FFT spectrogram equals a
-// naive DFT of each Hann-windowed frame, odd frame counts included.
+// Odd frame counts included.
 func TestEachFrameMatchesADirectDFT(t *testing.T) {
 	const n = 64
 	r := rand.New(rand.NewSource(4))

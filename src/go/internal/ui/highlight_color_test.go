@@ -54,13 +54,8 @@ func TestNodeHighlightUsesRowColor(t *testing.T) {
 	}
 }
 
-// TestGridPaneSilentNodeUsesOwnColorHighlight verifies that a silent node in
-// the grid pane highlights in its OWN (row) color rather than the grey
-// colMuteHighlight — every grid-node highlight matches the color the node is
-// drawn in, never a flat white/grey. The silenced state stays legible from the
-// node's hollow SHAPE (drawNodeStateOverlay), which is independent of the
-// highlight color. (Was TestGridPaneSilentNodeUsesGreyHighlight, which pinned
-// the old grey-highlight rule.)
+// A grid node highlights in the colour it is drawn in; silence stays legible from its hollow shape, which does not
+// depend on the highlight.
 func TestGridPaneSilentNodeUsesOwnColorHighlight(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -97,8 +92,6 @@ func TestGridPaneSilentNodeUsesOwnColorHighlight(t *testing.T) {
 	if rPx < 1 {
 		rPx = 1
 	}
-	// Silent node should now highlight with its OWN row color for both fill and
-	// border — not the grey colMuteHighlight.
 	fr, fg, fb, fa := rgba8(rowColor)
 	rbr, rbg, rbb, rba := rgba8(rowColor)
 	rowKey := spriteKey{rpx: rPx, fr: fr, fg: fg, fb: fb, fa: fa, br: rbr, bg: rbg, bb: rbb, ba: rba}

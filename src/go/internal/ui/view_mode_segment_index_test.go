@@ -9,11 +9,7 @@ import (
 	gamelog "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestSegmentIndexForViewModeMatchesCanonicalList pins the single inverse of
-// bottomNavModeList: segmentIndexForViewMode(m) must return m's position in the
-// canonical segment list (and -1 for a mode with no segment). This replaces the
-// hand-maintained SetActive(0..7) switch in setViewMode, which silently desyncs
-// from bottomNavModeList if the list is reordered.
+// One inverse of bottomNavModeList, so a reordered list can never desync a hand-written switch.
 func TestSegmentIndexForViewModeMatchesCanonicalList(t *testing.T) {
 	for i, m := range bottomNavModeList {
 		if got := segmentIndexForViewMode(m); got != i {
@@ -26,10 +22,7 @@ func TestSegmentIndexForViewModeMatchesCanonicalList(t *testing.T) {
 	}
 }
 
-// TestSetViewModeActivatesCanonicalSegment is the integration guard: switching
-// to any view mode must light up the matching segment, derived from the same
-// canonical list as the click handler — so the forward (segment→mode) and
-// reverse (mode→segment) mappings can never drift apart.
+// Derived from the same list as the click handler, so segment → mode and mode → segment cannot drift.
 func TestSetViewModeActivatesCanonicalSegment(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultAudio(t)

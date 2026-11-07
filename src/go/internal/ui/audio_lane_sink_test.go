@@ -42,11 +42,8 @@ func recordEngine(t *testing.T, refuse map[uint64]bool) *[]string {
 	return log
 }
 
-// The production sink path (outboxSink → flushLaneOps → engine): ops apply in
-// order, consecutive schedules batch into one PlayBatch, a run of
-// replacements cancels its old voices in ONE call BEFORE scheduling, and a
-// replacement whose old voice the engine refused (already started) is
-// dropped — never the old and the new voice together.
+// In order; consecutive schedules batch; a run of replacements cancels in ONE call before scheduling; a refused
+// replacement is dropped, never played beside its old voice.
 func TestFlushLaneOpsAppliesOpsInOrderAndReplacesAtomically(t *testing.T) {
 	g := newLaneCircuitGame(t)
 	log := recordEngine(t, map[uint64]bool{3: true})
@@ -67,9 +64,7 @@ func TestFlushLaneOpsAppliesOpsInOrderAndReplacesAtomically(t *testing.T) {
 	}
 }
 
-// audioLoop and Close both flush; two concurrent flushes must not interleave
-// (they share laneBatchScratch, and a taken schedule batch could land after
-// Close's cancel-all).
+// They share laneBatchScratch, and a taken batch could land after Close's cancel-all.
 func TestFlushLaneOpsIsSerialised(t *testing.T) {
 	g := newLaneCircuitGame(t)
 	recordEngine(t, nil)

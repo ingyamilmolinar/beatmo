@@ -108,8 +108,6 @@ func TestPreviewSyncMatchesPlayback_ComplexLogic(t *testing.T) {
 	g.addEdge(b, c)
 	g.addEdge(c, d)
 	g.addEdge(d, a)
-	// Rules:
-	// A: every 3rd trigger
 	if n, ok := g.graph.GetNodeByID(a.ID); ok {
 		p := n.Params
 		p.LogicKind = model.LogicEveryN

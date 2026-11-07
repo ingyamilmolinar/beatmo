@@ -36,8 +36,7 @@ func TestTokenSurfaces(t *testing.T) {
 
 func TestTokenAccentConsistency(t *testing.T) {
 	acc := TokenAccent()
-	// Single chrome accent — sunset-gold #FFB30A (the cyan→gold repaint;
-	// DESIGN.md primary / on-surface-accent both resolve to #FFB30A).
+	// The single chrome accent, sunset gold #FFB30A.
 	if acc.R != 255 || acc.G != 179 || acc.B != 10 {
 		t.Errorf("TokenAccent must be #FFB30A, got R=%d G=%d B=%d", acc.R, acc.G, acc.B)
 	}

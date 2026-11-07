@@ -7,26 +7,16 @@ import (
 	"time"
 )
 
-// masterLUFSIntegrator is the process-global K-weighted integrator the
-// audio engine feeds from the master signal path. The analyzer service
-// reads its current LUFS-S value via MasterLUFSShortTerm (passed as a
-// callback through analyzer.Config so the analyzer package stays free
-// of an audio import).
-//
-// Reset by audio.ResetLoudnessForTest in test isolation.
+// Fed from the master path; the analyzer reads LUFS-S through a callback in analyzer.Config, so it imports no audio.
 var (
 	masterLUFSMu      sync.Mutex
 	masterLUFSCurrent *LUFSIntegrator
 
-	// masterLUFSBits holds the last published LUFS-S value as IEEE 754
-	// bits so readers (analyzer goroutine) don't have to acquire
-	// masterLUFSMu. Writer updates after each Process call.
+	// Published as IEEE 754 bits so the analyzer goroutine reads without the mutex.
 	masterLUFSBits atomic.Uint64
 )
 
-// EnsureMasterLUFS lazily instantiates the master LUFS integrator at
-// the given sample rate. Idempotent — repeated calls with the same
-// rate reuse the existing integrator. Called by the engine init path.
+// Idempotent.
 func EnsureMasterLUFS(sampleRate float64) {
 	masterLUFSMu.Lock()
 	defer masterLUFSMu.Unlock()
@@ -37,10 +27,7 @@ func EnsureMasterLUFS(sampleRate float64) {
 	masterLUFSBits.Store(math.Float64bits(-120))
 }
 
-// FeedMasterLUFS pushes a block of master samples through the K-
-// weighting filter + integrator. Called from the mixer master branch
-// (engine_stop.go's master push site). No-op when the integrator
-// hasn't been initialised (test stubs).
+// A no-op before the integrator exists (test stubs).
 func FeedMasterLUFS(samples []float64) {
 	masterLUFSMu.Lock()
 	defer masterLUFSMu.Unlock()
@@ -51,10 +38,7 @@ func FeedMasterLUFS(samples []float64) {
 	masterLUFSBits.Store(math.Float64bits(masterLUFSCurrent.LUFSShortTerm()))
 }
 
-// MasterLUFSShortTerm returns the most recently computed master LUFS-S
-// in decibels. Safe to call from any goroutine — reads the published
-// atomic bits without acquiring the integrator mutex. Returns -120
-// (silence floor) before any audio has been fed.
+// Lock-free. -120 (silence floor) before any audio.
 func MasterLUFSShortTerm() float64 {
 	bits := masterLUFSBits.Load()
 	if bits == 0 {
@@ -63,9 +47,6 @@ func MasterLUFSShortTerm() float64 {
 	return math.Float64frombits(bits)
 }
 
-// ResetLoudnessForTest clears the integrator + published value. Tests
-// call this at setup so cross-test bleed doesn't taint the LUFS
-// measurement.
 func ResetLoudnessForTest() {
 	masterLUFSMu.Lock()
 	defer masterLUFSMu.Unlock()
@@ -75,12 +56,7 @@ func ResetLoudnessForTest() {
 	masterLUFSBits.Store(math.Float64bits(-120))
 }
 
-// ── Rolling 10-second clip-window tracker ────────────────────────────
-//
-// The Levels tab needs "clips in the last 10 seconds" instead of a
-// monotonic session counter. Each channel reports its current clip
-// count once per analyzer tick; we bucket the delta into 100 ms
-// slots and sum the most-recent-10-second window.
+// The Levels tab shows clips in the last 10 seconds, not a session counter: per-tick deltas bucketed into 100 ms slots.
 
 const (
 	clipWindowBuckets   = 100 // 100 × 100 ms = 10 s
@@ -96,11 +72,7 @@ var (
 	clipsLastCount   atomic.Int64
 )
 
-// PushClipDelta adds `delta` clip events to the current 100-ms slot
-// and advances the ring when wall-clock time has crossed a bucket
-// boundary. Called by the audio mixer's clip-count observer at each
-// processTick (or by the analyzer service through a dispatcher hook
-// in future).
+// Advances the ring when wall-clock time crosses a bucket boundary.
 func PushClipDelta(delta int) {
 	if delta <= 0 {
 		return
@@ -112,8 +84,7 @@ func PushClipDelta(delta int) {
 		clipWindowReset = now
 		clipWindowLastTS = now
 	}
-	// Advance the ring by the number of buckets crossed since last
-	// push. Zero out crossed buckets so they don't carry stale data.
+	// Crossed buckets are zeroed so they carry no stale data.
 	bucketsElapsed := int(now.Sub(clipWindowLastTS) / clipWindowBucketDur)
 	if bucketsElapsed > 0 {
 		if bucketsElapsed > clipWindowBuckets {
@@ -134,12 +105,9 @@ func PushClipDelta(delta int) {
 	clipsLastCount.Store(int64(sum))
 }
 
-// ClipsLastWindow returns the rolling 10-second clip count. Safe to
-// call from any goroutine.
+// Safe from any goroutine.
 func ClipsLastWindow() int {
-	// Cheap "decay" path: if no PushClipDelta in >100 ms, advance the
-	// ring by the elapsed buckets so an idle session doesn't keep
-	// showing the last-recorded clip count forever.
+	// With no push for >100 ms the ring still advances, so an idle session does not show its last clips forever.
 	clipWindowMu.Lock()
 	if !clipWindowLastTS.IsZero() {
 		bucketsElapsed := int(time.Since(clipWindowLastTS) / clipWindowBucketDur)
@@ -163,10 +131,7 @@ func ClipsLastWindow() int {
 	return int(clipsLastCount.Load())
 }
 
-// ResetClipsWindow zeros the rolling clip-count ring. Called from the
-// UI when the user clicks the Levels-tab Clear Clips pill to
-// acknowledge clipping events. Tests also call this in setup so
-// cross-test state never bleeds.
+// The Levels tab's Clear Clips.
 func ResetClipsWindow() {
 	clipWindowMu.Lock()
 	defer clipWindowMu.Unlock()
@@ -179,28 +144,10 @@ func ResetClipsWindow() {
 	clipsLastCount.Store(0)
 }
 
-// loudness.go — minimal ITU-R BS.1770-style loudness primitives used by
-// the Levels tab's LUFS-S readout. Two pieces:
-//
-//   1. KWeightingFilter — a cascade of two biquads (pre-filter +
-//      RLB high-pass) that approximates the BS.1770 K-weighting
-//      response. The pre-filter is a shelf around 1681 Hz; the RLB
-//      filter is a 38 Hz high-pass. Coefficients are the canonical
-//      48 kHz values from the standard; for other sample rates we
-//      re-derive them via bilinear transform.
-//
-//   2. LUFSIntegrator — keeps a sliding 3-second window of squared
-//      K-weighted samples and converts the running mean-square to
-//      LUFS via `-0.691 + 10*log10(ms)`. 3 s = LUFS Short-Term per
-//      the BS.1770 spec.
-//
-// Both types are pure DSP — no UI, no goroutines, no allocations on
-// the hot path after construction. Designed to be called from the
-// analyzer service.go's master-channel branch.
+// BS.1770-style loudness for the Levels tab's LUFS-S: K-weighting then a 3 s mean square (Short-Term). Pure DSP, no
+// allocation on the hot path.
 
-// KWeightingFilter holds the per-channel biquad state for the two
-// cascaded K-weighting filters. Create one per channel; reset on
-// transport stop so a paused state doesn't bleed into the next play.
+// Reset on transport stop so a paused state does not bleed into the next play.
 type KWeightingFilter struct {
 	// Pre-filter (high-frequency shelf around 1681 Hz, +4 dB).
 	preB0, preB1, preB2 float64
@@ -212,10 +159,7 @@ type KWeightingFilter struct {
 	hpZ1, hpZ2       float64
 }
 
-// NewKWeightingFilter constructs a filter for the given sample rate.
-// Falls back to the canonical 48 kHz coefficients (ITU-R BS.1770-4
-// Annex 1) when sampleRate matches, and re-derives via bilinear
-// transform for other rates.
+// The canonical 48 kHz coefficients (BS.1770-4 Annex 1) at 48 kHz, a bilinear re-derivation at other rates.
 func NewKWeightingFilter(sampleRate float64) *KWeightingFilter {
 	f := &KWeightingFilter{}
 	if sampleRate == 48000 {
@@ -232,8 +176,7 @@ func NewKWeightingFilter(sampleRate float64) *KWeightingFilter {
 		f.hpA2 = 0.99007225036621
 		return f
 	}
-	// Re-derive via bilinear transform from the analog prototypes.
-	// Pre-filter: shelving filter centered at 1681.974 Hz, +4 dB.
+	// Pre-filter: a +4 dB shelf at 1681.974 Hz.
 	const preFc = 1681.974450955533
 	const preGain = 3.999843853973347
 	const preQ = 0.7071752369554196
@@ -248,8 +191,7 @@ func NewKWeightingFilter(sampleRate float64) *KWeightingFilter {
 	return f
 }
 
-// Process advances the filter by one sample and returns the K-weighted
-// output. Maintains direct-form-II transposed state.
+// Direct form II transposed.
 func (f *KWeightingFilter) Process(x float64) float64 {
 	// Pre-filter (shelf).
 	y1 := f.preB0*x + f.preZ1
@@ -269,9 +211,7 @@ func (f *KWeightingFilter) Reset() {
 	f.hpZ1, f.hpZ2 = 0, 0
 }
 
-// highShelfBiquad returns RBJ-cookbook biquad coefficients for a
-// 2nd-order high-shelf at fc, gain dB, Q. Returned as (b0, b1, b2,
-// a1, a2) with a0 normalised to 1.
+// RBJ cookbook, a0 normalised to 1.
 func highShelfBiquad(fc, gainDB, q, fs float64) (float64, float64, float64, float64, float64) {
 	A := math.Pow(10, gainDB/40)
 	w0 := 2 * math.Pi * fc / fs
@@ -290,9 +230,7 @@ func highShelfBiquad(fc, gainDB, q, fs float64) (float64, float64, float64, floa
 	return b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0
 }
 
-// highPassBiquad returns RBJ-cookbook biquad coefficients for a
-// 2nd-order high-pass at fc, Q. Returned as (b0, b1, b2, a1, a2)
-// with a0 normalised to 1.
+// RBJ cookbook, a0 normalised to 1.
 func highPassBiquad(fc, q, fs float64) (float64, float64, float64, float64, float64) {
 	w0 := 2 * math.Pi * fc / fs
 	cosW := math.Cos(w0)
@@ -309,13 +247,7 @@ func highPassBiquad(fc, q, fs float64) (float64, float64, float64, float64, floa
 	return b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0
 }
 
-// LUFSIntegrator maintains a 3-second sliding window of K-weighted
-// mean-square energy and converts it to LUFS-S on demand. Single-
-// goroutine — the analyzer service ticks this in its master branch.
-//
-// Implementation: a circular buffer of recent block mean-squares,
-// each block representing ~100 ms of audio. 30 blocks = ~3 s. The
-// integrator sums blocks for the running mean.
+// 30 blocks of ~100 ms = the 3 s Short-Term window. Single goroutine: the analyzer's master branch.
 type LUFSIntegrator struct {
 	filter   *KWeightingFilter
 	fs       float64
@@ -328,9 +260,7 @@ type LUFSIntegrator struct {
 	curCount int       // samples accumulated in the current block
 }
 
-// NewLUFSIntegrator builds an integrator at sampleRate, with a default
-// 3-second window. Returns nil for non-positive rate so callers can
-// guard the wiring without panicking on stub builds.
+// nil for a non-positive rate, so stub builds can guard the wiring.
 func NewLUFSIntegrator(sampleRate float64) *LUFSIntegrator {
 	if sampleRate <= 0 {
 		return nil
@@ -349,8 +279,6 @@ func NewLUFSIntegrator(sampleRate float64) *LUFSIntegrator {
 	}
 }
 
-// Process feeds a slice of samples through the K-weighting filter and
-// accumulates the mean-square into the rolling block buffer.
 func (l *LUFSIntegrator) Process(samples []float64) {
 	if l == nil || len(samples) == 0 {
 		return
@@ -374,10 +302,7 @@ func (l *LUFSIntegrator) Process(samples []float64) {
 	}
 }
 
-// LUFSShortTerm returns the current short-term loudness in LUFS
-// (decibel-relative-to-full-scale on the K-weighted scale). Returns
-// -120 (effective silence floor) when the integrator hasn't yet seen
-// enough audio to fill at least one block.
+// -120 (silence floor) before one block has filled.
 func (l *LUFSIntegrator) LUFSShortTerm() float64 {
 	if l == nil {
 		return -120

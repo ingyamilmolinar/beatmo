@@ -8,12 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// PatchInstrumentDoc returns the standalone instrument document data with every
-// tuned field written through audio.ApplyInstrumentFields (a field of a layer
-// the set itself adds lands after its source); a field that cannot land is an
-// error, never a silent skip. The result is migrated-format,
-// validated and re-encoded with MarshalFile; an empty patch returns the input
-// re-encoded, which for a shipped document is byte-identical.
+// A field that cannot land is an error, never a silent skip. An empty patch re-encodes a shipped document byte-identically.
 func PatchInstrumentDoc(data []byte, tuned map[string]float64) ([]byte, error) {
 	d, err := instrument.ParseFile(data)
 	if err != nil {
@@ -33,8 +28,7 @@ func PatchInstrumentDoc(data []byte, tuned map[string]float64) ([]byte, error) {
 	return instrument.MarshalFile(d)
 }
 
-// PatchInstrumentDocFile applies PatchInstrumentDoc to the document at path in
-// place. The embedded pack is NOT rebuilt here: run `make asset-pack` after.
+// The pack is NOT rebuilt here: run `make asset-pack` after.
 func PatchInstrumentDocFile(path string, tuned map[string]float64) error {
 	data, err := os.ReadFile(path)
 	if err != nil {

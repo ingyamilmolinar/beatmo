@@ -43,8 +43,7 @@ func TestFLACEncodeBasic(t *testing.T) {
 		t.Fatalf("missing fLaC marker, got %q", string(data[0:4]))
 	}
 
-	// Verify STREAMINFO metadata block header
-	// First metadata block: last=1, type=0, length=34
+	// The first metadata block: last=1, type=0, length=34.
 	blockHeader := uint32(data[4])<<24 | uint32(data[5])<<16 | uint32(data[6])<<8 | uint32(data[7])
 	isLast := (blockHeader >> 31) == 1
 	blockType := (blockHeader >> 24) & 0x7F

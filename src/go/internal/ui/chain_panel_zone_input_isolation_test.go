@@ -7,9 +7,7 @@ import (
 	"testing"
 )
 
-// TestChainPanelZoneCatchAllRegistered confirms the Phase 2 catch-all
-// is wired at the chain zone's nominal z. Mirrors the EQ panel test
-// shape so both zones obey the same contract.
+// The same contract as the EQ panel.
 func TestChainPanelZoneCatchAllRegistered(t *testing.T) {
 	cb := ChainCallbacks{}
 	z := NewChainPanelZone(cb)
@@ -39,10 +37,7 @@ func TestChainPanelZoneCatchAllRegistered(t *testing.T) {
 	}
 }
 
-// TestChainPanelZoneIsOpaqueToZ — every point inside the chain zone's
-// rect is claimed by some chain-owned hit area (catch-all or per-
-// control). Pre-Phase-2 a tap in trace-area whitespace fell through
-// to lower-z zones. Same contract as the EQ isolation test.
+// Every point is claimed by a chain-owned hit area, so whitespace never falls through.
 func TestChainPanelZoneIsOpaqueToZ(t *testing.T) {
 	cb := ChainCallbacks{}
 	z := NewChainPanelZone(cb)

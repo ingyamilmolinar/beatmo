@@ -6,12 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// buildGroupLoopCircuit creates a 2-node loop (a -> b -> a) on row 0 and
-// returns the game plus node IDs. Mirrors the circuit-building pattern used
-// by probability_prediction_consistency_test.go's buildProbChain (tryAddNode
-// + addEdge + explicit g.start/g.graph.StartNodeID + updateBeatInfos), layered
-// on this package's canonical functional-test constructor (see
-// undo_seam_test.go:42-56 / testutil_test.go header).
+// A 2-node loop with an explicit start and updateBeatInfos, on the package's functional-test constructor.
 func buildGroupLoopCircuit(t *testing.T) (*Game, model.NodeID, model.NodeID) {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -64,8 +59,7 @@ func TestGroupRulePitchAppliesByRound(t *testing.T) {
 	if p2 != 4 {
 		t.Fatalf("round 2 pitch = %v, want 4", p2)
 	}
-	// Step boundary: pitch changes exactly AT the round's loopStart, and the
-	// last index of the previous round still has the previous value.
+	// The pitch changes exactly AT the round's loopStart; the previous index keeps the old value.
 	_, pPrev, _ := g.evalNodeParamsOnly(0, idx2-1, infoAt(idx2-1))
 	if pPrev != 2 {
 		t.Fatalf("last idx of round 1 pitch = %v, want 2", pPrev)
@@ -86,9 +80,7 @@ func TestGroupRuleInertOnUngroupedNodeAndNonLoop(t *testing.T) {
 	if p != 0 {
 		t.Fatalf("ungrouped pitch = %v, want 0", p)
 	}
-	// Group with rule on a but round always 0 when row isn't a loop:
-	// covered at model level by TestGroupRoundMath; here assert a group
-	// WITHOUT rules changes nothing even for members.
+	// A group WITHOUT rules changes nothing, even for its members.
 	gid, _ := g.graph.CreateGroup("", []model.NodeID{aID})
 	_ = gid
 	_, p, _ = g.evalNodeParamsOnly(0, 100, info)

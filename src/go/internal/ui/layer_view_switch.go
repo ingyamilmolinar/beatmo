@@ -2,11 +2,7 @@ package ui
 
 import "github.com/hajimehoshi/ebiten/v2"
 
-// ViewSwitchLayer paints the mobile segmented Pads/EQ/Wave/Spec/Mtr/Scope
-// switch. Drawn after the transport controls so it renders on top of the
-// bottom-action-bar surface. Mobile only — desktop layout zeros the rect.
-//
-// Z = ZViewSwitch (150).
+// After the transport controls, so it sits on the bottom bar's surface. Mobile only.
 type ViewSwitchLayer struct {
 	dv *DrumView
 }
@@ -21,10 +17,7 @@ func (l *ViewSwitchLayer) Visible() bool {
 }
 
 func (l *ViewSwitchLayer) Draw(dst *ebiten.Image) {
-	// Keep the Synth/Sampler segments' greyed state fresh every frame even when
-	// no relayout ran (the active instrument / channel can change between
-	// layouts). Both are blocked on the master bus (no single-instrument
-	// context); Synth is additionally blocked for WAV-sample instruments.
+	// Refreshed every frame: the instrument or channel can change between layouts.
 	if idx := bottomNavSynthIndex(); idx >= 0 {
 		l.dv.viewSwitchSegmented.SetSegmentDisabled(idx, l.dv.synthViewDisabled())
 	}

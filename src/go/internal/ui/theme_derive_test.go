@@ -9,8 +9,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/theme"
 )
 
-// TestThemeDefaultIsIdentity: an empty doc AND a doc that picks every
-// category's own anchor both reproduce DESIGN.md byte-for-byte.
 func TestThemeDefaultIsIdentity(t *testing.T) {
 	got, warns := resolveThemeTokens(theme.Doc{})
 	if len(warns) != 0 {
@@ -38,9 +36,8 @@ func TestThemeDefaultIsIdentity(t *testing.T) {
 
 func lightness(c color.RGBA) float64 { _, _, l := rgbToHSL(c); return l }
 
-// TestThemeDarkCategoriesPreserveLadder: with a LIGHT pick, every
-// KeepLightness category token keeps its default lightness, so the surface
-// ladder ordering survives and the UI stays dark.
+// KeepLightness categories keep their default lightness under a light pick, so the surface ladder survives and the
+// UI stays dark.
 func TestThemeDarkCategoriesPreserveLadder(t *testing.T) {
 	doc := theme.Doc{Categories: map[string]string{"background": "mint-100", "surfaces": "mint-100", "grid": "cyan-100", "nodes": "tangerine-100", "dividers": "electric-blue-100", "text": "sunset-gold-500"}}
 	got, warns := resolveThemeTokens(doc)
@@ -67,19 +64,15 @@ func TestThemeDarkCategoriesPreserveLadder(t *testing.T) {
 	}
 }
 
-// TestThemeAccentFollowsPick: a non-dark category adopts the pick's HSL and
-// keeps the ladder offsets (bright lighter than primary, dim darker).
+// The pick's HSL with the ladder offsets kept.
 func TestThemeAccentFollowsPick(t *testing.T) {
 	got, _ := resolveThemeTokens(theme.Doc{Categories: map[string]string{"accent": "orchid-300"}})
 	pick, _ := swatchRGBA("orchid-300")
 	if got["primary"] != pick {
 		t.Fatalf("primary = %v, want the picked swatch %v", got["primary"], pick)
 	}
-	// The ladder OFFSETS are preserved: bright stays lighter than primary
-	// (as in the default), and dim keeps its default hue/lightness offset
-	// (in the shipped design primary-dim is a warmer, slightly LIGHTER
-	// orange, not a darker gold — the offset, not a fixed direction, is
-	// what carries over).
+	// The OFFSET carries over, not a fixed direction: in the shipped design primary-dim is a warmer, slightly lighter
+	// orange.
 	if lightness(got["primary-bright"]) <= lightness(got["primary"]) {
 		t.Fatalf("bright must stay lighter than primary: bright=%v primary=%v", got["primary-bright"], got["primary"])
 	}

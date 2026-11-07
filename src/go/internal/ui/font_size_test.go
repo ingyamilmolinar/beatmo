@@ -2,17 +2,7 @@ package ui
 
 import "testing"
 
-// TestFontSizeBodyAdequateForDesktopRow verifies that FontSizeBody is large
-// enough for TrueType text to be clearly readable within standard UI elements.
-//
-// TrueType fonts at a given "size" produce visually smaller glyphs than a
-// bitmap debug font at the same pixel height because the em-square includes
-// ascent + descent whitespace. The cap height (uppercase letter height) is
-// approximately 70% of the font size. At FontSizeBody=16:
-//
-//	0.7 * 16 = 11.2px cap height
-//
-// We require FontSizeBody >= 14 as a practical minimum for readability.
+// Cap height is ~70% of the font size, so FontSizeBody ≥ 14 keeps TrueType text readable.
 func TestFontSizeBodyAdequateForDesktopRow(t *testing.T) {
 	const minFontSize float64 = 14
 	if FontSizeBody < minFontSize {
@@ -22,11 +12,8 @@ func TestFontSizeBodyAdequateForDesktopRow(t *testing.T) {
 	}
 }
 
-// TestFontSizeBodyFitsDesktopRow verifies that the body text line height
-// (ascent + descent) fits within the desktop row height with room to spare.
 func TestFontSizeBodyFitsDesktopRow(t *testing.T) {
-	// TrueType line height ≈ 1.2 × font size (ascent + descent + leading).
-	// Must fit within desktopRowHeightPx with at least 2px padding.
+	// ~1.2 × font size, with at least 2 px to spare.
 	lineH := FontSizeBody * 1.2
 	if int(lineH)+2 > desktopRowHeightPx {
 		t.Fatalf("FontSizeBody=%.0f produces ~%.0fpx line height, "+
@@ -35,8 +22,7 @@ func TestFontSizeBodyFitsDesktopRow(t *testing.T) {
 	}
 }
 
-// TestFontSizeHierarchy verifies the type scale has proper ordering and
-// minimum separation between sizes for visual hierarchy.
+// Ordered, with minimum separation between steps.
 func TestFontSizeHierarchy(t *testing.T) {
 	if FontSizeCaption >= FontSizeSmall {
 		t.Fatalf("FontSizeCaption (%.0f) must be < FontSizeSmall (%.0f)", FontSizeCaption, FontSizeSmall)

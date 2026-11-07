@@ -5,9 +5,7 @@ import (
 	"testing"
 )
 
-// TestSubdivButtonDisabledDuringPlayback verifies that the subdivision selector
-// button is greyed out (disabled) while playback is active, since changing the
-// subdivision mid-flight is not supported (see validateSubdivisions).
+// Changing the subdivision mid-flight is not supported.
 func TestSubdivButtonDisabledDuringPlayback(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1280, 720)
@@ -27,8 +25,6 @@ func TestSubdivButtonDisabledDuringPlayback(t *testing.T) {
 	}
 }
 
-// TestDisabledButtonIgnoresClick verifies a disabled button does not invoke its
-// OnClick handler through the tree's buttonHitAdapter.
 func TestDisabledButtonIgnoresClick(t *testing.T) {
 	clicked := 0
 	b := NewButton("x", nil, func() { clicked++ })

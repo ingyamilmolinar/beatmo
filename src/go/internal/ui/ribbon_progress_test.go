@@ -4,9 +4,7 @@ package ui
 
 import "testing"
 
-// TestRibbonSingleClickDoesNotSeek asserts the ribbon is now drag-only: a
-// pure tap (press+release at the same X, no drag in between) must NOT emit
-// a seek. Task 6 removes the old click-to-seek-on-press behavior.
+// The ribbon is drag-only: a tap without a drag never seeks.
 func TestRibbonSingleClickDoesNotSeek(t *testing.T) {
 	g := newGameWithStart(t)
 	_ = g.Update() // lay out zones so timelineBarRect is populated
@@ -28,8 +26,6 @@ func TestRibbonSingleClickDoesNotSeek(t *testing.T) {
 	}
 }
 
-// TestRibbonDragStillSeeks asserts a real drag (press then move to a
-// different beat, then release) still commits a seek on release.
 func TestRibbonDragStillSeeks(t *testing.T) {
 	g := newGameWithStart(t)
 	_ = g.Update() // lay out zones so timelineBarRect is populated

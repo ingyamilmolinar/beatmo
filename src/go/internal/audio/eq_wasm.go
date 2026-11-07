@@ -10,9 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
-// SetChannelEQ hands the channel's EQ program (BuildEQProgram — the same Go
-// code desktop runs) to the beatmo-dsp worklet, which runs it through the same
-// C (mix_dsp.c). An empty band list clears the EQ.
+// The same Go program to the worklet, which runs the same C; an empty list clears the EQ.
 func SetChannelEQ(id channel.ID, sampleRate int, bands ...EQBand) {
 	channelEQWrites.Add(1)
 	if id.IsZero() {

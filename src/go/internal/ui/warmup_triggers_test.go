@@ -12,8 +12,6 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestImportTripsTheGate pins the primary trigger: loading a circuit must leave
-// playback gated until the working set is warm.
 func TestImportTripsTheGate(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(game_log.New(nil, game_log.LevelError))
@@ -43,11 +41,8 @@ func TestImportTripsTheGate(t *testing.T) {
 	}
 }
 
-// TestImportProducesExactlyOneWarmupSession: Import() restores f.BPM via
-// g.drum.SetBPM(f.BPM) before its own unconditional g.beginWarmup("import")
-// call. A tempo change used to trip a SEPARATE "bpm" warm-up session (the
-// voice cache key carried the tempo); voices no longer depend on it, so only
-// the "import" trigger fires.
+// Import restores the BPM before its own beginWarmup; voices no longer depend on tempo, so only the "import"
+// trigger fires.
 func TestImportProducesExactlyOneWarmupSession(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(game_log.New(nil, game_log.LevelError))
@@ -59,9 +54,7 @@ func TestImportProducesExactlyOneWarmupSession(t *testing.T) {
 	g.wireWarmupNotifications()
 	begins := 0
 	var lastReason string
-	// wireWarmupNotifications already set onBegin; wrap it rather than
-	// clobbering the toast/hooks wiring, so this test also proves the
-	// notification path itself only fires once.
+	// Wrapped, not clobbered, so the notification path itself is shown to fire once.
 	prevOnBegin := g.warmup.onBegin
 	g.warmup.onBegin = func(total int, src hooks.Source) {
 		begins++
@@ -71,9 +64,7 @@ func TestImportProducesExactlyOneWarmupSession(t *testing.T) {
 		}
 	}
 
-	// The fixture template's own tempo differs from the default Game's
-	// starting BPM (120), so f.BPM's restore inside Import is a genuine
-	// change — exactly the case that used to start a second "bpm" session.
+	// The template's tempo differs from 120, so Import's BPM restore is a real change.
 	beforeBPM := g.drum.BPM()
 	data, err := os.ReadFile(filepath.Join("..", "assets", "templates", "beethoven-ode-to-joy.json"))
 	if err != nil {
@@ -85,8 +76,7 @@ func TestImportProducesExactlyOneWarmupSession(t *testing.T) {
 	if g.drum.BPM() == beforeBPM {
 		t.Skip("fixture template's BPM matches the default Game's starting BPM — this test needs a genuine delta to be meaningful")
 	}
-	// A few frames, in case a tempo change still started a session late —
-	// it must NOT produce a second one.
+	// A late session from the tempo change would show here.
 	for i := 0; i < 12; i++ {
 		if err := g.Update(); err != nil {
 			t.Fatalf("Update: %v", err)
@@ -97,12 +87,8 @@ func TestImportProducesExactlyOneWarmupSession(t *testing.T) {
 	}
 }
 
-// TestTempoChangeNeverGatesPlayback: a voice is render.seconds long at every
-// tempo, so no BPM change — programmatic (DrumView.SetBPM), interactive
-// (TransportZone.SetBPM, what the +/- keycaps and the BPM wheel reach) or a
-// held repeat changing it every frame — starts a warm-up session or closes
-// the readiness gate. It used to re-render every voice behind the gate, and
-// Play was ignored until that finished.
+// A voice is render.seconds long at every tempo, so no BPM change (programmatic, interactive, or a held repeat
+// every frame) starts a warm-up or closes the gate.
 func TestTempoChangeNeverGatesPlayback(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(game_log.New(nil, game_log.LevelError))
@@ -146,9 +132,8 @@ func TestTempoChangeNeverGatesPlayback(t *testing.T) {
 	}
 }
 
-// TestSampleRateChangeTripsTheGate pins the browser-critical case: a circuit
-// imported before the AudioContext exists warms at the assumed rate, and every
-// cache key rotates when the real rate arrives.
+// A circuit imported before the AudioContext exists warms at the assumed rate; every cache key rotates when the real
+// rate arrives.
 func TestSampleRateChangeTripsTheGate(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(game_log.New(nil, game_log.LevelError))
@@ -160,8 +145,7 @@ func TestSampleRateChangeTripsTheGate(t *testing.T) {
 	g.warmup = newWarmupController(g, be)
 	g.wireWarmupNotifications()
 	g.warmupSampleRate = 44100
-	// No Begin() has been called yet, so there is nothing pending to race —
-	// this pins the starting state before the sample-rate change below.
+	// No Begin() yet, so nothing is pending to race.
 	be.completeAll()
 	g.warmup.Tick(1)
 	if !g.playbackReady() {

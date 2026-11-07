@@ -10,17 +10,9 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// These tests pin the master volume icon to the same style as the per-row
-// volume icons (drawVolIcon) and require that clicking the icon a second time
-// closes the popup (toggle behavior).
-//
-// Style: the shared button-secondary keycap body (like every neighbouring
-// keycap) with the speaker glyph and the level indicator on it — no overlay
-// fill bar, identical mobile/desktop chrome.
-//
-// Toggle: a second press on the icon — not on empty canvas — closes the
-// master volume popup, on both desktop and mobile profiles, and the same
-// applies to the per-row volume icons.
+// The master volume icon matches the row volume icons: the button-secondary keycap body with the speaker glyph
+// and level indicator, no overlay fill bar, the same on both platforms; a second press on any volume icon
+// closes its popup.
 
 // --- Helpers ---
 
@@ -51,10 +43,6 @@ func colorEqRGB(a, b color.Color) bool {
 
 // --- Style consistency tests ---
 
-// TestMasterVolIcon_KeycapBodyOnMobile pins the master vol icon to the shared
-// keycap body: a filled rounded rect equal to the icon rect in the
-// button-secondary fill, exactly like the per-row volume cells and every
-// other transport keycap (it used to paint no body at all).
 func TestMasterVolIcon_KeycapBodyOnMobile(t *testing.T) {
 	forceSmallScreenForTest = true
 	activeProfile = nil
@@ -91,9 +79,7 @@ func TestMasterVolIcon_KeycapBodyOnMobile(t *testing.T) {
 	}
 }
 
-// TestMasterVolIcon_NoOverlayFillBar pins the icon to the row style: no
-// proportional fill-bar overlay at the bottom of the icon rect. Volume level
-// is communicated by opening the popup, identical to the row icons.
+// The level is read in the popup, as on the row icons.
 func TestMasterVolIcon_NoOverlayFillBar(t *testing.T) {
 	assertDefaultParityState(t)
 	z, _ := newTestTransportZone()
@@ -112,13 +98,11 @@ func TestMasterVolIcon_NoOverlayFillBar(t *testing.T) {
 		if !c.Rect.In(icon) {
 			continue
 		}
-		// A fill bar would be primary-colored at AlphaMedium hugging the
-		// bottom of the icon rect.
+		// A fill bar would be primary-coloured, hugging the bottom of the icon.
 		if isPrimaryColor(c.Color) && c.Rect.Max.Y == icon.Max.Y && c.Rect.Min.X == icon.Min.X {
 			t.Fatalf("master vol icon drew a proportional overlay fill bar: %+v", c)
 		}
-		// A bottom-edge horizontal track at the icon's full width and very
-		// short height (<=4 px) is the deprecated track overlay.
+		// A short full-width bottom track is the deprecated overlay.
 		if c.Rect.Max.Y == icon.Max.Y && c.Rect.Dx() == icon.Dx() && c.Rect.Dy() <= 4 {
 			t.Fatalf("master vol icon drew a track overlay bar at the bottom: %+v", c)
 		}
@@ -150,11 +134,6 @@ func TestMasterVolIcon_NoOverlayFillBarFullVol(t *testing.T) {
 	}
 }
 
-// TestMasterVolIcon_StyleParityWithRowIcon_Mobile: the master vol icon and
-// the row vol icon should produce structurally identical draw output on
-// mobile (same icon-glyph extent, no extra chrome around the master one).
-// We compare by counting calls — the master icon should not have more
-// drawRect calls per icon area than the row icon.
 func TestMasterVolIcon_StyleParityWithRowIcon_Mobile(t *testing.T) {
 	forceSmallScreenForTest = true
 	activeProfile = nil
@@ -170,11 +149,8 @@ func TestMasterVolIcon_StyleParityWithRowIcon_Mobile(t *testing.T) {
 	}
 	z.mainVolSlider.Value = 0.5
 
-	// Parity check: the master icon and a direct drawVolumeButton call with the
-	// same parameters must produce an identical count of filled rounded rects.
-	// Both share the same drawVolumeButton implementation, so any divergence
-	// means the master path has extra chrome. We also guard that the indicator
-	// actually draws at least one rounded rect (the neon rail).
+	// Both go through drawVolumeButton, so a different count of filled rounded rects means extra chrome on the
+	// master path; at least one must draw (the rail).
 	dstM := ebiten.NewImage(720, 240)
 	roundedM := captureRoundedRect(t, func() {
 		z.drawMasterVolIconOffset(dstM, 0, 0)
@@ -203,9 +179,6 @@ func TestMasterVolIcon_StyleParityWithRowIcon_Mobile(t *testing.T) {
 
 // --- Toggle behavior tests ---
 
-// TestMasterVolIcon_SecondClickClosesPopupDesktop verifies that pressing the
-// master vol icon a second time (after it has opened the popup) closes the
-// popup. Currently fails because OnMasterVolClick unconditionally opens.
 func TestMasterVolIcon_SecondClickClosesPopupDesktop(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = false
@@ -236,9 +209,7 @@ func TestMasterVolIcon_SecondClickClosesPopupDesktop(t *testing.T) {
 	}
 }
 
-// TestMasterVolIcon_SecondClickClosesPopupMobile mirrors the desktop test
-// under the mobile profile, where touch-target expansion of the popup hit
-// area used to swallow the icon press.
+// On mobile the popup's touch-expanded hit area used to swallow the icon press.
 func TestMasterVolIcon_SecondClickClosesPopupMobile(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true
@@ -272,8 +243,6 @@ func TestMasterVolIcon_SecondClickClosesPopupMobile(t *testing.T) {
 	}
 }
 
-// TestRowVolIcon_SecondClickClosesPopup verifies the per-row icon also
-// toggles. The user wants all volume buttons consistent.
 func TestRowVolIcon_SecondClickClosesPopup(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true
@@ -308,8 +277,7 @@ func TestRowVolIcon_SecondClickClosesPopup(t *testing.T) {
 	}
 }
 
-// clickAtIcon sends a press+release at the center of rect via the real tree
-// input pipeline.
+// Through the real tree input pipeline.
 func clickAtIcon(t *testing.T, dv *DrumView, r image.Rectangle) {
 	t.Helper()
 	if r.Empty() {

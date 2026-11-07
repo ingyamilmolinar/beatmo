@@ -6,10 +6,7 @@ import (
 	"testing"
 )
 
-// There is ONE reference-audio root, $BEATMO_WAV_REFS. Root() is it, with a
-// default so the tooling works out of the box; unlike Dir() it never reports
-// not-ok for an unset env var, because a drop-in directory you have to
-// export a variable to find is not a drop-in directory.
+// Root() never reports not-ok for an unset variable: a drop-in directory you must export a variable to find is not one.
 func TestRoot_HonoursEnvOverride(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv(EnvVar, tmp)
@@ -41,9 +38,7 @@ func TestSourcesDir_IsASubdirectoryOfTheOneRoot(t *testing.T) {
 	}
 }
 
-// Raw drop-ins must never be mistaken for converted references: Resolve
-// only ever hands back audio from the root itself (or the committed
-// corpus), so a file sitting in sources/ is invisible to it until adopted.
+// Resolve only hands back audio from the root itself, so a raw drop-in is invisible until adopted.
 func TestSourcesDir_IsNotWhereResolveLooks(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv(EnvVar, tmp)

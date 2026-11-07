@@ -46,8 +46,6 @@ func (s *playbackSlate) timelineTrimAfterMutable(row, maxAbs int) {
 	g.timelineService().TrimAfterMutable(row, maxAbs)
 }
 
-// timelineRewindTo archives post-abs immutable commits for row and cuts the
-// mutable/ring tier at abs-1 (Service.RewindTo), for a backward seek.
 func (s *playbackSlate) timelineRewindTo(row, abs int) {
 	if s.g == nil {
 		return
@@ -72,14 +70,11 @@ func (s *playbackSlate) timelineCommittedWithKind(row, abs int) (bool, model.Nod
 
 func (s *playbackSlate) timelineReplaceCommit(row, abs int, val bool, typ model.NodeType, kind timeline.CommitKind) bool {
 	g := s.g
-	// Keep immutable past playback/import commits stable; allow demotion only
-	// for future/leaked entries so live edits can refresh upcoming beats.
+	// Immutable past commits stay; only future or leaked entries may be demoted.
 	if v, t, k, ok := g.timelineCommittedWithKind(row, abs); ok && (k == timeline.CommitKindPlayback || k == timeline.CommitKindImport) {
 		globalNext := g.globalPastExclusive()
-		// When the sequencer is enabled, its next index is the authoritative
-		// monotonic boundary for the true past. Prevent replacements for any
-		// playback/import commit strictly before that boundary, even if the UI's
-		// freeze limit was temporarily clamped during a live edit.
+		// The sequencer's next index is the monotonic past boundary, even while a live edit clamps the
+		// freeze limit.
 		if row >= 0 && row < len(g.seqNextIdxs) {
 			seqNext := g.seqNextIdxs[row]
 			if globalNext > 0 && seqNext > globalNext {
@@ -91,10 +86,7 @@ func (s *playbackSlate) timelineReplaceCommit(row, abs int, val bool, typ model.
 				return false
 			}
 		}
-		// A commit is "truly past" for a specific row when its absolute index is
-		// strictly less than that row's next-beat index. Some rows can drift from
-		// the global playhead during live edits or when the UI is catching up, so
-		// do not rely on g.elapsedBeats here.
+		// Per row, not g.elapsedBeats: rows can drift from the global playhead during edits.
 		next := globalNext
 		if next <= 0 {
 			next = g.elapsedBeats + 1
@@ -162,10 +154,7 @@ func (g *Game) timelineTrimAfterMutable(row, maxAbs int) {
 	g.playbackSlate.timelineTrimAfterMutable(row, maxAbs)
 }
 
-// timelineRewindTo is the Game-side chokepoint for rewinding a row's timeline
-// on a backward seek: it archives post-abs immutable commits and cuts the
-// mutable tier via Service.RewindTo, then lowers the freeze watermark so the
-// rewound region renders from the predictor (live re-simulation), not the
+// Also lowers the freeze watermark, so the rewound region renders from the predictor, not the
 // archived past.
 func (g *Game) timelineRewindTo(row, abs int) {
 	g.playbackSlate.timelineRewindTo(row, abs)

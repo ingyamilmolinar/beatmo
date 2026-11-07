@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// parseTypographySizes extracts the `fontSize: Npx` value for each role under
-// the `typography:` block of DESIGN.md's YAML front matter.
 func parseTypographySizes(md string) map[string]float64 {
 	out := map[string]float64{}
 	roleRe := regexp.MustCompile(`^  ([a-z-]+):\s*$`)
@@ -40,11 +38,8 @@ func parseTypographySizes(md string) map[string]float64 {
 	return out
 }
 
-// TestTextRoleSizesMatchDesignMD pins every TextRole's render px to the
-// typography spec in DESIGN.md — the typography parallel to TestDesignMDDrift
-// (colors). DESIGN.md is the source of truth; if a role's size diverges, or a
-// title site hardcodes a different px (the bug this pass fixed), update both
-// DESIGN.md and TextRole.size() together. Guards against typography re-drift.
+// DESIGN.md is the source of truth: a role whose size diverges, or a title site hardcoding a px, means updating
+// both together.
 func TestTextRoleSizesMatchDesignMD(t *testing.T) {
 	body, err := os.ReadFile(findDesignMD(t))
 	if err != nil {
@@ -72,9 +67,7 @@ func TestTextRoleSizesMatchDesignMD(t *testing.T) {
 	}
 }
 
-// TestTextRoleHierarchy proves the role API exposes a real, distinct type
-// scale (panel-title > section-header > body > caption) in every build mode —
-// this is what kills the "everything is one chunky size" look.
+// A distinct type scale in every build mode: panel title > section header > body > caption.
 func TestTextRoleHierarchy(t *testing.T) {
 	pt := StyledTextHeight(RolePanelTitle)
 	sh := StyledTextHeight(RoleSectionHeader)
@@ -88,8 +81,7 @@ func TestTextRoleHierarchy(t *testing.T) {
 	}
 }
 
-// TestStyledTextWidthScalesWithLength is a sanity check that width grows with
-// string length (guards against a constant/0 fallback regression).
+// Guards against a constant or zero fallback.
 func TestStyledTextWidthScalesWithLength(t *testing.T) {
 	short := StyledTextWidth("Hi", RoleBody)
 	long := StyledTextWidth("Hello world", RoleBody)

@@ -1,18 +1,7 @@
 package ui
 
-// synth_pipeline_strip.go — the Synth tab's PIPELINE STRIP: one row of stage
-// pills in signal order showing only the stages that are ON and relevant
-// (OSC → ENV → FILTER → POST for a plain modular voice), joined by chevrons.
-// Each pill carries the stage's short label (text only: the old per-stage
-// thumbnails were removed with the modelled graphs, 2026-10-25). Tapping
-// a pill DRILLS into the stage (same drilled screen as a category). A trailing
-// "+" pill lists the OFF stages in the shared action menu: picking one turns
-// it on and drills into it — the only place a bypassed stage appears at the
-// root.
-//
-// Built from existing components only: the pills and the "+" are Buttons
-// (published through buttonHitAdapter), the layout is a ControlGrid, the
-// menu is openActionMenu.
+// Only the stages that are ON, in signal order; a pill drills in, and the "+" pill lists the OFF stages - the
+// only place a bypassed stage appears at the root.
 
 import (
 	"image"
@@ -31,11 +20,7 @@ type synthPipePill struct {
 	rect   image.Rectangle
 }
 
-// activePipelineStages splits dv.instEditorSections into the stages that are
-// ON (drawn in the strip) and OFF (listed under "+"), both as section indices
-// in pipeline order. A stage is on when it has no enable pill, is locked on
-// (VOICE / sole-source OSC), or its pill reads enabled; value-gated stages
-// (ENSEMBLE at one voice, RESONATOR at body "Off") count as off.
+// Value-gated stages at their identity (one voice, body Off) count as off.
 func (p *synthPanel) activePipelineStages(instID instrument.ID) (on []int, off []int) {
 	dv := p.dv
 	on, off = p.pipeOn[:0], p.pipeOff[:0]
@@ -45,8 +30,7 @@ func (p *synthPanel) activePipelineStages(instID instrument.ID) (on []int, off [
 		st := p.synthStageEnableState(instID, sec)
 		switch {
 		case sec.id == synthSectionPost:
-			// POST is the output stage (gain lives there): always part of the
-			// signal path even when its drive/post toggle is off.
+			// POST carries the gain, so it is always in the signal path.
 			on = append(on, i)
 		case st.kind == enableNone, st.kind == enableLocked, st.enabled:
 			on = append(on, i)
@@ -57,11 +41,7 @@ func (p *synthPanel) activePipelineStages(instID instrument.ID) (on []int, off [
 	return on, off
 }
 
-// pipelineStripHeight is the band height the strip claims: one chip-strip row
-// on desktop; on mobile as many rows as the pills wrap into. The mobile row
-// count comes from a probe Layout of the strip's own grid (its adaptive
-// column rule, not a re-derivation), so the band always fits every pill —
-// including the trailing "+" — instead of clipping a wrapped row.
+// The mobile row count comes from a probe Layout of the strip's own grid, so the band fits every wrapped pill.
 func (p *synthPanel) pipelineStripHeight(mobile bool, n, availW int) int {
 	dv2 := Profile().DensityValues()
 	if !mobile || n <= 0 {
@@ -114,8 +94,7 @@ func (p *synthPanel) layoutPipelineStrip(band image.Rectangle, instID instrument
 	if chipH > band.Dy() {
 		chipH = band.Dy()
 	}
-	// Desktop: a single row, every pill sharing the width. Mobile: greedy wrap
-	// at the minimum chip width so every stage stays visible at 360 px.
+	// Mobile wraps at the minimum chip width so every stage stays visible at 360 px.
 	if mobile {
 		grid.SetMaxCols(0)
 	} else {
@@ -152,8 +131,7 @@ func (p *synthPanel) layoutPipelineStrip(band image.Rectangle, instID instrument
 		if vis {
 			add := p.pipeButton(-1)
 			add.Text = "+ " + i18n.T(i18n.KeySynthAddStage)
-			// The menu items are built on tap (not per Layout): one entry per
-			// OFF stage, turning it on and drilling into it.
+			// Built on tap, not per Layout.
 			add.OnClick = func() {
 				_, offNow := p.activePipelineStages(instID)
 				items := make([]actionMenuItem, 0, len(offNow))
@@ -179,8 +157,6 @@ func (p *synthPanel) layoutPipelineStrip(band image.Rectangle, instID instrument
 	}
 }
 
-// drawPipelineStrip paints the pills (Button chrome), the chevron connectors
-// between same-row neighbours, and the "+" pill.
 func (p *synthPanel) drawPipelineStrip(dst *ebiten.Image) {
 	dv := p.dv
 	var prev image.Rectangle
@@ -202,8 +178,6 @@ func (p *synthPanel) drawPipelineStrip(dst *ebiten.Image) {
 	}
 }
 
-// drawPipelineChevron draws the accent "signal flows this way" chevron centred
-// in the gap between two same-row pills (the old chip strip's connector).
 func drawPipelineChevron(dst *ebiten.Image, a, b image.Rectangle) {
 	gapW := b.Min.X - a.Max.X
 	cy := (b.Min.Y + b.Max.Y) / 2
@@ -219,9 +193,7 @@ func drawPipelineChevron(dst *ebiten.Image, a, b image.Rectangle) {
 	DrawIcon(dst, IconChevronRight, image.Rect(cx-side/2, cy-side/2, cx-side/2+side, cy-side/2+side), WithAlpha(colAccent, AlphaMedium))
 }
 
-// pipeButton returns the cached Button for stage id (-1 = the "+" pill). Buttons
-// persist across Layouts so their hover/press animation state survives and
-// the per-frame rebuild allocates nothing.
+// Persisted across Layouts so hover/press animation survives and the rebuild allocates nothing.
 func (p *synthPanel) pipeButton(id synthSectionID) *Button {
 	if p.pipeBtns == nil {
 		p.pipeBtns = map[synthSectionID]*Button{}

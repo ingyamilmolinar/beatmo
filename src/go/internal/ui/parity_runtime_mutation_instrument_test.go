@@ -7,23 +7,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestParityToleratesInstrumentChangeMidPlay reproduces the cross-row parity
-// panic reported in the field: while playing, the user changes the instrument
-// on a non-row-0 row (e.g. row 4 cowbell-1 -> cowbell-2). Parity then panics on
-// a different row (row 2) at a beat that already played, complaining that a
-// committed-silent past disagrees with a now-visible predictor.
-//
-// The root cause is that the past-freeze loop in refreshDrumRow can commit
-// CommitKindPlayback (immutable) using a transient predictor query, AND no
-// structural-generation barrier exists to coordinate the parity buffers across
-// runtime mutations. After the fix:
-//   - mutateStructural bumps the parity generation
-//   - parity buffers (audio events, seq decisions, highlights) are filtered by
-//     generation
-//   - the freeze loop's safety-net commits become CommitKindReleased (mutable)
-//   - applySequencerHighlight remains the sole CommitKindPlayback author
-//
-// This test must FAIL before the refactor and PASS after.
+// An instrument change on one row while playing must not make another row's played past contradict the
+// predictor: mutations bump the parity generation, buffers are filtered by it, and only highlights write
+// immutable commits.
 func TestParityToleratesInstrumentChangeMidPlay(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -69,8 +55,6 @@ func TestParityToleratesInstrumentChangeMidPlay(t *testing.T) {
 
 	g.SetPlaying(true)
 
-	// Drive playback for a substantial run so plenty of past commits accumulate
-	// and the parity ring has many opportunities to fire.
 	for abs := 0; abs < 32; abs++ {
 		scheduleAbsForMuteTest(g, abs)
 	}
@@ -80,19 +64,14 @@ func TestParityToleratesInstrumentChangeMidPlay(t *testing.T) {
 		t.Fatalf("unexpected pre-mutation mismatches: %d %v", got, g.ParityMismatchSnapshot())
 	}
 
-	// Mid-play: change instrument on row 1 (the non-origin, cross-row case).
-	// Then change it again (simulating the user scrolling through the menu —
-	// matches the exact field repro: cowbell-1 -> cowbell-2 in rapid succession).
+	// Twice in quick succession, as when scrolling through the menu.
 	g.drum.selRow = 1
 	g.drum.SetInstrument(roster.Hihat)
 	g.drum.SetInstrument(roster.Clap)
 
-	// Continue advancing the sequencer past the mutation. This is when the
-	// freeze loop and parity scan have historically tripped.
 	for abs := 32; abs < 96; abs++ {
 		scheduleAbsForMuteTest(g, abs)
-		// Refresh + scan periodically so we exercise the post-mutation state on
-		// a per-frame cadence the way real playback does.
+		// Refreshed and scanned at a per-frame cadence, like real playback.
 		if abs%8 == 0 {
 			g.refreshDrumRow()
 			g.parityScan("post-mutation")
@@ -106,9 +85,6 @@ func TestParityToleratesInstrumentChangeMidPlay(t *testing.T) {
 	}
 }
 
-// TestParityToleratesSameRowInstrumentChange covers the simpler same-row case:
-// changing the instrument on the row whose past is being committed. Should
-// behave identically to the cross-row case after the fix.
 func TestParityToleratesSameRowInstrumentChange(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

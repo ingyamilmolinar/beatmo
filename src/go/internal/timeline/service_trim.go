@@ -72,13 +72,8 @@ func (s *Service) TrimAfterMutable(row, maxAbs int) {
 	}
 }
 
-// RewindTo repositions row `row` for a backward seek to absolute subdivision
-// `abs`. The pass from abs on is ABANDONED — it is about to be replayed — so
-// every Playback/Import commit with key >= abs (hot sidecar AND entries that
-// had already aged into the scroll-back archive) moves to the superseded store:
-// retained (full-history rule), but never answered by the live lookup, which
-// must read only the pass being played. The mutable/ring tier is cut at abs-1
-// and everything below abs is left untouched. After a rewind the caller lowers
+// The pass from abs on is ABANDONED: its Playback/Import commits (sidecar AND archive) move to the superseded store,
+// kept but never answered by the live lookup. The ring is cut at abs-1; below abs is untouched. The caller then lowers
 // the freeze watermark so the rewound region renders from the predictor.
 func (s *Service) RewindTo(row, abs int) {
 	s.mu.Lock()
@@ -109,16 +104,13 @@ func (s *Service) RewindTo(row, abs int) {
 			delete(rowMap, k)
 		}
 	}
-	// Hard-cut the ring at abs-1 (drops any ring entries >= abs, mutable or not;
-	// immutables were just superseded, so no copy is lost).
+	// Immutables were just superseded, so cutting the ring loses no copy.
 	s.rows[row].commits.trimAfter(abs - 1)
 	// The rewound region is re-simulated and re-recorded as it plays again.
 	s.played[row].truncateFrom(abs)
 }
 
-// ReplaceCommit overwrites an existing commit at abs (if present). This is
-// used to reconcile seeded/gap commits with the live predictor without
-// truncating history. Returns false if abs is outside the retained range.
+// Reconciles seeded/gap commits with the live predictor without truncating history; false outside the retained range.
 func (s *Service) ReplaceCommit(row, abs int, val bool, typ model.NodeType, kind CommitKind) bool {
 	if row < 0 {
 		return false
@@ -130,8 +122,7 @@ func (s *Service) ReplaceCommit(row, abs int, val bool, typ model.NodeType, kind
 	}
 	_, _, curKind, curOK := s.valueLocked(row, abs)
 	if s.rows[row].commits.replace(abs, val, typ, kind) {
-		// Keep the immutable sidecar in sync so lookups do not return stale
-		// playback/import entries after a demotion to Released/Seeded/etc.
+		// So lookups never return a stale playback/import entry after a demotion.
 		rowMap := s.immutables[row]
 		if kind == CommitKindPlayback || kind == CommitKindImport {
 			if s.immutables == nil {
@@ -151,21 +142,15 @@ func (s *Service) ReplaceCommit(row, abs int, val bool, typ model.NodeType, kind
 		return true
 	}
 
-	// The ring no longer retains this absolute index. If the immutable sidecar
-	// contains the entry, still honor the replacement semantics by updating or
-	// deleting the sidecar so callers can demote leaked future playback commits.
+	// Out of the ring: the sidecar entry is still updated or removed, so leaked future playback commits can be demoted.
 	if curOK && (curKind == CommitKindPlayback || curKind == CommitKindImport) {
 		if rowMap := s.immutables[row]; rowMap != nil {
 			if kind == CommitKindPlayback || kind == CommitKindImport {
 				rowMap[abs] = commitEntry{val: val, typ: typ, kind: kind}
 				return true
 			}
-			// The ring no longer retains this abs, so demoting the immutable
-			// sidecar entry by deletion would drop the only surviving record of
-			// this played/imported beat. Migrate it to the cold archive first so
-			// scroll-back still resolves it — mirrors pruneImmutablesRowLocked and
-			// upholds the playback/import immutability contract even when a live
-			// edit demotes a leaked future commit that has aged out of the ring.
+			// Archived before the sidecar deletion: it may be the only surviving record of a played beat, and scroll-back must
+			// still resolve it.
 			if ce, ok := rowMap[abs]; ok {
 				s.ensureArchiveLocked(row).append(abs, ce.val, ce.typ, ce.kind, s.archiveMaxEntries)
 			}

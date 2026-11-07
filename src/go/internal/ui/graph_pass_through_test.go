@@ -6,9 +6,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// With auto-stitching enabled, placing a node on a pass-through intersection
-// (where an edge runs) should split that edge so the new node becomes part of
-// the traversal.
 func TestPlaceNodeOnPassThroughSplitsEdge(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

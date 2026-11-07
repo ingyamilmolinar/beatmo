@@ -1,19 +1,11 @@
 package ui
 
-// menu_keynav_wiring.go — MenuKeyNavHost adapters for the two list menus that
-// DrumView hosts directly (rather than as first-class portal components).
-//
-// DrumView owns several menus at once, so it cannot implement MenuKeyNavHost
-// itself — one type, one interface. Each menu gets a tiny adapter instead,
-// keeping the wiring in one file rather than spread across DrumView.
+// DrumView hosts several menus, so each gets a small adapter rather than DrumView implementing
+// the interface.
 
 // --- Overflow menu (File page + Templates page) ---------------------------
 
-// overflowNavHost adapts the overflow/template menu to MenuKeyNavHost.
-//
-// This is the menu that motivated MenuItemSelectable: its item list is
-// [Templates title][search box][Back][group header][template][template]...,
-// so most indices are not choices at all.
+// Most of its indices are not choices: title, search, Back, group headers, then templates.
 type overflowNavHost struct{ dv *DrumView }
 
 func (h overflowNavHost) MenuItemCount() int { return len(h.dv.overflowItems()) }
@@ -23,8 +15,7 @@ func (h overflowNavHost) MenuItemSelectable(i int) bool {
 	if i < 0 || i >= len(items) {
 		return false
 	}
-	// Headers are captions and the search row is a text field; neither is a
-	// choice, so the cursor steps over them.
+	// Headers and the search row are not choices.
 	return !items[i].header && !items[i].search && items[i].onClick != nil
 }
 
@@ -51,13 +42,8 @@ func (dv *DrumView) overflowKeyNav() *MenuKeyNav {
 	return dv.overflowNav
 }
 
-// updateOverflowKeyNav runs one frame of keyboard navigation for the overflow
-// menu. Called from the overflow portal's updateFn.
-//
-// The cursor is indexed into the CURRENT item list, which changes shape as the
-// user types in the search box (rows are filtered) or switches page. Resetting
-// on a shape change stops a stale index from activating whatever row happens to
-// have slid under it.
+// The list changes shape as the user types or switches page; reset on a shape change so a stale
+// index cannot activate whatever slid under it.
 func (dv *DrumView) updateOverflowKeyNav() {
 	host := overflowNavHost{dv: dv}
 	nav := dv.overflowKeyNav()
@@ -65,14 +51,10 @@ func (dv *DrumView) updateOverflowKeyNav() {
 	sig := dv.overflowNavSignature()
 	switch {
 	case dv.overflowNavSig == "":
-		// First observation of this menu. A real signature always contains the
-		// page number, so "" is never one — treating it as a change would reset
-		// a cursor placed before the first frame (a screenshot scene, or a
-		// caller that opens the menu and preselects a row in the same tick).
+		// "" is never a real signature, so it must not count as a change: that would reset a cursor placed
+		// before the first frame.
 		dv.overflowNavSig = sig
 	case sig != dv.overflowNavSig:
-		// The list changed shape (page switch or new search query), so the
-		// retained index now points at a different row than the user saw.
 		dv.overflowNavSig = sig
 		nav.Reset()
 	}
@@ -84,8 +66,6 @@ func (dv *DrumView) overflowNavSignature() string {
 	return itoaMenuNav(dv.overflowPage) + "|" + dv.templateSearchQuery
 }
 
-// resetOverflowKeyNav clears the cursor and its shape signature. Called when
-// the overflow menu closes so the next open starts clean.
 func (dv *DrumView) resetOverflowKeyNav() {
 	dv.overflowNavSig = ""
 	dv.overflowKeyNav().Reset()
@@ -96,12 +76,8 @@ func (dv *DrumView) OverflowKeyNavForTest() *MenuKeyNav { return dv.overflowKeyN
 
 // --- Row context menu -----------------------------------------------------
 
-// contextNavHost adapts the per-row context menu to MenuKeyNavHost.
-//
-// Indexed over the BUTTON list rather than the item list: the context menu's
-// dividers and group headers own no button, so the button list is already the
-// list of choices, and its indices line up with what drawContextMenuItem
-// renders — which is what lets the highlight land on the row the user sees.
+// Over the BUTTON list: dividers and headers have no button, so its indices line up with the
+// rendered rows.
 type contextNavHost struct{ dv *DrumView }
 
 func (h contextNavHost) MenuItemCount() int { return len(h.dv.contextMenuBtns) }
@@ -132,8 +108,6 @@ func (dv *DrumView) contextKeyNav() *MenuKeyNav {
 	return dv.contextNav
 }
 
-// updateContextKeyNav runs one frame of keyboard navigation for the row
-// context menu. Called from the context portal's updateFn.
 func (dv *DrumView) updateContextKeyNav() {
 	dv.contextKeyNav().Update(contextNavHost{dv: dv})
 }

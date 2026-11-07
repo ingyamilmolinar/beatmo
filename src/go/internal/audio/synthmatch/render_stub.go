@@ -9,20 +9,13 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// RenderInstrument renders instID at the given pitch (semitones from A3=220Hz)
-// for durSec (0 = instrument default) at sr, returning a mono wave.Wave (float64).
-// Test build: uses a pure-Go param-responsive synth (no CGo).
+// Test build: a pure-Go param-responsive synth.
 func RenderInstrument(instID instrument.ID, pitch float64, sr int, durSec float64) (wave.Wave, error) {
 	return RenderWithParams(instID, pitch, sr, durSec, nil)
 }
 
-// RenderWithParams is RenderInstrument with extra param overrides set through
-// the instrument's document (and "pitch") before rendering.
-//
-// Test build: a small deterministic pure-Go synth that responds to the tunable
-// params so the optimizer can descend under -tags test. It does not need to
-// sound real — it provides smooth, monotonic-ish sensitivity to the params the
-// TunableSpecs expose. No RNG — fully deterministic given the same inputs.
+// Deterministic and smoothly responsive to the tunable params so the optimizer can descend under -tags test; it does
+// not need to sound real.
 func RenderWithParams(instID instrument.ID, pitch float64, sr int, durSec float64, overrides map[string]float64) (wave.Wave, error) {
 	_, merged, samples, err := resolveRender(instID, pitch, sr, durSec, overrides)
 	if err != nil {
@@ -113,25 +106,20 @@ func adsrEnv(t, dur, a, d, s, r float64) float64 {
 	}
 }
 
-// RenderShipped is the test-build stand-in: the pure-Go synth of
-// RenderWithParams (there is no C engine, FX or normalisation here).
+// No C engine, FX or normalisation here.
 func RenderShipped(instID instrument.ID, pitch float64, sr int, durSec float64, overrides map[string]float64) (wave.Wave, error) {
 	return RenderWithParams(instID, pitch, sr, durSec, overrides)
 }
 
-// RenderHeld is the test-build stand-in: the pure-Go synth's voice is
-// durSec long (0 = the instrument default) whatever it is held for.
+// The stub voice is durSec long whatever it is held for.
 func RenderHeld(instID instrument.ID, pitch float64, sr int, durSec, voiceSec float64, overrides map[string]float64) (wave.Wave, error) {
 	return RenderWithParams(instID, pitch, sr, durSec, overrides)
 }
 
-// HeldSeconds: the stub synth ignores how long a voice is held (0 = the
-// shipped length).
+// 0 = the shipped length.
 func HeldSeconds(instID instrument.ID, pitch, minSec float64) float64 { return 0 }
 
-// RenderShippedDoc is the test-build stand-in for a document candidate: a
-// decaying sine at the pitch, its decay from the document's render length —
-// the session plumbing runs, no C engine.
+// Enough for the session plumbing to run.
 func RenderShippedDoc(d instrument.Doc, pitch float64, sr int, durSec float64) (wave.Wave, error) {
 	if durSec <= 0 {
 		durSec = d.Render.Seconds
@@ -151,12 +139,8 @@ func HeldSecondsDoc(d instrument.Doc, pitch, minSec float64) float64 {
 	return math.Max(d.Render.Seconds, minSec)
 }
 
-// RenderHeldDoc is the test-build stand-in for an unregistered document held
-// voiceSec long: a small deterministic synth that RESPONDS to the
-// document -- each ON gen.wavetable layer is a partial at its ratio and gain,
-// each ON gen.noise layer adds that much noise, an ON filter stage low-passes
-// at filter_cutoff -- so code that searches a document's values (refs tune)
-// has a landscape to descend under -tags test. It does not sound real.
+// RESPONDS to the document (partials from wavetable layers, noise layers, a low-pass), so a search like refs tune has a
+// landscape to descend under -tags test. It does not sound real.
 func RenderHeldDoc(d instrument.Doc, pitch float64, sr int, durSec, voiceSec float64) (wave.Wave, error) {
 	if durSec <= 0 {
 		durSec = math.Max(d.Render.Seconds, 0.25)

@@ -22,14 +22,8 @@ func roleOfInstrument(f projectFile, id instrument.ID) instrument.Role {
 	return instrument.RoleNone
 }
 
-// TestImportExportRoundtripPreservesAllFields is the durable guarantee behind
-// "every valid exported JSON must import successfully": build a project that
-// exercises the breadth of the export schema, export → (fresh instance) import →
-// re-export, and assert the second export reproduces the first. It specifically
-// guards the two export-but-not-imported asymmetries closed in this change —
-// per-instrument Role and top-level Kits — by dropping the process-global kit
-// registry between export and import (a real "brand-new instance"); without the
-// import-side fixes the re-export loses the kit and the role.
+// Dropping the process-global kit registry between export and import makes this a real new instance: the
+// re-export keeps the kit and each instrument's Role only if Import restores them.
 func TestImportExportRoundtripPreservesAllFields(t *testing.T) {
 	withDefaultAudio(t)
 	t.Cleanup(audio.ResetKitsForTest)
@@ -92,8 +86,6 @@ func TestImportExportRoundtripPreservesAllFields(t *testing.T) {
 		t.Fatalf("precondition: source export missing kick Role")
 	}
 
-	// --- Brand-new instance: drop the global kit registry so re-export can only
-	// re-emit the kit if Import re-registered it. ---
 	audio.ResetKitsForTest()
 
 	g2 := New(testLogger)

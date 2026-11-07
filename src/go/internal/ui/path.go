@@ -6,9 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// BuildPath validates orthogonal connectivity for pts and then creates nodes
-// and edges in order under the given drum row. If the last point equals the
-// first a loop is formed.
+// A last point equal to the first closes a loop.
 func (g *Game) BuildPath(row int, pts [][2]int) error {
 	if len(pts) == 0 {
 		return nil

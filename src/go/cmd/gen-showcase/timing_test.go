@@ -9,12 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/musicxml"
 )
 
-// timing_test.go pins the one part of the pipeline with real logic rather than
-// mapping: how a note's PERFORMED time — swing, tuplets, grace notes, rolls,
-// breaths, fermatas, agogic spans — becomes a node on its WRITTEN step plus a
-// delay/rush. The end-to-end guards (TestGrooveIsDerivedFromNotation,
-// TestSwingDelaysExactlyTheSwungPositions) only prove groove appears where
-// notation exists; these pin the value.
+// How a note's PERFORMED time (swing, tuplets, graces, rolls, breaths, fermatas, agogic spans) becomes its WRITTEN
+// step plus a delay/rush: the end-to-end guards prove groove appears where notation exists; these pin the value.
 
 const testDiv = 12 // divisions per quarter: holds sixteenths AND triplets
 
@@ -114,10 +110,8 @@ func runLayer(t *testing.T, l loadedLayer, tm timing) ([]*rowAcc, scoreStats) {
 
 func hitsByStep(r *rowAcc) map[int]Hit { return r.hits }
 
-// A grace note sounds just before its principal, on the step before it — and
-// the principal (the written note) is kept even when the grace is higher.
-// Grouped with its principal as a chord tone, a higher grace used to take the
-// melody lane and push the principal out.
+// A grace sounds on the step before its principal, and the principal (the written note) is kept even when the grace
+// is higher.
 func TestGraceNotePrecedesItsPrincipal(t *testing.T) {
 	p := musicxml.Part{Name: "x", Notes: []musicxml.Note{
 		{OnsetDiv: 0, Semitone: 0, Voice: 1, Staff: 1},
@@ -268,9 +262,7 @@ func TestPickupWrapsToTheEndOfTheLoop(t *testing.T) {
 	}
 }
 
-// TestGrooveWindowIsOneStep pins the layout the engine's groove window
-// depends on: one grid unit per step, so the exported subdivision is steps
-// per quarter and a groove percentage is a fraction of one step.
+// One grid unit per step, so the exported subdivision is steps per quarter and a groove percentage is a fraction of a step.
 func TestGrooveWindowIsOneStep(t *testing.T) {
 	sh := Showcase{Stem: "t", BPM: 100, Subdiv: 16, TotalSteps: 16,
 		Insts: []InstSpec{{ID: roster.Kick, Name: "Kick", Volume: 1}},
@@ -420,9 +412,8 @@ func TestGraceBeforeOffGridPrincipalStaysInWindow(t *testing.T) {
 	if st.GrooveClamped != 0 {
 		t.Fatalf("clamped %d", st.GrooveClamped)
 	}
-	// Ideal grace time 8.33-0.14 = 8.2 is inside the principal's own step;
-	// from step 7 it is capped at a full step late — sounding at step 8,
-	// still ahead of the principal at 8.33.
+	// Ideal grace time 8.33-0.14 = 8.2, inside the principal's own step: from step 7 it is capped a full step late
+	// (step 8), still ahead of the principal.
 	g, ok := rows[0].hits[7]
 	if !ok || g.Pitch != 5 || g.Groove != grooveDelay || g.GroovePct != 1 {
 		t.Errorf("grace %+v: want step 7 delayed exactly one step", rows[0].hits)

@@ -9,16 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestSnapshotCache_TTLHonored asserts the per-channel snapshot cache
-// returns the stored value for repeated id lookups within the TTL
-// window and refetches when TTL expires. This is the core OOM-
-// prevention mechanism for the WASM analyzer bridge: the Draw loop
-// runs at 60+ fps but the JS-side AnalyserNode updates at ~30 Hz, so
-// cache turn-over must be bounded by the TTL not by the Draw rate.
-//
-// The cache file lives in the no-build-tag path so this test runs
-// alongside the rest of the audio suite; the cache implementation
-// itself has no js.Value dependency.
+// The Draw loop runs at 60+ fps while the AnalyserNode updates at about 30 Hz, so turnover is bounded by the TTL,
+// not the Draw rate. The cache has no js.Value dependency, so it runs with the rest of the suite.
 func TestSnapshotCache_TTLHonored(t *testing.T) {
 	c := newSnapshotCache()
 	var fetches int
@@ -66,10 +58,7 @@ func TestSnapshotCache_TTLHonored(t *testing.T) {
 	}
 }
 
-// TestSnapshotCache_HitAllocBudget pins the per-cached-call allocation
-// count. A cache hit must not allocate at all (returning the stored
-// snapshot value is a struct copy). Pre-fix the cache did not exist and
-// every getOrFetch call ran the full JS bridge → ~600 allocs/call.
+// A hit returns a struct copy and must not allocate.
 func TestSnapshotCache_HitAllocBudget(t *testing.T) {
 	c := newSnapshotCache()
 	probe := AnalyzerSnapshot{
@@ -89,8 +78,6 @@ func TestSnapshotCache_HitAllocBudget(t *testing.T) {
 		t.Fatalf("setup: expected 1 fetch, got %d", fetchCount)
 	}
 
-	// Cache-hit budget: 0 allocs. Returns a copy of the AnalyzerSnapshot
-	// value, which is small and stack-allocatable.
 	const budget = 0.0
 	allocs := testing.AllocsPerRun(1000, func() {
 		_ = c.getOrFetch(channel.Of(roster.Kick), time.Hour, fetch)
@@ -108,11 +95,7 @@ func TestSnapshotCache_HitAllocBudget(t *testing.T) {
 		allocs, budget)
 }
 
-// TestSnapshotByteBufPool_Reuse pins the bytes-per-cycle budget for the
-// pooled scratch buffer used by readSnapshotF64FromTypedArray. After
-// priming, get/put cycles should allocate near zero (sync.Pool reuse).
-// The pool's interface{} boxing accounts for the residual 0.5/cycle
-// budget — it is unavoidable without internal Go runtime changes.
+// sync.Pool's interface boxing accounts for the residual budget.
 func TestSnapshotByteBufPool_Reuse(t *testing.T) {
 	const n = 2048
 	for i := 0; i < 10; i++ {
@@ -124,11 +107,7 @@ func TestSnapshotByteBufPool_Reuse(t *testing.T) {
 		b := getSnapshotByteBuf(n)
 		putSnapshotByteBuf(b)
 	})
-	// Budget = 1.5 to allow for the interface{} boxing sync.Pool does on
-	// Put (1 alloc/cycle observed empirically). Pre-fix the WASM path
-	// allocated 2048-byte buffers fresh on every Snapshot call instead
-	// of reusing — at ~210 snapshots/sec that's ~440 KB/sec of allocator
-	// churn directly attributable to the JS bridge readback.
+	// Allows sync.Pool's boxing on Put.
 	const budget = 1.5
 	if allocs > budget {
 		t.Errorf("snapshot byte-buf pool allocs/cycle = %.2f exceeds "+
@@ -141,11 +120,7 @@ func TestSnapshotByteBufPool_Reuse(t *testing.T) {
 		"is reused.", allocs, budget, n, n)
 }
 
-// TestSnapshotCache_BoundedAtDrawRate models the production usage
-// pattern: the EQ Draw loop calls Snapshot for each of N channels at a
-// high frame rate. With the cache in place the number of underlying
-// fetches must stay bounded by (channels × elapsed / TTL), regardless
-// of how often Snapshot is invoked.
+// Fetches stay bounded by channels × elapsed / TTL however often Snapshot is called.
 func TestSnapshotCache_BoundedAtDrawRate(t *testing.T) {
 	c := newSnapshotCache()
 	const channels = 7
@@ -174,8 +149,7 @@ func TestSnapshotCache_BoundedAtDrawRate(t *testing.T) {
 	}
 	elapsed := time.Since(start)
 
-	// Maximum theoretical fetches: channels × (elapsed / TTL) + channels
-	// (the +channels accounts for the cold-cache fetch on each id).
+	// Plus one cold fetch per channel.
 	maxFetches := channels*int(elapsed/ttl) + channels
 	// Allow 20% slack for scheduler jitter.
 	maxFetches = maxFetches * 12 / 10

@@ -83,9 +83,7 @@ func TestDBToFrac(t *testing.T) {
 }
 
 func TestTruncateName(t *testing.T) {
-	// Under the test stub, TextWidth returns debugCharW * runeCount. So a
-	// 5-char name has width 5*debugCharW; with maxPx=3*debugCharW, scale=1
-	// the function should chop to "abc".
+	// The stub's TextWidth is debugCharW × runes, so 3·debugCharW keeps "abc".
 	w3 := 3 * debugCharW
 	if got := truncateName("abcdef", w3, 1.0); got != "abc" {
 		t.Errorf("truncateName fit-3 = %q, want abc", got)

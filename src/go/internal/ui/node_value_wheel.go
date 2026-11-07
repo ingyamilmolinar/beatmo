@@ -8,14 +8,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// Node sidebar value wheels: tapping a value pill (volume, duration, logic N,
-// logic P, groove %) opens the shared value wheel over it. Each detent writes
-// the node LIVE (setNodeParamsLive: the predictor hears the next trigger
-// differently); closing commits ONCE (commitNodeParams: one log line, one undo
-// step); Esc restores the opening params.
+// Each detent writes the node LIVE; closing commits ONCE (one log line, one undo step); Esc
+// restores the opening params.
 
-// nodeParamLimits is the ONE range table for node params, read by the sidebar
-// ± steppers, the value wheels and the JS bridge (js_exports_graph_ui.go).
+// The ONE range table, read by the steppers, the wheels and the JS bridge.
 var nodeParamLimits = struct {
 	VolumeMinDB, VolumeMaxDB float64 // wheel floor (below = Muted) / ceiling
 	DurationMin, DurationMax float64
@@ -37,8 +33,7 @@ func clampNodeVolume(v float64) float64 {
 	return v
 }
 
-// clampNodeDuration keeps a duration multiplier inside the limits; 0 (the
-// unset default) reads as 1.
+// 0 (unset) reads as 1.
 func clampNodeDuration(d float64) float64 {
 	if d == 0 {
 		d = 1
@@ -60,9 +55,7 @@ func clampLogicN(n int) int {
 // nodeVolumeMutedDB is the volume wheel's bottom row: Muted (gain 0).
 var nodeVolumeMutedDB = nodeParamLimits.VolumeMinDB - 1
 
-// setNodeParamsLive writes p to the node and tells the predictor, WITHOUT
-// announcing it (the wheel's per-detent write). logic re-bases the predictor
-// for logic-gate params, as the steppers do.
+// Not announced (the per-detent write); logic re-bases the predictor for logic params.
 func (g *Game) setNodeParamsLive(id model.NodeID, p model.NodeParams, logic bool) {
 	g.graph.SetNodeParams(id, p)
 	g.notifyPredictorNode(id)
@@ -71,17 +64,13 @@ func (g *Game) setNodeParamsLive(id model.NodeID, p model.NodeParams, logic bool
 	}
 }
 
-// commitNodeParams announces a node's current params once (log line + undo
-// step) — the gesture commit for a value wheel.
 func (g *Game) commitNodeParams(id model.NodeID) {
 	if mn, ok := g.graph.GetNodeByID(id); ok {
 		emitNodeParamsChanged(id, mn.Params)
 	}
 }
 
-// openNodeValueWheel opens the value wheel for one of the node's value pills
-// (volume, duration, logic N / P, groove %). The node id is captured here, so a wheel
-// left open while the sidebar retargets still commits to its own node.
+// The id is captured here, so a wheel left open while the sidebar retargets still commits to its node.
 func (g *Game) openNodeValueWheel(kind sbField) {
 	sb := g.sidebar
 	if sb == nil || sb.node == nil || g.drum == nil {
@@ -100,9 +89,7 @@ func (g *Game) openNodeValueWheel(kind sbField) {
 	logic := false
 	switch kind {
 	case fieldVol:
-		// The bottom row is Muted. Normally that is one step below -40 dB, but a
-		// node the − stepper took quieter than that keeps its real level on the
-		// wheel (the floor moves down to just below it).
+		// The bottom row is Muted; a node already quieter than -40 dB keeps its real level (the floor moves).
 		mutedDB := nodeVolumeMutedDB
 		v := mutedDB
 		if start.Volume > 0 {
@@ -183,8 +170,7 @@ func (g *Game) openNodeValueWheel(kind sbField) {
 			apply(&p, m.Value)
 			g.setNodeParamsLive(id, p, logic)
 		},
-		// Esc puts the node back EXACTLY as it was (the model converts and
-		// clamps, so re-deriving from it would drift or mute a quiet node).
+		// Restores EXACTLY: re-deriving through the model would drift or mute a quiet node.
 		OnCancel: func() { g.setNodeParamsLive(id, start, logic) },
 		OnCommit: func() { g.commitNodeParams(id) },
 	}, anchor, g.windowRect())

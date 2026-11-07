@@ -39,15 +39,7 @@ func TestTextCommitEmits(t *testing.T) {
 	}
 }
 
-// TestTextCommitEnterExactlyOneEvent verifies that pressing Enter in a TextInput
-// with LogField set produces EXACTLY ONE EventTextCommitted — not two. This is the
-// regression test for the double-emit bug where the Enter-key path emitted once and
-// then the blur-transition branch emitted a second time on the following frame.
-//
-// The test drives the full Update() cycle across three frames:
-//   - frame 0: settle focus (focused=true, prevFocused catches up)
-//   - frame 1: Enter pressed → focused set to false
-//   - frame 2: blur transition fires → exactly one EventTextCommitted
+// The Enter path and the blur transition on the next frame must not both emit.
 func TestTextCommitEnterExactlyOneEvent(t *testing.T) {
 	ch := make(chan hooks.TextPayload, 4) // buffered to catch spurious extra events
 	u := hooks.GlobalBus().Subscribe(hooks.EventTextCommitted, func(e hooks.Event) {

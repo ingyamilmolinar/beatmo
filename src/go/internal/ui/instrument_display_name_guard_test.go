@@ -11,19 +11,8 @@ import (
 	"testing"
 )
 
-// TestInstrumentNameInlineTitleCaseGuard prevents the regression where
-// drumview code derives a row's display Name from an instrument ID via
-// strings.ToUpper(id[:1]) + id[1:]. That pattern leaks separators —
-// "hi-hat" becomes "Hi-hat" instead of "Hi Hat". The unified path is
-// dv.computeInstLabel(id) (or audio.PrettyName for one-shot use); see
-// drumview_instrument_helpers.go.
-//
-// The guard scans drumview_*.go (excluding tests) for the canonical
-// leak shape — strings.ToUpper(<ident>[:1]) + <ident>[1:] where the
-// same identifier appears on both sides — and fails if any are found.
-// Unrelated patterns (a one-off capitalize() helper in drumview_fx_panel.go
-// for effect parameter labels) use a local helper, not the inline form,
-// and are not flagged.
+// strings.ToUpper(id[:1]) + id[1:] leaks separators ("hi-hat" → "Hi-hat"); names go through
+// dv.computeInstLabel or audio.PrettyName.
 func TestInstrumentNameInlineTitleCaseGuard(t *testing.T) {
 	pattern := regexp.MustCompile(`strings\.ToUpper\([a-zA-Z_][a-zA-Z0-9_.]*\[:1\]\)\s*\+\s*[a-zA-Z_][a-zA-Z0-9_.]*\[1:\]`)
 

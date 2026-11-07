@@ -35,13 +35,8 @@ func TestMenuPagerFooter_ButtonsStayInsideFooterAtEveryWidth(t *testing.T) {
 	}
 }
 
-// The footer band must always reserve enough height to contain its own
-// contents (the prev/next buttons and the page label), at any font metric.
-// NOTE: menuPagerFooterH/menuPagerBtnSize derive from TextHeight()+Space* which
-// are density-INVARIANT in this codebase (font metric + fixed spacing tokens),
-// so the pager is font-fixed like the logs pager it was extracted from — that
-// is the intended no-drift behavior, not a bug. This test asserts the real
-// band-fits-contents invariant instead of a (false) density-scaling one.
+// The band fits its own contents at any font metric. The pager is font-fixed by design: its sizes derive from
+// TextHeight and fixed spacing, not density.
 func TestMenuPagerFooter_BandFitsItsContents(t *testing.T) {
 	if h, b := menuPagerFooterH(), menuPagerBtnSize(); h < b {
 		t.Fatalf("footer band %d must be tall enough to contain the button %d", h, b)

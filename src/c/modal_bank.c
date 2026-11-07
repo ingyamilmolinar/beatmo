@@ -8,11 +8,8 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-/* The smooth ENVELOPE of the raised-cosine force spectrum
- * |sinc(x)/(1 - x^2)| (x = f*tc): flat below the corner, the exact
- * -18 dB/oct asymptote 1/(pi x^3) above it, and no nulls. The ideal nulls made
- * the clone's inverse ill-posed (a mode near one needs x1000 storage, and a
- * fit could place every mode on a sidelobe peak); a real mallet has none. */
+/* The smooth ENVELOPE of |sinc(x)/(1 - x²)| (x = f·tc), with no nulls: the ideal nulls made the clone's inverse
+ * ill-posed (a mode near one needs ×1000 storage), and a real mallet has none. */
 double modal_strike_spectrum(double f, double tc) {
     double x = f * tc;
     double r = M_PI * x * x * x;
@@ -108,9 +105,7 @@ void modular_noiseband_render(float *out, int sampleRate, int samples,
     float *src = (float *)malloc((size_t)samples * sizeof(float));
     if (!src) return;
     noise_ma_white_fill(src, samples, (int)(seed ^ 0x6e62u));
-    /* white uniform [-1,1): sigma = 1/sqrt(3). An RBJ 0 dB-peak band-pass passes
-     * a noise-equivalent bandwidth pi*fc/(2Q) of the sr/2 band: output RMS =
-     * sigma*sqrt(pi*fc/(Q*sr)). Scale so a row's RMS is its level. */
+    /* An RBJ 0 dB-peak band-pass passes π·fc/(2Q) of white noise (σ = 1/√3), so this scales a row's RMS to its level. */
     const double sigma = 1.0 / sqrt(3.0);
     const double offset = pow(10.0, p->noiseband_level / 20.0);
     for (int r = 0; r < count; ++r) {
@@ -130,10 +125,7 @@ void modular_noiseband_render(float *out, int sampleRate, int samples,
                 env = 0.5 * (1.0 - cos(M_PI * (double)j / (double)att));
             } else {
                 env = eF + eT;
-                /* 100 dB under the row's own level: done (like a mode's stop
-                 * rule; a fast row is silent after a few ms and was filtered
-                 * to the end of the voice). Deterministic: a function of the
-                 * row alone. */
+                /* 100 dB under its own level, like a mode's stop rule; a function of the row alone, so deterministic. */
                 if (env < 1e-5) break;
                 eF *= dF;
                 eT *= dT;

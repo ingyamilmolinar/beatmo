@@ -7,8 +7,7 @@ import (
 
 const sr = 44100
 
-// drumSignal generates a drum-like signal: hard transient followed by
-// exponential decay, simulating a typical percussive hit.
+// A hard transient then an exponential decay.
 func drumSignal(sr, samples int) []float64 {
 	out := make([]float64, samples)
 	for i := range out {
@@ -30,8 +29,6 @@ func processSignal(fx InsertEffect, input []float64) []float64 {
 	return out
 }
 
-// TestTransientBoostsAttack verifies that boosting the attack parameter
-// increases the energy of the initial transient portion of a drum signal.
 func TestTransientBoostsAttack(t *testing.T) {
 	drum := drumSignal(sr, 4096)
 
@@ -53,8 +50,6 @@ func TestTransientBoostsAttack(t *testing.T) {
 	}
 }
 
-// TestTransientReducesSustain verifies that reducing the sustain parameter
-// lowers the energy of the tail portion of a drum signal.
 func TestTransientReducesSustain(t *testing.T) {
 	drum := drumSignal(sr, 4096)
 
@@ -76,8 +71,7 @@ func TestTransientReducesSustain(t *testing.T) {
 	}
 }
 
-// TestTransientDefaultPassthrough verifies that with attack=100 and sustain=100
-// (both unity), the output is very close to the input signal.
+// attack and sustain at 100 are both unity.
 func TestTransientDefaultPassthrough(t *testing.T) {
 	drum := drumSignal(sr, 4096)
 
@@ -106,15 +100,11 @@ func TestTransientDefaultPassthrough(t *testing.T) {
 	}
 }
 
-// TestTransientReset verifies that Reset() clears the envelope state so that
-// processing silence after reset produces silence.
 func TestTransientReset(t *testing.T) {
 	fx := newTransient(sr, map[string]float64{"attack": 200, "sustain": 50, "speed": 5})
 	assertResetClearsState(t, fx)
 }
 
-// TestTransientNoNaNInf verifies that processing various signals never
-// produces NaN or Inf output values.
 func TestTransientNoNaNInf(t *testing.T) {
 	fx := newTransient(sr, map[string]float64{"attack": 200, "sustain": 10, "speed": 1})
 
@@ -142,8 +132,6 @@ func TestTransientNoNaNInf(t *testing.T) {
 	assertNoNaNOrInf(t, out)
 }
 
-// TestTransientModifiesSignal verifies that with non-default parameters the
-// effect actually changes the signal.
 func TestTransientModifiesSignal(t *testing.T) {
 	fx := newTransient(sr, map[string]float64{"attack": 200, "sustain": 30, "speed": 5})
 

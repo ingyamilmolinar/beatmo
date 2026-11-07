@@ -10,19 +10,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestTrackBtnRendersInDesktopFrame is the regression guard the original
-// "we have tests but no button can be seen" bug demanded. Every existing
-// track-button test inspected state (rect, icon, style); none observed
-// pixels actually emitted to the screen. As a result, two contradictory
-// platform gates could collude to suppress the draw on every platform —
-// and the suite stayed green.
-//
-// This test drives a desktop frame, intercepts every drawRect call, and
-// asserts at least one filled rect lands inside the track button's bounds
-// for both follow=true (tracking) and follow=false (free) states. It also
-// asserts the play button emits at least one rect at the same instant —
-// the track button's chrome must be rendered through the same path play
-// is, since both share ComponentButtonSecondary.
+// Asserted on pixels emitted, not state: state-only tests stayed green while two platform gates hid the button
+// everywhere. Play shares its spec, so it must render through the same path at the same instant.
 func TestTrackBtnRendersInDesktopFrame(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, false)
@@ -70,8 +59,6 @@ func TestTrackBtnRendersInDesktopFrame(t *testing.T) {
 		return
 	}
 
-	// Frame 1: follow=true (tracking, the default). Track button should be
-	// drawn just like play.
 	trackHits, playHits := captureFrame(t, "follow=true")
 	if trackHits == 0 {
 		t.Fatalf("follow=true: track button rect %v received zero filled rects (button invisible)", trackR)
@@ -80,8 +67,7 @@ func TestTrackBtnRendersInDesktopFrame(t *testing.T) {
 		t.Fatalf("follow=true: play button rect %v received zero filled rects (fixture broken — both buttons invisible)", playR)
 	}
 
-	// Frame 2: follow=false (free). State swap must not hide the chrome —
-	// only the icon glyph and tint should change.
+	// Only the icon and tint change with the state, never the chrome.
 	dv.SetFollow(false)
 	trackHits, playHits = captureFrame(t, "follow=false")
 	if trackHits == 0 {
@@ -92,10 +78,7 @@ func TestTrackBtnRendersInDesktopFrame(t *testing.T) {
 	}
 }
 
-// rectsOverlap reports whether a and b share at least one pixel. We don't
-// require strict containment because the button chrome is drawn as several
-// nested rects (fill, top-edge highlight, border) and any of them landing
-// inside the button bounds is proof the button rendered.
+// The chrome is several nested rects; any landing inside proves the button rendered.
 func rectsOverlap(a, b image.Rectangle) bool {
 	if a.Empty() || b.Empty() {
 		return false

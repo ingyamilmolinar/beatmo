@@ -10,29 +10,16 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// finalizeRecording is the async tail of StopRecording on desktop. It
-// runs on the lifecycle pool so the UI thread is never the one waiting
-// for bufio flushes or file Close syscalls.
-//
-// On entry, the pipeline is already Detached (no new Taps), the session
-// has been removed from activeSession, and the caller's RecordingResult
-// has been built with placeholder Sample counts. We:
-//  1. DrainAndClose the pipeline (workers + writers + WAV header patch)
-//  2. Update result.Metadata.Channels with final sample counts
-//  3. Call SaveRecording to write session.json
-//  4. Publish hooks.EventRecordStop with the finalized RecordRecordPayload
+// The async tail of StopRecording, on the lifecycle pool so the UI thread never waits on flushes or Close syscalls.
 func finalizeRecording(session *recordingSession, result *RecordingResult) {
 	defer finalizeDone()
 
-	// Workers have already been drained synchronously in StopRecording —
-	// we just need to flush and close the WAV writers (the slow part on
-	// disk-bound systems).
+	// The workers were drained synchronously in StopRecording; only the slow writer close remains.
 	metas, err := session.pipe.CloseWriters()
 	if err != nil {
 		log.Errorf("[record] CloseWriters: %v", err)
 	}
-	// Finalized counts replace any placeholder counts populated at sync
-	// stop time.
+	// Final counts replace the placeholders set at stop time.
 	if len(metas) > 0 {
 		result.Metadata.Channels = metas
 	}
@@ -53,10 +40,7 @@ func finalizeRecording(session *recordingSession, result *RecordingResult) {
 	log.Debugf("[record] finalize complete dir=%s drops=%d", session.dir, payload.Drops)
 }
 
-// queueFinalize schedules finalizeRecording on the lifecycle pool. If
-// the pool is full (which would be unusual since lifecycle ops are
-// rare), it falls back to running synchronously to preserve correctness
-// over latency.
+// A full pool falls back to running synchronously: correctness over latency.
 func queueFinalize(session *recordingSession, result *RecordingResult) {
 	finalizeBegin()
 
@@ -64,8 +48,7 @@ func queueFinalize(session *recordingSession, result *RecordingResult) {
 		finalizeRecording(session, result)
 	})
 	if err != nil {
-		// Pool full or closed — fall through to sync finalize so we
-		// never lose data. This is a rare path; lifecycle queue is 8.
+		// Never lose data.
 		log.Warnf("[record] lifecycle pool busy, finalizing sync: %v", err)
 		finalizeRecording(session, result)
 	}

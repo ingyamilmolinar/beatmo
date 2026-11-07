@@ -1,6 +1,5 @@
-// Command depgraph generates a DOT graph of the internal package structure
-// of the beatmo Go codebase, including packages, types, and functions.
-// Large packages (like ui) are split into logical sub-groups by file prefix.
+// Command depgraph draws the internal package structure (packages, types, functions); big packages are split into
+// sub-groups by file prefix.
 package main
 
 import (
@@ -160,8 +159,7 @@ func discover(root, mod string) map[string]*pkgInfo {
 	return pkgs
 }
 
-// filePrefix extracts the grouping prefix from a source file name.
-// "game_draw_helpers" → "game", "drumview_ctor" → "drumview", "slider" → "".
+// filePrefix: "game_draw_helpers" → "game", "drumview_ctor" → "drumview", "slider" → "".
 func filePrefix(name string) string {
 	idx := strings.Index(name, "_")
 	if idx <= 0 {

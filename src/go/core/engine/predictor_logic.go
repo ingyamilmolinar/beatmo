@@ -17,13 +17,9 @@ func shouldGateMute(n model.Node) bool {
 	return kind != model.LogicNone
 }
 
-// boundedRewalkStart returns the lower bound for the dirty-rebuild re-walk for
-// `row`, seeding `counts` analytically for the skipped prefix [0, ret). It
-// returns 0 (i.e. a full walk) unless every condition for a provably-identical
-// shortcut holds: the row loops, only built-in logic is in play, and the window
-// has slid far enough that a full walk is actually expensive. windowStart ==
-// startIdx in the dirty path. The retained margin (2 loops) settles last-loop
-// state (lastTrig/lastFired/gate); `counts` (== appearances) is exact.
+// boundedRewalkStart seeds counts analytically for [0, ret) and returns 0 (a full walk) unless the shortcut is provably
+// identical: a looping row, only built-in logic, and a window slid far enough to make the full walk expensive. Two
+// retained loops settle last-loop state; counts (== appearances) are exact.
 func (p *Predictor) boundedRewalkStart(row, windowStart int, loop bool, loopStart, loopLen int, hasCustomLogic bool, counts map[model.NodeID]int) int {
 	if hasCustomLogic || !loop || loopLen <= 0 {
 		return 0
@@ -49,10 +45,8 @@ func (p *Predictor) boundedRewalkStart(row, windowStart int, loop bool, loopStar
 	return walkStart
 }
 
-// seedCountForCell adds `mult` to counts[id] iff the node at (row, idx) would
-// have hit the `counts[id]++` line in shouldTriggerNode `mult` times — i.e. it
-// carries every_n_triggers (regular only) or skip_every_n with LogicN>0. This
-// mirrors shouldTriggerNode exactly so the seed is byte-identical to walking.
+// Mirrors shouldTriggerNode's counts[id]++ exactly (every_n_triggers on a regular node, skip_every_n, LogicN > 0), so
+// the seed is byte-identical to walking.
 func (p *Predictor) seedCountForCell(row, idx, mult int, counts map[model.NodeID]int) {
 	bi := p.beatInfoAtRow(row, idx)
 	if !bi.NodeType.Fires() && bi.NodeType != model.NodeTypeMute {

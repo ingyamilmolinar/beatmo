@@ -4,10 +4,7 @@ package audio
 
 import "testing"
 
-// fx_param_test.go covers SetParam routing and clamp behavior on the
-// Go-side FX implementations (transientShaper, waveshaper) plus
-// smoothParam.snap(). These structs only exist under `test || js`,
-// matching their definitions.
+// These Go structs exist only under `test || js`.
 
 func TestTransientShaperSetParamRoutesToSmoothParams(t *testing.T) {
 	tr := newTransient(44100, nil)
@@ -129,8 +126,7 @@ func TestWaveshaperResetIsNoOp(t *testing.T) {
 }
 
 func TestSmoothParamSnapBypassesRamp(t *testing.T) {
-	// Construct a smoother with a long smoothing time so a single tick()
-	// would barely move; snap() must hop over that ramp entirely.
+	// A long smoothing time barely moves per tick; snap() must skip the ramp entirely.
 	p := newSmoothParam(0, 44100, 100 /*ms*/)
 	p.set(1.0)
 
@@ -148,8 +144,7 @@ func TestSmoothParamSnapBypassesRamp(t *testing.T) {
 		t.Errorf("target after snap(0)=%v, want 0", p.target)
 	}
 
-	// snap() must take effect on the next tick too — current is now exactly 0,
-	// and target is 0, so tick() returns 0.
+	// current and target are both 0 after snap().
 	if got := p.tick(); got != 0 {
 		t.Errorf("tick after snap(0)=%v, want 0", got)
 	}

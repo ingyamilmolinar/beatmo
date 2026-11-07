@@ -5,35 +5,9 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
-// ─── Input System Architecture ──────────────────────────────────────────────
-//
-// cursorPosition and isMouseButtonPressed are FUNCTION VARIABLES, not direct
-// Ebiten calls. They wrap Ebiten with touch-override logic so that a single
-// active touch transparently maps to mouse input, allowing all 50+ existing
-// mouse-based handlers (DrumView, Splitter, Camera, Editor, etc.) to work
-// with touch without modification.
-//
-// Platform behavior:
-//
-//	Desktop:                cursorPosition/isMouseButtonPressed → Ebiten directly
-//	Mobile WASM (1 touch):  → touch override (primary touch X,Y; left=true)
-//	Mobile WASM (2+ touch): → Ebiten (falls through; multi-touch handled as gestures)
-//	Mobile WASM (tap):      → 2-frame injection cycle (see touch.go injectTouchTap)
-//
-// The touch override is FRAME-SCOPED: updateTouchOverride() must run once per
-// frame, after globalTouchState.Update() and before any cursorPosition() reads.
-// Reordering input processing in game_update.go MUST preserve this sequence.
-//
-// When inputForTestActive is set (via SetInputForTest), the override is suppressed
-// so test mocks control input exclusively. Always call resetTouchOverride()
-// alongside SetInputForTest.
-//
-// Multi-touch gestures (pinch, two-finger pan, long-press) bypass the override
-// entirely — they are handled as direct gesture events in game_update.go.
-//
-// IMPORTANT: Never call ebiten.CursorPosition() directly in UI code. Always use
-// the package-level cursorPosition(). Raw Ebiten functions are stored as
-// _ebCursorPosition / _ebIsMouseButtonPressed.
+// Function variables, never direct Ebiten calls: a single touch maps onto the mouse so every
+// mouse handler works on touch. updateTouchOverride runs once per frame, after globalTouchState.Update
+// and before any cursor read; call resetTouchOverride alongside SetInputForTest.
 var (
 	_ebCursorPosition       = ebiten.CursorPosition
 	_ebIsMouseButtonPressed = ebiten.IsMouseButtonPressed
@@ -64,8 +38,6 @@ var (
 	inputForTestActive bool
 )
 
-// SetInputForTest replaces input functions during tests and returns a function
-// to restore the originals.
 func SetInputForTest(
 	cursor func() (int, int),
 	mouse func(ebiten.MouseButton) bool,
@@ -102,13 +74,8 @@ func SetInputForTest(
 	}
 }
 
-// resetInputForTest re-installs the package-default input function variables
-// (the touch-override wrappers and the raw Ebiten bindings) and clears the
-// test-input flag. Tests that read input through the real wrappers but do NOT
-// install their own full mock call this first, so a prior test that replaced an
-// input variable via a stub helper whose restore never ran (or whose saved
-// "original" was itself already polluted) can't leak a stale cursor/mouse mock
-// into them. Mirrors the assignments in the package-var block above.
+// For tests that read through the real wrappers: a prior test whose stub restore never ran must
+// not leak a stale mock into them.
 func resetInputForTest() {
 	_ebCursorPosition = ebiten.CursorPosition
 	_ebIsMouseButtonPressed = ebiten.IsMouseButtonPressed
@@ -129,9 +96,7 @@ func resetInputForTest() {
 	inputChars = ebiten.InputChars //nolint:staticcheck // deprecated Ebiten API, migration tracked separately
 	wheel = ebiten.Wheel
 	screenSize = ebiten.ScreenSizeInFullscreen //nolint:staticcheck // deprecated Ebiten API, migration tracked separately
-	// touchIDs / touchPosition are deliberately left alone: SetTouchForTest owns
-	// them with its own restore, so callers can invoke resetInputForTest before
-	// OR after SetTouchForTest without clobbering the touch mock.
+	// SetTouchForTest owns the touch mocks with its own restore, so call order does not matter.
 	inputForTestActive = false
 }
 
@@ -150,13 +115,8 @@ func SetTouchForTest(
 	}
 }
 
-// suppressKeys installs a scoped filter over the key readers so that the keys
-// a partial keyboard claimant already consumed this frame read as "not pressed"
-// for the duration. Returns the restore func (call it via defer).
-//
-// It WRAPS the current readers rather than replacing them, so it composes with
-// SetInputForTest's stubs. This is the single place a key is masked — never
-// add an inline "is a popup open?" check at a shortcut site.
+// Wraps the current readers, so it composes with SetInputForTest. The single place a key is
+// masked: never add an inline "is a popup open?" check at a shortcut site.
 func suppressKeys(blocked map[ebiten.Key]bool) func() {
 	if len(blocked) == 0 {
 		return func() {}

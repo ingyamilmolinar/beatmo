@@ -1,31 +1,6 @@
-/**
- * Real Input Test Helpers
- *
- * These helpers are specifically designed for testing REAL canvas interactions
- * in the full WASM build (main.wasm). Unlike the playtest harness (play_ui.wasm),
- * the full build runs ebiten.RunGame() which properly registers input handlers.
- *
- * Uses Playwright's native mouse methods which properly integrate with the browser's
- * event system and Ebiten's input handling.
- *
- * Browser E2E Gotchas:
- *   - JS export names matter: startPlay()/stopPlay() — NOT start()/stop().
- *     Optional chaining (?.) silently returns undefined for missing functions,
- *     so typos fail silently.
- *   - After importJSON(), UI needs settling: call forceDraw() +
- *     page.waitForTimeout(300-500) before interacting. Button rects may not
- *     be valid until layout recalculates.
- *   - Use API calls (startPlay/stopPlay) when testing non-input features.
- *     Real mouse clicks are fragile after mid-test imports.
- *   - Canvas pixel reading: use canvasPixelAt() from real_input_actions.js
- *     (screenshot → PNG → offscreen canvas decode, bypasses WebGL buffer swap).
- *   - Cross-scenario state leaks: always stop playback before starting next
- *     scenario. A silent no-op (calling stop() instead of stopPlay()) means
- *     the next startPlay() toggles playback OFF.
- *   - Mobile audio unlock: audio.js registers listeners on touchstart,
- *     touchend, pointerdown, mousedown, keydown. For mobile emulation tests,
- *     use CDP trusted touch events via cdpTap() from touch_cdp_helpers.js.
- */
+/** For REAL canvas interaction in the full build, which runs ebiten.RunGame() and so registers input handlers. Gotchas:
+ * the exports are startPlay()/stopPlay() (optional chaining hides a typo); settle with forceDraw() + 300-500 ms after
+ * importJSON(); read pixels with canvasPixelAt(); stop playback between scenarios; unlock mobile audio with cdpTap(). */
 
 import http from "http";
 import { spawnSync } from "child_process";
@@ -40,48 +15,21 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 const goDir = path.resolve(jsDir, "../go");
 
-/**
- * Click at specific coordinates using Playwright's native mouse methods.
- * This properly triggers the full browser event chain that Ebiten expects.
- *
- * @param {Page} page - Playwright page object
- * @param {number} x - X coordinate (screen pixels)
- * @param {number} y - Y coordinate (screen pixels)
- */
+/** The full browser event chain Ebiten expects. */
 export async function clickAt(page, x, y) {
   await page.mouse.click(x, y);
 }
 
-/**
- * Click and hold, then release after a delay.
- *
- * @param {Page} page - Playwright page object
- * @param {number} x - X coordinate
- * @param {number} y - Y coordinate
- * @param {number} holdMs - Time to hold in milliseconds
- */
 export async function clickAndHold(page, x, y, holdMs = 100) {
   await page.mouse.move(x, y);
   await page.mouse.down();
-  // Hold long enough for at least one rAF tick so the WASM game loop sees
-  // pressed=true.  Under CPU contention (parallel tests), rAF can be delayed,
-  // so callers should use generous hold times (≥200ms) and poll for the
-  // expected state change rather than relying on fixed waits.
+  // At least one rAF tick so the loop sees pressed=true; under contention use ≥ 200 ms and poll for the outcome.
   await page.waitForTimeout(holdMs);
   await page.mouse.up();
 }
 
-/**
- * Wait for the game loop to process a mouse-up so that internal input flags
- * (suppressClicksUntilRelease, held counters, etc.) are fully cleared.
- *
- * Polls `debugGridInputState()` — an existing JS export that exposes the
- * game's internal input state — until it reports a clean release.  Falls back
- * to a fixed wait when the export is unavailable (e.g. older WASM builds).
- *
- * @param {Page}   page       - Playwright page object
- * @param {number} [timeout=5000] - Max ms to wait for clean state
- */
+/** Polls debugGridInputState() until the release is clean (suppression and held counters cleared); a fixed wait where
+ * the export is missing. */
 export async function waitForGameLoopRelease(page, timeout = 5000) {
   // Ensure mouse is up before polling.
   await page.mouse.up();
@@ -103,23 +51,8 @@ export async function waitForGameLoopRelease(page, timeout = 5000) {
   }, { timeout });
 }
 
-/**
- * Hold mouse down at (x, y) and poll until evalExpr returns a value different
- * from prevState.  Adapts to any rAF rate — under heavy CPU contention the
- * poll simply keeps waiting while the button is held.  Retries with a fresh
- * press cycle if the hold times out (clears suppressClicksUntilRelease).
- *
- * @param {Page}     page       - Playwright page object
- * @param {number}   x          - X coordinate
- * @param {number}   y          - Y coordinate
- * @param {Function} evalExpr   - Function evaluated in page context; should return the state to watch
- * @param {*}        prevState  - The "before" value; we wait until evalExpr !== prevState
- * @param {Object}   [options]
- * @param {number}   [options.maxAttempts=5]  - Press-release retry cycles
- * @param {number}   [options.holdTimeout=3000] - Max ms to keep the button held per attempt
- * @param {number}   [options.pollMs=100]     - Polling interval inside the hold
- * @returns {Promise<*>} The new state value (first value !== prevState)
- */
+/** Holds while polling until evalExpr() !== prevState, so any rAF rate works; retries with a fresh press when a hold
+ * times out. options: maxAttempts (5), holdTimeout (3000), pollMs (100). Returns the new state. */
 export async function clickUntilStateChanges(page, x, y, evalExpr, prevState, options = {}) {
   const { maxAttempts = 5, holdTimeout = 3000, pollMs = 100 } = options;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -134,8 +67,7 @@ export async function clickUntilStateChanges(page, x, y, evalExpr, prevState, op
         return current;
       }
     }
-    // Release and wait for the game loop to fully process the mouse-up
-    // so that held counters and suppressClicksUntilRelease are cleared.
+    // So held counters and the click suppression are cleared.
     await waitForGameLoopRelease(page, 5000);
   }
   // Gather diagnostics before throwing
@@ -151,17 +83,7 @@ export async function clickUntilStateChanges(page, x, y, evalExpr, prevState, op
   );
 }
 
-/**
- * Perform a drag operation.
- *
- * @param {Page} page - Playwright page object
- * @param {number} x1 - Start X coordinate
- * @param {number} y1 - Start Y coordinate
- * @param {number} x2 - End X coordinate
- * @param {number} y2 - End Y coordinate
- * @param {Object} options - Optional settings
- * @param {number} options.steps - Number of intermediate steps (default: 10)
- */
+/** options.steps: intermediate steps (default 10). */
 export async function dragMouse(page, x1, y1, x2, y2, options = {}) {
   const steps = options.steps ?? 10;
   await page.mouse.move(x1, y1);
@@ -179,41 +101,19 @@ export async function dragMouse(page, x1, y1, x2, y2, options = {}) {
   await page.mouse.up();
 }
 
-/**
- * Scroll the mouse wheel.
- *
- * @param {Page} page - Playwright page object
- * @param {number} x - X coordinate
- * @param {number} y - Y coordinate
- * @param {number} deltaY - Scroll delta (positive = scroll down)
- */
+/** deltaY > 0 scrolls down. */
 export async function wheelAt(page, x, y, deltaY) {
   await page.mouse.move(x, y);
   await page.mouse.wheel(0, deltaY);
 }
 
-/**
- * Build main.wasm (full WASM build with Ebiten input handlers).
- *
- * @param {Object} options - Build options
- * @param {string} options.logLevel - Log level (default: INFO)
- * @returns {boolean} - true if build succeeded
- */
+/** The full build with Ebiten input handlers. Returns true on success. */
 export function buildMainWasm(options = {}) {
   const GO = resolveGoBinary();
 
-  // Regenerate the synth-param ABI bridge (src/js/synth_param_abi.gen.js) from
-  // the canonical Go schema BEFORE building, mirroring `make wasm`'s phony
-  // `gen-synth-abi` prerequisite. The browser tests serve this file verbatim, so
-  // without this a schema edit landed without a fresh gen file would ship a STALE
-  // ABI to the Playwright env: a re-voiced instrument's modular block is mis-sized
-  // and its oscillator reads an uninitialised enable flag → SILENCE, while the
-  // test builds a *current* wasm and passes for the wrong ABI. Regenerating here
-  // keeps the env 100% production-faithful (the Go drift test
-  // synth_param_schema_test.go is the commit-time guard; this is the build-time
-  // one). Runs unconditionally — even under WASM_PREBUILT — because the gen file
-  // is consumed at runtime independently of main.wasm. It is a native host tool
-  // (//go:build !test && !js), so GOOS/GOARCH must be unset.
+  // The ABI file is regenerated first, as `make wasm` does: served verbatim, a stale one would mis-size a re-voiced block
+  // and silence it while a current wasm passes. Unconditional (even under WASM_PREBUILT); a host tool, so GOOS/GOARCH
+  // unset.
   {
     const hostEnv = { ...process.env };
     delete hostEnv.GOOS;
@@ -236,9 +136,7 @@ export function buildMainWasm(options = {}) {
 
   const logLevel = options.logLevel ?? "INFO";
 
-  // Build the root cmd package only; ./cmd/... would match sibling tool
-  // binaries (export_audio, gen_design_tokens, …) and fail the single -o
-  // output. This matches the Makefile's `wasm` target.
+  // Only ./cmd: ./cmd/... would match tool binaries and fail the single -o output.
   const build = spawnSync(
     GO,
     [
@@ -259,27 +157,12 @@ export function buildMainWasm(options = {}) {
   return build.status === 0;
 }
 
-/**
- * Create an HTTP server that serves the WASM files with correct MIME types.
- * Uses OS-assigned port (port 0) to avoid EADDRINUSE collisions.
- *
- * When BEATMO_LAN_SERVE=1, binds on 0.0.0.0 so devices on the same network
- * (e.g. your phone over WiFi) can reach the LAN URL printed by serve-lan.sh.
- * Default remains localhost-only.
- *
- * The "?probe=audio" query string is mapped to sanity_audio_probe_page.html
- * so the same root URL can be opened by humans for the in-page audio check.
- *
- * @returns {Promise<http.Server>} - HTTP server instance (call server.address().port for assigned port)
- */
+/** Port 0 avoids EADDRINUSE. BEATMO_LAN_SERVE=1 binds 0.0.0.0 for a phone on the LAN; "?probe=audio" serves the in-page
+ * audio check. */
 export function createServer() {
   const server = http.createServer((req, res) => {
-    // "?run=tests" is special: the runner is NOT a separate page. We serve
-    // production index.html *verbatim* with one <script> injected before
-    // </body>, so every inline script (focus-rect listeners, mobile native
-    // input, file picker, the canvas touchstart preventDefault, _kbProxy /
-    // _mobileInput / _fp globals WASM calls into) runs exactly as on
-    // beatmo.io. Anything else is a strict 100% production reproduction.
+    // "?run=tests" serves production index.html VERBATIM with one <script> injected, so every inline script runs exactly
+    // as on beatmo.io; anything else is a strict production reproduction.
     const url = new URL(req.url, "http://placeholder");
     const noCache = {
       "Cache-Control": "no-store, no-cache, must-revalidate",
@@ -330,19 +213,8 @@ export function createServer() {
   });
 }
 
-/**
- * Set up a full WASM test environment.
- *
- * When LLM_RECORD=1 is set, automatically wraps the page with a recorder
- * that captures events + periodic screenshots. On cleanup, the recording is
- * saved to src/js/recordings/<name>/. Set LLM_RECORD_NAME to control the
- * session name (defaults to the test filename or a timestamp).
- *
- * @param {Object} options - Setup options
- * @param {string} options.logLevel - Log level (default: INFO)
- * @param {boolean} options.headless - Run headless (default: true)
- * @returns {Promise<{page: Page, browser: Browser, server: http.Server, cleanup: Function, recorder?: Object}>}
- */
+/** With LLM_RECORD=1 the page is wrapped by a recorder saved to src/js/recordings/<name>/ (LLM_RECORD_NAME).
+ * options: logLevel (INFO), headless (true). Returns {page, browser, server, cleanup, recorder?}. */
 export async function setupFullWasm(options = {}) {
   const logLevel = options.logLevel ?? "INFO";
   const shouldRecord = process.env.LLM_RECORD === "1";
@@ -357,8 +229,7 @@ export async function setupFullWasm(options = {}) {
   const server = await createServer();
   const port = server.address().port;
 
-  // Launch browser. Defaults to chromium-local but honors TEST_PLATFORM
-  // (e.g. webkit-local, browserstack:iphone15-safari) without test changes.
+  // Honours TEST_PLATFORM with no test changes.
   const launch = await launchBrowser({ headless });
   const browser = launch.browser;
   const browserCleanup = launch.cleanup;
@@ -446,16 +317,8 @@ export async function setupFullWasm(options = {}) {
   return { page, browser, server, cleanup, port, platform: launch.platform };
 }
 
-/**
- * Read the param blocks the real app pushes for `ids`. Every voice renders from
- * the block Go pushes for its instrument document (window.setInstrumentBlock),
- * so a bare audio.js page has no instruments: boot the app once, copy the
- * blocks out, then install them on the bare page with
- * `setInstrumentBlock(id, Float64Array.from(b.block), b.seconds, b.amp, b.melodic, b.gateTail, b.fx)`.
- *
- * @param {string[]} ids
- * @returns {Promise<Object<string, {block: number[], seconds: number, amp: number, melodic: boolean, gateTail: number, fx: Array}>>}
- */
+/** A bare audio.js page has no instruments, so boot the app once, copy the blocks out, and install them with
+ * setInstrumentBlock(id, Float64Array.from(b.block), b.seconds, b.amp, b.melodic, b.gateTail, b.fx). */
 export async function readAppInstrumentBlocks(ids) {
   const app = await setupFullWasm({ logLevel: "ERROR" });
   let blocks;
@@ -472,12 +335,6 @@ export async function readAppInstrumentBlocks(ids) {
   return blocks;
 }
 
-/**
- * Get the center coordinates of a rect.
- *
- * @param {{x: number, y: number, w: number, h: number}} rect
- * @returns {{x: number, y: number}}
- */
 export function rectCenter(rect) {
   return {
     x: Math.floor(rect.x + rect.w / 2),
@@ -485,12 +342,7 @@ export function rectCenter(rect) {
   };
 }
 
-/**
- * Assert that a rect is valid and visible.
- *
- * @param {Object} rect - Rect object {x, y, w, h}
- * @param {string} name - Name for error messages
- */
+/** name is for the error message. */
 export function assertValidRect(rect, name) {
   if (!rect) {
     throw new Error(`${name} rect is null/undefined`);

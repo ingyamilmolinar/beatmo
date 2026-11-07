@@ -6,10 +6,7 @@ import (
 	"testing"
 )
 
-// TestDrumViewClampLengthBounds covers the min/max guard in clampLength.
-// minLen == timelineUnitsPerBeat (defaults to 1) and maxLen == timelineRect
-// width / MinCellWidth. We assert behavior on both boundaries plus an
-// interior value.
+// minLen == timelineUnitsPerBeat, maxLen == timeline width / MinCellWidth.
 func TestDrumViewClampLengthBounds(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1280, 720)
@@ -27,8 +24,6 @@ func TestDrumViewClampLengthBounds(t *testing.T) {
 	if got := dv.clampLength(7); got != 7 {
 		t.Errorf("clampLength(7) = %d, want 7 (interior)", got)
 	}
-	// Anything above timelineRect.Dx()/MinCellWidth gets capped at that
-	// upper bound, never above. Verify by giving a deliberately huge n.
 	huge := 1_000_000
 	w := dv.CellGridRect().Dx()
 	mcw := MinCellWidth()
@@ -40,9 +35,6 @@ func TestDrumViewClampLengthBounds(t *testing.T) {
 	}
 }
 
-// TestDrumViewHeaderRowsContiguity asserts the rows area starts exactly
-// where the header ends — no gap, no overlap — and that both rects fit
-// inside dv.Bounds.
 func TestDrumViewHeaderRowsContiguity(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1280, 720)
@@ -71,10 +63,7 @@ func TestDrumViewHeaderRowsContiguity(t *testing.T) {
 	}
 }
 
-// TestDrumViewRowHeightConstant verifies the documented invariant in the
-// rowHeight() doc comment: per-row height does not change with zoom (the
-// row-zoom chip was repurposed to resize the entire pane). It must equal
-// TouchRowHeight() under either profile.
+// Row height never changes with zoom; it equals TouchRowHeight() under either profile.
 func TestDrumViewRowHeightConstant(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1280, 720)
@@ -93,9 +82,7 @@ func TestDrumViewRowHeightConstant(t *testing.T) {
 	}
 }
 
-// TestDrumViewVisibleRowsMath validates the formula in visibleRows():
-// floor(rowsAreaHeight / rowHeight), minus a reserved row on desktop when
-// ReserveAddRowSpace is true.
+// floor(rowsAreaHeight / rowHeight), minus a reserved row on desktop with ReserveAddRowSpace.
 func TestDrumViewVisibleRowsMath(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1280, 720)
@@ -121,13 +108,8 @@ func TestDrumViewVisibleRowsMath(t *testing.T) {
 	}
 }
 
-// TestDrumViewRefreshWidgetLayoutIdempotent guards the runtime-profile
-// derivation discipline (see memory note feedback_runtime_profile_derivation):
-// running refreshWidgetLayout twice with no state change must produce
-// the same widget rects. We compare the directly-addressable rect
-// fields and the layout Cols/Rows weights — the snapshot's Widgets
-// slice carries map-iteration order which is non-deterministic by
-// design and not load-bearing for layout correctness.
+// Running it twice must give the same rects. The snapshot's Widgets slice has map order, so only direct
+// rects and weights compare.
 func TestDrumViewRefreshWidgetLayoutIdempotent(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1280, 720)
@@ -163,10 +145,6 @@ func TestDrumViewRefreshWidgetLayoutIdempotent(t *testing.T) {
 	}
 }
 
-// TestDrumViewProfileTransitionFlipsButtonStyle exercises
-// refreshLenButtonsStyle across a profile flip. After flipping mobile on,
-// the inc/dec buttons must adopt the Transport*Style; flipping back must
-// restore the Len*Style.
 func TestDrumViewProfileTransitionFlipsButtonStyle(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1280, 720)
@@ -183,20 +161,14 @@ func TestDrumViewProfileTransitionFlipsButtonStyle(t *testing.T) {
 	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })
 	UpdateProfile()
 	dv.refreshLenButtonsStyle()
-	// Both platforms use the neutral stepper recipe (refreshLenButtonsStyle
-	// has no mobile branch). This used to be asserted against
-	// TransportDec/IncStyle, which only passed because the two spec styles
-	// were value-identical; styles now carry their spec tag, so compare
-	// against the style the code actually assigns.
+	// Styles carry their spec tag, so compare against the style the code actually assigns.
 	if dv.lenDecBtn.Style != LenDecStyle || dv.lenIncBtn.Style != LenIncStyle {
 		t.Errorf("mobile styles wrong: dec=%v inc=%v want dec=%v inc=%v",
 			dv.lenDecBtn.Style, dv.lenIncBtn.Style, LenDecStyle, LenIncStyle)
 	}
 }
 
-// TestDrumViewBoundsContainEverything sweeps every key rect after Layout
-// and asserts they all lie inside dv.Bounds. Catches regressions where a
-// new widget escapes the pane on certain screen sizes.
+// A new widget must not escape the pane at some screen size.
 func TestDrumViewBoundsContainEverything(t *testing.T) {
 	assertDefaultParityState(t)
 	for _, size := range []image.Point{{X: 800, Y: 480}, {X: 1280, Y: 720}, {X: 1920, Y: 1080}} {

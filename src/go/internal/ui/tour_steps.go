@@ -11,8 +11,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// tourScripts holds one tour per landing cut. Each cut resolves its targets
-// against its own layout; for now both perform the same user actions.
+// Each cut resolves its targets against its own layout.
 var tourScripts = map[string][]tourStep{
 	"desktop": append(tourSetupDesktop(), showcaseSteps(false)...),
 	"phone":   append(tourSetupPhone(), showcaseSteps(true)...),
@@ -138,8 +137,7 @@ func showcaseSteps(phone bool) []tourStep {
 			if !g.sidebar.chordMatrixIsOpen() {
 				return fmt.Errorf("chord matrix is not open")
 			}
-			// A minor chord (column 1) on whichever root row is in view: a real
-			// user picks what they can see.
+			// A real user picks a root row that is in view.
 			var vis []image.Rectangle
 			for row := 0; row < 128; row++ {
 				if rc, ok := g.sidebar.chordMatrix.cellRect(1, row); ok {
@@ -193,8 +191,6 @@ func showcaseSteps(phone bool) []tourStep {
 	return steps
 }
 
-// tourSoundDesktop: grow the audio panel by its divider, walk the tab pills,
-// pick the lead channel and turn a synth dial.
 func tourSoundDesktop() []tourStep {
 	return []tourStep{
 		tourDragDivider("panel-grow", 0.50, 1.5).withCaption("sound", "Read your mix live", "spectrum, levels and the whole signal chain", "left"),
@@ -204,8 +200,7 @@ func tourSoundDesktop() []tourStep {
 		tourChannelPill(), tourChannelLead(),
 		tourTab("tab-synth", TabSynth, 2.5).withCaption("sound", "Shape every instrument", "turn a dial, hear it on the next note", "left"),
 		tourTurnDial(),
-		// The Synth tab is the most expensive surface to draw (~10 fps under
-		// xvfb's software GL, measured); leave it once the dial has turned.
+		// The Synth tab is the costliest surface (~10 fps under xvfb), so leave it once the dial has turned.
 		tourTab("tab-eq-again", TabEQ, 0.5),
 	}
 }
@@ -223,8 +218,7 @@ func tourSoundPhone() []tourStep {
 	}
 }
 
-// tourThemesAndOutro: repaint through the Theme editor, then return to the
-// opening framing so the video loops without a visible seam.
+// Ends on the opening framing so the video loops without a seam.
 func tourThemesAndOutro(phone bool) []tourStep {
 	steps := []tourStep{
 		{name: "theme-open", chapter: "themes", title: "Repaint everything in one tap", sub: "six themes, or tune every colour", side: "left", beats: 1.5,
@@ -251,12 +245,8 @@ func tourThemesAndOutro(phone bool) []tourStep {
 	return append(steps, tourFitStep("outro-fit", margin, 0), tourStep{name: "outro-hold", beats: 2, reached: reachedPlaying})
 }
 
-// tourTapOutside closes the open menu the way a user does on every platform:
-// one tap on the grid outside it ("tap outside any menu = close, and nothing
-// else", popup_outside_press.go). On a phone the node card can cover most of
-// the grid pane, so any clear grid point outside the open surfaces will do —
-// never the splitter's grab strip (it reaches into the grid, passes presses
-// through, and a tap there creates a node) and never on or beside a node.
+// One tap on the grid outside the menu, as a user closes one. Never on or beside a node, and never the
+// splitter's grab strip, which reaches into the grid and creates a node.
 func tourTapOutside(name string, beats float64) tourStep {
 	return tourStep{name: name, beats: beats, reached: reachedNothingOpen, act: func(r *tourRunner, g *Game) error {
 		p, ok := tourOutsidePoint(g)
@@ -268,9 +258,7 @@ func tourTapOutside(name string, beats float64) tourStep {
 	}}
 }
 
-// tourOutsidePoint: a grid point outside every open surface, the corner
-// buttons and the splitter strip, and clear of every node — the one nearest
-// (0.3, 0.6) of the grid pane.
+// Clear of every open surface, the corner buttons, the splitter strip and every node; nearest (0.3, 0.6).
 func tourOutsidePoint(g *Game) (image.Point, bool) {
 	covered := []image.Rectangle{g.split.InputBounds().Inset(-12)}
 	if g.sidebar.IsOpen() {
@@ -417,8 +405,7 @@ func tourNav(name, label string, beats float64) tourStep {
 	}}
 }
 
-// tourRetapCell taps the picker cell just picked again: re-selecting
-// confirms and closes the picker.
+// Re-selecting confirms and closes the picker.
 func tourRetapCell(name string, beats float64, reached tourCheck) tourStep {
 	return tourStep{name: name, beats: beats, reached: reached, act: func(r *tourRunner, g *Game) error {
 		if r.cell.Empty() {
@@ -435,8 +422,7 @@ func (s tourStep) withCaption(chapter, title, sub, side string) tourStep {
 	return s
 }
 
-// tourSidebarTap taps a node-sidebar control by id, first scrolling the
-// sidebar with real wheel notches while the control is outside its viewport.
+// Scrolls with real wheel notches while the control is outside the viewport.
 func tourSidebarTap(name string, id sbID, beats float64) tourStep {
 	return tourStep{name: name, beats: beats, repeat: 40, reached: reachedSidebarControl(id),
 		until: func(r *tourRunner, _ *Game) bool { return r.done },
@@ -482,8 +468,7 @@ func tourFXButton(name, text string, beats float64, reached tourCheck) tourStep 
 	}}
 }
 
-// tourTab taps an audio-panel tab pill (labels resolve at run time: the tour
-// pins English before its first step).
+// Labels resolve at run time; the tour pins English first.
 func tourTab(name string, tab PanelTab, beats float64) tourStep {
 	return tourStep{name: name, beats: beats, reached: reachedTab(tab), act: func(r *tourRunner, g *Game) error {
 		z := g.drum.eqPanelZone
@@ -526,15 +511,11 @@ func tourPickPreset(id string, beats float64) tourStep {
 		}}
 }
 
-// tourNotchZoom is one native wheel detent's zoom on the grid camera,
-// measured: 9 detents took the scale from 0.5736 to 0.8150 (x1.421), i.e.
-// x1.0398 per detent.
+// Measured: 9 detents took 0.5736 → 0.8150, ×1.0398 each.
 const tourNotchZoom = 1.0398
 
-// tourFitStep frames the nodes of the given rows (all rows when none) in the
-// grid pane with real input: a drag-pan that centres them, then one smooth
-// wheel zoom sized from the measured detent gain. It repeats (correcting the
-// residue) until the bounding box fills the pane with `margin` to spare.
+// Real input only: a pan to centre, then one smooth zoom sized from the measured detent gain, repeated until the
+// box fills the pane with margin to spare.
 func tourFitStep(name string, margin float64, rows ...int) tourStep {
 	return tourStep{name: name, preroll: name[:5] == "setup", beats: 0, repeat: 12, reached: reachedFramed(margin, rows),
 		until: func(_ *tourRunner, g *Game) bool { _, _, ok := tourFitDelta(g, margin, rows); return ok },
@@ -560,8 +541,7 @@ func tourFitStep(name string, margin float64, rows ...int) tourStep {
 		}}
 }
 
-// tourFitDelta: the scale factor and the pan that frame the rows' node
-// bounding box in the grid pane; ok when it already fits within tolerance.
+// ok when it already fits within tolerance.
 func tourFitDelta(g *Game, margin float64, rows []int) (k float64, pan image.Point, ok bool) {
 	gr := g.split.GridRect(g.winW, g.winH)
 	inner := gr.Inset(int(margin * float64(min(gr.Dx(), gr.Dy()))))
@@ -594,8 +574,7 @@ func tourFitDelta(g *Game, margin float64, rows []int) (k float64, pan image.Poi
 	return k, pan, k == 1 && pan == (image.Point{})
 }
 
-// tourLeadNode picks the lead row's on-screen node nearest the pane centre
-// (not the start node), the node the tour edits.
+// Not the start node.
 func tourLeadNode(g *Game) *uiNode {
 	gr := g.split.GridRect(g.winW, g.winH)
 	c := tourCenter(gr)
@@ -613,8 +592,7 @@ func tourLeadNode(g *Game) *uiNode {
 		if !p.In(gr.Inset(min(70, min(gr.Dx(), gr.Dy())/12))) {
 			continue
 		}
-		// Prefer the loop's LEFT side at mid-height: the sidebar popover then
-		// opens into open space to the node's right.
+		// The loop's LEFT side, so the sidebar opens into open space on the right.
 		d := 3*math.Abs(float64(p.Y-c.Y)) + math.Abs(float64(p.X-c.X))
 		if p.X > c.X {
 			d += float64(gr.Dx())
@@ -626,9 +604,7 @@ func tourLeadNode(g *Game) *uiNode {
 	return best
 }
 
-// emptyGridPoint finds a grid-pane point near (fx, fy) (fractions of the grid
-// rect) that is far from every node, so a press there pans instead of
-// grabbing a node.
+// Far from every node, so a press pans instead of grabbing one.
 func emptyGridPoint(g *Game, fx, fy float64) (image.Point, bool) {
 	gr := g.split.GridRect(g.winW, g.winH)
 	base := image.Pt(gr.Min.X+int(fx*float64(gr.Dx())), gr.Min.Y+int(fy*float64(gr.Dy())))

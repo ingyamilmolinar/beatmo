@@ -1,28 +1,6 @@
-/**
- * Audio Panel Render — Browser Pixel-Content Test
- *
- * Closes the WASM-side coverage gap that let the Wave-tab regression
- * ship: scene_crop_test.go (Go) only checks SubjectRect bounds, and
- * visual_regression.browser.test.js captures only the idle default
- * state. Neither verifies that the Wave/Spectrum/Meters/Scope panels
- * actually render data during real playback through the WebAudio
- * bridge.
- *
- * For each tab:
- *   1. Run the corresponding `crop_*` scene (which starts playback
- *      and sets the active tab).
- *   2. Wait for SettleFrames + an extra ~500ms so the WebAudio
- *      AnalyserNode ring buffer has time-domain samples to deliver.
- *   3. Read SubjectRect via subjectRectJS().
- *   4. page.screenshot({clip: rect}) — cropped panel PNG.
- *   5. Decode and assert the panel is NOT dominated by a single
- *      color (the failure signature of "panel chrome rendered, data
- *      area is blank").
- *
- * COVERED-BY-GO: src/go/internal/ui/audio_panel_render_pixels_test.go
- *   verifies the renderer-given-data path (Go side, fast). This file
- *   verifies the live WASM↔WebAudio path (the actual layer that broke).
- */
+/** The live WASM↔WebAudio path the Go pixel test cannot reach: each audio tab's crop scene plays, and the cropped panel
+ * must not be dominated by one colour (chrome drawn, data area blank).
+ * COVERED-BY-GO: internal/ui/audio_panel_render_pixels_test.go (renderer given data) */
 
 import { chromium } from "playwright";
 import { PNG } from "pngjs";
@@ -38,10 +16,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 const goDir = path.resolve(jsDir, "..", "go");
 
-// Build main.wasm using the same single-package "./cmd" target the
-// Makefile uses (NOT "./cmd/..." which recursively builds desktop-only
-// helpers like cmd/export_audio that fail under GOOS=js). Skips when
-// WASM_PREBUILT=1 + a freshly-built main.wasm already exists.
+// "./cmd", not "./cmd/...", which builds desktop-only helpers that fail under GOOS=js.
 function buildWasmSafely() {
   if (process.env.WASM_PREBUILT === "1") {
     const wasmPath = path.join(jsDir, "main.wasm");
@@ -67,15 +42,8 @@ function buildWasmSafely() {
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
-/**
- * Compute the fraction of pixels that are "the dominant color" within
- * a decoded RGBA region. Bins colors to 4-bit-per-channel resolution
- * (4096 buckets) so subtle anti-aliased neighbors aren't fragmented.
- *
- * Returns { dominantPct, distinctColors, total }. A panel rendered
- * entirely as a flat background gets dominantPct ≈ 1.0; a panel
- * rendered with a waveform trace + chrome typically lands at < 0.97.
- */
+/** Colours binned to 4 bits per channel so anti-aliasing does not fragment them: a flat panel reads ≈ 1.0, one with a
+ * trace < 0.97. */
 function colorHistogram({ width, height, data }) {
   const total = width * height;
   if (total === 0) return { dominantPct: 1, distinctColors: 0, total: 0 };
@@ -128,8 +96,7 @@ async function getSubjectRect(page, name) {
 }
 
 async function settle(page, ms = 600) {
-  // Prime several draw frames so layout/cache populates before the
-  // "real" wait, then sleep so WebAudio analyser ring buffers fill.
+  // Prime a few frames so layout and caches populate, then wait for the analyser buffers to fill.
   for (let i = 0; i < 6; i++) {
     await page.evaluate(() => forceDraw?.());
     await page.waitForTimeout(40);
@@ -141,12 +108,7 @@ async function settle(page, ms = 600) {
 
 // ─── Test Cases ──────────────────────────────────────────────────────
 
-// Each row is one full tab × scene. The dominantPctMax floor must
-// be calibrated wide enough to be robust across themes and viewports
-// but tight enough to catch "panel renders nothing." Empirically a
-// blank panel has dominantPct > 0.99 (entirely the bg fill); a
-// panel rendering data — even in a low-amplitude steady-state —
-// drops below 0.97.
+// A blank panel reads > 0.99; one rendering data, even quietly, drops below 0.97.
 const TABS = [
   { tab: "wave",     scene: "crop_eq_tab_wave",     subject: "eq_tab_wave",     dominantPctMax: 0.98 },
   { tab: "spectrum", scene: "crop_eq_tab_spectrum", subject: "eq_tab_spectrum", dominantPctMax: 0.98 },
@@ -166,10 +128,7 @@ const browser = await chromium.launch({
 
 let failures = 0;
 
-// Run the full TABS sweep across two viewports — desktop and mobile.
-// The WASM-only bug pattern can manifest in either depending on which
-// layout path bugs out, so testing both prevents the "passes desktop,
-// breaks on mobile" gap.
+// The bug can live in either layout path.
 const VIEWPORTS = [
   { name: "desktop_1280x720", width: 1280, height: 720, useMobile: false },
   { name: "mobile_390x844",   width: 390,  height: 844, useMobile: true  },
@@ -183,9 +142,7 @@ for (const vp of VIEWPORTS) {
     for (const c of TABS) {
       console.log(`\n=== ${c.tab} (${c.scene}) [${vp.name}] ===`);
 
-      // Run scene (sets up tab + starts playback). Use mobile variant
-      // when on mobile viewport so the Setup picks the mobile layout
-      // path (forces mobile profile + expands the audio panel).
+      // The mobile variant picks the mobile layout path.
       const ok = await page.evaluate(
         ({ name, mobile }) => {
           if (mobile && typeof runSceneMobile === "function") {
@@ -201,9 +158,7 @@ for (const vp of VIEWPORTS) {
         continue;
       }
 
-      // Confirm playback is actually progressing — distinguishes "panel
-      // renders nothing because no signal" (real bug) from "panel renders
-      // nothing because playback never started" (test bug).
+      // Tells "no signal" (a real bug) from "playback never started" (a test bug).
       await settle(page, 800);
       const playing = await page.evaluate(() =>
         typeof isPlaying === "function" ? isPlaying() : null

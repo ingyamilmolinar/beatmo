@@ -1,9 +1,4 @@
-/**
- * Touch Device Matrix Test
- *
- * Tests touch functionality across multiple device profiles to verify
- * coordinate handling works correctly at different DPRs and screen sizes.
- */
+/** Coordinate handling across device profiles: different DPRs and screen sizes. */
 
 import { chromium, devices } from "playwright";
 import http from "http";
@@ -67,11 +62,7 @@ const deviceMatrix = [
     name: "iPhone 12 landscape (DPR 3)",
     config: devices['iPhone 12 landscape'],
     expectedDPR: 3,
-    // Mobile landscape is intentionally unsupported: the mobile profile detects
-    // landscape (IsMobile && winW > winH) and shows a rotate-to-portrait notice
-    // while BLOCKING all touch input (internal/ui/landscape_unsupported.go +
-    // game_input_touch.go). So this device asserts the OPPOSITE of the others —
-    // that touch input is blocked — instead of verifying gestures work.
+    // Mobile landscape blocks all touch input by design, so this device asserts the OPPOSITE: input is blocked.
     landscapeBlocked: true,
   },
   {
@@ -169,11 +160,7 @@ async function runDeviceTests(device) {
     console.log(`Viewport: ${viewportInfo.innerWidth}x${viewportInfo.innerHeight}`);
 
     if (device.landscapeBlocked) {
-      // Landscape disable invariant: a tap/drag/pinch must produce NO gesture
-      // and must NOT move/scale the camera, because input is blocked behind the
-      // rotate-to-portrait notice. (Asserting touch WORKS here, as this matrix
-      // used to, contradicts the shipped landscape-disabled feature. The disable
-      // itself is owned + fully tested by landscape_block.browser.test.js.)
+      // No gesture and no camera movement behind the rotate notice; the overlay itself is landscape_block's.
       await page.evaluate(() => window.clearTouchEventLog && clearTouchEventLog());
       const camBefore = await page.evaluate(() => (typeof camOffset === "function" ? camOffset() : { x: 0, y: 0 }));
       const scaleBefore = await page.evaluate(() => (typeof camScale === "function" ? camScale() : 1));
@@ -262,8 +249,7 @@ async function runDeviceTests(device) {
             const dx = Math.abs(state.lastPos.x - pos.x);
             const dy = Math.abs(state.lastPos.y - pos.y);
             console.log(`    Got: ${state.lastGesture} at (${state.lastPos.x}, ${state.lastPos.y}), error: dx=${dx}, dy=${dy}`);
-            // Gesture was detected with correct coordinates - counts as success
-            // The specific gesture type may vary due to timing in test environment
+            // The exact gesture type may vary with timing here; the coordinates are what count.
             if (dx < 50 && dy < 50) {
               assert(true, `${pos.name}: touch received, gesture=${state.lastGesture}`);
             } else {

@@ -6,10 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// gmID names one element of the group menu: the key of its rects and
-// buttons. Families (a stepper row's parts, a merge chip, a chip row) are
-// built by the constructors, so no element is named by concatenating a
-// string or recovered by parsing one.
+// Families are built by constructors, so no element is named by concatenating or parsing a string.
 type gmID struct {
 	el  gmEl
 	arg int // the element's operand: the stepper row, the merge group id or the chip row
@@ -48,8 +45,6 @@ var (
 	gmDelete     = gmID{el: gmElDelete}
 )
 
-// gmStep is a stepper row of the group menu: the rule's Every-N and one
-// delta row per rule param.
 type gmStep int
 
 const (
@@ -106,8 +101,7 @@ func (id gmID) String() string {
 	return ""
 }
 
-// laidOutID finds the laid-out element spelled name (gmID.String) — for tests
-// probing that a retired element ("param") is gone.
+// For tests probing that a retired element is gone.
 func (m *GroupMenu) laidOutID(name string) (gmID, bool) {
 	for id := range m.rects {
 		if id.String() == name {

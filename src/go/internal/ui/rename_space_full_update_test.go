@@ -9,11 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestRenameSpaceViaFullGameUpdate drives the REAL Game.Update() frame pipeline
-// (not manual handleGlobalShortcuts+PollKeyboard) to reproduce the desktop bug:
-// rename open, caret at start, press Space -> " kick". Space is stubbed into
-// inputChars AND isKeyJustPressed(Space) so the transport-gate path is exercised
-// exactly as on native.
+// Through the real Game.Update, with Space both in inputChars and pressed, as on native.
 func TestRenameSpaceViaFullGameUpdate(t *testing.T) {
 	g := newTestGameForUndo(t)
 	rc := g.drum.renameComp

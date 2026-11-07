@@ -42,16 +42,8 @@ func TestRunCandidates_UnknownInstrumentErrors(t *testing.T) {
 	}
 }
 
-// withoutString must never mutate the caller's backing array: runChoose
-// passes it refs[i].Instruments, which can still alias the package-level
-// memoized wavref.Catalogue() singleton (a shallow append([]Ref(nil), ...)
-// copy copies the outer []Ref but not each Ref's nested Instruments slice
-// header). An in-place filter there would corrupt every later
-// wavref.Catalogue()/loadCatalogue() call in this process -- invisible in
-// a one-shot CLI run, but silently order-dependent across a `go test`
-// binary. This is the direct regression test for that: it asserts the
-// input slice is byte-for-byte unchanged after the call, independent of
-// any catalogue data existing to exercise runChoose's multi-candidate path.
+// withoutString must never mutate the caller's array: refs[i].Instruments can alias the memoized catalogue (a shallow
+// copy does not copy nested slices), and an in-place filter would make tests order-dependent.
 func TestWithoutString_DoesNotMutateCallerSlice(t *testing.T) {
 	in := []instrument.ID{roster.Trumpet, roster.TrumpetMellow}
 	orig := slices.Clone(in)
@@ -78,10 +70,7 @@ func TestRunChoose_RecordsLosersAsAlternatives(t *testing.T) {
 		t.Skip("violin has only one candidate; nothing to choose between")
 	}
 
-	// runChoose ends by writing the mutated catalogue via catalogueWriter.
-	// Redirect it to a throwaway path for the duration of this test so a
-	// green `go test ./cmd/refs/` never rewrites the real, tracked
-	// internal/wavref/catalogue.json as a side effect of running the suite.
+	// Redirected, so go test never rewrites the tracked catalogue.json.
 	origWriter := catalogueWriter
 	t.Cleanup(func() { catalogueWriter = origWriter })
 	tmp := filepath.Join(t.TempDir(), "catalogue.json")

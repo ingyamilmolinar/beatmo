@@ -11,9 +11,6 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestScrollbarDragDoesNotActivateRowButtons verifies that when the scrollbar
-// thumb is being dragged and the cursor moves over row buttons (mute, solo,
-// delete, etc.), those buttons do not fire.
 func TestScrollbarDragDoesNotActivateRowButtons(t *testing.T) {
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	graph := model.NewGraph(logger)
@@ -51,8 +48,6 @@ func TestScrollbarDragDoesNotActivateRowButtons(t *testing.T) {
 	}
 }
 
-// TestTouchScrollDoesNotActivateRowButtons verifies that while a touch scroll
-// is active, row buttons don't fire.
 func TestTouchScrollDoesNotActivateRowButtons(t *testing.T) {
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	graph := model.NewGraph(logger)
@@ -88,8 +83,6 @@ func TestTouchScrollDoesNotActivateRowButtons(t *testing.T) {
 	}
 }
 
-// TestScrubbingDoesNotActivateRowButtons verifies that while scrubbing the
-// timeline, row buttons don't fire.
 func TestScrubbingDoesNotActivateRowButtons(t *testing.T) {
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	graph := model.NewGraph(logger)
@@ -123,8 +116,6 @@ func TestScrubbingDoesNotActivateRowButtons(t *testing.T) {
 	}
 }
 
-// TestAnyDragActiveIncludesAllStates verifies that anyDragActive() returns true
-// for each individual drag state and false when all are inactive.
 func TestAnyDragActiveIncludesAllStates(t *testing.T) {
 	dv := &DrumView{
 		rowRackZone:     NewRowRackZone(RowRackCallbacks{}),
@@ -159,8 +150,7 @@ func TestAnyDragActiveIncludesAllStates(t *testing.T) {
 		{
 			"rowVolGroup.Capturing",
 			func() {
-				// Set up a standalone slider group that captures without
-				// the popup-opening onChange callback.
+				// Without the popup-opening onChange.
 				s := NewSlider(0.5)
 				s.SetRect(image.Rect(0, 0, 100, 20))
 				s.dragging = true // directly set capture state

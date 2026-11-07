@@ -1,18 +1,6 @@
-/**
- * dsp_worklet.js — the beatmo-dsp AudioWorkletProcessor: every channel's
- * insert chain and EQ, and the master soft clip, computed on the audio thread
- * by the same C desktop runs (drums.single.js through dsp_host.js).
- *
- * The C module is instantiated ONCE per AudioWorkletGlobalScope (one per
- * AudioContext) and shared by every node; each node owns its own C state in
- * that heap. Until the module is ready a node passes audio through and queues
- * its configuration; audio.js does not route a channel through a node before
- * the scope reports ready (the 'ready' probe below), so nothing plays dry in
- * practice.
- *
- * processorOptions: { kind: 'inserts' | 'eq' | 'softclip' | 'ready', init }
- * port messages:    see dsp_host.js createStage; plus 'dispose'.
- */
+/** Every channel's insert chain and EQ and the master soft clip, on the audio thread, by desktop's C. The module is
+ * instantiated ONCE per scope and shared; each node owns its C state. audio.js routes no channel through a node before
+ * the 'ready' probe reports, so nothing plays dry. processorOptions: {kind: 'inserts'|'eq'|'softclip'|'ready', init}. */
 import Module from "./drums.single.js";
 import { createStage } from "./dsp_host.js";
 

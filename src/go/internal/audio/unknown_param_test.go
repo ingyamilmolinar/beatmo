@@ -8,10 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestSetInstrumentParamRejectsUnknownNames: a name the engine does not know —
-// retired (post_tone_on, gone in Phase C) or beyond a family's slot capacity
-// (gen2_kick_h2) — is refused, never stored as a silent dead key that a later
-// export would write out (Phase C task C6).
+// Retired (post_tone_on) or past a family's slot capacity (gen2_kick_h2): refused, never stored as a dead key an export
+// would write out.
 func TestSetInstrumentParamRejectsUnknownNames(t *testing.T) {
 	const inst = roster.Kick
 	t.Cleanup(func() { ResetInstrumentParams(inst) })

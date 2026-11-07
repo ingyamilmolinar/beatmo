@@ -1,16 +1,6 @@
-// gen-sample-edit-golden regenerates the full-pipeline sample-edit golden
-// embedded in src/js/sample_edit_descriptor.browser.test.js (PIPE_GOLD). Run:
-//
-//	cd src/go && BEATMO_AUDIO_SAMPLE_RATE=48000 ../../.tools/go/bin/go run ./cmd/gen-sample-edit-golden
-//
-// Emits the native dispatcher's full pipeline output fingerprint for "kick"
-// with a trim+gain+reverse descriptor: recipe render → normalizeAndScale →
-// ApplySampleEditToBuffer (all via audio.RenderInstrumentOneShot, the same
-// code path the voice dispatcher takes on a trigger). The fingerprint shape
-// (head/tail/peak/rms/length) mirrors audio.js __testCaptureSynthRender so
-// the browser test can compare the production WASM pipeline directly.
-// Regenerate whenever the kick recipe, normalizeAndScale, or BakeSample
-// numerics intentionally change.
+// Regenerates PIPE_GOLD in sample_edit_descriptor.browser.test.js: the native full-pipeline fingerprint of kick with a
+// trim+gain+reverse edit, in the shape audio.js __testCaptureSynthRender reports. Regenerate when the kick, normalisation or
+// BakeSample numerics change. cd src/go && BEATMO_AUDIO_SAMPLE_RATE=48000 go run ./cmd/gen-sample-edit-golden
 package main
 
 import (

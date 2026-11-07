@@ -9,8 +9,6 @@ import (
 
 // ────────────────────── Positive tests (mobile) ──────────────────────
 
-// TestMobileEQCollapsedByDefault verifies that on a small screen the EQ
-// panel is collapsed by default and eqH is zero.
 func TestMobileEQCollapsedByDefault(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -26,8 +24,6 @@ func TestMobileEQCollapsedByDefault(t *testing.T) {
 	}
 }
 
-// TestMobileEQToggleRestoresHeight toggles the EQ on and off and checks
-// that rowsAreaHeight adjusts accordingly.
 func TestMobileEQToggleRestoresHeight(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -48,8 +44,7 @@ func TestMobileEQToggleRestoresHeight(t *testing.T) {
 	g.drum.calcLayout()
 
 	expandedRows := g.drum.rowsAreaHeight()
-	// Expanded should have fewer row pixels because EQ takes space.
-	// Under Go test eqPanelHeight=0, so they may be equal; just verify non-negative.
+	// eqPanelHeight is 0 under test, so the two may be equal.
 	if expandedRows < 0 {
 		t.Fatalf("expanded rowsAreaHeight=%d, want >= 0", expandedRows)
 	}
@@ -68,8 +63,6 @@ func TestMobileEQToggleRestoresHeight(t *testing.T) {
 	}
 }
 
-// TestMobileOverflowMenuHidesFileButtons checks that Upload/Import/Export
-// have zero-area rects on mobile while the overflow button has a valid rect.
 func TestMobileOverflowMenuHidesFileButtons(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -93,12 +86,9 @@ func TestMobileOverflowMenuHidesFileButtons(t *testing.T) {
 		}
 	}
 
-	// The overflow/kebab button was removed; file options open from the grid
-	// folder button (covered by TestGridFileButtonPresentBothPlatforms).
+	// File options open from the grid folder button.
 }
 
-// TestMobileTransportNoOverlap checks that no pair of transport buttons
-// in the top row overlap on a 390×844 viewport.
 func TestMobileTransportNoOverlap(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -129,11 +119,7 @@ func TestMobileTransportNoOverlap(t *testing.T) {
 	}
 }
 
-// TestMobileAddRowButtonFooter checks that the add-row button is rendered
-// as a full-width footer below the rows on mobile (mirroring the desktop
-// layout) and never overlaps a row label. Row-zoom +/- chips now live in
-// the timeline header band (see TestRowZoomChipsInTimelineHeader); the
-// add-row "+" owns the bottom rack strip on its own.
+// A full-width footer below the rows that never overlaps a label; the zoom chips live in the timeline header.
 func TestMobileAddRowButtonFooter(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -165,8 +151,6 @@ func TestMobileAddRowButtonFooter(t *testing.T) {
 			t.Errorf("add-row button overlaps row label %d: btn=%v label=%v", i, btn, lr)
 		}
 	}
-	// Row-zoom chips must NOT share the bottom rack strip with addRow —
-	// they live in the timeline header band now.
 	for _, chip := range []*Button{dv.rowZoomDecBtn, dv.rowZoomIncBtn} {
 		if chip == nil {
 			continue
@@ -182,10 +166,7 @@ func TestMobileAddRowButtonFooter(t *testing.T) {
 	}
 }
 
-// TestMobileRowControlsSimplified verifies that on mobile, edit/color/origin/
-// delete remain hidden in the row strip (they live in the bottom-sheet context
-// menu), while label + volume slider + mute + solo + FX are inline so users
-// can reach them without opening a menu.
+// Label, volume, mute, solo and FX inline; edit/color/origin/delete in the context menu.
 func TestMobileRowControlsSimplified(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -206,16 +187,13 @@ func TestMobileRowControlsSimplified(t *testing.T) {
 	if lr.Empty() {
 		t.Error("label button has empty rect on mobile")
 	}
-	// Mute / Solo buttons must be visible inline on mobile (regression guard
-	// against the old "overflow-only" mobile layout).
 	if len(dv.rowMuteBtns()) == 0 || dv.rowMuteBtns()[0].Rect().Empty() {
 		t.Error("mute button should be visible inline on mobile")
 	}
 	if len(dv.rowSoloBtns()) == 0 || dv.rowSoloBtns()[0].Rect().Empty() {
 		t.Error("solo button should be visible inline on mobile")
 	}
-	// Hidden buttons should be functionally invisible (≤ 5px in one dimension).
-	// Grid layout rounding may give the last zero-weight column a few pixels.
+	// Layout rounding may give the last zero-weight column a few pixels.
 	const hiddenMax = 5
 	for _, pair := range []struct {
 		name string
@@ -236,9 +214,7 @@ func TestMobileRowControlsSimplified(t *testing.T) {
 	}
 }
 
-// TestMobileContextMenuOpens verifies that openContextMenu creates a valid
-// context menu with 4 buttons (3 items + close) bounded within dv.Bounds.
-// Mobile items: Rename, Origin, Delete (+ close) — identical to desktop.
+// Rename, Origin, Delete + close, the same as desktop, inside dv.Bounds.
 func TestMobileContextMenuOpens(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -266,8 +242,7 @@ func TestMobileContextMenuOpens(t *testing.T) {
 	}
 }
 
-// TestMobileContextMenuBounds checks that the context menu for the last
-// row stays within dv.Bounds (doesn't overflow bottom).
+// The last row's menu does not overflow the bottom.
 func TestMobileContextMenuBounds(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -292,8 +267,6 @@ func TestMobileContextMenuBounds(t *testing.T) {
 	}
 }
 
-// TestMobileInstrumentMenuFullWidth checks that on 390×844 the instrument
-// menu uses most of the screen width.
 func TestMobileInstrumentMenuFullWidth(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -310,8 +283,6 @@ func TestMobileInstrumentMenuFullWidth(t *testing.T) {
 	}
 }
 
-// TestMobileLabelNotTruncated checks that the label button is wide enough
-// to render "Kick" without truncation.
 func TestMobileLabelNotTruncated(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -325,16 +296,14 @@ func TestMobileLabelNotTruncated(t *testing.T) {
 		t.Fatal("no row labels")
 	}
 	lr := dv.rowLabels()[0].Rect()
-	// "Kick" is 4 chars × debugCharW (~6px) = 24px minimum. Add small padding.
-	// Label column is narrower on mobile to give the kebab button enough touch area.
+	// 4 × debugCharW plus a little padding.
 	minW := 4*debugCharW + 4
 	if lr.Dx() < minW {
 		t.Errorf("label width %d < %d (min for 4-char label + padding)", lr.Dx(), minW)
 	}
 }
 
-// TestMobileBeatInfoVisible checks that on mobile, secondary controls
-// (volume, length) are hidden from the transport bar (moved to overflow).
+// Volume and length are off the transport bar on mobile.
 func TestMobileBeatInfoVisible(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -344,10 +313,7 @@ func TestMobileBeatInfoVisible(t *testing.T) {
 	advanceFrames(g, 2)
 
 	dv := g.drum
-	// Length +/− buttons live in the overflow menu on mobile (A7 in the
-	// screenshot critique) — see TestLenButtons_HiddenOnMobile and
-	// TestLenButtons_ReachableViaOverflowOnMobile. The inline button rects
-	// must be empty here so the timeline / counter occupy the full width.
+	// The length buttons live in the overflow menu on mobile, so the timeline and counter get the full width.
 	if dv.lenDecBtn == nil || dv.lenIncBtn == nil {
 		t.Fatal("length buttons nil")
 	}
@@ -357,14 +323,11 @@ func TestMobileBeatInfoVisible(t *testing.T) {
 	if r := dv.lenIncBtn.Rect(); !r.Empty() {
 		t.Errorf("lenIncBtn should be hidden on mobile (A7); got %v", r)
 	}
-	// The overflow/kebab button was removed; file options open from the grid
-	// folder button (covered by TestGridFileButtonPresentBothPlatforms).
+	// File options open from the grid folder button.
 }
 
 // ────────────────────── Negative tests (desktop unchanged) ──────────────────────
 
-// TestDesktopEQVisible verifies that on desktop the EQ panel is visible
-// (mobileEQCollapsed is false and eqH is the standard panel height).
 func TestDesktopEQVisible(t *testing.T) {
 	setupMobileTest(t, false) // desktop
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -375,13 +338,10 @@ func TestDesktopEQVisible(t *testing.T) {
 	if g.drum.MobileEQCollapsed() {
 		t.Fatal("desktop: mobileEQCollapsed should be false")
 	}
-	// Under Go test, eqPanelHeight=0, so eqH will be 0 too. Just verify
-	// the collapsed flag is false.
+	// eqPanelHeight is 0 under test, so only the flag is checked.
 }
 
-// TestDesktopRowControlsFull verifies the desktop 6-column layout:
-// Label | VolBar | M | S | FX | Overflow. Edit/save/color/origin/delete
-// are hidden (empty rects) — they live in the overflow menu.
+// Label | VolBar | M | S | FX | Overflow; the rest live in the overflow menu.
 func TestDesktopRowControlsFull(t *testing.T) {
 	setupMobileTest(t, false) // desktop
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -442,10 +402,7 @@ func TestDesktopRowControlsFull(t *testing.T) {
 	}
 }
 
-// TestDesktopTransportFull verifies that on desktop the File ops
-// (Upload/Import/Export) live behind a single overflow "..." button — matching
-// mobile — rather than being crowded inline. The overflow button is the visible
-// menu trigger; the inline file-op buttons are hidden.
+// The file ops are not inline on desktop.
 func TestDesktopTransportFull(t *testing.T) {
 	setupMobileTest(t, false) // desktop
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -468,12 +425,9 @@ func TestDesktopTransportFull(t *testing.T) {
 			t.Errorf("desktop: %s button should be hidden inline (behind file menu), got %v", pair.name, r)
 		}
 	}
-	// The overflow/kebab button was removed; file options open from the grid
-	// folder button (covered by TestGridFileButtonPresentBothPlatforms).
+	// File options open from the grid folder button.
 }
 
-// TestDesktopNoContextMenu verifies that contextMenuOpen stays false on
-// desktop and that M/S/O/X buttons are functional.
 func TestDesktopNoContextMenu(t *testing.T) {
 	setupMobileTest(t, false) // desktop
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -501,8 +455,7 @@ func TestDesktopNoContextMenu(t *testing.T) {
 	}
 }
 
-// TestDesktopAddRowButtonInline verifies that addRowBtn is positioned
-// inline (in the rack column) on desktop, not as a FAB.
+// In the rack column, not a floating button.
 func TestDesktopAddRowButtonInline(t *testing.T) {
 	setupMobileTest(t, false) // desktop
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -516,8 +469,6 @@ func TestDesktopAddRowButtonInline(t *testing.T) {
 	if fab.Empty() {
 		t.Fatal("desktop: addRowBtn rect is empty")
 	}
-	// On desktop, the add button should be in the left panel (rack area),
-	// not floating on the right side.
 	rack := dv.widgetRects[WidgetRack]
 	if !rack.Empty() {
 		// Inline button should overlap the rack X-range
@@ -529,8 +480,6 @@ func TestDesktopAddRowButtonInline(t *testing.T) {
 
 // ────────────────────── Multi-viewport tests ──────────────────────
 
-// TestMobileContextMenuAllViewports verifies context menu bounds on
-// all standard mobile viewports.
 func TestMobileContextMenuAllViewports(t *testing.T) {
 	for _, vp := range mobileViewports {
 		t.Run(vp.name, func(t *testing.T) {

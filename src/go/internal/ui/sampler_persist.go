@@ -9,16 +9,13 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/userprefs"
 )
 
-// samplePersistAdapter bridges the audio package's float32-based SampleSink /
-// SampleSource to the userprefs byte-based SampleStore. It lives in internal/ui
-// (the one layer that imports both) so userprefs stays audio-agnostic and audio
-// stays userprefs-agnostic — the same split used for recipe persistence.
+// Lives in ui, the one layer importing both, so userprefs stays audio-agnostic and audio stays
+// userprefs-agnostic.
 type samplePersistAdapter struct {
 	store userprefs.SampleStore
 }
 
-// NewSamplePersistAdapter wraps a userprefs.SampleStore as an audio sink+source.
-// Returns nil when store is nil so callers can wire unconditionally.
+// nil for a nil store, so callers can wire unconditionally.
 func NewSamplePersistAdapter(store userprefs.SampleStore) *samplePersistAdapter {
 	if store == nil {
 		return nil

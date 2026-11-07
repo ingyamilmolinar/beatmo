@@ -17,9 +17,7 @@ func TestMenuScroll_OffsetAndWheel(t *testing.T) {
 	if got := m.OffsetPx(); got != 0 {
 		t.Fatalf("OffsetPx()=%d; want 0 at top", got)
 	}
-	// Smooth: the wheel RESPECTS magnitude — a hi-res wheel / trackpad flick of
-	// |steps|=2 moves two rows in a single event (the instrument-menu feel),
-	// unlike the old clicky one-item-per-notch cadence.
+	// Magnitude respected: |steps|=2 moves two rows in one event.
 	if !m.HandleWheel(-2) {
 		t.Fatalf("HandleWheel returned false; expected a two-item offset change")
 	}
@@ -28,11 +26,7 @@ func TestMenuScroll_OffsetAndWheel(t *testing.T) {
 	}
 }
 
-// TestMenuScroll_WheelIsSmooth pins the menu wheel to the smooth, continuous
-// instrument-menu cadence: it respects wheel magnitude and has NO per-notch
-// cooldown lock, so consecutive notches scroll on consecutive frames with no
-// TickStep() gating between them. (The row rack and synth control grids keep the
-// clicky WheelStep path; list/dropdown menus do not.)
+// No per-notch cooldown, so consecutive notches scroll on consecutive frames.
 func TestMenuScroll_WheelIsSmooth(t *testing.T) {
 	m := NewMenuScroll(DropdownScrollbarStyle, 20)
 	m.Configure(image.Rect(0, 0, 100, 100), 50, 5)
@@ -51,10 +45,7 @@ func TestMenuScroll_WheelIsSmooth(t *testing.T) {
 	}
 }
 
-// TestMenuScroll_TickDrivesMomentumAndRebuilds pins the shared per-frame momentum
-// driver: at rest Tick is a no-op (no rebuild), and after a touch fling it carries
-// the list past the finger-release position, invoking the rebuild callback on each
-// frame the offset changes. A nil rebuild must be safe.
+// A no-op at rest; after a fling it carries the list on, rebuilding on each moved frame. A nil rebuild is safe.
 func TestMenuScroll_TickDrivesMomentumAndRebuilds(t *testing.T) {
 	m := NewMenuScroll(DropdownScrollbarStyle, 20)
 	m.Configure(image.Rect(0, 0, 100, 100), 200, 5)
@@ -132,11 +123,7 @@ func TestMenuScroll_HandleScrollbarDrag(t *testing.T) {
 	m.HandleScrollbarDrag(image.Pt(thumb.Min.X+1, thumb.Min.Y+1), true, nil)
 }
 
-// withSmallScreenReturn sets the mobile/desktop screen class for the test and
-// returns a restore func. Thin wrapper so MenuScroll tests can toggle class in
-// BOTH directions; it mirrors the forceSmallScreenForTest + UpdateProfile
-// mechanism used by withSmallScreen, but without the "must start false"
-// assertion so it can be called for either class.
+// Either direction, unlike withSmallScreen, which must start from false.
 func withSmallScreenReturn(t *testing.T, small bool) func() {
 	t.Helper()
 	prev := forceSmallScreenForTest

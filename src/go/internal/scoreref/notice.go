@@ -9,13 +9,8 @@ import (
 // NoticeFile is the committed attribution notice rendered from the catalogue.
 const NoticeFile = "NOTICE-scores.md"
 
-// RenderNotice produces the attribution notice for the committed score corpus.
-//
-// CC0 imposes no attribution requirement, but the notice is generated for every
-// entry regardless: it is the human-readable face of the catalogue, and it is
-// what makes the CC-BY-4.0 allowance in AllowedLicenses actually satisfiable
-// rather than merely permitted. TestNoticeIsUpToDate keeps the committed file
-// in step with the catalogue.
+// Generated for every entry though CC0 requires none: it is the catalogue's human-readable face, and what makes the
+// CC-BY-4.0 allowance satisfiable rather than merely permitted.
 func RenderNotice() (string, error) {
 	c, err := Catalogue()
 	if err != nil {

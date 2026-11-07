@@ -9,10 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestPrewarmVoiceKeyMatchesDispatch proves the linchpin: warming (id, pitch)
-// populates the exact cache slot the dispatch read (newRecipeAwareVoicePitched)
-// later hits — so a pre-warmed melody note is a cache HIT at dispatch, never a
-// cold inline render on the audioLoop goroutine.
+// So a pre-warmed note is a HIT at dispatch, never a cold inline render.
 func TestPrewarmVoiceKeyMatchesDispatch(t *testing.T) {
 	const id = roster.OrganChurch // melodic, pitch-aware (the instrument that crashed at pitch -2)
 	sr := SampleRate()            // the rate PrewarmVoice renders at
@@ -30,8 +27,7 @@ func TestPrewarmVoiceKeyMatchesDispatch(t *testing.T) {
 	}
 	missesAfterWarm := m.CacheMisses
 
-	// Dispatch reads the SAME (id, pitch) via the function playParamsIdentity
-	// calls. It must be a cache HIT (warm key == dispatch key), no re-render.
+	// The function playParamsIdentity calls; it must hit.
 	if v := newRecipeAwareVoicePitched(id, sr, -2); v == nil {
 		t.Fatal("dispatch render returned nil")
 	}
@@ -44,11 +40,7 @@ func TestPrewarmVoiceKeyMatchesDispatch(t *testing.T) {
 	}
 }
 
-// TestVoiceCachedTracksDispatchKeyAcrossInvalidation is the regression for the
-// stale-seen bug: VoiceCached must report the CURRENT cache state so the UI
-// prewarmer re-warms after a param edit clears the entry. Without this, a
-// cleared voice stayed marked "warmed" and cold-rendered on the dispatch
-// goroutine -> overdue panic.
+// Must report the CURRENT state: a voice left marked "warmed" after an edit cold-rendered on the dispatch goroutine.
 func TestVoiceCachedTracksDispatchKeyAcrossInvalidation(t *testing.T) {
 	const id = roster.OrganChurch
 	if !IsMelodicInstrument(id) {
@@ -65,9 +57,7 @@ func TestVoiceCachedTracksDispatchKeyAcrossInvalidation(t *testing.T) {
 	if !VoiceCached(id, 5) {
 		t.Fatalf("VoiceCached false right after PrewarmVoice")
 	}
-	// A param edit invalidates the instrument's cache (ClearInstrument via the
-	// SetInstrumentParam hook). VoiceCached must now report cold so the UI
-	// re-warms instead of trusting a stale seen-set.
+	// After the edit VoiceCached must report cold, so the UI re-warms instead of trusting a stale seen-set.
 	SetInstrumentParam(id, "gain", 0.9)
 	defer ResetInstrumentParams(id)
 	if VoiceCached(id, 5) {
@@ -80,9 +70,7 @@ func TestVoiceCachedTracksDispatchKeyAcrossInvalidation(t *testing.T) {
 	}
 }
 
-// TestClearInstrumentFiresInvalidateObserver verifies the audio->UI wiring: a
-// cache invalidation (param edit path) notifies the registered observer with the
-// instrument id, so the prewarmer can proactively re-warm.
+// So the prewarmer can re-warm proactively.
 func TestClearInstrumentFiresInvalidateObserver(t *testing.T) {
 	prev := VoiceCacheInvalidateObserver
 	defer func() { VoiceCacheInvalidateObserver = prev }()

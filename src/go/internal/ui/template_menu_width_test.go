@@ -5,12 +5,7 @@ import (
 	"testing"
 )
 
-// TestOverflowMenu_DesktopWidthFitsTemplateLabels asserts the desktop overflow
-// popup is wide enough to render the template page's labels without truncating
-// them — the popup width is derived from the widest label, not a fixed 160 px.
-//
-// Long display titles like "Marcello — Oboe Concerto in D minor, Adagio" used to
-// overflow the hardcoded 160 px popup; this guards the dynamic-width fix.
+// The popup takes the widest label's width, never a fixed one that truncates long titles.
 func TestOverflowMenu_DesktopWidthFitsTemplateLabels(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -25,8 +20,7 @@ func TestOverflowMenu_DesktopWidthFitsTemplateLabels(t *testing.T) {
 
 	popup := dv.overflowPopupRect()
 
-	// Reproduce the label-start inset used by drawOverflowMenu: the row rect is
-	// inset by SpaceXS, then menuRowLabelX adds the icon gutter.
+	// The label start drawOverflowMenu uses: the row inset by SpaceXS, plus menuRowLabelX's icon gutter.
 	rowR := image.Rect(popup.Min.X, popup.Min.Y, popup.Max.X, popup.Min.Y+touchMinTargetPx)
 	rowR = insetRect(rowR, SpaceXS)
 	labelX := menuRowLabelX(rowR)

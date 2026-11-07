@@ -1,18 +1,7 @@
 package deploy
 
-// The browser-test harness and `make serve-lan` both serve files directly out
-// of src/js/, so every committed file is reachable at runtime regardless of
-// what scripts/deploy-wasm-gcs.sh stages into build/wasm_site/. The result is
-// a silent class of bug: a new `import './X.gen.js'` in audio.js or a new
-// `new URL('./Y_worklet.js', ...)` ships green on serve-lan + every browser
-// test, then 404s on beatmo.io.
-//
-// This test parses src/js/index.html and src/js/audio.js for every relative
-// URL the browser will fetch at runtime, then parses scripts/deploy-wasm-gcs.sh
-// for its declared file buckets, and asserts the two sides agree.
-//
-// To add a new runtime dependency: add it to one of the *_FILES arrays in
-// deploy-wasm-gcs.sh and this test will pass automatically.
+// Browser tests and serve-lan serve straight out of src/js, so a new runtime import ships green there and 404s on
+// beatmo.io. Every relative URL index.html and audio.js fetch must be in a deploy-wasm-gcs.sh *_FILES array.
 
 import (
 	"os"
@@ -176,9 +165,7 @@ func TestDeployManifestCoversRuntimeRefs(t *testing.T) {
 		)
 	}
 
-	// Each manifest entry must also resolve to an actual file under src/js/.
-	// This catches the inverse drift: a stale manifest entry whose source was
-	// renamed or removed.
+	// The inverse drift: a manifest entry whose source no longer exists.
 	var orphan []string
 	for f := range manifest {
 		p := filepath.Join(root, "src", "js", f)
@@ -191,18 +178,14 @@ func TestDeployManifestCoversRuntimeRefs(t *testing.T) {
 		t.Fatalf("deploy manifest lists files that do not exist under src/js/:\n  %s", strings.Join(orphan, "\n  "))
 	}
 
-	// index.html itself must be in the manifest (it's the entry point but
-	// nothing references it by name from inside JS, so it must be declared
-	// explicitly in the script).
+	// Nothing references the entry point by name, so it must be declared explicitly.
 	if _, ok := manifest["index.html"]; !ok {
 		t.Error("deploy manifest must contain index.html (entry point)")
 	}
 }
 
 func TestExtractJSRefsParserCoverage(t *testing.T) {
-	// Smoke-test the JS extractor against a synthetic source covering every
-	// reference shape the live audio.js uses. If any shape stops matching, a
-	// new runtime dep can slip past the live test.
+	// Every reference shape the live audio.js uses: a shape that stops matching lets a new runtime dep slip past.
 	src := `import { X } from './static.gen.js';
 import("./dyn.js");
 const u1 = new URL('./worklet_a.js', import.meta.url);
@@ -227,9 +210,7 @@ const skip2 = import('/absolute.js');
 }
 
 func TestDeployManifestDetectsMissingRef(t *testing.T) {
-	// Synthesize the failure mode: a JS source references a file that the
-	// manifest doesn't declare. The same set-diff used by
-	// TestDeployManifestCoversRuntimeRefs must catch it.
+	// The failure mode itself: an undeclared reference must be caught by the same set difference.
 	jsSrc := `import { X } from './nope.gen.js'; const u = new URL('./nope_worklet.js', import.meta.url);`
 	manifestScript := `ENTRY_FILES=( "index.html" )
 ASSET_FILES=( "audio.js" )
@@ -278,11 +259,8 @@ func TestDeployManifestSetsExplicitMIMEAndCache(t *testing.T) {
 	}
 }
 
-// TestDeployCompressesAssets guarantees the deploy gzip-compresses the bundle
-// and serves it with the headers a streaming-compile-safe gzip download needs:
-// Content-Encoding: gzip (so the 28 MiB main.wasm transfers as ~6.5 MiB) and
-// Cache-Control: no-transform (so GCS does NOT decompressively transcode --
-// which would strip Content-Length and break instantiateStreaming).
+// Content-Encoding: gzip so main.wasm transfers compressed, and no-transform so GCS never transcodes (which strips
+// Content-Length and breaks instantiateStreaming).
 func TestDeployCompressesAssets(t *testing.T) {
 	root := repoRoot(t)
 	script := mustRead(t, filepath.Join(root, "scripts", "deploy-wasm-gcs.sh"))

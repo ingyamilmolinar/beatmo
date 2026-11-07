@@ -15,8 +15,7 @@ func setTestInput(t *testing.T, pos func() (int, int), mouse func(ebiten.MouseBu
 	t.Cleanup(restore)
 }
 
-// Verify the wave/EQ divider is hoverable and draggable via the legacy path.
-// The row 1/2 boundary is detectable for EQ resizing even though no line is drawn.
+// The row 1/2 boundary resizes the EQ though no line is drawn there.
 func TestWaveDividerHoverAndResize(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
@@ -27,10 +26,7 @@ func TestWaveDividerHoverAndResize(t *testing.T) {
 		t.Fatalf("expected at least 3 row boundaries, got %d", len(rowPos))
 	}
 	yBoundary := rowPos[2] // start of wave row
-	// setTestInput (t.Cleanup), not `defer restore()` — see TestColumnDividerHover
-	// below: this test installs further mocks via setTestInput, and mixing the
-	// two restore styles leaves the FIRST mock installed for the rest of the
-	// package (defers run before t.Cleanup, so the cleanups reinstall it).
+	// setTestInput only: mixed with a deferred restore, the first mock stays installed for the package.
 	setTestInput(t,
 		func() (int, int) { return dv.Bounds.Max.X / 2, yBoundary },
 		func(ebiten.MouseButton) bool { return false },
@@ -96,16 +92,8 @@ func TestColumnDividerHover(t *testing.T) {
 	logger := game_log.New(nil, game_log.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 1280, 720), nil, logger)
 	x := dv.widgets.colPos[1] // between rack and timeline
-	// Installed via setTestInput (t.Cleanup), NOT `defer restore()`. This test
-	// installs three input mocks in sequence, and mixing the two restore
-	// styles leaks: defers run BEFORE t.Cleanup, so a deferred restore puts
-	// the real functions back FIRST and the later cleanups then walk back up
-	// the stack, reinstalling this very mock permanently. It reported
-	// (colPos[1], Bounds.Min.Y+10) = (512,10) — outside the node sidebar's
-	// panel — which silently re-aimed the cursor for every later test in the
-	// package and broke three sidebar tests on stale layout rects, but only
-	// under the real Ebiten build. Keep every install in this test on
-	// t.Cleanup so the restores unwind in LIFO order.
+	// setTestInput only, so the restores unwind LIFO: a deferred restore here once left this mock live for the
+	// package, re-aiming every later test's cursor.
 	setTestInput(t,
 		func() (int, int) { return x, dv.Bounds.Min.Y + 10 },
 		func(ebiten.MouseButton) bool { return false },
@@ -146,8 +134,7 @@ func TestColumnDividerHover(t *testing.T) {
 	}
 }
 
-// Verify the boundary below the transport is NOT draggable — the Timeline
-// widget spans rows 0-1, so the row 0 divider is fully suppressed.
+// The Timeline spans rows 0-1, so the row 0 divider is fully suppressed.
 func TestTransportBottomDividerSuppressed(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
@@ -203,9 +190,7 @@ func TestWidgetBoundariesVisibleAfterResize(t *testing.T) {
 	}
 }
 
-// Verify that after mixed resizes, the wave/EQ boundary still functions:
-// no divider LINE is drawn (suppressed), but the EQ pill remains accessible
-// for resizing via the LayoutResizeHandler.
+// After mixed resizes the wave/EQ line stays suppressed but its pill still resizes.
 func TestWaveDividerStaysVisibleAfterMixedResizes(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
@@ -231,8 +216,7 @@ func TestWaveDividerStaysVisibleAfterMixedResizes(t *testing.T) {
 		}
 	}
 
-	// Draw guides and confirm the wave divider LINE is NOT drawn (suppressed
-	// because WidgetWave is full-width below the row 1/2 boundary).
+	// Not drawn: WidgetWave is full-width below the row 1/2 boundary.
 	xSample := dv.Bounds.Min.X + dv.Bounds.Dx()/2
 	ySample := dv.widgets.rowPos[2]
 	hit := false

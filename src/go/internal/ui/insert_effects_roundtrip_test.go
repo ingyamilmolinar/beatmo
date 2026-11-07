@@ -12,34 +12,18 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Render-level / source-of-truth guards for per-instrument insert effect
-// chains across export → import. The pre-existing tests set row.Effects
-// directly, which hid two real-flow gaps:
-//
-//  1. The FX panel's param slider writes ONLY to the audio layer
-//     (audio.SetInsertEffectParam — drumview_fx_panel.go propagateFXSliderValue
-//     never re-syncs the row), while export read the stale row copy. An
-//     edited drive knob exported its pre-edit value.
-//  2. Import applied chains only when the file carried them; a project
-//     WITHOUT effects imported over a session WITH effects left the old
-//     chain processing audio (invisible in the UI — rows are rebuilt empty).
-//
-// These tests drive the REAL flow (audio-layer APIs, like the FX panel does)
-// and assert against audio.GetInsertEffects — the single source of truth the
-// mixer builds processor chains from.
+// The slider writes only the audio layer, so export must read the chain from there; and importing a file with no
+// effects must clear the live chain. Real-flow APIs, asserted against audio.GetInsertEffects, which the
+// mixer builds from.
 
-// withCleanInsertEffects clears the process-global insert chains before and
-// after the test so chains can't leak between tests in this package.
+// The chains are process-global.
 func withCleanInsertEffects(t *testing.T) {
 	t.Helper()
 	audio.ClearAllInsertEffects()
 	t.Cleanup(audio.ClearAllInsertEffects)
 }
 
-// TestExportInsertEffects_ParamEditReachesFile reproduces the FX-slider
-// export drift: add an effect through the real flow, then edit a param the
-// way the slider does (audio layer only, no row re-sync) and export. The
-// file must carry the EDITED value.
+// An edit made like the slider's (audio layer only) reaches the exported file.
 func TestExportInsertEffects_ParamEditReachesFile(t *testing.T) {
 	withDefaultAudio(t)
 	withCleanInsertEffects(t)
@@ -50,8 +34,7 @@ func TestExportInsertEffects_ParamEditReachesFile(t *testing.T) {
 	inst := g.drum.Rows[0].Instrument
 	slot := audio.AddInsertEffect(inst, "distortion", nil)
 
-	// Slider drag: audio layer only — propagateFXSliderValue does NOT re-sync
-	// the row (drumview_fx_panel.go).
+	// The slider does not re-sync the row.
 	audio.SetInsertEffectParam(inst, slot, "drive", 15)
 
 	data, err := g.drum.exportBytes()
@@ -77,9 +60,7 @@ func TestExportInsertEffects_ParamEditReachesFile(t *testing.T) {
 	}
 }
 
-// TestImportClearsStaleInsertEffects: importing a project WITHOUT effects
-// must clear a live chain on the same instrument id — replace-not-merge,
-// like synth params and sample edits.
+// Replace-not-merge, like synth params and sample edits.
 func TestImportClearsStaleInsertEffects(t *testing.T) {
 	withDefaultAudio(t)
 	withCleanInsertEffects(t)
@@ -111,12 +92,8 @@ func TestImportClearsStaleInsertEffects(t *testing.T) {
 	}
 }
 
-// TestInsertEffectsRoundTrip_FullCatalogMatrix: every registered effect type,
-// each with every declared param at a NON-default in-range value, spread over
-// several rows with mixed enabled flags and a meaningful slot order — export →
-// fresh import must restore the audio-layer chains EXACTLY (type, order,
-// enabled, every param). This is the comprehensive guard the previous tests
-// (2 types, 3 params) didn't provide.
+// Every effect type, every param at a non-default value, over several rows with mixed enabled flags and a
+// meaningful order: export → fresh import restores the chains exactly.
 func TestInsertEffectsRoundTrip_FullCatalogMatrix(t *testing.T) {
 	withDefaultAudio(t)
 	withCleanInsertEffects(t)
@@ -129,8 +106,7 @@ func TestInsertEffectsRoundTrip_FullCatalogMatrix(t *testing.T) {
 	if len(order) < 10 {
 		t.Fatalf("expected a full effect registry, got %d types", len(order))
 	}
-	// Three rows with distinct builtin instruments so chains are keyed and
-	// restored per instrument id.
+	// Distinct instruments, since chains are keyed by instrument id.
 	for len(g.drum.Rows) < 3 {
 		g.drum.AddRow()
 	}
@@ -144,8 +120,7 @@ func TestInsertEffectsRoundTrip_FullCatalogMatrix(t *testing.T) {
 		}
 	}
 
-	// Non-default, in-range value for a param: 73% of the range, nudged if it
-	// happens to land on the default.
+	// 73% of the range, nudged off the default.
 	valueFor := func(d audio.EffectParamDef) float64 {
 		v := d.Min + 0.73*(d.Max-d.Min)
 		if math.Abs(v-d.Default) < 1e-12 {
@@ -154,8 +129,7 @@ func TestInsertEffectsRoundTrip_FullCatalogMatrix(t *testing.T) {
 		return v
 	}
 
-	// Distribute the whole catalog across 3 rows; every 4th slot disabled so
-	// the Enabled flag round-trips in both states.
+	// Every 4th slot disabled, so Enabled round-trips both ways.
 	want := map[string][]audio.EffectSlot{}
 	for i, typ := range order {
 		inst := g.drum.Rows[i%3].Instrument
@@ -209,10 +183,7 @@ func TestInsertEffectsRoundTrip_FullCatalogMatrix(t *testing.T) {
 	}
 }
 
-// TestImportClearsChainsForInstrumentsAbsentFromProject: a chain on an
-// instrument id that does not appear in the imported project at all must
-// not survive either — otherwise re-adding that instrument later in the
-// session resurrects a phantom chain.
+// Or re-adding that instrument later resurrects a phantom chain.
 func TestImportClearsChainsForInstrumentsAbsentFromProject(t *testing.T) {
 	withDefaultAudio(t)
 	withCleanInsertEffects(t)

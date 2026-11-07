@@ -2,8 +2,6 @@ package audio
 
 import "math"
 
-// multibandBandDef defines frequency boundaries for a single band of the
-// graphic EQ's band split.
 type multibandBandDef struct {
 	loHz float64
 	hiHz float64
@@ -30,22 +28,11 @@ const (
 	eqStageSilence = 2
 )
 
-// crossoverQ is the Butterworth Q of the band split's Linkwitz–Riley
-// crossovers (two cascaded stages each side: -24 dB/octave).
+// Two cascaded stages each side: -24 dB/octave.
 const crossoverQ = 0.707
 
-// BuildEQProgram turns a channel's EQ bands into the program both platforms'
-// C EQ runs (mix_dsp.h): ONE description of the filter topology and its
-// coefficients, computed by this Go code on desktop and in the browser alike.
-//
-// High- and low-pass bands are filters in series at their position (the UI
-// puts the high-pass first and the low-pass last). The shelf/peaking bands
-// form the graphic section: a biquad chain when no band is muted; when some
-// are, a band split (each band isolated by Linkwitz–Riley crossovers, muted
-// bands dropped, the rest scaled by their gain) so muting a band never
-// touches its neighbours; when all are, silence. The high/low-pass filters
-// stay in series around the split — they used to be counted as bands of it,
-// which dropped them and slid every band onto the wrong frequencies.
+// ONE description, computed by this Go on both platforms. High/low-pass in series around the graphic section: a biquad
+// chain, or with bands muted a Linkwitz–Riley split (muting never touches neighbours), silence when all are muted.
 func BuildEQProgram(sr int, bands []EQBand) []float64 {
 	var graphic []EQBand
 	anyMuted, allMuted := false, true

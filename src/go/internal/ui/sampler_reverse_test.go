@@ -9,23 +9,17 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// fEq32 compares a float64 (widened from a float32 sample) against an expected
-// value with a tolerance large enough to absorb float32 rounding.
+// Absorbs float32 rounding.
 func fEq32(a, b float64) bool { return a-b < 1e-6 && b-a < 1e-6 }
 
-// sampler_reverse_test.go — the Reverse control is a stateful TOGGLE: one click
-// reverses the working signal in place AND latches the button ON (so it reads
-// like every other toggle), a second click un-reverses and un-latches. The
-// playback highlight must ALWAYS sweep left→right (forward in time), never
-// right→left. Latched-state assertions live in sampler_toggle_state_test.go.
+// One click reverses in place and latches on, a second undoes both; the playback line always sweeps left to
+// right.
 
 // ── Reverse latches its state and reverses in place ──────────────────────────
 
 func TestSamplerReverseLatchesAcrossRebuild(t *testing.T) {
 	assertDefaultParityState(t)
-	// A Layout rebuild recreates the buttons; the reverse toggle must re-derive
-	// its latched state from the persistent samplerState.reverse parity, so the
-	// engaged keycap survives the rebuild.
+	// A layout rebuild recreates the buttons, so the latch re-derives from samplerState.reverse.
 	dv := &DrumView{}
 	dv.sampler.raw = []float32{1, 2, 3, 4}
 	dv.sampler.rawSampleRate = 48000
@@ -85,8 +79,7 @@ func TestSamplerReverseTwiceRestoresOriginal(t *testing.T) {
 
 func TestSamplerReverseFlipsDisplayedWaveform(t *testing.T) {
 	assertDefaultParityState(t)
-	// The displayed waveform reads s.raw via waveFloat64(); reversing must change
-	// what is drawn (the visible signal flips), not just the audio.
+	// The drawing reads s.raw, so reversing flips what is drawn, not only the audio.
 	s := &samplerState{raw: []float32{0.1, 0.2, 0.9}, rawSampleRate: 48000}
 	s.reverseBuffer()
 	wave := s.waveFloat64()
@@ -105,17 +98,9 @@ func TestSamplerReverseEmptyBufferIsNoop(t *testing.T) {
 	}
 }
 
-// ── Reverse moves the trim window to keep the SAME audio, reversed ────────────
-//
-// Regression: clicking Reverse flipped the working buffer while leaving the trim
-// handles at fixed fractions, so the kept [start,end] region slid onto the
-// mirror-image part of the sound. Reverse must MIRROR the trim window so the
-// audible chop stays the same audio, only reversed.
+// Reverse mirrors the trim window, so the chop stays the same audio, reversed.
 
-// Dyadic trim fractions (0.25, 0.5) map to exact sample indices on an 8-sample
-// buffer AND survive the 1-x mirror without float drift, so these tests exercise
-// the region-preservation contract without brittleness from int(frac*n) rounding.
-// The window is asymmetric about 0.5 so a missing mirror is detectable.
+// Dyadic fractions map exactly onto 8 samples and survive the 1-x mirror; asymmetric, so a missing mirror shows.
 
 func TestSamplerReverseKeepsTrimmedRegionReversed(t *testing.T) {
 	assertDefaultParityState(t)
@@ -179,8 +164,7 @@ func TestSamplerReverseTwiceRestoresTrimmedRegion(t *testing.T) {
 
 func TestSamplerEditNeverRequestsReverse(t *testing.T) {
 	assertDefaultParityState(t)
-	// Because reverse mutates the working buffer, the bake edit must NOT also set
-	// Reverse — otherwise Save/Preview would double-reverse (cancelling it).
+	// The buffer is already reversed, so the bake must not reverse again.
 	s := &samplerState{raw: []float32{1, 2, 3, 4}, rawSampleRate: 48000}
 	s.reset()
 	s.reverseBuffer()
@@ -191,8 +175,7 @@ func TestSamplerEditNeverRequestsReverse(t *testing.T) {
 
 func TestSamplerBakeAfterReverseMatchesDisplayedBuffer(t *testing.T) {
 	assertDefaultParityState(t)
-	// WYSIWYG: with the full range kept and no pitch/gain, the baked output equals
-	// the (reversed) displayed buffer — proving no hidden second reverse.
+	// Full range, no pitch/gain: the bake equals the reversed displayed buffer.
 	s := &samplerState{raw: []float32{1, 2, 3, 4}, rawSampleRate: 48000}
 	s.reset()
 	s.reverseBuffer()
@@ -211,9 +194,8 @@ func TestSamplerBakeAfterReverseMatchesDisplayedBuffer(t *testing.T) {
 
 func TestSamplerEditDescriptorTracksReverseFlag(t *testing.T) {
 	assertDefaultParityState(t)
-	// The non-destructive synth path applies the edit to a FORWARD-rendered
-	// recipe buffer at trigger time, so unlike edit() (whose source buffer is
-	// already flipped), editDescriptor() must carry Reverse declaratively.
+	// The synth path applies the edit to a forward render at trigger time, so the descriptor carries Reverse
+	// declaratively.
 	s := &samplerState{raw: []float32{1, 2, 3, 4}, rawSampleRate: 48000}
 	s.reset()
 	if s.editDescriptor().Reverse {
@@ -304,8 +286,6 @@ func TestSamplerPlayheadFracMonotonicNonDecreasing(t *testing.T) {
 
 func TestSamplerActivePlayheadSweepsForwardAfterReverse(t *testing.T) {
 	assertDefaultParityState(t)
-	// Integration: even after the buffer has been reversed, the in-flight line's
-	// x-fraction must increase over time (forward), never decrease.
 	var tr samplerPlayheadTracker
 	s := &samplerState{raw: []float32{1, 2, 3, 4}, rawSampleRate: 48000}
 	s.reset()

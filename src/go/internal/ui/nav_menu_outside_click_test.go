@@ -9,9 +9,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestNavMenuClosesOnOutsideClick drives the REAL tree: with the nav menu open,
-// a press on a point OUTSIDE its card must close it via the shared portal
-// click-outside path — the same behavior every other popup has.
 func TestNavMenuClosesOnOutsideClick(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -29,8 +26,7 @@ func TestNavMenuClosesOnOutsideClick(t *testing.T) {
 		t.Skip("nav menu card empty in this harness")
 	}
 
-	// A point well outside the card (and its beat-counter anchor): bottom-left of
-	// the drum pane, clear of the card which sits mid-top.
+	// Bottom-left of the drum pane, clear of the card and its beat-counter anchor.
 	ox := g.drum.Bounds.Min.X + 8
 	oy := g.drum.Bounds.Max.Y - 8
 	if image.Pt(ox, oy).In(card.Union(g.drum.beatCounterRect)) {
@@ -57,9 +53,7 @@ func TestNavMenuClosesOnOutsideClick(t *testing.T) {
 	}
 }
 
-// TestNavMenuNotStuckCapturingAfterOpen guards against a stuck capture: if
-// Capturing() were true after the menu opens, RootTree would route every press
-// to the component and click-outside would never fire.
+// A stuck capture would route every press to the component, and click-outside would never fire.
 func TestNavMenuNotStuckCapturingAfterOpen(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -74,9 +68,7 @@ func TestNavMenuNotStuckCapturingAfterOpen(t *testing.T) {
 	}
 }
 
-// TestNavMenuClosesOnGridPaneClick: clicking in the GRID pane (a different
-// subtree) while the nav menu is open must also close it — the blocking portal
-// owns input, and the drum RootTree's click-outside fires for the foreign point.
+// The blocking portal owns input, so the drum tree's click-outside fires for a point in the other pane.
 func TestNavMenuClosesOnGridPaneClick(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -109,9 +101,7 @@ func TestNavMenuClosesOnGridPaneClick(t *testing.T) {
 	}
 }
 
-// TestNavMenuClosesOnOutsideTapMobile drives the REAL mobile touch pipeline
-// (globalTouchState → Game.Update → injectTouchTap): with the nav menu bottom
-// sheet open, a tap OUTSIDE it must close it, like every other mobile popup.
+// Through the real mobile touch pipeline: globalTouchState → Game.Update → injectTouchTap.
 func TestNavMenuClosesOnOutsideTapMobile(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true

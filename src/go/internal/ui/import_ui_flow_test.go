@@ -12,9 +12,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
-// TestImportViaUIFlowNoDeadlock tests the real import flow:
-// Game.Update() holds seqMu -> drum.Update() -> importCh -> onImport callback
-// This catches recursive lock issues that direct g.Import() calls miss.
+// The real path: Game.Update holds seqMu → drum.Update → importCh → onImport, which direct g.Import calls never
+// exercise.
 func TestImportViaUIFlowNoDeadlock(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -28,19 +27,13 @@ func TestImportViaUIFlowNoDeadlock(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 
-	// Simulate clicking the import button - this sets dv.importing=true
-	// and calls selectJSONAsyncFn
 	selectJSONAsyncFn = func(cb func([]byte, string, error)) {
 		// Simulate async file picker returning data
 		cb(testData, "", nil)
 	}
 	startImportForTest(t, g.drum)
 
-	// Now call Game.Update() which will:
-	// 1. Acquire seqMu
-	// 2. Call drum.Update() which reads from importCh and calls onImport
-	// 3. onImport should queue data (not call Import directly)
-	// 4. After seqMu.Unlock(), process pendingImportData
+	// onImport runs under seqMu, so it must only queue the data; Update imports it after unlocking.
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -64,9 +57,7 @@ func TestImportViaUIFlowNoDeadlock(t *testing.T) {
 	}
 }
 
-// TestImportViaUIFlowWhilePlaying tests import during playback.
-// The sequencer goroutine is disabled in tests, but we simulate the
-// playing state to exercise the safety code paths.
+// The sequencer goroutine is off under go test; the playing state exercises the safety paths.
 func TestImportViaUIFlowWhilePlaying(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -117,8 +108,6 @@ func TestImportViaUIFlowWhilePlaying(t *testing.T) {
 	}
 }
 
-// TestImportViaUIFlowWithSeqMuHeld directly tests the scenario where
-// seqMu is held when the import callback fires.
 func TestImportViaUIFlowWithSeqMuHeld(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -128,10 +117,7 @@ func TestImportViaUIFlowWithSeqMuHeld(t *testing.T) {
 
 	testData := buildSimpleImportJSON(t)
 
-	// Simulate the exact deadlock scenario:
-	// 1. Hold seqMu (as Game.Update does)
-	// 2. Call onImport (as drum.Update does)
-	// 3. onImport should NOT try to acquire seqMu (would deadlock)
+	// Holding seqMu as Game.Update does: onImport must not take it again.
 
 	done := make(chan struct{})
 	go func() {

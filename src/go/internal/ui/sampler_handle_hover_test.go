@@ -10,9 +10,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// newHoverSampler builds a minimal DrumView with a loaded sampler buffer, a
-// non-empty waveform rect, and the Start/End trim handles at distinct interior
-// fractions so the two handle rects don't overlap.
+// Handles at distinct interior fractions, so their rects do not overlap.
 func newHoverSampler(t *testing.T) *DrumView {
 	t.Helper()
 	dv := &DrumView{}
@@ -28,9 +26,7 @@ func samplerHandleCenter(dv *DrumView, frac float64) (int, int) {
 	return (r.Min.X + r.Max.X) / 2, (r.Min.Y + r.Max.Y) / 2
 }
 
-// TestSamplerHandleHoverStateTracksCursor verifies the sampler tracks which trim
-// handle the desktop cursor is over (hoverHandle: -1 none, 0 start, 1 end),
-// mirroring the EQ-handle hover mechanism, and stays idle on mobile.
+// -1 none, 0 start, 1 end, like the EQ handles; idle on mobile.
 func TestSamplerHandleHoverStateTracksCursor(t *testing.T) {
 	t.Run("start handle hovered", func(t *testing.T) {
 		dv := newHoverSampler(t)
@@ -79,9 +75,7 @@ func TestSamplerHandleHoverStateTracksCursor(t *testing.T) {
 	})
 }
 
-// countSamplerHandleOwnColorRects counts drawRect calls near the handle whose
-// straight RGB matches want (alpha-agnostic) during one waveform draw — the
-// own-color highlight signature.
+// Straight RGB, alpha ignored.
 func countSamplerHandleOwnColorRects(t *testing.T, dv *DrumView, want color.Color, cx, cy, tol int) int {
 	t.Helper()
 	n := 0
@@ -99,10 +93,7 @@ func countSamplerHandleOwnColorRects(t *testing.T, dv *DrumView, want color.Colo
 	return n
 }
 
-// TestSamplerHandleHoverDrawsOwnColorHighlight verifies that hovering a trim
-// handle draws an own-color (colAccentBright, the accent family) highlight via
-// the shared shape-agnostic drawRectHoverGlow, and that no such highlight is
-// drawn when nothing is hovered.
+// colAccentBright through drawRectHoverGlow, and nothing when not hovered.
 func TestSamplerHandleHoverDrawsOwnColorHighlight(t *testing.T) {
 	dv := newHoverSampler(t)
 	r := dv.samplerHandleRect(dv.sampler.startFrac)
@@ -120,11 +111,7 @@ func TestSamplerHandleHoverDrawsOwnColorHighlight(t *testing.T) {
 	}
 }
 
-// TestSamplerHandleHoverIsVisiblyHighlighted is the visual guard: it reads
-// composited pixels (stub; drawSamplerWaveform draws to a single target with no
-// screen/dst split, so the stub faithfully models real Ebiten here) and asserts
-// hovering a trim handle produces a clearly-perceptible on-screen change — not
-// merely that drawNodeBloom was called.
+// The waveform draws to one target, so stub pixel reads model real Ebiten here.
 func TestSamplerHandleHoverIsVisiblyHighlighted(t *testing.T) {
 	dv := newHoverSampler(t)
 	r := dv.samplerHandleRect(dv.sampler.startFrac)
@@ -168,12 +155,8 @@ func TestSamplerHandleHoverIsVisiblyHighlighted(t *testing.T) {
 	}
 }
 
-// TestSamplerHandleHoverConformsToComponentShape is the shape guard: on a TALL
-// waveform the trim handle is a thin tall line, and the hover highlight must
-// CONFORM to that shape — cover the whole line top-to-bottom with a roughly
-// uniform width — NOT bulge into a wide centred blob (the "weird highlight node
-// in the middle" bug from reusing a square, center-anchored node bloom). The
-// highlight must derive from the component's actual rect, assuming no shape.
+// On a tall waveform the handle is a thin tall line, and the glow covers it top to bottom at a roughly even
+// width, never a centred blob.
 func TestSamplerHandleHoverConformsToComponentShape(t *testing.T) {
 	dv := newHoverSampler(t)
 	dv.sampler.waveformRect = image.Rect(0, 0, 200, 160) // tall → thin tall handle
@@ -226,18 +209,13 @@ func TestSamplerHandleHoverConformsToComponentShape(t *testing.T) {
 	if wTop == 0 || wBot == 0 {
 		t.Fatalf("hover highlight does not cover the top/bottom of the component (wTop=%d wBot=%d) — it doesn't conform to the tall thin line", wTop, wBot)
 	}
-	// The middle must not bulge relative to the ends — a centred square blob
-	// makes the middle far wider than top/bottom.
+	// A centred blob makes the middle far wider than the ends.
 	if wMid > wTop+6 || wMid > wBot+6 {
 		t.Fatalf("hover highlight bulges at the middle (top=%d mid=%d bot=%d) — a centred blob, not conforming to the component's shape", wTop, wMid, wBot)
 	}
 }
 
-// TestDrawRectHoverGlowConformsToAnyShape pins the reusable, shape-agnostic
-// highlight primitive: its drawn footprint must track the GIVEN rect's aspect
-// ratio (tall/thin, wide/flat, square) — expanded only by the fixed glow
-// spread — never collapsing to an assumed square. This is the reusable-for-any-
-// shape guarantee.
+// The footprint tracks the given rect's aspect (tall, wide, square), grown only by the glow spread.
 func TestDrawRectHoverGlowConformsToAnyShape(t *testing.T) {
 	const glowSpread = 4 // must match drawRectHoverGlow's spread
 	cases := []struct {

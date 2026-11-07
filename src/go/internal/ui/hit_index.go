@@ -12,13 +12,9 @@ type indexedHitArea struct {
 	isPortal bool   // true for overlay entries
 }
 
-// HitIndex maintains a spatial index of all interactive areas from zones
-// and portal overlays. It supports z-sorted queries, modal filtering,
-// and touch target expansion.
 type HitIndex struct {
 	areas []indexedHitArea
-	// modalID, when non-empty, restricts At() to return only areas
-	// belonging to this overlay (the topmost modal).
+	// Non-empty: At() returns only the topmost modal's areas.
 	modalID string
 }
 
@@ -51,8 +47,6 @@ func (idx *HitIndex) RemovePortal(overlayID string) {
 	idx.removeOwner(overlayID)
 }
 
-// SetModal sets the modal overlay ID. When non-empty, At() returns only
-// areas belonging to this overlay.
 func (idx *HitIndex) SetModal(overlayID string) {
 	idx.modalID = overlayID
 }
@@ -62,10 +56,7 @@ func (idx *HitIndex) ClearModal() {
 	idx.modalID = ""
 }
 
-// At returns all hit areas containing the point (x, y), sorted by z-index
-// descending (highest first). When a modal is active, only the modal
-// overlay's areas are returned. Touch-flagged areas are expanded by
-// TouchMinTarget() before testing.
+// Touch-flagged areas are expanded by TouchMinTarget() before testing.
 func (idx *HitIndex) At(x, y int) []indexedHitArea {
 	pt := image.Pt(x, y)
 	expand := TouchMinTarget()
@@ -89,10 +80,8 @@ func (idx *HitIndex) At(x, y int) []indexedHitArea {
 		}
 	}
 
-	// Sort by (1) exact-rect hits before touch-expanded-only hits,
-	// (2) z-index descending within each group. This prevents expanded
-	// touch targets of adjacent buttons from stealing taps from buttons
-	// whose exact rect contains the point, even across z-indexes.
+	// Exact-rect hits before touch-expanded ones, then z descending, so an adjacent button's expanded
+	// target never steals a tap from a button whose rect contains the point.
 	sort.SliceStable(result, func(i, j int) bool {
 		iExact := pt.In(result[i].Rect)
 		jExact := pt.In(result[j].Rect)

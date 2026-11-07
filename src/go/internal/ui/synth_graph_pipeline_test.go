@@ -14,10 +14,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// The graph pipeline renders the documents the Synth-tab graph needs (NOW,
-// the dial's two ends) off the UI goroutine and hands back analysed renders:
-// latest-wins while a drag streams requests, the previous picture kept while a
-// render is pending or after it fails, a bounded cache (spec 2026-10-24 §4.3).
+// Renders NOW and the dial's ends off the UI goroutine: latest-wins during a drag, the previous picture kept while
+// pending or failed, a bounded cache.
 
 type fakeGraphRender struct {
 	mu    sync.Mutex
@@ -134,8 +132,7 @@ func TestGraphPipelineCacheIsBounded(t *testing.T) {
 	}
 }
 
-// On a real worker pool, requests streamed from the UI goroutine while the
-// worker renders land the latest document, race-free (go test -race).
+// Race-free under go test -race.
 func TestGraphPipelineOnAPoolLandsTheLatest(t *testing.T) {
 	f := &fakeGraphRender{}
 	pool := async.NewPool(context.Background(), async.Options{MaxConcurrent: 1, QueueSize: 8, Name: "test.graphpipe"})
@@ -158,8 +155,7 @@ func TestGraphPipelineOnAPoolLandsTheLatest(t *testing.T) {
 	t.Fatalf("the latest request never landed: %+v", r)
 }
 
-// A submission the pool refuses (its queue is full: synth.preview is shared)
-// is not lost: pump, called every frame, resubmits it.
+// synth.preview is shared, so a full queue refuses; pump resubmits every frame.
 func TestGraphPipelineResubmitsARefusedJob(t *testing.T) {
 	f := &fakeGraphRender{}
 	pool := async.NewPool(context.Background(), async.Options{MaxConcurrent: 1, QueueSize: 1, Name: "test.graphpipe.full"})
@@ -182,8 +178,7 @@ func TestGraphPipelineResubmitsARefusedJob(t *testing.T) {
 	t.Fatal("a job the full queue refused never ran")
 }
 
-// A render that is still pending after 300 ms says so (the previous picture
-// keeps drawing underneath); a quick one never flashes the chip.
+// Over 300 ms it says so; a quick one never flashes the chip.
 func TestGraphPipelineReportsASlowRender(t *testing.T) {
 	f := &fakeGraphRender{}
 	p := newSynthGraphPipelineForTest(f.render)

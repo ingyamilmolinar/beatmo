@@ -1,26 +1,6 @@
 #!/usr/bin/env node
-/**
- * LLM Visual Testing — CLI Entry Point
- *
- * Subcommands:
- *   record    — Interactive recording (opens non-headless browser, Ctrl+C to stop)
- *   replay    — Replay a recorded session
- *   evaluate  — Send recording frames to Claude for evaluation
- *   agent     — Run Claude agent to interact with Beatmo via computer use
- *   report    — Generate HTML report from a recording/agent session
- *   list-tests — List available .test.md test cases
- *   run-tests  — Run a batch of test cases
- *
- * Usage:
- *   node src/js/llm_test/cli.js record [--name my_session] [--viewport 1280x720]
- *   node src/js/llm_test/cli.js replay <path> [--speed 1.0]
- *   node src/js/llm_test/cli.js evaluate <path> [--template general_quality] [--prompt "..."] [--max-frames 20] [--save]
- *   node src/js/llm_test/cli.js agent --prompt "Click Play, wait, click Stop"
- *   node src/js/llm_test/cli.js agent --test play_stop_basic
- *   node src/js/llm_test/cli.js report --name <session>
- *   node src/js/llm_test/cli.js list-tests [--filter smoke] [--tags smoke,transport] [--platform desktop]
- *   node src/js/llm_test/cli.js run-tests [--filter pattern] [--tags smoke] [--platform desktop]
- */
+/** Subcommands: record, replay, evaluate, agent, report, list-tests, run-tests. E.g. node src/js/llm_test/cli.js agent
+ * --test play_stop_basic, or run-tests [--filter] [--tags] [--platform]. */
 
 import { parseArgs } from "node:util";
 import path from "path";
@@ -51,24 +31,15 @@ const HEADLESS_GPU_ARGS = [
 
 // --- Media Recording (canvas + audio) ---
 
-/**
- * Start in-browser MediaRecorder that captures both canvas video and WebAudio
- * output. Playwright's built-in recordVideo is video-only (no audio support).
- *
- * @param {import('playwright').Page} page
- */
+/** In-page MediaRecorder for canvas video AND WebAudio: Playwright's recordVideo has no audio. */
 async function startMediaRecording(page) {
-  // Force AudioContext creation by dispatching a user gesture event.
-  // window.playSound only enqueues events and does NOT create an
-  // AudioContext. The real creation happens in unlockAudio(), which
-  // is triggered by gesture events (mousedown, touchstart, etc.).
+  // playSound only enqueues; the context is created by unlockAudio() on a gesture.
   await page.evaluate(() => {
     document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
   });
   await page.waitForTimeout(300);
 
-  // Now that context exists, play a silent kick to flush the audio queue
-  // and ensure the full audio chain is wired up.
+  // A silent kick flushes the queue and wires the whole chain.
   await page.evaluate(async () => {
     if (typeof playSound === "function") {
       try { await playSound("kick", 0); } catch (_) {}
@@ -76,13 +47,10 @@ async function startMediaRecording(page) {
   });
   await page.waitForTimeout(200);
 
-  // Wait for AudioContext at the Playwright level — this polls without
-  // blocking the page's render loop (unlike an in-page async polling loop
-  // which delays captureStream creation and kills video framerate).
+  // At the Playwright level: an in-page polling loop would delay captureStream and kill the frame rate.
   await page.waitForFunction('!!window.__audioCtx', { timeout: 3000 }).catch(() => null);
 
-  // Synchronous evaluate — no async/await inside keeps the page responsive
-  // so captureStream(30) starts capturing frames immediately.
+  // Synchronous, so captureStream(30) starts at once.
   await page.evaluate(() => {
     const canvas = document.querySelector("canvas");
     if (!canvas) { console.warn("[mediaRec] No canvas found"); return; }
@@ -93,15 +61,13 @@ async function startMediaRecording(page) {
     const audioCtx = window.__audioCtx;
     if (audioCtx) {
       const audioDest = audioCtx.createMediaStreamDestination();
-      // Tap the limiter output — connect() is additive so the existing
-      // limiter→destination connection stays intact.
+      // connect() is additive: the existing connection stays.
       const limiter = typeof __getMainLimiter === "function" && __getMainLimiter();
       if (limiter) {
         limiter.connect(audioDest);
         console.log("[mediaRec] Audio tap connected to limiter");
       } else {
-        // Limiter may be created later (first real playSound call).
-        // Poll until it appears and connect then.
+        // Created on the first real play.
         console.log("[mediaRec] Limiter not ready — polling for connection");
         const poll = setInterval(() => {
           const lim = typeof __getMainLimiter === "function" && __getMainLimiter();
@@ -147,13 +113,7 @@ async function startMediaRecording(page) {
   });
 }
 
-/**
- * Stop the in-browser MediaRecorder and retrieve the recorded WebM as a Buffer.
- * Returns null if no recording was active.
- *
- * @param {import('playwright').Page} page
- * @returns {Promise<Buffer|null>}
- */
+/** null if nothing was recording. */
 async function stopMediaRecording(page) {
   const base64 = await page.evaluate(() => {
     return new Promise((resolve) => {
@@ -514,13 +474,7 @@ async function cmdEvaluate(args) {
 
 // --- Agent Core Logic ---
 
-/**
- * Resolve agent parameters from a test name or direct prompt/options.
- * Throws on validation errors (does NOT call process.exit).
- *
- * @param {Object} opts
- * @returns {Object} Resolved parameters for runAgentTest
- */
+/** Throws on validation errors rather than exiting. */
 function resolveAgentParams(opts) {
   let taskPrompt = opts.prompt ?? null;
   let platform = opts.platform ?? "desktop";
@@ -572,14 +526,7 @@ function resolveAgentParams(opts) {
   };
 }
 
-/**
- * Run a single agent test. Manages its own browser context but can reuse
- * an external server+browser via the `shared` parameter.
- *
- * @param {Object} params - From resolveAgentParams()
- * @param {Object} [shared] - Optional shared resources { server, port, browser }
- * @returns {Promise<Object>} Agent result
- */
+/** Reuses an external server and browser through `shared`. */
 async function runAgentTest(params, shared) {
   const {
     taskPrompt, platform, maxIterations, name, model, enableVideo,
@@ -601,23 +548,19 @@ async function runAgentTest(params, shared) {
     server = await createServer();
     port = server.address().port;
     console.log(`[agent] Server started on port ${port}`);
-    // Honor TEST_PLATFORM so `make agent-tests TAGS=sanity PLATFORM_DEVICE=browserstack:iphone15-safari`
-    // (set via env or wrapper) can drive the agent against a real device. For the
-    // default chromium-local platform, keep the headless GPU args so WebGL renders.
+    // So TEST_PLATFORM can drive a real device; chromium-local keeps the headless GPU args so WebGL renders.
     const launch = await launchBrowser({
       headless: true,
       extraArgs: HEADLESS_GPU_ARGS.filter((a) => a !== "--autoplay-policy=no-user-gesture-required"),
     });
     browser = launch.browser;
-    // Stash cleanup so the agent's existing browser.close() path tears down
-    // both the local browser and any BrowserStack tunnel.
+    // Tears down the local browser and any BrowserStack tunnel together.
     if (launch.cleanup && browser && !browser.__beatmoCleanup) {
       browser.__beatmoCleanup = launch.cleanup;
     }
   }
 
-  // Build browser context — mobile gets device emulation.
-  // acceptDownloads enables the measure_audio tool to capture the recording zip.
+  // acceptDownloads lets measure_audio capture the recording zip.
   const contextOpts = { acceptDownloads: true };
 
   if (platform === "mobile") {
@@ -636,14 +579,10 @@ async function runAgentTest(params, shared) {
     contextOpts.viewport = { width: vw, height: vh };
   }
 
-  // Always ensure the save directory exists (recorder.save() also creates it,
-  // but startMediaRecording and other code may need it earlier).
+  // Code before recorder.save() needs it.
   fs.mkdirSync(savePath, { recursive: true });
-  // NOTE: We intentionally do NOT set contextOpts.recordVideo here.
-  // Playwright's recordVideo uses CDP Page.startScreencast which monopolizes the
-  // compositor in headless Chromium, causing page.screenshot() to hang with
-  // "Timeout 30000ms exceeded" after fonts load. The in-browser MediaRecorder
-  // (startMediaRecording) handles video capture with audio instead.
+  // No recordVideo: its screencast monopolizes the compositor headless and page.screenshot() hangs; the MediaRecorder
+  // captures video with audio instead.
 
   const context = await browser.newContext(contextOpts);
   const page = await context.newPage();
@@ -653,11 +592,7 @@ async function runAgentTest(params, shared) {
     } catch (_) {}
   });
 
-  // Force preserveDrawingBuffer on WebGL contexts so the agent's in-page
-  // canvas capture (captureCanvas in agent.js) can read the drawing buffer
-  // via drawImage/toDataURL. Without this, Ebiten's default
-  // preserveDrawingBuffer:false clears the buffer after each composite,
-  // returning blank screenshots.
+  // Ebiten's preserveDrawingBuffer:false clears the buffer after each composite, so in-page captures were blank.
   await page.addInitScript(() => {
     const origGetContext = HTMLCanvasElement.prototype.getContext;
     HTMLCanvasElement.prototype.getContext = function(type, attrs) {
@@ -711,10 +646,7 @@ async function runAgentTest(params, shared) {
     await page.waitForTimeout(500);
   }
 
-  // Runtime ground truth: read the LIVE demo state (instrument rows + node count)
-  // from the running app and prepend it to the task prompt. This keeps the .md
-  // tests from hardcoding "7 rows: Kick-deep…"; they reference the live state and
-  // stay correct when the default demo circuit changes.
+  // The LIVE rows and node count are prepended, so tests never hardcode the demo and stay right when it changes.
   let finalTaskPrompt = taskPrompt;
   try {
     const live = await page.evaluate(() => {
@@ -796,8 +728,7 @@ async function runAgentTest(params, shared) {
     };
   }
 
-  // Objective gate: turn the checkpoint ledger + phase results into a pass/fail
-  // verdict (computed before save so it lands in agent_log.json).
+  // Computed before save so it lands in agent_log.json.
   const gate = evaluateGate(result, requiredCheckpoints);
   result.gate = gate;
   result.requiredCheckpoints = requiredCheckpoints;
@@ -860,8 +791,7 @@ async function runAgentTest(params, shared) {
     console.log(`[agent] Manual: node src/js/llm_test/cli.js report --name ${name}`);
   }
 
-  // Clean up owned resources. When TEST_PLATFORM=browserstack:*, the launch
-  // wrapper attached a cleanup that also tears down the tunnel.
+  // The launch wrapper's cleanup also tears down a BrowserStack tunnel.
   if (ownsResources) {
     if (browser && typeof browser.__beatmoCleanup === "function") {
       try { await browser.__beatmoCleanup(); } catch (_) {}

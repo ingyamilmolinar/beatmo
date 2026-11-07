@@ -1,12 +1,7 @@
 package ui
 
-// synth_view_words.go — the graph's WORDS readout (spec
-// docs/superpowers/specs/2026-10-25-synth-dial-relevance-and-cheap-graphs-design.md §3.3):
-// each view's measurement said the way a non-musician would say it ("Short",
-// "Bright", "Drops from high to low, quickly"), and a change said as a change
-// ("brighter than before"). No digit, unit or note name ever reaches this
-// readout (TestWordReadoutsHaveNoNumbersOrUnits); the literal measurements
-// are the NUMBERS readout behind the Details toggle.
+// Said the way a non-musician would say it, and a change as a change; no digit, unit or note name ever
+// reaches this readout.
 
 import (
 	"math"
@@ -30,8 +25,7 @@ func joinWords(parts ...string) string {
 	return out
 }
 
-// lengthWords classes how long a note sounds; "until the note ends" when it is
-// still sounding where the voice stops.
+// "until the note ends" when it still sounds where the voice stops.
 func lengthWords(a *soundview.Analysis, voiceSec float64) string {
 	s := a.AudibleSec()
 	var w string
@@ -141,8 +135,7 @@ func shapeWords(grit float64) string {
 	return i18n.T(i18n.KeyGraphWordsSquared)
 }
 
-// The grit classes on waveGrit's sine (0) .. square (1) scale: a sine driven
-// three times into a clip (an unmistakable square) measures ~0.6.
+// A sine driven three times into a clip, an unmistakable square, measures ~0.6.
 const (
 	gritSlight  = 0.2
 	gritSquared = 0.5
@@ -173,9 +166,7 @@ func pitchWords(m pitchMotion) string {
 	return i18n.T(i18n.KeyGraphNoPitch)
 }
 
-// changeWords says how a measurement moved from before to now: more (up
-// phrase) or less (down phrase), or "" when the move is below rel (relative)
-// and abs (absolute).
+// "" when the move is below both rel (relative) and abs (absolute).
 func changeWords(before, now, rel, abs float64, up, down i18n.Key) string {
 	d := now - before
 	if math.Abs(d) < abs || math.Abs(d) < rel*math.Abs(before) {

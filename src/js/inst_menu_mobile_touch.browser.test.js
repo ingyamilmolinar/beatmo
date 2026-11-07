@@ -1,24 +1,6 @@
-/**
- * Instrument menu — MOBILE end-to-end through the real WASM bridge.
- *
- * The user reported: on mobile, tapping in the instrument popup menu "does
- * nothing". This exercises the full open → navigate → select flow against the
- * real browser/WASM build on a mobile (iPhone 12) viewport.
- *
- * Input choice (see mobile_sanity.browser.test.js for the full analysis):
- * BUTTON interactions (open the menu via the row label; select an item) are
- * driven via MOUSE hold-and-poll, NOT CDP touch. Under headless software-GL the
- * game loop runs at a low, GPU-stall-jittery fps and the touch gesture detector
- * mis-classifies an identical CDP tap as none / tap / long-press at random, so
- * real-touch button taps are irreducibly flaky in this harness (proven by
- * instrumentation). Mouse bypasses the gesture detector, drives the same Game
- * input path, and is the established codebase convention for buttons
- * (e2e_drum_row_controls.js). Submenu navigation is done deterministically via
- * the menu's JS exports. The product's real-touch handling itself is correct
- * and covered by the Go functional tests (Game.Update + synthesized touch).
- *
- * Charter §4/§6 (WASM bridge + input dispatch on a mobile viewport).
- */
+/** Open → navigate → select through the WASM bridge on a phone viewport. Buttons are driven by MOUSE hold-and-poll:
+ * at headless software-GL frame rates the touch detector misclassifies an identical tap at random. Real touch handling
+ * is covered by the Go functional tests. */
 
 import { chromium, devices } from "playwright";
 import http from "http";
@@ -71,13 +53,8 @@ try {
   await page.waitForFunction(() => typeof instMenuOpenState === "function", null, { timeout: 30000 });
   await page.waitForTimeout(400);
 
-  // Warm-up gate. Under headless software-GL the game loop runs at only ~5–6fps
-  // even idle; while all parallel browser jobs initialise WASM at once it is
-  // briefly starved near 0fps. A real touch only registers if the loop ticks at
-  // least once between touchStart and touchEnd, so a tap dispatched during that
-  // starved window is silently dropped (this is exactly why the open tap failed
-  // all retries under full-suite load but passed in isolation). Wait until the
-  // loop is ticking steadily before tapping, so the tap lands on a live frame.
+  // A tap registers only if the loop ticks between touchStart and touchEnd, and parallel jobs starve it near 0 fps
+  // at boot, so this waits for a steady tick.
   const frameCount = async () =>
     await page.evaluate(() =>
       typeof perfStats === "function" ? perfStats().frames || 0 : 0,
@@ -92,15 +69,7 @@ try {
   }
   console.log(`warm-up: loop steady (frames advancing)=${steady >= 2}`);
 
-  // Open the instrument menu for row 0 by driving the row label. Use MOUSE
-  // hold-and-poll, not touch: at the low, GPU-stall-jittery fps of headless
-  // software-GL the touch gesture detector samples per-frame and mis-classifies
-  // an identical CDP tap as none / tap / long-press at random, so real-touch
-  // button taps are irreducibly flaky here. Mouse input bypasses the gesture
-  // detector and is fps-agnostic — the codebase convention for buttons (see
-  // e2e_drum_row_controls.js, mobile_sanity.browser.test.js). It drives the same
-  // Game input path on the mobile profile. Hold the button down while polling so
-  // the press is sampled across frames, then release on success.
+  // Mouse, not touch (see the header), held while polling so the press is sampled across frames.
   const lblRect = await page.evaluate(() =>
     typeof rowLabelRect === "function" ? rowLabelRect(0) : null,
   );
@@ -131,13 +100,8 @@ try {
   const before = await page.evaluate(() => rowInstrument(0));
   console.log(`row 0 instrument before = ${before}`);
 
-  // Submenu navigation is done DETERMINISTICALLY (programmatic back +
-  // select-category): under headless software-GL the multi-step nav taps are
-  // dropped non-deterministically, a harness limitation (Go covers the menu's
-  // navigation logic). Opening the row's label drills straight into the row's own
-  // category, which often holds only the current instrument — so walk the
-  // category list to find one with a *different*, selectable instrument, then
-  // select it via the mouse path below.
+  // Programmatic: multi-step nav taps drop non-deterministically here. The row's own category often holds only its
+  // instrument, so the walk looks for one with a different, selectable item.
   await page.evaluate(() => {
     if (typeof instMenuClickBack === "function") instMenuClickBack();
   });
@@ -178,9 +142,7 @@ try {
     throw new Error("no selectable instrument item");
   }
   console.log(`selecting instrument item id=${pick.id} at (${pick.x + pick.w / 2}, ${pick.y + pick.h / 2})`);
-  // Select via mouse hold-and-poll (same rationale as the open above). The
-  // selection changes the row and closes the menu; hold until rowInstrument
-  // reports the picked id, then release.
+  // Held until rowInstrument reports the picked id.
   let after = before;
   {
     const cx = pick.x + pick.w / 2;

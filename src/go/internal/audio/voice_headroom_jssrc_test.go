@@ -8,10 +8,8 @@ import (
 	"testing"
 )
 
-// Source contracts over the browser's audio code, in the fast suite (no
-// browser, no WASM). What the browser actually COMPUTES is compared with
-// desktop per sample by xplat_audio_stages.browser.test.js; these guard the
-// two things a reader can see in the source.
+// What the browser COMPUTES is compared per sample by xplat_audio_stages; these guard what a reader can see in the
+// source.
 
 func browserAudioSource(t *testing.T, name string) string {
 	t.Helper()
@@ -22,10 +20,7 @@ func browserAudioSource(t *testing.T, name string) string {
 	return string(b)
 }
 
-// TestWebAudioAppliesVoiceHeadroom: every note's gain is CHAIN_SPEC's
-// per-voice headroom × its volume — the voices must be attenuated BEFORE they
-// sum, exactly like desktop (mixHeadroom = VoiceHeadroom), or N voices sum
-// ~5× hot and clip the master (the 2026-06 browser-clipping bug).
+// Attenuated BEFORE they sum, as on desktop, or N voices sum ~5× hot and clip the master.
 func TestWebAudioAppliesVoiceHeadroom(t *testing.T) {
 	src := browserAudioSource(t, "audio.js")
 	if !strings.Contains(src, "return CHAIN_SPEC.voiceHeadroom * Math.max(0,") {
@@ -36,10 +31,7 @@ func TestWebAudioAppliesVoiceHeadroom(t *testing.T) {
 	}
 }
 
-// TestBrowserAudioHasNoMixLiterals: the browser's audio code takes the
-// sample rate and every fade / gate / stop time from CHAIN_SPEC (Go's
-// chain_spec.go), never a literal of its own — a copied number is a second
-// source of truth nothing reconciles.
+// A copied number is a second source of truth nothing reconciles.
 func TestBrowserAudioHasNoMixLiterals(t *testing.T) {
 	comment := regexp.MustCompile(`(?m)//.*$|/\*[\s\S]*?\*/`)
 	rate := regexp.MustCompile(`\b(44100|48000|22050|96000)\b`)

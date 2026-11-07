@@ -7,8 +7,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Regression: NodeLogic callbacks that disable triggers must not produce
-// audio_missing parity mismatches for intentionally skipped beats.
 func TestParityScanSkipsAudioMissingWhenNodeLogicDisables(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -62,8 +60,6 @@ func TestParityScanSkipsAudioMissingWhenNodeLogicDisables(t *testing.T) {
 	}
 }
 
-// Regression: NodeLogic parameter changes (vol/pitch/dur) should not create
-// scheduler vs view parity mismatches.
 func TestParityNodeLogicParamAdjustmentsNoMismatch(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

@@ -4,9 +4,7 @@ package audio
 
 import "math"
 
-// limiter implements a brick-wall limiter (infinite-ratio compressor) with
-// instant attack and configurable release. Output is guaranteed never to
-// exceed the ceiling level.
+// Infinite ratio, instant attack: output never exceeds the ceiling.
 type limiter struct {
 	thresholdDB float64 // -20 to 0 dB
 	releaseMs   float64 // 1 to 500 ms

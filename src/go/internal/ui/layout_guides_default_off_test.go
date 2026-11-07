@@ -4,15 +4,8 @@ package ui
 
 import "testing"
 
-// TestLayoutGuidesDefaultOff asserts that the desktop profile's layout
-// guides (1-px column/row dividers + splitter pills) are OFF by default
-// in production. They were previously enabled-by-default on desktop,
-// causing visible 1-px ticks across the top edge of the drum pane in
-// the gap above the transport surface (see screenshot.png in the
-// commit that introduced this test).
-//
-// The override hatch is the BEATMO_DEBUG_LAYOUT env var: "1" / "true" /
-// "TRUE" / "yes" / "on" all enable. Anything else is off.
+// Off in production: on, they drew 1 px ticks across the top of the drum pane. BEATMO_DEBUG_LAYOUT
+// ("1", "true", "TRUE", "yes", "on") enables them.
 func TestLayoutGuidesDefaultOff(t *testing.T) {
 	t.Setenv("BEATMO_DEBUG_LAYOUT", "")
 	UpdateProfile()
@@ -22,9 +15,7 @@ func TestLayoutGuidesDefaultOff(t *testing.T) {
 	}
 }
 
-// TestLayoutGuidesDebugOverrideEnables asserts that BEATMO_DEBUG_LAYOUT=1
-// flips desktop ShowLayoutGuides to true. This is the developer escape
-// hatch — without it, splitter handles are invisible on desktop.
+// The developer hatch; without it the splitter handles are invisible on desktop.
 func TestLayoutGuidesDebugOverrideEnables(t *testing.T) {
 	t.Setenv("BEATMO_DEBUG_LAYOUT", "1")
 	UpdateProfile()
@@ -34,10 +25,7 @@ func TestLayoutGuidesDebugOverrideEnables(t *testing.T) {
 	}
 }
 
-// TestLayoutGuidesMobileAlwaysOff asserts mobile is unaffected by the
-// debug env var — it never gets layout guides, regardless. (Mobile
-// has its own divider chrome via DrawToolbarSep and the bottom-sheet
-// surface; layout guides are a desktop-only debug overlay.)
+// Mobile has its own divider chrome; the guides are a desktop debug overlay.
 func TestLayoutGuidesMobileAlwaysOff(t *testing.T) {
 	t.Setenv("BEATMO_DEBUG_LAYOUT", "1")
 	UpdateProfile()

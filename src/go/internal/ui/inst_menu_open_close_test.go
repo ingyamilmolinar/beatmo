@@ -12,9 +12,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestInstMenuStaysOpenAfterClick verifies that clicking the row label opens
-// the instrument menu and that the menu stays open across subsequent frames.
-// This catches the bug where the menu would "pop up and go away immediately."
 func TestInstMenuStaysOpenAfterClick(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -132,9 +129,7 @@ func TestInstMenuStaysOpenAfterClick(t *testing.T) {
 	t.Log("Menu stayed open for all frames — PASS")
 }
 
-// TestInstMenuStaysOpenQuickClick verifies that a fast click (1 frame press
-// + 1 frame release) opens and keeps the menu open. This matches the behavior
-// of a real quick mouse click or fast CDP tap.
+// One press frame and one release frame, like a quick real click or a CDP tap.
 func TestInstMenuStaysOpenQuickClick(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -193,8 +188,6 @@ func TestInstMenuStaysOpenQuickClick(t *testing.T) {
 	t.Log("Menu stayed open after quick click — PASS")
 }
 
-// TestInstMenuToggleOnSecondClick verifies that clicking the row label while
-// the menu is already open for the same row closes it (toggle behavior).
 func TestInstMenuToggleOnSecondClick(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -282,10 +275,7 @@ func TestInstMenuToggleOnSecondClick(t *testing.T) {
 	t.Log("Toggle behavior works correctly — PASS")
 }
 
-// TestInstMenuMobileStaysOpen tests that on a small screen (mobile layout),
-// tapping the row label opens the instrument picker directly (cross-platform
-// parity with desktop — see the 2026-06-13 mobile-instrument-button design)
-// and that it stays open across subsequent frames.
+// A row-label tap opens the picker directly on mobile, as on desktop.
 func TestInstMenuMobileStaysOpen(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -309,9 +299,8 @@ func TestInstMenuMobileStaysOpen(t *testing.T) {
 	}}
 	dv.Length = 8
 
-	// Run a warm-up frame (no input) to let recalcButtons/calcLayout settle
-	// the mobile-specific layout. On mobile, the first recalcButtons call
-	// triggers mobileEQInited → bgDirty → calcLayout, which changes row positions.
+	// The first mobile recalcButtons moves the rows (mobileEQInited → bgDirty → calcLayout), so one idle frame
+	// settles the layout first.
 	warmUp := SetInputForTest(
 		func() (int, int) { return 0, 0 },
 		func(b ebiten.MouseButton) bool { return false },
@@ -385,10 +374,7 @@ func TestInstMenuMobileStaysOpen(t *testing.T) {
 	restore()
 }
 
-// TestInstMenuMobileTapInjectionDoesNotClose verifies that on mobile, the
-// Game-level guard prevents tap injection when a drum popup is open. The
-// primary defense is !g.drum.anyDropdownOpen() in game_update.go which
-// suppresses injectTouchTap entirely.
+// A tap injected while a drum popup is open would fire the label twice and toggle the menu shut.
 func TestInstMenuMobileTapInjectionDoesNotClose(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -432,7 +418,6 @@ func TestInstMenuMobileTapInjectionDoesNotClose(t *testing.T) {
 	cx := lblRect.Min.X + lblRect.Dx()/2
 	cy := lblRect.Min.Y + lblRect.Dy()/2
 
-	// --- Phase 1: Open the inst menu via the row label (every platform) ---
 	r1 := SetInputForTest(
 		func() (int, int) { return cx, cy },
 		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
@@ -448,7 +433,6 @@ func TestInstMenuMobileTapInjectionDoesNotClose(t *testing.T) {
 		t.Fatal("inst menu should be open after press on label")
 	}
 
-	// --- Phase 2: Release ---
 	r2 := SetInputForTest(
 		func() (int, int) { return cx, cy },
 		func(b ebiten.MouseButton) bool { return false },
@@ -464,21 +448,14 @@ func TestInstMenuMobileTapInjectionDoesNotClose(t *testing.T) {
 		t.Fatal("inst menu should stay open after release")
 	}
 
-	// --- Phase 3: Verify the Game-level guard ---
-	// anyDropdownOpen() must return true when a row popup is open (the inst
-	// menu and the context menu both open through the same portal). This is
-	// the condition that prevents tap injection in game_update.go.
+	// anyDropdownOpen is the condition that blocks tap injection; the inst menu and the context menu open through
+	// the same portal.
 	if !dv.anyDropdownOpen() {
 		t.Fatal("anyDropdownOpen() should return true when the inst menu is open")
 	}
 
-	// The Game-level guard in game_update.go:
-	//   if ... && !g.drum.anyDropdownOpen() { injectTouchTap(...) }
-	// ensures injectTouchTap is never called while the menu is open.
-	// This prevents the double-fire that causes the menu to toggle closed.
 	t.Log("anyDropdownOpen() correctly returns true — tap injection blocked")
 
-	// --- Phase 4: Verify the inst menu survives idle frames ---
 	idle := SetInputForTest(
 		func() (int, int) { return 0, 0 },
 		func(b ebiten.MouseButton) bool { return false },
@@ -498,9 +475,6 @@ func TestInstMenuMobileTapInjectionDoesNotClose(t *testing.T) {
 	t.Log("Mobile tap injection guard works correctly — PASS")
 }
 
-// TestInstMenuMobileWithCategories tests mobile layout with forced categories.
-// Tapping the row label opens the inst menu directly (every platform); with
-// forced categories it opens in categories mode.
 func TestInstMenuMobileWithCategories(t *testing.T) {
 	assertDefaultParityState(t)
 

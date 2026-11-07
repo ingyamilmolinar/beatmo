@@ -11,17 +11,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// The coordinate badge above a selected node is the primary readout for "what
-// is this node?" — on mobile it is the ONLY one when the sidebar is closed. It
-// showed position but not the note the node actually sounds, so a user shifting
-// pitch had to open the sidebar to see what they had done.
-//
-// The note is derived by nodeNoteLabel (node_note.go), which reads live audio
-// state and caches nothing, so the badge tracks pitch/synth/sampler edits with
-// no invalidation path of its own.
+// The badge names the note the node sounds; nodeNoteLabel reads live audio state and caches nothing, so edits show
+// with no invalidation of its own.
 
-// badgeNodeOnRow0 places a node on row 0 and gives that row a pitched
-// instrument transposed +3, so node pitch 0 sounds C4.
+// Transposed +3, so pitch 0 sounds C4.
 func badgeNodeOnRow0(t *testing.T, g *Game, inst string) *uiNode {
 	t.Helper()
 	node := noteTestNode(t, g)
@@ -69,17 +62,12 @@ func TestCoordBadgeText_TracksPitchChanges(t *testing.T) {
 	}
 }
 
-// Percussion names a note too, since note display went universal (2026-09-13):
-// a kick's fundamental is a real, measured frequency, so the badge leads with
-// it exactly as it does for a melodic instrument. This test asserted the
-// OPPOSITE until then — that a note on a kick would be misinformation — which
-// was true only while the engine had no answer for what a kick sounds.
+// A kick's fundamental is a real measured frequency, so the badge leads with it as for a melodic instrument.
 func TestCoordBadgeText_PercussionLeadsWithItsNote(t *testing.T) {
 	g := newTestGameForUndo(t)
 	node := noteTestNode(t, g)
 
-	// A real shipped percussion instrument, not a synthetic one: this is the
-	// classification the user actually meets. dnb-kick is tuned to 48 Hz.
+	// A shipped instrument, tuned to 48 Hz.
 	g.drum.Rows[0].Instrument = roster.DnbKick
 
 	coords := "(" + g.grid.BeatAxisLabel(node.I) + ", " + g.grid.BeatAxisLabel(node.J) + ")"
@@ -92,10 +80,7 @@ func TestCoordBadgeText_PercussionLeadsWithItsNote(t *testing.T) {
 	}
 }
 
-// Genuinely unpitched noise still keeps the plain coordinate form: a hi-hat has
-// no fundamental at all (the detector returns confidence 0.000 on it), so a
-// note there WOULD be misinformation. This is the half of the old contract that
-// survives, and it is what stops "universal" from meaning "invented".
+// A hi-hat has no fundamental (confidence 0), so a note there would be invented.
 func TestCoordBadgeText_UnpitchedNoiseKeepsCoordinatesOnly(t *testing.T) {
 	g := newTestGameForUndo(t)
 	node := noteTestNode(t, g)
@@ -109,8 +94,7 @@ func TestCoordBadgeText_UnpitchedNoiseKeepsCoordinatesOnly(t *testing.T) {
 	}
 }
 
-// A node with no row cannot resolve an instrument, so it also keeps the plain
-// coordinate form rather than rendering an empty separator.
+// No row, no instrument: no empty separator.
 func TestCoordBadgeText_OffCircuitKeepsCoordinatesOnly(t *testing.T) {
 	g, _, b := buildLoopGame(t)
 	delete(g.nodeRows, b.ID)
@@ -124,10 +108,7 @@ func TestCoordBadgeText_OffCircuitKeepsCoordinatesOnly(t *testing.T) {
 	}
 }
 
-// The badge pill used a fixed 7px-per-character estimate to size itself, which
-// is wrong for a proportional font and drifts further the longer the string
-// gets — exactly what adding a note name does. Width must come from the same
-// metric the draw call uses (TextWidth pairs with DrawTextAt).
+// The draw call's own metric, not a fixed per-character estimate that drifts with a proportional font.
 func TestCoordBadgePillWidthUsesRealTextMetrics(t *testing.T) {
 	cases := []string{
 		"(0:1/2, 0)",
@@ -147,9 +128,7 @@ func TestCoordBadgePillWidthUsesRealTextMetrics(t *testing.T) {
 	}
 }
 
-// The pill is centred on its node and was clamped only vertically, so a node
-// near the left or right edge pushed half the readout off-screen. Adding a note
-// name widens the pill and makes that more likely.
+// Clamped horizontally too, so a node near an edge keeps the whole readout on screen.
 func TestCoordBadgePillRectStaysOnScreen(t *testing.T) {
 	const (
 		screenW = 400
@@ -180,8 +159,7 @@ func TestCoordBadgePillRectStaysOnScreen(t *testing.T) {
 	}
 }
 
-// A pill wider than the screen cannot satisfy both edges; it must pin to the
-// left rather than produce a negative origin.
+// Both edges cannot hold; never a negative origin.
 func TestCoordBadgePillRectWiderThanScreenPinsLeft(t *testing.T) {
 	r := coordBadgePillRect(50, 40, 500, 300)
 	if r.Min.X < 0 {
@@ -189,8 +167,7 @@ func TestCoordBadgePillRectWiderThanScreenPinsLeft(t *testing.T) {
 	}
 }
 
-// With no known screen width (an unlaid-out Game) only the left edge can be
-// enforced.
+// With no known width only the left edge can be enforced.
 func TestCoordBadgePillRectUnknownScreenWidthClampsLeftOnly(t *testing.T) {
 	r := coordBadgePillRect(0, 40, 120, 0)
 	if r.Min.X < 0 {
@@ -198,9 +175,7 @@ func TestCoordBadgePillRectUnknownScreenWidthClampsLeftOnly(t *testing.T) {
 	}
 }
 
-// The formatter must not panic on a nil node. The draw site guards against it,
-// but the guard belongs in the formatter too — it is called from tests and
-// could pick up another caller.
+// The guard belongs in the formatter too, which other callers may use.
 func TestCoordBadgeTextNilNode(t *testing.T) {
 	g := newTestGameForUndo(t)
 	if got := g.coordBadgeText(nil); got != "" {

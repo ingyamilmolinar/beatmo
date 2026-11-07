@@ -27,10 +27,7 @@ const (
 	maxLogicN              = 4096
 )
 
-// importedRowColorTransform is a TEST seam (nil in production): the
-// theme-provenance guard (TestNoColorRendersOutsideTheTheme) shifts every
-// instrument color at the point it enters the app, so identity colors differ
-// between its two renders before any surface can capture them.
+// TEST seam, nil in production: the theme guard shifts every instrument colour where it enters the app.
 var importedRowColorTransform func(color.Color) color.Color
 
 func parseHexColor(s string) color.Color {
@@ -57,16 +54,12 @@ func parseHexColor(s string) color.Color {
 	return color.RGBA{r, g, b, a}
 }
 
-// Import rebuilds the graph and drum rows from exported JSON data. It accepts
-// coordinates in the JSON's subdivision units and scales them to the current
-// grid's MaxDiv. Missing subdiv defaults to 32.
+// Coordinates scale from the file's subdivision to the grid's MaxDiv; a missing subdiv means 32.
 func (g *Game) Import(data []byte) (retErr error) {
 	importStart := time.Now()
 	g.logger.Debugf("[import] started (%d bytes)", len(data))
 	defer func() { g.logger.Debugf("[import] total elapsed=%v", time.Since(importStart)) }()
-	// Convert any panic into a returned error. On WASM an unrecovered panic
-	// kills the Update() goroutine and freezes the canvas with no message; a
-	// returned error surfaces a toast (game_update.go) and keeps the app alive.
+	// On WASM an unrecovered panic kills Update and freezes the canvas silently; an error surfaces a toast.
 	defer func() {
 		if r := recover(); r != nil {
 			retErr = fmt.Errorf("import panic: %v", r)
@@ -74,42 +67,29 @@ func (g *Game) Import(data []byte) (retErr error) {
 		}
 	}()
 
-	// Consume the one-shot "record as an undo step" flag first, so a rejected
-	// load cannot leak it into the next import.
+	// Consumed first so a rejected load cannot leak it into the next import.
 	undoable := g.importAsUndoStep
 	g.importAsUndoStep = false
 
-	// Parse and validate EVERYTHING before touching the session: a rejected
-	// file must leave it exactly as it was — no stopped/silenced playback (the
-	// path snapshot below is only rebuilt by a successful import), no wiped
-	// undo history, no cleared parity state.
+	// Validate EVERYTHING before touching the session: a rejected file leaves playback, undo history and parity
+	// state exactly as they were.
 	var f projectFile
 	if err := json.Unmarshal(data, &f); err != nil {
 		return err
 	}
-	// Reject documents that parse as JSON but are not beatmo project files,
-	// and documents whose schema this build cannot read. A doc with neither
-	// marker (an arbitrary {} or some other app's JSON picked in the file
-	// dialog) used to sail through as an all-zero project and silently
-	// REPLACE the current one — import is replace-not-merge, so that was a
-	// data-wipe with a success return. Runs BEFORE any reset, so a rejected
-	// file leaves the current circuit untouched.
+	// Also the foreign-JSON sniffer: import is replace-not-merge, so an unrecognised {} would otherwise replace the
+	// current project with an empty one and report success.
 	if err := f.validateProjectVersion(); err != nil {
 		return err
 	}
-	// Every instrument document must migrate and validate (and a recipe-era
-	// file is refused) before anything is reset, so a rejected file leaves the
-	// current circuit untouched.
+	// A recipe-era file is refused here too.
 	if err := f.validateProjectDocs(data); err != nil {
 		return err
 	}
-	// A node's chord block must name a known quality with an in-range
-	// voicing — checked before anything is reset, like the documents above.
 	if err := f.validateNodeChords(); err != nil {
 		return err
 	}
-	// Every row names a valid instrument, says what kind it is, and a
-	// built-in is never replaced by a WAV — before anything is reset.
+	// A built-in is never replaced by a WAV.
 	if err := f.validateInstrumentRows(); err != nil {
 		return err
 	}
@@ -120,15 +100,8 @@ func (g *Game) Import(data []byte) (retErr error) {
 	if len(f.Nodes) > maxImportNodes {
 		return fmt.Errorf("too many nodes in import: %d > %d", len(f.Nodes), maxImportNodes)
 	}
-	// Undo handling for a document swap. A user-initiated load (template row /
-	// file picker, flagged via g.importAsUndoStep) records the pre-load document
-	// as ONE undo step so a mistap can't silently destroy the current circuit;
-	// every other load (demo/startup/JS) drops history — you cannot undo across
-	// those swaps. Deferred so it runs after all in-import mutations (which fire
-	// hooks that would otherwise push undo steps); the pre-load document is still
-	// the committed baseline because g.importing suppresses in-import captures.
-	// Both paths no-op while an undo-restore is re-importing (manager's restoring
-	// flag). The flag is consumed here so a later direct Import defaults to clear.
+	// A user-initiated load records the old document as ONE undo step so a mistap cannot destroy the circuit; other
+	// loads drop history. Deferred past every in-import mutation; a no-op during an undo re-import.
 	if g.undoManager != nil {
 		if undoable {
 			defer g.undoManager.RecordExternalLoad("load template")
@@ -137,9 +110,7 @@ func (g *Game) Import(data []byte) (retErr error) {
 		}
 	}
 
-	// Stop sequencer during import to prevent seqMu contention. The background
-	// sequencerLoop checks Playing() before calling seqScheduleTime(), so setting
-	// playing=false will cause it to skip scheduling until import completes.
+	// The sequencer loop skips scheduling while not playing, so stopping avoids seqMu contention during import.
 	wasPlaying := g.Playing()
 	if wasPlaying {
 		g.logger.Debugf("[import] stopping playback during import")
@@ -152,8 +123,7 @@ func (g *Game) Import(data []byte) (retErr error) {
 		}
 	}()
 
-	// Clear seqPathSnap so any in-flight seqScheduleTime() call returns early.
-	// This provides an additional safety net against lock contention.
+	// A second guard: any in-flight seqScheduleTime returns early.
 	g.seqPathSnap.Store(nil)
 
 	g.dismissLongPressPopup("cancel")
@@ -175,20 +145,12 @@ func (g *Game) Import(data []byte) (retErr error) {
 	g.parityMu.Unlock()
 
 	g.logger.Debugf("[import] parity cleared elapsed=%v", time.Since(importStart))
-	// Re-register any kits the project carried so authored kit definitions
-	// survive the round-trip (the exporter writes them; before export and
-	// import shared one struct, the import side lacked the field and
-	// dropped them). Additive registry write.
+	// Kits the project carries are re-registered so authored kits survive the round-trip.
 	for _, k := range f.Kits {
 		audio.RegisterKit(k)
 	}
-	// The file's instrument documents replace the session's copies; every
-	// instrument the file does not carry returns to its library copy (replace,
-	// not merge). Validated above, so this cannot fail on the file's account.
-	// Opening a circuit lets the user's SAVED version of an instrument trump
-	// the file's (and remembers the file's for Reset); an undo/redo re-import
-	// restores its snapshot verbatim — the snapshot already holds the
-	// effective documents, and the undo journal swaps the circuit's.
+	// The file's documents replace the session's (replace, not merge); opening lets the user's SAVED version trump
+	// the file's. An undo/redo re-import restores its snapshot verbatim instead.
 	if g.restoringUndo() {
 		if err := audio.ReplaceInstrumentDocs(f.fullDocs()); err != nil {
 			g.logger.Warnf("[import] instrument documents: %v", err)
@@ -197,8 +159,7 @@ func (g *Game) Import(data []byte) (retErr error) {
 		g.logger.Warnf("[import] instrument documents: %v", err)
 	}
 
-	// Normalize and apply imported subdivision before constructing nodes so
-	// coordinates in the JSON map 1:1 to the new grid.
+	// Before constructing nodes, so file coordinates map 1:1 to the grid.
 	if f.Subdiv == 0 {
 		f.Subdiv = 32
 	}
@@ -208,35 +169,25 @@ func (g *Game) Import(data []byte) (retErr error) {
 		f.Subdiv = 32
 	}
 
-	// Apply per-project instrument pins. Always written, even when the field
-	// is absent from the JSON: an absent or empty list resets the set so an
-	// import never silently inherits pins from a previous project.
+	// Always written: an absent list resets the pins, so an import never inherits a previous project's.
 	if g.drum != nil {
 		g.drum.SetProjectPins(append([]instrument.ID(nil), f.PinnedInstruments...))
 	}
 
-	// Circuit theme: replace-not-merge. An absent block clears any previous
-	// circuit theme so an import never inherits colors from the last project.
+	// An absent block clears the previous circuit's theme.
 	var ct theme.Doc
 	if f.Theme != nil {
 		ct = f.Theme.Clone()
 	}
 	g.SetCircuitTheme(ct)
 
-	// Reset graph and UI state without replacing the graph pointer. The engine
-	// predictor and other subsystems hold references to g.graph and must remain
-	// in sync. Replacing the pointer would desynchronize predictions and break
-	// precomputed drum view state.
+	// Reset in place, never a new pointer: the predictor and other subsystems hold g.graph.
 	g.graph.Nodes = map[model.NodeID]model.Node{}
 	g.graph.Edges = map[[2]model.NodeID]struct{}{}
 	g.graph.Next = 0
 	g.graph.Row = make([]bool, 4)
-	// Replace-not-merge for node groups: the graph object is reused (not
-	// reallocated) across imports, so a previous project's groups map would
-	// otherwise survive into a file that carries none. ResetGroups also
-	// resets the GroupID counter (unlike a bare map reset) so re-importing
-	// the same document always mints the same GroupIDs, keeping the exported
-	// bytes deterministic across undo/redo's reimport-based restore.
+	// The graph is reused, so old groups would survive; ResetGroups also resets the id counter so re-importing the
+	// same file mints the same ids and undo/redo exports stay byte-identical.
 	g.graph.ResetGroups()
 	g.nodes = nil
 	g.nodesByID = make(map[model.NodeID]*uiNode)
@@ -244,17 +195,14 @@ func (g *Game) Import(data []byte) (retErr error) {
 	g.drum.Graph = g.graph
 	g.start = nil
 	g.graph.StartNodeID = model.InvalidNodeID
-	// Reset timeline/history state so stale immutable commits from a previous
-	// session do not mask freshly imported beats or prevent re-added nodes from
-	// becoming visible. A new service will be lazily created on next use.
+	// Old immutable commits would mask the imported beats; a new service is created lazily.
 	g.timeline = nil
 	g.playedGraveyard = nil
 	g.frozenUpToByRow = nil
 	g.nextBeatIdxs = nil
 	g.seqNextIdxs = nil
 	g.muteUntilByRow = nil
-	// Clear drum rows BEFORE SetSubdivisions to prevent updateBeatInfos from
-	// processing stale rows with invalid origins against an empty graph.
+	// Before SetSubdivisions, or updateBeatInfos walks stale rows against an empty graph.
 	g.drum.Rows = nil
 
 	// Apply incoming subdivision now that graph/UI state are cleared.
@@ -290,13 +238,8 @@ func (g *Game) Import(data []byte) (retErr error) {
 				muted[i] = f.EQ.BandMuted[i]
 			}
 		}
-		// setMasterEQBandState, NOT a copy into eqBandGainsDB: the latter is the
-		// audio panel's working copy of whatever channel is on screen, so with an
-		// instrument selected this wrote the file's MASTER curve into that
-		// INSTRUMENT's display buffer and left the master untouched — the master
-		// EQ never came back, and re-exporting then dropped it from the file for
-		// good. Writes the master store, and mirrors into the zone only when
-		// Master is the channel being shown.
+		// The master store, NOT eqBandGainsDB (the panel's copy of the channel on screen): writing that put the master
+		// curve on the selected instrument and lost the master for good on re-export.
 		g.drum.setMasterEQBandState(gains, muted)
 		// Import HPF/LPF for master channel
 		g.drum.hpfEnabled = f.EQ.HPFEnabled
@@ -311,20 +254,14 @@ func (g *Game) Import(data []byte) (retErr error) {
 		} else {
 			g.drum.lpfCutoffHz = 20000
 		}
-		// applyMasterEQ, not applyEQ: applyEQ routes to the SELECTED channel, so
-		// with an instrument selected the master block was pushed onto that
-		// instrument's chain instead of the master bus.
+		// applyEQ routes to the SELECTED channel, which would push the master block onto an instrument.
 		g.drum.applyMasterEQ()
 		// Sync UI sliders if master EQ is the active channel
 		if g.drum.activeEQChannel() == channel.Master {
 			g.drum.setEQActiveChannel(channel.Master)
 		}
 	} else if g.drum != nil {
-		// Import is replace-not-merge: a document with NO master EQ must RESET any
-		// in-session master EQ to defaults, otherwise stale gains/mute/filters
-		// persist (this broke undo of an EQ change — undoing to a no-EQ snapshot
-		// left the EQ applied). Zero the shared gain/mute slices in place and
-		// disable the filters.
+		// No master EQ in the file resets it to defaults; stale gains otherwise survived (undoing an EQ change kept it).
 		g.drum.setMasterEQBandState(make([]float64, len(eqBandDefs)), make([]bool, len(eqBandDefs)))
 		g.drum.hpfEnabled = false
 		g.drum.hpfCutoffHz = 20
@@ -366,9 +303,7 @@ func (g *Game) Import(data []byte) (retErr error) {
 		if mn, ok := g.graph.GetNodeByID(ui.ID); ok {
 			p := mn.Params
 			if n.Volume != 0 {
-				// Per-node volume is an unbounded gain — it may boost above unity
-				// arbitrarily. Only reject negatives (which would phase-invert);
-				// there is intentionally no upper clamp.
+				// An unbounded gain: only negatives (a phase inversion) are rejected.
 				v := n.Volume
 				if v < 0 {
 					v = 0
@@ -381,8 +316,7 @@ func (g *Game) Import(data []byte) (retErr error) {
 			if n.Duration > 0 {
 				p.Duration = n.Duration
 			}
-			// Groove and logic decoded strictly (an unknown spelling rejected
-			// the file); only the ranges are clamped here.
+			// Decoded strictly (an unknown spelling rejected the file); only ranges are clamped here.
 			if n.GrooveKind != model.GrooveNone {
 				p.GrooveKind = n.GrooveKind
 				p.GroovePct = math.Max(0, math.Min(1, n.GroovePct))
@@ -410,8 +344,7 @@ func (g *Game) Import(data []byte) (retErr error) {
 				p.EffectOverrides = make([]model.EffectOverride, len(n.EffectOverrides))
 				copy(p.EffectOverrides, n.EffectOverrides)
 			}
-			// Chord spec (validated above). A chord node without one is the
-			// default triad — what the type cycle seeds.
+			// A chord node without a spec is the default triad, what the type cycle seeds.
 			p.Chord = n.Chord.spec()
 			if nodeType == model.NodeTypeChord && p.Chord.IsZero() {
 				p.Chord = model.ChordSpec{Quality: model.ChordDefaultQuality}
@@ -421,8 +354,7 @@ func (g *Game) Import(data []byte) (retErr error) {
 		idToNode[i] = ui
 	}
 	g.logger.Debugf("[import] node creation elapsed=%v nodes=%d", time.Since(nodesStart), len(idToNode))
-	// Create edges from all non-invisible nodes. Silent nodes are valid
-	// routing points and must retain their connections.
+	// Silent nodes are routing points and keep their edges.
 	edgesStart := time.Now()
 	for _, n := range f.Nodes {
 		if n.Type == model.NodeTypeInvisible {
@@ -440,12 +372,8 @@ func (g *Game) Import(data []byte) (retErr error) {
 		}
 	}
 	g.logger.Debugf("[import] edge creation elapsed=%v", time.Since(edgesStart))
-	// Node groups. Group node_ids reference the JSON file's node ids, which
-	// MUST be remapped through idToNode (imported node IDs are reissued).
-	// Validation: unknown node ids are dropped; a group left with zero known
-	// members is dropped entirely; every_n floors to 1; a bad rule is
-	// dropped without rejecting the whole group (SetGroupRules is
-	// all-or-nothing, so retry rule-by-rule on rejection).
+	// Node ids are reissued, so members remap through idToNode; unknown ids drop, an empty group drops, and a bad
+	// rule drops alone (SetGroupRules is all-or-nothing, so rules retry one by one).
 	for _, eg := range f.Groups {
 		ids := make([]model.NodeID, 0, len(eg.NodeIDs))
 		for _, jsonID := range eg.NodeIDs {
@@ -480,9 +408,6 @@ func (g *Game) Import(data []byte) (retErr error) {
 				AnchorIdx: anchor,
 			})
 		}
-		// Per-rule rejection: SetGroupRules is all-or-nothing, so on error
-		// retry each rule individually against the growing kept-set and only
-		// commit the ones that validate.
 		if err := g.graph.SetGroupRules(gid, rules); err != nil {
 			kept := make([]model.GroupRule, 0, len(rules))
 			for _, r := range rules {
@@ -493,8 +418,7 @@ func (g *Game) Import(data []byte) (retErr error) {
 			}
 			_ = g.graph.SetGroupRules(gid, kept)
 		}
-		// RulesEnabled: every document this build exports sets the flag (see
-		// exportGroup); an absent flag means disabled.
+		// Every export sets the flag; absent means disabled.
 		enabled := eg.RulesEnabled != nil && *eg.RulesEnabled
 		_ = g.graph.SetGroupRulesEnabled(gid, enabled)
 	}
@@ -503,21 +427,12 @@ func (g *Game) Import(data []byte) (retErr error) {
 	rowsStart := time.Now()
 	g.drum.Rows = nil
 	g.drum.SuppressLayout()
-	// Replace-not-merge for insert effect chains: drop every chain the
-	// previous project installed (Go mixer + JS WebAudio via the per-id
-	// notify) before applying the file's chains below. Without this, a
-	// project without effects kept the old project's chain processing audio
-	// — invisible in the UI because rows are rebuilt with empty Effects.
-	// Every instrument's EQ settings go with them; the file's own are applied
-	// per row below.
+	// Every old chain goes (Go mixer and WebAudio), or a file without effects kept processing audio through chains
+	// invisible in the rebuilt rows. Each instrument's EQ goes with them.
 	audio.ClearAllInsertEffectsAndNotify()
 	audio.ResetEQSettings()
-	// A document swap is a playback discontinuity: the new circuit must not
-	// inherit the old one's filter delay lines, insert-effect LFO phase,
-	// compressor envelope or reverb/delay tails. Without this the same project
-	// sounds different depending on what was loaded before it — the reason an
-	// export re-imported into a live session did not sound like the session it
-	// came from. Configuration is untouched; only remembered state is cleared.
+	// A discontinuity: the new circuit must not inherit filter memory, LFO phase or tails, or the same file sounds
+	// different depending on what was loaded before. Configuration is untouched.
 	audio.ResetDSPState()
 	for i, inst := range f.Instruments {
 		g.drum.AddRow()
@@ -529,8 +444,7 @@ func (g *Game) Import(data []byte) (retErr error) {
 			audio.ClearInstrumentDisplayName(inst.ID)
 		}
 		if !g.restoringUndo() {
-			// The circuit's name for the instrument: what Reset restores
-			// (a Save As renames the copy).
+			// What Reset restores; a Save As renames the copy.
 			audio.SetCircuitInstrumentName(inst.ID, inst.Name)
 		}
 		row.Name = g.drum.computeInstLabel(inst.ID)
@@ -549,25 +463,20 @@ func (g *Game) Import(data []byte) (retErr error) {
 		if importedRowColorTransform != nil {
 			row.Color = importedRowColorTransform(row.Color)
 		}
-		// Promote gen-showcase instance variants ("organ--2") to first-class,
-		// available, recipe-bound, voiced instruments that render identically to
-		// their base ("organ"). Must run BEFORE availability bookkeeping below so
-		// EnsureInstrumentKnown / refreshInstruments see the registered variant.
+		// Instance variants ("organ--2") become real instruments sounding like their base; before the availability
+		// bookkeeping, which must see them.
 		audio.EnsureInstanceInstrument(inst.ID)
-		// Remember instrument id even if missing so users can switch back or
-		// load it later by the same name.
+		// Remembered even when missing, so the user can switch back to it.
 		g.drum.EnsureInstrumentKnown(inst.ID)
 
-		// Strategy 0: embedded PCM (Sampler-created user sample) supersedes the
-		// catalog/path strategies — the sound travels inside the project file.
+		// Embedded PCM supersedes the catalog/path strategies: the sound travels inside the file.
 		embeddedPCM := false
 		if pcm, sr, ok := decodeSamplePCM(inst.PCM); ok {
 			audio.PutUserSample(inst.ID, pcm, sr)
 			g.drum.refreshInstruments()
 			embeddedPCM = true
 		} else if audio.DropBuiltinSampleOverride(inst.ID) {
-			// Replace-not-merge: a previous project (or an undone step) turned
-			// this built-in into a sample; this file says it is the synth.
+			// Replace-not-merge: a previous project may have made this built-in a sample.
 			g.drum.refreshInstruments()
 		}
 
@@ -584,9 +493,7 @@ func (g *Game) Import(data []byte) (retErr error) {
 				g.drum.refreshInstruments()
 			}
 
-			// Strategy 2: use the explicit path provided in the import payload, if any.
-			// External references (filesystem, DB, future remote pack) are resolved
-			// upstream by whoever produced the JSON.
+			// External references are resolved by whoever produced the file.
 			instPath := inst.Path
 			if instPath != "" {
 				if g.drum.samplePath == nil {
@@ -632,14 +539,8 @@ func (g *Game) Import(data []byte) (retErr error) {
 				g.drum.setEQActiveChannel(channel.Of(row.Instrument))
 			}
 		} else {
-			// Import is replace-not-merge, and that has to reach the AUDIO
-			// layer, not just the row. A document whose instrument carries no
-			// `eq` block previously left the PREVIOUS project's curve on that
-			// instrument's channel: the rebuilt row read flat in the UI while
-			// the mixer kept applying the old EQ. Flatten it and push it
-			// (no EQ processor at all — a unity chain would differ from an
-			// absent one in the last bits), exactly as the master-EQ branch
-			// below does for f.EQ == nil.
+			// Replace-not-merge must reach the AUDIO layer: a row without an eq block kept the previous project's curve while
+			// reading flat. Cleared, not set to unity: a unity chain differs from none in the last bits.
 			g.drum.clearRowEQ(idx)
 			if g.drum.activeEQChannel() == channel.Of(row.Instrument) {
 				g.drum.setEQActiveChannel(channel.Of(row.Instrument))
@@ -649,12 +550,9 @@ func (g *Game) Import(data []byte) (retErr error) {
 		if len(inst.Effects) > 0 {
 			audio.SetInsertEffects(inst.ID, inst.Effects)
 		}
-		// A row the file carries no document for plays its library copy
-		// (ReplaceInstrumentDocs above already reset every library id; this
-		// covers an instance id first seen in this file).
+		// Covers an instance id first seen in this file; library ids were reset above.
 		audio.EnsureInstrumentDoc(inst.ID)
-		// Non-destructive Sampler edit descriptor: replace-not-merge, so a
-		// previous project's edit can't leak.
+		// Replace-not-merge, so a previous project's edit cannot leak.
 		if len(inst.SampleEdit) > 0 {
 			audio.SetSampleEdit(inst.ID, audio.SampleEditFromFields(inst.SampleEdit))
 		} else {
@@ -670,24 +568,20 @@ func (g *Game) Import(data []byte) (retErr error) {
 	}
 	// Restore master volume. Default to 1.0 for legacy files that omit it.
 	if f.MasterVolume != nil {
-		// Explicit value — including 0 (muted): the old float64 field
-		// dropped 0 via omitempty on export and blasted the re-import at
-		// 1.0. See project_file.go projectFile.MasterVolume.
+		// Explicit, including 0 (muted), which an omitempty float once dropped and re-imported at 1.0.
 		mv := clampF64(*f.MasterVolume, 0, 1)
 		audio.SetMainVolume(mv)
 		if g.drum.mainVolSlider() != nil {
 			g.drum.mainVolSlider().Value = mv
 		}
 	} else {
-		// No master_volume in the file: the fresh-session default, so the
-		// previous project's master level never survives an import.
+		// No master_volume: the fresh-session default, never the previous project's.
 		audio.SetMainVolume(audio.FreshSessionMasterVolume)
 		if g.drum.mainVolSlider() != nil {
 			g.drum.mainVolSlider().Value = audio.FreshSessionMasterVolume
 		}
 	}
-	// Clear any pending UI-added rows state so origin selection does not remain
-	// armed after an import that already set each row's origin.
+	// So origin selection does not stay armed after an import that set every row's origin.
 	g.drum.added = nil
 	g.pendingStartRow = -1
 	g.logger.Debugf("[import] before updateBeatInfos elapsed=%v nodes=%d rows=%d offset=%d length=%d",
@@ -696,66 +590,29 @@ func (g *Game) Import(data []byte) (retErr error) {
 	g.updateBeatInfos()
 	g.logger.Debugf("[import] updateBeatInfos elapsed=%v", time.Since(beatInfoStart))
 	g.paramsDirty = false
-	// Browser: channel + insert-FX node construction is deferred into
-	// pendingChannelOps while no AudioContext exists, so a pre-unlock import
-	// would build the whole graph in a burst at the first note. Force the
-	// context now, BEFORE beginWarmup below, where a stall is invisible.
-	//
-	// Order matters: this MUST run before beginWarmup("import"), not after.
-	// EnsureAudioGraphReady is what makes the real AudioContext (and its
-	// real sampleRate) exist. If beginWarmup ran first, the feeder would
-	// start warming the voice cache at whatever sampleRate was assumed
-	// pre-context; creating the context here-after could then observe a
-	// DIFFERENT rate on the very next frame, tripping
-	// checkWarmupSampleRate's "sample-rate" gate and re-warming the entire
-	// working set a second time — roughly doubling the user's wait for
-	// every browser import.
+	// Before beginWarmup: the browser defers graph building until an AudioContext exists, and warming at an assumed
+	// rate would see the real rate next frame, trip the sample-rate gate and warm everything twice.
 	audio.EnsureAudioGraphReady()
-	// Trip the playback readiness gate: import is replace-not-merge, so the
-	// voice cache is cold for every instrument/pitch this circuit introduces.
-	// Runs AFTER updateBeatInfos so beatInfosByRow is populated for the full-
-	// loop enumeration buildWarmSet walks, and AFTER EnsureAudioGraphReady
-	// (see above) so the warm set is built against the real sample rate.
+	// After updateBeatInfos (the warm set walks the full loop) and after the AudioContext exists.
 	g.beginWarmup("import")
 	g.perfMode.ForceRefresh()
 	if g.drum != nil {
 		g.drum.markAllRowsDirty()
-		// Import is replace-not-merge, so reset the audio-panel channel
-		// selector back to Master. A per-instrument selection carried over from
-		// the previous circuit would otherwise leave every audio tab (Wave,
-		// Spectrum, Chain, …) pointed at a channel the new circuit may not even
-		// contain. selectAudioChannel is the cross-tab chokepoint: it re-syncs
-		// the EQ mirror, the analyzer detail channel, and the scope instrument.
-		// Unconditional on purpose — the pre-existing EQ re-syncs above only
-		// fire when the already-selected channel still matches.
+		// Back to Master, unconditionally: a carried-over channel may not exist in the new circuit.
+		// selectAudioChannel re-syncs every tab.
 		g.drum.selectAudioChannel(channel.Master)
-		// Re-wire per-instrument analyzers for the freshly imported rows.
-		// On WASM each instrument's AnalyserNode is enabled on demand;
-		// a template that ships no per-instrument EQ (so applyRowEQ never
-		// ran) would otherwise leave the Levels/per-instrument views blank
-		// while audio plays. No tab transition fires on import, so do it
-		// here. Idempotent + harmless on desktop. See
-		// audio_panel_dispatcher.go (AnalyzerInstrumentTapsForTab).
+		// No tab transition fires on import, and a template with no per-instrument EQ would leave the WASM analysers off.
 		if g.drum.eqPanelZone != nil {
 			g.drum.eqPanelZone.reapplyAnalyzerTaps()
 		}
-		// Flush stale analyzer data so the audio-panel tabs (Wave, Spectrum,
-		// Levels, Chain) read flat until the newly loaded circuit is played.
-		// When playback is stopped no fresh samples flow, and the per-channel
-		// Analyzer instances are REUSED across imports (wireChannelAnalyzer) —
-		// so without this they keep returning the previous circuit's retained
-		// waveform/spectrum/peak. Run after reapplyAnalyzerTaps so every wired
-		// analyzer (including ones just re-enabled for the current tab) is
-		// zeroed. See internal/audio/analyzer.go ResetAllChannelAnalyzers.
+		// Analysers are REUSED across imports and keep returning the old circuit's data while stopped; after
+		// reapplyAnalyzerTaps so every wired one is zeroed.
 		audio.ResetAllChannelAnalyzers()
-		// Desktop reads Wave/Spectrum/Levels from the analyzer service, which
-		// carries the last capture forward across ticks; flush it too (nil
-		// under -tags test / WASM, where the snapshot path above covers it).
+		// Desktop's analyzer service carries its last capture forward; nil under -tags test / WASM.
 		if svc := audio.AnalyzerService(); svc != nil {
 			svc.Reset()
 		}
-		// Clear the Levels-tab peak/clip latches and the rolling clip window so
-		// held meters + "!" clip markers from the previous circuit disappear.
+		// Held meters and "!" markers from the previous circuit go.
 		audio.ResetClipsWindow()
 		if g.drum.eqPanelZone != nil {
 			g.drum.eqPanelZone.levelsLatch.Reset()
@@ -764,14 +621,9 @@ func (g *Game) Import(data []byte) (retErr error) {
 			}
 		}
 	}
-	// The graph was rebuilt wholesale above; drop any transient UI that still
-	// points at nodes from the previous graph (coordinate badge, open node menu)
-	// so an undone/replaced node never leaves its coordinates or menu on screen.
+	// The graph was rebuilt, so UI pointing at old nodes (coordinate badge, node menu) goes too.
 	g.pruneDanglingNodeRefs()
-	// Re-seed the Sampler tab's editing state from the restored document so an
-	// undo/redo/load that changed an instrument's sample_edit moves the sampler
-	// knobs/trim/reverse back (otherwise the tab keeps the pre-restore edit and
-	// the next gesture re-applies it).
+	// Otherwise the Sampler keeps its pre-restore edit and the next gesture re-applies it.
 	g.drum.resyncSamplerEditFromDocument()
 	g.logger.Debugf("[import] completed: bpm=%d nodes=%d rows=%d subdiv=%d", f.BPM, len(f.Nodes), len(g.drum.Rows), f.Subdiv)
 	return nil
@@ -788,11 +640,8 @@ func clampF64(v, lo, hi float64) float64 {
 	return v
 }
 
-// validateInstrumentRows checks each instrument row on its own: a valid id;
-// a row that carries a sample (embedded PCM or a WAV path) says it is one;
-// and a built-in is a sample only through embedded PCM (the Sampler's edit of
-// it, which travels in the file) — never through a WAV path, which would
-// replace the shipped instrument with whatever file it names.
+// A built-in is a sample only through embedded PCM (its Sampler edit), never a WAV path, which would replace the
+// shipped instrument with whatever file it names.
 func (f *projectFile) validateInstrumentRows() error {
 	for i, inst := range f.Instruments {
 		if _, err := instrument.ParseID(string(inst.ID)); err != nil {

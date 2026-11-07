@@ -9,10 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestDesktopNodeHighlightReasonableSize ensures that on desktop (simpleDraw=false)
-// node highlights do not render oversized rectangles covering a large portion
-// of the screen. We approximate by capturing drawRect calls near the node center
-// and verifying the outline size is bounded.
+// The rects drawn near the node stay bounded, never covering a large part of the screen.
 func TestDesktopNodeHighlightReasonableSize(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -49,13 +46,8 @@ func TestDesktopNodeHighlightReasonableSize(t *testing.T) {
 			mx := (r.Min.X + r.Max.X) / 2
 			my := (r.Min.Y + r.Max.Y) / 2
 			if abs(mx-cx) < 5 && abs(my-cy) < 5 {
-				// Outline should stay close to the node sprite radius. The
-				// selection treatment is now a crisp ring PLUS a soft accent
-				// glow band (the node-selection halo that links a selected
-				// node to the sidebar); the band adds a few px on each side,
-				// so allow up to ~8px beyond the radius. Truly oversized /
-				// runaway highlights are still caught by the half-pane guard
-				// below.
+				// The ring plus a soft glow band adds a few px each side; a runaway highlight is still caught by the half-pane
+				// guard below.
 				if r.Dx() > 2*rpx+16 || r.Dy() > 2*rpx+16 {
 					tooBig = append(tooBig, r)
 				}

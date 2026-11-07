@@ -33,11 +33,7 @@ func (g *Game) bpmLoop() {
 				audio.SetBPM(b)
 				g.logger.Debugf("[game] applied BPM=%d in %s", b, time.Since(start))
 				sendLatest(g.bpmAck, b, nil)
-				// If UI has moved on while we were applying BPM (e.g. audio
-				// layer was blocked), immediately converge to the current
-				// desired DrumView BPM without waiting for another Update().
-				// This prevents flakiness where the last requested value was
-				// dropped from bpmCh by coalescing.
+				// Converge to the current UI BPM now: coalescing may have dropped the last request from bpmCh.
 				for {
 					cur := g.drum.BPM()
 					if cur == b {

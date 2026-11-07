@@ -9,8 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
-// laneTestMixer is a mixer never attached to a device: tests pull samples
-// through Read directly.
+// Never attached to a device: tests pull samples through Read.
 func laneTestMixer() *mixer {
 	return &mixer{
 		workBuf:   make([]float64, blockSize),
@@ -60,8 +59,7 @@ func peakOf(p []byte) int {
 	return pk
 }
 
-// A lane voice cancelled before it starts must be removed outright — not
-// RequestStop'd, which leaves a ~20 ms faded "ghost" when its start arrives.
+// Removed outright, not RequestStop'd, which leaves a faded ghost when its start arrives.
 func TestMixerCancelBeforeStartIsSilent(t *testing.T) {
 	m := laneTestMixer()
 	m.ScheduleLane(channel.Of("lanetest"), newTestSineVoice(), 4096, -1, -1, 7)
@@ -96,8 +94,7 @@ func TestMixerCancelAllFutureSparesPreviews(t *testing.T) {
 	}
 }
 
-// StopLaneAt(t) fades lane voices that started before t and spares the ones
-// that start at/after t (a mute node must not kill the notes after it).
+// A mute node must not kill the notes after it.
 func TestMixerStopLaneAtSparesLaterVoices(t *testing.T) {
 	m := laneTestMixer()
 	m.ScheduleLane(channel.Of("lanetest"), newTestSineVoice(), 0, -1, -1, 21)    // sounding before t
@@ -112,15 +109,12 @@ func TestMixerStopLaneAtSparesLaterVoices(t *testing.T) {
 	}
 }
 
-// A lane voice may be committed up to the horizon early: its analyzer /
-// scope trigger must fire when it STARTS rendering, not at schedule time,
-// or meters and scope alignment run ahead of the sound.
+// A lane voice is committed up to the horizon early; a trigger at schedule time would run meters and scope ahead of
+// the sound.
 func TestMixerLaneTriggerNotifiesAtFirstRender(t *testing.T) {
 	m := laneTestMixer()
 	got := make(chan string, 4)
-	// Its own instrument id, filtered in the hook: earlier tests' lane voices
-	// ("lanetest") hand their triggers to the async laneTriggerLoop and can be
-	// delivered after this hook is installed.
+	// Filtered by its own id: earlier tests' triggers reach the async loop and can arrive after this hook is installed.
 	restore := setLaneTriggerHookForTest(func(id string) {
 		if id == "lanetrigger" {
 			got <- id
@@ -145,9 +139,8 @@ func TestMixerLaneTriggerNotifiesAtFirstRender(t *testing.T) {
 	}
 }
 
-// A cancel the mixer refuses (the voice has started rendering — its clock runs
-// up to a Read chunk ahead of the lane's) is REPORTED, so the lane's
-// replacement is dropped instead of playing on top of it.
+// The mixer clock runs up to a Read chunk ahead of the lane's; a refused cancel is reported so the replacement is
+// dropped instead of doubling.
 func TestMixerCancelReportsVoicesThatAlreadyStarted(t *testing.T) {
 	m := laneTestMixer()
 	m.ScheduleLane(channel.Of("lanecancel"), newTestSineVoice(), 0, -1, -1, 41)    // starts now

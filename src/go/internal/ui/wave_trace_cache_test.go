@@ -12,9 +12,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// setupWaveGame drives the Wave tab with a synthetic analyzer state fed through
-// the same override the audio-panel pixel tests use, and returns the game so
-// the caller can swap the override to simulate a 30 Hz analyzer republish.
+// The caller swaps the override to simulate a ~30 Hz republish.
 func setupWaveGame(t *testing.T) *Game {
 	t.Helper()
 	g := driveScene(t, "crop_eq_tab_wave")
@@ -42,11 +40,7 @@ func newWaveAnalyzerOverride(g *Game) *analyzer.State {
 	return SynthesizeAnalyzerState(channel.Master, "Master", snap, rowSnaps, nil, channel.ID{}, "", audio.SampleRate())
 }
 
-// TestWaveTraceCacheHitsAndInvalidates mirrors the Chain-tab guard: an
-// unchanged analyzer state must collapse the Wave draw to a single blit, and a
-// new *analyzer.State pointer (what AnalyzerState() returns when data refreshes
-// at ~30 Hz) must rebuild. Identity, not a timestamp — the WASM analyzer path
-// stamps none.
+// An unchanged state is one blit; a new *analyzer.State rebuilds. Identity, not a timestamp: the WASM path stamps none.
 func TestWaveTraceCacheHitsAndInvalidates(t *testing.T) {
 	defer SetWaveTraceCacheForTest(true)()
 	g := setupWaveGame(t)
@@ -77,11 +71,7 @@ func TestWaveTraceCacheHitsAndInvalidates(t *testing.T) {
 	t.Logf("cold=%d hit=%d miss=%d again=%d", cold, hit, miss, again)
 }
 
-// TestWaveTraceCacheRenderMatchesDirect proves equivalence-by-construction: the
-// filled-rect shape multiset is identical whether the waveform renders directly
-// to the screen (cache off) or into the offscreen cache (cache on, cold). The
-// blit translates the cached pixels back to the content rect, so identical
-// shapes ⇒ identical on-screen pixels.
+// The same filled-rect shape multiset direct or into the cold cache; the blit translates it back.
 func TestWaveTraceCacheRenderMatchesDirect(t *testing.T) {
 	g := setupWaveGame(t)
 	screen := ebiten.NewImage(1280, 720)

@@ -14,13 +14,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Export / import with macro dials (spec §4, §5.5 fast path). A dial is a lens:
-// its edits are synth-param writes that travel in instrument_docs like any knob
-// edit, and NOTHING about the dial itself (position, definition) is ever
-// written to the project file — a dial's position is read from the document.
+// A dial is a lens: its edits are param writes in instrument_docs like any knob, and nothing about the dial itself
+// reaches the file; its position is read from the document.
 
-// Turned dials round-trip: export → reset the instrument → import restores
-// every driven param, and the re-export is byte-identical.
+// Import restores every driven param, and the re-export is byte-identical.
 func TestSynthDialEditsRoundTripThroughTheProjectFile(t *testing.T) {
 	g := newDialGame(t)
 	inst := dialInst(g)
@@ -50,9 +47,7 @@ func TestSynthDialEditsRoundTripThroughTheProjectFile(t *testing.T) {
 	}
 }
 
-// Nothing about a dial reaches the file: viewing the root and opening +
-// cancelling a dial's wheel leave the export byte-identical, and no key in the
-// document mentions a dial.
+// Viewing the root and a cancelled wheel leave the export byte-identical, with no dial key anywhere.
 func TestSynthDialStateNeverReachesTheProjectFile(t *testing.T) {
 	g := newDialGame(t)
 	untouched := mustExport(t, g)

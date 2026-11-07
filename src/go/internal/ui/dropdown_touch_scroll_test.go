@@ -14,12 +14,9 @@ import (
 
 // ── InstrumentMenuComponent touch scroll tests ──────────────────────────
 
-// TestInstMenuCompTouchScrollCategories verifies that dragging on a category
-// button scrolls the list instead of selecting.
+// A drag scrolls instead of selecting.
 func TestInstMenuCompTouchScrollCategories(t *testing.T) {
-	// Touch-scroll (drag = scroll, not select) is a mobile-only affordance:
-	// desktop selects on the press edge and scrolls via wheel/scrollbar. Force
-	// the mobile profile so the deferred-tap / dead-zone path is exercised.
+	// Mobile only: desktop selects on press and scrolls by wheel/scrollbar.
 	oldM := forceSmallScreenForTest
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = oldM })
@@ -83,8 +80,7 @@ func TestInstMenuCompTouchScrollCategories(t *testing.T) {
 	}
 }
 
-// TestInstMenuCompTouchScrollInstruments verifies dragging on an instrument
-// button scrolls the list instead of selecting.
+// A drag scrolls instead of selecting.
 func TestInstMenuCompTouchScrollInstruments(t *testing.T) {
 	// Touch-scroll (drag = scroll, not select) is a mobile-only affordance.
 	oldM := forceSmallScreenForTest
@@ -133,8 +129,6 @@ func TestInstMenuCompTouchScrollInstruments(t *testing.T) {
 	}
 }
 
-// TestInstMenuCompQuickTapSelectsCategory verifies a quick tap (no drag) on
-// a category fires the selection.
 func TestInstMenuCompQuickTapSelectsCategory(t *testing.T) {
 	prev := suppressClicksUntilRelease
 	suppressClicksUntilRelease = false
@@ -183,8 +177,6 @@ func TestInstMenuCompQuickTapSelectsCategory(t *testing.T) {
 	}
 }
 
-// TestInstMenuCompQuickTapSelectsInstrument verifies a quick tap on an
-// instrument fires the selection callback.
 func TestInstMenuCompQuickTapSelectsInstrument(t *testing.T) {
 	prev := suppressClicksUntilRelease
 	suppressClicksUntilRelease = false
@@ -222,8 +214,7 @@ func TestInstMenuCompQuickTapSelectsInstrument(t *testing.T) {
 
 // ── Context menu deferred tap tests ─────────────────────────────────────
 
-// TestContextMenuDeferredTap verifies that on mobile, context menu buttons
-// fire on release, not on press.
+// Fire on release, not press.
 func TestContextMenuDeferredTap(t *testing.T) {
 	old := forceSmallScreenForTest
 	forceSmallScreenForTest = true
@@ -242,8 +233,7 @@ func TestContextMenuDeferredTap(t *testing.T) {
 		t.Fatal("no context menu buttons")
 	}
 
-	// Clear suppress — in real usage, suppress is cleared when the user
-	// releases the kebab button before tapping a menu item.
+	// Released after the kebab, as in real use.
 	suppressClicksUntilRelease = false
 
 	// Find a button inside the menu.
@@ -273,8 +263,7 @@ func TestContextMenuDeferredTap(t *testing.T) {
 
 // ── Overflow menu deferred tap tests ────────────────────────────────────
 
-// TestOverflowMenuDeferredTap verifies that on mobile, overflow menu buttons
-// fire on release, not on press.
+// Fire on release, not press.
 func TestOverflowMenuDeferredTap(t *testing.T) {
 	old := forceSmallScreenForTest
 	forceSmallScreenForTest = true
@@ -285,8 +274,7 @@ func TestOverflowMenuDeferredTap(t *testing.T) {
 	dv.Rows = append(dv.Rows, &DrumRow{Name: "Row 1", Instrument: roster.Kick})
 	dv.calcLayout()
 
-	// File menu (default mode): anchored via fileMenuAnchorRect (folder button
-	// fallback = drum-pane top-right when no Game).
+	// With no Game, the anchor falls back to the drum pane's top-right.
 	dv.openOverflowMenuPortal()
 
 	popupRect := dv.overflowPopupRect()
@@ -294,9 +282,7 @@ func TestOverflowMenuDeferredTap(t *testing.T) {
 		t.Fatal("overflow popup rect is empty")
 	}
 	cx := popupRect.Min.X + 10
-	// File mode reserves no NAVIGATION band. Row 0 is the "File" header; the
-	// scrolling file-action rows follow. Tap a couple rows down to land on a
-	// file action (which closes the menu).
+	// Row 0 is the header; a couple of rows down is a file action, which closes the menu.
 	cy := popupRect.Min.Y + 2*touchMinTargetPx + 10
 
 	// Touch down — should not fire immediately.
@@ -322,8 +308,6 @@ func TestOverflowMenuDeferredTap(t *testing.T) {
 
 // ── openInstMenuForRow uses component path ──────────────────────────────
 
-// TestInstMenuOpenForRowUsesComponent verifies that openInstMenuForRow always
-// uses the component path when instMenuComp is available.
 func TestInstMenuOpenForRowUsesComponent(t *testing.T) {
 	prev := suppressClicksUntilRelease
 	suppressClicksUntilRelease = false
@@ -350,8 +334,7 @@ func TestInstMenuOpenForRowUsesComponent(t *testing.T) {
 
 // ── Desktop immediate fire (no deferred tap) ────────────────────────────
 
-// TestInstMenuDesktopImmediateFire verifies that on desktop, button clicks
-// still fire immediately (no deferred tap behavior).
+// A quick press+release fires on desktop too.
 func TestInstMenuDesktopImmediateFire(t *testing.T) {
 	old := forceSmallScreenForTest
 	forceSmallScreenForTest = false
@@ -381,8 +364,7 @@ func TestInstMenuDesktopImmediateFire(t *testing.T) {
 		t.Fatal("no instrument buttons")
 	}
 
-	// The component uses deferred tap even on desktop (which is fine — the pattern
-	// works for both). Verify that a quick press+release fires the selection.
+	// The deferred tap works on desktop as well.
 	r := instBtns[0].Rect()
 	cx, cy := r.Min.X+5, r.Min.Y+5
 

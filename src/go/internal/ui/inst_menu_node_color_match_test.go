@@ -13,12 +13,8 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestInstMenuInstrumentRowMatchesNodeColor verifies the Categories→Instrument
-// navigation entry for an instrument that lives on a row renders in that row's
-// (node's) actual color, not the instrument's registered default. Reproduces the
-// bug where a user-recolored node showed a mismatched swatch/stripe in the
-// picker because the menu derived its color from instColor(id) (the global
-// instrument-default lookup) instead of the live DrumRow.Color.
+// The picker takes the live row colour, not the instrument's registered default, or a recoloured node shows a
+// mismatched swatch.
 func TestInstMenuInstrumentRowMatchesNodeColor(t *testing.T) {
 	prev := suppressClicksUntilRelease
 	suppressClicksUntilRelease = false
@@ -27,14 +23,10 @@ func TestInstMenuInstrumentRowMatchesNodeColor(t *testing.T) {
 	logger := game_log.New(nil, game_log.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 800, 600), nil, logger)
 	dv.instOptions = []instrument.ID{roster.Kick, roster.Snare}
-	// NewDrumView seeds a default row 0; bind it to the kick instrument so the
-	// menu opens with kick as the current/active instrument.
 	dv.Rows[0].Instrument = roster.Kick
 	dv.calcLayout()
 
-	// Recolor the node to a warm orange that deliberately differs from the
-	// kick instrument's registered default — this is the value the grid node
-	// is drawn with (game_draw_grid_pane.go reads dv.Rows[i].Color).
+	// Differs from kick's default: this is the colour the grid node is drawn with.
 	want := color.RGBA{190, 120, 60, 255}
 	def := color.RGBAModel.Convert(instColor(roster.Kick)).(color.RGBA)
 	if want == def {
@@ -46,16 +38,12 @@ func TestInstMenuInstrumentRowMatchesNodeColor(t *testing.T) {
 	dv.instMenuComp = comp
 	dv.openInstMenuForRow(0)
 
-	// Drill into the instrument list so the kick row (the active instrument) is
-	// drawn with its active stripe + swatch.
 	comp.state.mode = InstMenuModeInstruments
 	comp.rebuildMenu()
 
 	img := ebiten.NewImage(800, 600)
 	rects := collectFilledRects(t, func() { comp.Draw(img) })
 
-	// The active instrument row draws a thin, full-row-height accent stripe at
-	// its left edge in the instrument's color. It must be the node color.
 	foundNodeColor := false
 	foundStaleDefault := false
 	for _, dr := range rects {
@@ -76,9 +64,6 @@ func TestInstMenuInstrumentRowMatchesNodeColor(t *testing.T) {
 	}
 }
 
-// TestInstMenuInstrumentRowFollowsLiveNodeRecolor verifies that recoloring a
-// node WHILE the instrument menu is open updates the menu's swatch/stripe to the
-// new color (SetRowColorManual refreshes the open menu's derived colors).
 func TestInstMenuInstrumentRowFollowsLiveNodeRecolor(t *testing.T) {
 	prev := suppressClicksUntilRelease
 	suppressClicksUntilRelease = false

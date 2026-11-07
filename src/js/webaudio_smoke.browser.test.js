@@ -70,9 +70,7 @@ const page = await browser.newPage();
 
 // Hook into Web Audio to capture raw samples from the ScriptProcessorNode.
 await page.addInitScript(() => { const RealAC = window.AudioContext || window.webkitAudioContext;
-  // SAMPLE_TARGET determines how many audio samples to collect before
-  // ending the test. 40000 samples at a 44.1kHz sample rate is ~0.9s of
-  // audio, sufficient to capture playback and analyze output.
+  // ~0.9 s at 44.1 kHz.
   const SAMPLE_TARGET = 40000;
   class TestAC extends RealAC { constructor(opts) { super(opts);
       window.__audioCtx = this;
@@ -149,8 +147,7 @@ const similarity = corr(sSeg, kSeg);
 if (!(similarity < 0.9)) { throw new Error(`instrument waveforms too similar: corr=${similarity.toFixed(4)}`);
 }
 
-// Print a short slice around the first non-zero to avoid confusion when the
-// initial frames are silence.
+// The first frames may be silence.
 const start = Math.max(0, first - 4);
 const view = samples.slice(start, start + 8).map((v) => v.toFixed(5));
 console.log("captured audio samples (near onset):", view);

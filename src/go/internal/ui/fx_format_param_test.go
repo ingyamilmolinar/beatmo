@@ -9,10 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// TestFXFormatParamRendersUnitsAndPrecision pins the desired human-readable
-// rendering: precision + unit are derived from the parameter DEFINITION
-// (Min/Max/Unit), not from the instantaneous value. Hz >= 1000 rolls up to
-// kHz; ms/st/% are integer-domain; sub-unit ranges get two decimals.
+// Precision and unit come from the definition (Min/Max/Unit), never the value: kHz from 1000 Hz, ms/st/% integer,
+// sub-unit ranges two decimals.
 func TestFXFormatParamRendersUnitsAndPrecision(t *testing.T) {
 	cases := []struct {
 		name string
@@ -56,10 +54,7 @@ func TestFXFormatParamRendersUnitsAndPrecision(t *testing.T) {
 	}
 }
 
-// TestFXFormatParamPrecisionIsStablePerParam is the core anti-jitter guarantee:
-// for EVERY parameter in the effect catalog, the number of fractional digits
-// rendered must be identical at every value across the param's [Min,Max] range.
-// If it varied, the label would visibly reflow while the user drags a slider.
+// Fractional digits are constant across every param's range, or the label reflows during a drag.
 func TestFXFormatParamPrecisionIsStablePerParam(t *testing.T) {
 	fracDigits := func(s string) int {
 		// Strip trailing unit (e.g. " kHz", " ms", "%").
@@ -82,8 +77,7 @@ func TestFXFormatParamPrecisionIsStablePerParam(t *testing.T) {
 				v := def.Min + (def.Max-def.Min)*float64(i)/float64(steps)
 				got := fxFormatParam(def, v)
 				d := fracDigits(got)
-				// kHz rollover legitimately changes the fractional-digit count
-				// relative to the sub-1000 "Hz" branch; exempt that transition.
+				// The kHz rollover legitimately changes the digit count.
 				if def.Unit == "Hz" && def.Max >= 1000 {
 					continue
 				}

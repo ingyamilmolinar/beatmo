@@ -15,10 +15,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
-// adoptHarness wires runAdopt up to a throwaway world: a drop-in source
-// dir, a converted-refs dir, and a catalogue that is loaded from and
-// written to memory. Nothing here touches the committed catalogue.json or
-// the developer's own ~/.beatmo directories.
+// Nothing here touches the committed catalogue.json or the developer's ~/.beatmo.
 type adoptHarness struct {
 	sources string
 	refs    string
@@ -120,9 +117,8 @@ func TestRunAdopt_RecordsFullProvenance(t *testing.T) {
 	}
 }
 
-// f0/peak/rms/duration and the PCM hash must be MEASURED from the converted
-// audio by the tool. Hand-written metadata is how upstream pitch labels
-// ended up wrong repeatedly.
+// f0/peak/rms/duration and the PCM hash must be MEASURED by the tool: hand-written metadata is how upstream pitch
+// labels went wrong.
 func TestRunAdopt_MeasuresAndHashesTheConvertedAudio(t *testing.T) {
 	h := newAdoptHarness(t, []wavref.Ref{refServing("snare-vcsl", roster.SnareLofi)})
 	h.drop(t, "snare_hot.wav", 330.0)
@@ -187,9 +183,7 @@ func TestRunAdopt_LeavesSiblingsOnTheirExistingReference(t *testing.T) {
 	}
 }
 
-// An instrument whose catalogue entry says "no clean recording found" is
-// the single best reason to adopt your own file, so it must be allowed --
-// there is no existing real ref to re-point away from.
+// "No clean recording found" is the best reason to adopt your own file: there is no real ref to re-point away from.
 func TestRunAdopt_WorksForANeedsSourceInstrument(t *testing.T) {
 	h := newAdoptHarness(t, []wavref.Ref{{
 		ID: "clavinet-status", Tier: wavref.TierInstrument, Instruments: []instrument.ID{roster.Clavinet},
@@ -243,9 +237,7 @@ func TestRunAdopt_SecondAdoptionReplacesTheFirst(t *testing.T) {
 	}
 }
 
-// A typo'd instrument id must fail loudly. Silently creating a reference
-// for "snare2" would leave the real snare-lofi un-adopted and the mistake
-// invisible until an audition session went looking for it.
+// A typo'd id must fail loudly, not create a reference for "snare2" and leave snare-lofi un-adopted.
 func TestRunAdopt_RejectsAnInstrumentTheCatalogueDoesNotKnow(t *testing.T) {
 	h := newAdoptHarness(t, []wavref.Ref{refServing("snare-vcsl", roster.SnareLofi)})
 	h.drop(t, "snare_hot.wav", 220.0)
@@ -379,12 +371,8 @@ func TestRunAdopt_TellsYouHowToHearTheResult(t *testing.T) {
 	}
 }
 
-// A note or credit containing spaces that reaches the CLI unquoted makes
-// Go's flag package stop parsing at the first bare word: the note is
-// silently truncated to one word AND every flag after it is silently
-// dropped (a -max-sec past an unquoted -note never applies). That is the
-// worst kind of failure -- it writes a wrong catalogue entry and reports
-// success. Leftover positional arguments must be rejected instead.
+// An unquoted multi-word note stops flag parsing at the first bare word (truncated note, later flags dropped, success
+// reported). Leftover positional arguments must be rejected.
 func TestParseAdoptArgs_RejectsLeftoverPositionalArguments(t *testing.T) {
 	_, err := parseAdoptArgs([]string{
 		"-instrument", string(roster.SnareLofi), "-wav", "x.wav",
@@ -422,10 +410,7 @@ func TestParseAdoptArgs_RequiresWav(t *testing.T) {
 	}
 }
 
-// The 18 registered ids the catalogue never mentions (snare-crack, kick-lofi,
-// fm-bell-soft, ...) each carry their own factory recipe, so each is a distinct
-// sound that deserves its own ground truth. Adoption is the ONLY way they
-// ever get one, so it must not require the catalogue to have heard of them.
+// A registered id the catalogue never mentions is its own sound and gets a reference only through adoption.
 func TestRunAdopt_AcceptsARegisteredInstrumentTheCatalogueNeverMentions(t *testing.T) {
 	h := newAdoptHarness(t, []wavref.Ref{refServing("snare-vcsl", roster.Snare)})
 	h.drop(t, "snare-lofi.wav", 220.0)
@@ -529,14 +514,8 @@ func TestRunAdoptScan_EmptyDropInDirWritesNothing(t *testing.T) {
 	}
 }
 
-// REGRESSION: a scan must load the catalogue once, apply every adoption to
-// that one value, and write once.
-//
-// The first implementation called a load-and-write runAdopt per file. Since
-// loadCatalogue serves a MEMOIZED singleton, every file re-read the same
-// starting catalogue and each write clobbered the previous one -- a scan of
-// twenty takes persisted exactly one, reporting all twenty as adopted. The
-// write count is the sharp edge of that bug, so it is asserted directly.
+// A scan loads once, applies every adoption to that value and writes once: per-file load-and-write re-read the
+// memoized catalogue and kept only the last. The write count is the sharp edge, so it is asserted.
 func TestRunAdoptScan_WritesOnceWithEveryAdoptionInIt(t *testing.T) {
 	h := newAdoptHarness(t, []wavref.Ref{refServing("snare-vcsl", roster.Snare)})
 	h.drop(t, "snare-lofi.wav", 220.0)
@@ -576,10 +555,7 @@ func TestRunAdoptScan_WritesNothingWhenNoFileResolves(t *testing.T) {
 	}
 }
 
-// "Where do I put files?" should be answered by the directory existing. A
-// scan over a missing drop-in dir creates it, so the printed path is
-// somewhere you can immediately drop a file rather than a path you must
-// first mkdir.
+// The scan creates a missing drop-in dir, so the printed path is somewhere you can drop a file immediately.
 func TestRunAdoptScan_CreatesTheDropInDirWhenMissing(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv(wavref.EnvVar, root)
@@ -598,12 +574,7 @@ func TestRunAdoptScan_CreatesTheDropInDirWhenMissing(t *testing.T) {
 	}
 }
 
-// The "hear it" hint has to name the instrument that was actually adopted,
-// which is not the same as the one the caller passed: with the drop-in dir
-// self-describing, -instrument is usually empty and the id comes from the
-// filename. Resolving it into a COPY of the options left the hint printing
-// a bare `make ab INST=`, so the one line telling you how to audition the
-// take you just adopted named nothing at all.
+// The hint must name the instrument actually adopted, which with a filename-derived id is not what the caller passed.
 func TestRunAdopt_HearItHintNamesTheFilenameDerivedInstrument(t *testing.T) {
 	h := newAdoptHarness(t, []wavref.Ref{refServing("snare-vcsl", roster.Snare)})
 	h.drop(t, "snare-lofi_garage_take3.wav", 220.0)

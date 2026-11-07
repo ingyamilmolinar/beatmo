@@ -10,8 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
-// effectSlotToJS converts a single audio.EffectSlot into a plain JS object so
-// callers don't need to JSON.parse a serialized blob on every read.
+// Plain JS objects, so callers need not JSON.parse.
 func effectSlotToJS(slot audio.EffectSlot) js.Value {
 	obj := js.Global().Get("Object").New()
 	obj.Set("type", string(slot.Type))
@@ -24,8 +23,6 @@ func effectSlotToJS(slot audio.EffectSlot) js.Value {
 	return obj
 }
 
-// effectParamDefToJS converts a single audio.EffectParamDef into a plain JS
-// object with the same field names as the JSON tags.
 func effectParamDefToJS(p audio.EffectParamDef) js.Value {
 	obj := js.Global().Get("Object").New()
 	obj.Set("name", p.Name)
@@ -101,11 +98,7 @@ func (g *Game) initJSInsertEffects() {
 		slot := args.Int(1)
 		param := args.Str(2)
 		value := args.Float(3)
-		// Param tweaks are continuous (slider drag); skip the gen bump on
-		// param changes so we don't burn the grace window on every micro-step
-		// — buffer hygiene cost would be too high. The chain shape isn't
-		// changing, only an audio knob value, so no parity coordination is
-		// needed.
+		// No gen bump: a drag would burn the grace window every step, and only a knob value changes, not the chain.
 		audio.SetInsertEffectParam(inst, slot, param, value)
 		emitInsertEffectParam(channel.Of(inst), slot, param, value)
 		return nil
@@ -129,8 +122,7 @@ func (g *Game) initJSInsertEffects() {
 		return nil
 	}))
 
-	// getInsertEffects(instrumentID) -> Array of {type, enabled, params}
-	// Returns a native JS array; callers must NOT JSON.parse it.
+	// getInsertEffects(id) -> [{type,enabled,params}], a native array: do not JSON.parse.
 	js.Global().Set("getInsertEffects", jsFn(func(args jsArgs) any {
 		arr := js.Global().Get("Array").New()
 		if args.Len() < 1 {
@@ -144,9 +136,7 @@ func (g *Game) initJSInsertEffects() {
 		return arr
 	}))
 
-	// insertEffectCatalog() -> Object keyed by effect type, each value an
-	// Array of {name, min, max, default, unit?}. Returns native JS objects;
-	// callers must NOT JSON.parse it.
+	// insertEffectCatalog() -> {type: [{name,min,max,default,unit?}]}, native: do not JSON.parse.
 	js.Global().Set("insertEffectCatalog", jsFn(func(args jsArgs) any {
 		out := js.Global().Get("Object").New()
 		for t, defs := range audio.InsertEffectCatalog() {

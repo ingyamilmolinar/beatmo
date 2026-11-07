@@ -5,10 +5,7 @@ import (
 	"testing"
 )
 
-// TestNodeKindsHaveOneSpelling: each logic rule, groove and node type has
-// exactly one spelling. The retired aliases ("none", "prev_fired",
-// "every_n_loops", "skip_if_prev_*"), other cases and padding are unknown
-// spellings — a decode error, never silently mapped onto a rule.
+// One spelling each: retired aliases, other cases and padding are decode errors, never silently mapped onto a rule.
 func TestNodeKindsHaveOneSpelling(t *testing.T) {
 	for _, k := range LogicKinds() {
 		got, err := ParseLogicKind(k.String())

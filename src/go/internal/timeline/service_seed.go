@@ -4,12 +4,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// SeedFromWindow writes commits for the range [offset, pastEnd] using the
-// provided rendered window values. It is intended for path-change reconciliation
-// so already-rendered history remains stable even when the beat path shape
-// changes (e.g., invisible gaps become explicit nodes).
-//
-// Playback/import commits are never overwritten.
+// For path-change reconciliation, so rendered history stays stable when the path's shape changes (a gap becoming a
+// node). Playback/import commits are never overwritten.
 func (s *Service) SeedFromWindow(row, offset, pastEnd int, steps []bool, types []model.NodeType, kind CommitKind, windowLen, capacity int) {
 	if row < 0 {
 		return
@@ -72,15 +68,8 @@ func (s *Service) SeedFromWindow(row, offset, pastEnd int, steps []bool, types [
 	}
 }
 
-// TrimAfterPathChange trims speculative commits after a path edit, preserving
-// immutable playback/import history and any frozen range provided by callers.
-//
-// The caller supplies cutoffExclusive (typically the row's next beat index) and
-// freezeLimit (a UI-maintained ceiling). The service computes maxKeep as:
-//
-//	max(cutoffExclusive-1, freezeLimit, LastImmutableAbs(row))
-//
-// Then it trims mutable commits strictly above maxKeep.
+// Keeps playback/import history and the caller's frozen range: trims mutable commits above
+// max(cutoffExclusive-1, freezeLimit, LastImmutableAbs(row)).
 func (s *Service) TrimAfterPathChange(row int, cutoffExclusive int, freezeLimit int) PathChangeTrimReport {
 	report := PathChangeTrimReport{MaxKeep: -1, LastImmutable: -1}
 	if row < 0 {
@@ -116,8 +105,7 @@ func (s *Service) TrimAfterPathChange(row int, cutoffExclusive int, freezeLimit 
 
 	if row < len(s.rows) {
 		s.rows[row].commits.trimAfterMutable(maxKeep)
-		// immutables is expected to hold only playback/import entries; nothing
-		// to prune here beyond honoring TrimAfterMutable semantics.
+		// immutables holds only playback/import, so there is nothing more to prune.
 	}
 
 	report.MaxKeep = maxKeep

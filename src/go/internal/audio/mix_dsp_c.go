@@ -15,8 +15,7 @@ import (
 	"unsafe"
 )
 
-// cEQ is a channel EQ running the C program runner (mix_dsp.c). The mutex
-// orders a UI-thread retune against the audio thread's block.
+// The mutex orders a UI-thread retune against the audio thread's block.
 type cEQ struct {
 	mu sync.Mutex
 	h  unsafe.Pointer
@@ -78,8 +77,7 @@ func (e *cEQ) Reset() {
 	e.mu.Unlock()
 }
 
-// softClipBlock applies the master soft clip (mix_dsp.c, the browser runs
-// the same C) to buf in place.
+// The browser runs the same C.
 func softClipBlock(buf []float64) {
 	if len(buf) == 0 {
 		return

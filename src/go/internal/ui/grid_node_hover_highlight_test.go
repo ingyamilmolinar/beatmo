@@ -10,9 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// countNodeHoverRingRects counts STROKED (filled==false) drawRect calls whose
-// straight RGB matches want, centred near (cx,cy) — the outlines/ring of the
-// shared drawRectHoverGlow. Runs under real Ebiten too (no pixel reads).
+// The stroked rings of drawRectHoverGlow; no pixel reads, so it runs under real Ebiten too.
 func countNodeHoverRingRects(t *testing.T, want color.Color, cx, cy, tol int, draw func()) int {
 	t.Helper()
 	count := 0
@@ -32,10 +30,7 @@ func countNodeHoverRingRects(t *testing.T, want color.Color, cx, cy, tol int, dr
 	return count
 }
 
-// TestGridNodeHoverDrawsFocusRing pins the crisp hover focus ring (the cue that
-// makes hover clearly visible where the faint bloom alone did not). It runs
-// under BOTH the stub and real Ebiten (interceptor, not pixel reads), so the
-// real-GPU draw path is actually exercised.
+// An interceptor, not pixel reads, so the real-GPU path is exercised too.
 func TestGridNodeHoverDrawsFocusRing(t *testing.T) {
 	assertDefaultParityState(t)
 	g, _, cx, cy := setupHoveredNode(t, model.NodeTypeRegular, true)
@@ -46,10 +41,7 @@ func TestGridNodeHoverDrawsFocusRing(t *testing.T) {
 	}
 }
 
-// setupHoveredNode builds a game with a single node hovered (halo eased to
-// ~full) and zoomed in enough that the outer bloom rings render. attachRow
-// controls whether the node belongs to an instrument row. Returns the game and
-// the node's on-screen centre.
+// Halo eased to ~full and zoomed in far enough for the outer rings to render.
 func setupHoveredNode(t *testing.T, nt model.NodeType, attachRow bool) (*Game, *uiNode, int, int) {
 	t.Helper()
 	g := New(testLogger)
@@ -98,11 +90,7 @@ func setupHoveredNode(t *testing.T, nt model.NodeType, attachRow bool) (*Game, *
 	return g, n, int((x1 + x2) * 0.5), int((y1 + y2) * 0.5)
 }
 
-// TestGridNodeHoverBloomsInOwnColorNotWhite pins that hovering a grid node
-// highlights it with the node's OWN color rather than the white colHighlight —
-// row-instrument nodes in their row color, and non-row (structural / mute /
-// silent) nodes in the node border color. This is the "same color they are
-// using instead of white" requirement.
+// In the node's own colour, never white: a row node in its row colour, any other in the border colour.
 func TestGridNodeHoverBloomsInOwnColorNotWhite(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -149,9 +137,7 @@ func TestGridNodeHoverBloomsInOwnColorNotWhite(t *testing.T) {
 	})
 }
 
-// TestGridNodeHoverFromRealCursorHighlights drives a real cursor over a grid
-// node through Game.Update and asserts the node becomes the hover target and
-// its halo eases up — the "hovering on top of any node highlights it" guard.
+// A real cursor makes the node the hover target and eases its halo up.
 func TestGridNodeHoverFromRealCursorHighlights(t *testing.T) {
 	withDefaultStart(t, true)
 	g := New(testLogger)
@@ -191,9 +177,7 @@ func TestGridNodeHoverFromRealCursorHighlights(t *testing.T) {
 	}
 }
 
-// hoverCursorOverOriginNode positions a fixed mouse cursor over the origin node
-// and drives `frames` Update ticks. Returns the origin node. The input override
-// is restored on t.Cleanup.
+// The input override is restored on Cleanup.
 func hoverCursorOverOriginNode(t *testing.T, g *Game, frames int) *uiNode {
 	t.Helper()
 	n := g.nodeAt(0, 0)
@@ -218,12 +202,7 @@ func hoverCursorOverOriginNode(t *testing.T, g *Game, frames int) *uiNode {
 	return n
 }
 
-// TestGridNodeHoverWorksUnderFastPath reproduces the browser bug: with the perf
-// fast-path enabled (the WASM/browser default), hovering a grid node with the
-// mouse must still highlight it. The fast path previously force-nil'd g.hover
-// every frame, so grid-node hover silently did nothing in the browser even
-// though it worked on native desktop. Hover eligibility must key off the input
-// class (desktop pointer) — NOT the perf fast-path.
+// Hover keys off the input class (desktop pointer), not the perf fast path, which is the browser default.
 func TestGridNodeHoverWorksUnderFastPath(t *testing.T) {
 	withDefaultStart(t, true)
 	g := New(testLogger)
@@ -241,10 +220,7 @@ func TestGridNodeHoverWorksUnderFastPath(t *testing.T) {
 	}
 }
 
-// TestGridNodeHoverBloomPaintsUnderFastPath is the end-to-end guard for the
-// reported bug: under the browser fast-path, moving the mouse over a grid node
-// must actually PAINT the hover bloom (in the node's own row color), not just
-// set state. Drives the real Update→Draw loop with the cursor over the node.
+// Under the browser fast path the hover must PAINT the bloom, not merely set state.
 func TestGridNodeHoverBloomPaintsUnderFastPath(t *testing.T) {
 	withDefaultStart(t, true)
 	g := New(testLogger)
@@ -293,10 +269,7 @@ func TestGridNodeHoverBloomPaintsUnderFastPath(t *testing.T) {
 	}
 }
 
-// TestGridNodeHoverSuppressedOnMobile guards the other side: touch/mobile has no
-// persistent pointer, so a mobile profile must NOT latch a grid-node hover from
-// a stale cursor position (which would leave a node stuck highlighted after a
-// tap). Hover eligibility is desktop-pointer only.
+// Touch has no persistent pointer, so a stale cursor must never latch a hover on mobile.
 func TestGridNodeHoverSuppressedOnMobile(t *testing.T) {
 	withDefaultStart(t, true)
 	withSmallScreen(t, true) // mobile screen class → touch, no pointer hover

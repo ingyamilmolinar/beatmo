@@ -14,15 +14,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// These tests pin the universal behavior: a tap on a sampler knob CARD opens the
-// shared MobileWheelPopup (the same control the Synth tab uses) on EVERY platform
-// — desktop and mobile alike (the old desktop in-place rotary drag is retired).
+// A tap on a sampler card opens the shared MobileWheelPopup on every platform.
 
-// newMobileSamplerWheelGame builds a Game with the Sampler tab active under a
-// forced MOBILE profile, captures row-0's instrument as a synth-source buffer
-// (so knobs lay out and commitSamplerEdit is non-vacuous), and lays out the tab
-// on a mobile panel tall enough to show several knobs. Returns the game and the
-// captured instrument id.
+// Forced mobile, row 0 captured as a synth source so the knobs lay out and the commit is real, on a panel tall
+// enough for several knobs.
 func newMobileSamplerWheelGame(t *testing.T) (*Game, string) {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -34,10 +29,8 @@ func newMobileSamplerWheelGame(t *testing.T) (*Game, string) {
 	restore := SetDensityForTest(DensitySpacious)
 	t.Cleanup(restore)
 	instID := g.drum.Rows[0].Instrument
-	// A test here may Accept a wheel edit, committing a sample-edit descriptor to
-	// the internal/audio package-global store. Clear it on cleanup so a later
-	// test capturing the same instrument (e.g. undo_sampler_test) sees a clean
-	// baseline — the store is process-wide, not per-Game.
+	// An accepted edit lands in the process-wide sample-edit store; clear it so a later capture of this instrument
+	// starts clean.
 	t.Cleanup(func() { audio.ClearSampleEdit(instID) })
 	g.drum.sampler.captureFromSynth(instID)
 	if !g.drum.sampler.hasBuffer() || g.drum.sampler.captureID == "" {
@@ -47,9 +40,7 @@ func newMobileSamplerWheelGame(t *testing.T) (*Game, string) {
 	return g, string(instID)
 }
 
-// TestSamplerMobileKnobCardWithinCell pins the VISUAL contract: on mobile every
-// visible sampler knob renders as a ParamCard whose rect sits inside the knob
-// cell (below the group-label band), so it never bleeds into a neighbouring row.
+// Each visible card sits inside its cell, below the group-label band, never in a neighbouring row.
 func TestSamplerMobileKnobCardWithinCell(t *testing.T) {
 	g, instID := newMobileSamplerWheelGame(t)
 	dv := g.drum
@@ -78,9 +69,7 @@ func TestSamplerMobileKnobCardWithinCell(t *testing.T) {
 	}
 }
 
-// TestSamplerKnobPressOpensWheelOnMobile drives the production knob handler
-// (samplerKnobHitAdapter.OnPress) under a mobile profile and asserts a press
-// opens the wheel popup as a modal portal and consumes the press.
+// Opens as a modal portal and consumes the press.
 func TestSamplerKnobPressOpensWheelOnMobile(t *testing.T) {
 	g, _ := newMobileSamplerWheelGame(t)
 	dv := g.drum
@@ -109,9 +98,7 @@ func TestSamplerKnobPressOpensWheelOnMobile(t *testing.T) {
 	}
 }
 
-// TestSamplerKnobPressOpensWheelOnDesktop pins the universal contract: a desktop
-// card press now OPENS the wheel popup (was: in-place rotary drag) and consumes
-// the press. Inverts the retired "desktop must NOT open the popup" gate.
+// Opens and consumes on desktop too.
 func TestSamplerKnobPressOpensWheelOnDesktop(t *testing.T) {
 	g := samplerLayoutGame(t) // desktop 1280x720, comfortable density
 	restore := SetDensityForTest(DensityComfortable)
@@ -147,11 +134,7 @@ func TestSamplerKnobPressOpensWheelOnDesktop(t *testing.T) {
 	}
 }
 
-// TestSamplerWheelPopupDragChangesValueAndCommitsOnAccept opens the popup for
-// the gain knob, drags the barrel, and asserts the knob value changed (OnChange
-// → applySamplerKnob) live but that the single undo step is recorded on Accept
-// (OnCommit → commitSamplerEdit), NOT on drag release — the transactional model
-// (Enter / tap-away persists; Esc reverts). One undo step per accepted edit.
+// The value moves live through OnChange, and the one undo step lands on Accept, not on drag release.
 func TestSamplerWheelPopupDragChangesValueAndCommitsOnAccept(t *testing.T) {
 	g, _ := newMobileSamplerWheelGame(t)
 	dv := g.drum
@@ -169,8 +152,7 @@ func TestSamplerWheelPopupDragChangesValueAndCommitsOnAccept(t *testing.T) {
 	g.undoManager.OnExternalLoad()
 	depth0 := len(g.undoManager.undo)
 
-	// Press in the barrel ABOVE the center value box (a press inside centerH
-	// would open the numeric editor instead of starting a value drag).
+	// Above the centre box, which confirms.
 	cx := (w.valRect.Min.X + w.valRect.Max.X) / 2
 	py := w.valRect.Min.Y + 4
 	if image.Pt(cx, py).In(w.centerH) {
@@ -194,8 +176,6 @@ func TestSamplerWheelPopupDragChangesValueAndCommitsOnAccept(t *testing.T) {
 	}
 }
 
-// TestSamplerWheelPopupCenterTapOpensEditor asserts a tap on the popup's center
-// value box opens the shared numeric editor (OpenEditor → openSamplerParamEditor).
 func TestSamplerWheelPopupCenterTapConfirms(t *testing.T) {
 	g, _ := newMobileSamplerWheelGame(t)
 	dv := g.drum
@@ -215,16 +195,13 @@ func TestSamplerWheelPopupCenterTapConfirms(t *testing.T) {
 	w.HandleInput(cx, cy, true)
 	w.HandleInput(cx, cy, false)
 
-	// Typed entry was retired: a centre click CONFIRMS (Accept + close), the
-	// uniform "click the middle to confirm" contract.
+	// A centre click confirms: Accept and close.
 	if w.IsOpen() {
 		t.Fatal("a centre click must confirm and close the sampler wheel")
 	}
 }
 
-// TestSamplerWheelPopupBlocksGridTap pins input isolation: while the popup is
-// open (a modal portal), a tap in the grid pane must NOT create a node beneath
-// it. Mirrors the synth wheel popup isolation contract.
+// A modal portal, so a grid tap beneath creates no node.
 func TestSamplerWheelPopupBlocksGridTap(t *testing.T) {
 	g, _ := newMobileSamplerWheelGame(t)
 	dv := g.drum
@@ -248,8 +225,7 @@ func TestSamplerWheelPopupBlocksGridTap(t *testing.T) {
 	}
 }
 
-// TestSamplerWheelPopupClickOutsideCloses verifies a click outside the popup
-// closes it (and drops the portal entry) via the tree's click-outside path.
+// Through the tree's click-outside path, dropping the portal entry.
 func TestSamplerWheelPopupClickOutsideCloses(t *testing.T) {
 	g, _ := newMobileSamplerWheelGame(t)
 	dv := g.drum

@@ -10,11 +10,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// finish_stage_engine_test.go — the FINISH stage (the always-on post ops) run
-// through the real C engine at each instrument's real render length. The C0
-// parity cases render 250 ms with one knob moved at a time, which is how a Fade
-// that GREW the envelope (exp of a positive exponent → Inf/NaN after a second)
-// shipped as a visible knob.
+// Through the real C engine at each instrument's own length: short single-knob renders let a Fade that GREW the
+// envelope (Inf/NaN after a second) ship as a visible knob.
 
 var finishEngineInstruments = []instrument.ID{roster.Kick, roster.Snare, roster.Violin, roster.FmBell}
 
@@ -36,8 +33,6 @@ func finishDefs(t *testing.T, id string) []ParamDef {
 	return out
 }
 
-// renderFinish renders id at its document's render length with overrides set
-// through its document.
 func renderFinish(t *testing.T, id instrument.ID, over map[string]float64) []float32 {
 	t.Helper()
 	sec := 1.0
@@ -60,11 +55,8 @@ func finitePeak(buf []float32) (peak float64, nonFinite int) {
 	return peak, nonFinite
 }
 
-// TestFinishKnobExtremesStayFiniteAndBounded: every pair of FINISH knobs at
-// every combination of their extremes renders finite audio no louder than a
-// few times the untouched voice. The post ops shape a finished voice — none of
-// them may turn it into a runaway (Inf poisons the browser's peak-normaliser
-// and then every BiquadFilter on the channel).
+// Every pair of FINISH extremes stays finite and within a few times the untouched voice: Inf poisons the browser's
+// peak normaliser and every filter on the channel.
 func TestFinishKnobExtremesStayFiniteAndBounded(t *testing.T) {
 	for _, id := range finishEngineInstruments {
 		base, _ := finitePeak(renderFinish(t, id, nil))
@@ -89,10 +81,7 @@ func TestFinishKnobExtremesStayFiniteAndBounded(t *testing.T) {
 	}
 }
 
-// TestFinishKnobsRespondProportionally: the first 1% of a FINISH knob's travel
-// does a small part of its work, not most of it. Darken used to switch in a
-// full 8 kHz low-pass at 0.01 and Crunch a full tanh(x)/tanh(1) at 0.01 — the
-// knob read as a switch with a decorative tail.
+// The first 1 % of travel does a small part of the work, not most of it, or the knob reads as a switch.
 func TestFinishKnobsRespondProportionally(t *testing.T) {
 	dist := func(a, b []float32) float64 {
 		var s float64

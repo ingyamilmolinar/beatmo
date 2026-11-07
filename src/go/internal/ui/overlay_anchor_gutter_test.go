@@ -5,15 +5,13 @@ import (
 	"testing"
 )
 
-// TestFloatOffPaneEdges verifies the gutter nudge: a popup welded to a pane
-// edge is pulled inward by the gutter when (and only when) that axis has slack,
-// so the panel reads as a floating card instead of chrome bolted to the frame.
+// A popup touching a pane edge is pulled in by the gutter only where that axis has slack, so it reads as a
+// floating card.
 func TestFloatOffPaneEdges(t *testing.T) {
 	pane := image.Rect(0, 0, 1000, 300)
 	const gutter = 10
 
-	// Welded to the right + bottom edges, with slack on both axes → both edges
-	// pulled inward by exactly the gutter; size unchanged.
+	// Both edges pulled in by exactly the gutter; size unchanged.
 	r := image.Rect(880, 240, 1000, 300) // 120x60
 	got := floatOffPaneEdges(r, pane, gutter)
 	want := image.Rect(870, 230, 990, 290)
@@ -21,9 +19,7 @@ func TestFloatOffPaneEdges(t *testing.T) {
 		t.Fatalf("welded corner: got %v want %v", got, want)
 	}
 
-	// Fills the full pane height (no vertical slack) → vertical position is
-	// left untouched even though it touches top+bottom; horizontal still gets
-	// its right gutter.
+	// No vertical slack, so only the horizontal gutter applies.
 	tall := image.Rect(880, 0, 1000, 300)
 	gotTall := floatOffPaneEdges(tall, pane, gutter)
 	if gotTall.Min.Y != 0 || gotTall.Max.Y != 300 {

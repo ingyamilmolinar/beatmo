@@ -17,8 +17,6 @@ var (
 	miInitialized       bool
 )
 
-// mobileInputInit caches JS function references for the mobile native input system.
-// Called once from softKeyboardInit().
 func mobileInputInit() {
 	g := js.Global()
 	miFnRegister = g.Get("_mobileInputRegister")
@@ -61,15 +59,8 @@ func mobileInputActive(id string) bool {
 	return miFnActive.Invoke(id).Bool()
 }
 
-// lastPointerWasTouch reports whether the MOST RECENT pointer interaction was a
-// touch or pen (vs a mouse). This — NOT device touch-CAPABILITY — is the correct
-// signal for "will the native <input> overlay be created?": the overlay is built
-// only inside a `touchend` handler (see index.html), so it appears iff the
-// opening gesture was a touch. Using capability (navigator.maxTouchPoints) was
-// the bug: a touch-capable laptop / DevTools device-mode driven with a MOUSE
-// reports capability=true yet fires no touchend, so the native input never
-// appeared and the mobile editor sat inert ("click, see cursor, no key works").
-// Backed by a pointerdown listener in index.html; read live (cheap bool call).
+// The last pointer's type, not touch capability: index.html builds the native overlay only in a
+// touchend handler, so a touch-capable laptop driven by mouse never gets one.
 func lastPointerWasTouch() bool {
 	fn := js.Global().Get("_lastPointerWasTouch")
 	if !fn.Truthy() {
@@ -85,8 +76,7 @@ func mobileInputAnyActive() bool {
 	return miFnAnyActive.Invoke().Bool()
 }
 
-// mobileInputPollResult returns the result of a completed native input.
-// Returns (value, committed, ok). ok is false if no result is available.
+// ok is false when no result is available.
 func mobileInputPollResult(id string) (string, bool, bool) {
 	if !miInitialized {
 		return "", false, false

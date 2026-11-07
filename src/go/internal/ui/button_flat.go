@@ -1,13 +1,7 @@
 package ui
 
-// button_flat.go — the flat-tonal button primitives that replace the retired
-// matte-keycap chrome. See DESIGN.md "Elevation & Depth".
-//
-// Doctrine: depth comes from TONE (a control sits one surface level above its
-// container), feedback comes from MOTION (hover/press deltas + a growing
-// selection bar), and the accent color marks VALUE, never chrome. A control
-// draws no border at rest — the only outline left in the system is the
-// hot-pink focus ring.
+// Depth comes from TONE, feedback from MOTION, and the accent marks VALUE, never chrome; the focus ring is the
+// only outline left.
 
 import (
 	"image"
@@ -16,15 +10,10 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// flatSelectionBarPx is the thickness of the accent selection bar. Two px
-// reads at every density; it is a hairline constant like the 1px separator,
-// not a sizing decision, so it is deliberately not a density token.
+// A hairline constant like the 1 px separator, not a sizing decision, so not a density token.
 const flatSelectionBarPx = 2
 
-// selectionEdge names which edge of a control carries its selection bar.
-// Horizontal groups (tab strips, segmented controls) mark the BOTTOM; vertical
-// lists (menus) mark the LEFT. One primitive, two orientations — see DESIGN.md
-// "One selection primitive".
+// Horizontal groups mark the BOTTOM, vertical lists the LEFT: one primitive, two orientations.
 type selectionEdge int
 
 const (
@@ -32,12 +21,7 @@ const (
 	selectionEdgeLeft
 )
 
-// drawFlatButtonBody paints a control's body: a single filled rounded rect and
-// nothing else. No socket wall, no contact shadow, no bevel, no border stroke.
-// The control's silhouette is the tone step between its fill and its container.
-//
-// A fully transparent fill paints nothing, which is what lets the
-// `button-quiet` variant cost zero draw calls at rest.
+// One filled rect and nothing else. A transparent fill draws nothing, so `button-quiet` costs no draws at rest.
 func drawFlatButtonBody(dst *ebiten.Image, r image.Rectangle, fill color.Color, rad int) {
 	if r.Empty() || fill == nil {
 		return
@@ -52,11 +36,7 @@ func drawFlatButtonBody(dst *ebiten.Image, r image.Rectangle, fill color.Color, 
 	drawRoundedRect(dst, r, fill, rad, true)
 }
 
-// drawFlatSelectionBar paints the accent selection bar along r's edge. frac
-// (0..1) scales the bar's length so a hover spring can grow it from nothing to
-// full; a bottom bar grows outward from the center, while a left bar is always
-// full-height (a list row's stripe does not animate its length). frac <= 0
-// draws nothing, which is what keeps an unselected control at zero draw cost.
+// frac grows the bar from the centre (a hover spring); a left bar is always full height. frac <= 0 draws nothing.
 func drawFlatSelectionBar(dst *ebiten.Image, r image.Rectangle, col color.Color, edge selectionEdge, frac float64) {
 	if r.Empty() || col == nil || frac <= 0 {
 		return
@@ -78,12 +58,8 @@ func drawFlatSelectionBar(dst *ebiten.Image, r image.Rectangle, col color.Color,
 	}
 }
 
-// flatStateFill applies the interaction brightness deltas to a base fill.
-// The deltas are the historical ButtonStyle values retained verbatim from
-// DESIGN.md `button-secondary` (hover +12, press -20), so the restyle changes
-// a button's GEOMETRY, not its interaction feel. Disabled short-circuits to
-// surface-1 so a dead control reads as part of its container rather than as a
-// dimmed object sitting on it.
+// The DESIGN.md deltas (hover +12, press -20), so the restyle changed geometry, not feel. Disabled uses
+// surface-1 so a dead control reads as part of its container.
 func flatStateFill(base color.Color, st ComponentState) color.Color {
 	if st.Disabled {
 		return colSurface1
@@ -97,10 +73,7 @@ func flatStateFill(base color.Color, st ComponentState) color.Color {
 	return base
 }
 
-// drawFlatPanelButton renders a transient popup/panel action as a flat tonal
-// chip and returns the content rect so callers can center a label on it.
-// Replaces drawKeycapPanelButton; it returns the full rect because there is no
-// longer a cap face distinct from the button rect.
+// Returns the full rect: there is no cap face distinct from the button.
 func drawFlatPanelButton(dst *ebiten.Image, r image.Rectangle, fill color.Color, hovered bool) image.Rectangle {
 	rad := fitRadius(popupButtonRadius(), r)
 	if hovered {

@@ -12,8 +12,7 @@ import (
 
 type testMode struct{ f, alpha, amp, phase float64 }
 
-// modalDoc builds a minimal document whose sound is exactly modes (Hz mode,
-// decay law a=1 p=0 b=0 so a row's decay IS its alpha, strike off).
+// Decay law a=1 p=0 b=0 so a row's decay IS its alpha; strike off.
 func modalDoc(t testing.TB, modes []testMode) instrument.Doc {
 	t.Helper()
 	reg := BuiltinModuleRegistry()
@@ -52,8 +51,7 @@ func renderDocRaw(d instrument.Doc, sr, n int) []float32 {
 	return buf
 }
 
-// TestModalBankMatchesTheModeModel: the C bank renders Σ A e^{-αt} cos(2πft+φ)
-// — the clone analysis' Mode convention — to float precision.
+// Σ A e^{-αt} cos(2πft+φ), the clone analysis' convention, to float precision.
 func TestModalBankMatchesTheModeModel(t *testing.T) {
 	modes := []testMode{{440, 2, 0.4, 0.3}, {1210, 4.5, 0.2, -1.1}, {2380, 9, 0.12, 2}, {3950, 16, 0.06, 0.7}}
 	const sr, n = 48000, 48000
@@ -86,8 +84,7 @@ func TestModalStagesAreExactBypassesWhenOff(t *testing.T) {
 	}
 }
 
-// TestStrikeAtIdentityIsBitIdentical: strike ON with tc=0, hardness 0, click 0
-// leaves the bank untouched (the identity rows are stored against).
+// tc 0, hardness 0, click 0 is the identity rows are stored against.
 func TestStrikeAtIdentityIsBitIdentical(t *testing.T) {
 	reg := BuiltinModuleRegistry()
 	d := modalDoc(t, []testMode{{440, 2, 0.4, 0.3}, {2000, 8, 0.1, 1}})
@@ -126,8 +123,7 @@ func TestModalSkipsModesAboveTheLimit(t *testing.T) {
 	}
 }
 
-// TestModalTranspositionFollowsTheDecayLaw: in ratio mode a higher note puts
-// every mode higher AND, through the law, makes it ring shorter.
+// In ratio mode a higher note puts every mode higher and, through the law, rings shorter.
 func TestModalTranspositionFollowsTheDecayLaw(t *testing.T) {
 	d := modalDoc(t, []testMode{{1, 1, 0.5, 0}})
 	vals := d.Stages["modal"].Values
@@ -213,9 +209,7 @@ func TestModalRendersAreDeterministicAndConcurrent(t *testing.T) {
 	}
 }
 
-// TestModalStagesAreLive: every declared value and every table column of the
-// three stages moves the render in a context where its stage plays (the
-// shipped-instrument liveness test cannot see them yet — no clone ships).
+// The shipped-instrument liveness test cannot see these stages while no clone ships.
 func TestModalStagesAreLive(t *testing.T) {
 	reg := BuiltinModuleRegistry()
 	base := modalDoc(t, []testMode{{440, 2, 0.4, 0.3}, {1210, 4.5, 0.2, -1.1}, {2380, 9, 0.12, 2}})
@@ -291,10 +285,7 @@ func BenchmarkModalBank128x3s(b *testing.B) {
 	}
 }
 
-// TestModalModesMatchTheEngine: ModalModes (the Go mirror the Synth tab's mode
-// graph and the WAV-clone tooling read) sums to what the C bank renders, with
-// every macro off its identity: ratio rows, stretch, tune, Decay ×,
-// Brightness, a decay law and the strike.
+// Every macro off its identity: ratio rows, stretch, tune, Decay ×, Brightness, a decay law and the strike.
 func TestModalModesMatchTheEngine(t *testing.T) {
 	d := modalDoc(t, []testMode{{1, 1.2, 0.4, 0.3}, {2.76, 0.9, 0.2, -1.1}, {5.4, 1.1, 0.12, 2}, {8.93, 1, 0.06, 0.7}})
 	mv := d.Stages["modal"].Values

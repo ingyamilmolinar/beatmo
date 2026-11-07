@@ -14,24 +14,15 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-// reachability classifies every function and method (closures inherit their
-// parent) by rapid type analysis over SSA, the algorithm x/tools' deadcode
-// uses:
-//
-//	prod      reached from a production root in a config that compiles it
-//	test-only not reached by production, reached from a test main
-//	dead      reached by nothing ("unsplit" when the test pass is skipped)
-//
-// A config only gives evidence for packages it type-checked cleanly. A unit
-// with no clean evidence stays unclassified.
+// reachability classifies every function (closures inherit their parent) by RTA over SSA, as x/tools' deadcode does:
+// prod, test-only, or dead ("unsplit" with the test pass skipped). A config gives evidence only for packages it
+// type-checked cleanly; a unit with none stays unclassified.
 func reachability(l *Loaded, m *Model, fast bool) error {
 	type result struct {
 		name    string
 		reached map[string]bool
-		// blind: packages whose callers this config cannot fully see, because
-		// the package itself or a package importing it failed to type-check
-		// (nil map + allBlind when a root failed). The config may prove those
-		// packages' units reachable, never unreachable.
+		// Packages whose callers this config cannot fully see (they or an importer failed to type-check; nil + allBlind when a
+		// root failed): it may prove their units reachable, never unreachable.
 		blind    map[string]bool
 		allBlind bool
 	}
@@ -98,10 +89,8 @@ func unreachable(reach string) bool {
 	return reach == "dead" || reach == "test-only" || reach == "unsplit"
 }
 
-// markVariants reclassifies an unreachable function whose build-tag sibling
-// (same package and name, another file) is reachable: it is the other build's
-// implementation (a stub for linux, say), needed by callers this run's configs
-// do not compile, never dead code.
+// markVariants: an unreachable function with a reachable build-tag sibling is the other build's implementation, needed
+// by callers this run does not compile, never dead code.
 func markVariants(m *Model) {
 	live := map[string]bool{}
 	for _, u := range m.Units {
@@ -172,11 +161,8 @@ func topParent(m *Model, u *Unit) *Unit {
 	return u
 }
 
-// rtaReach builds SSA for every package of the config that type-checked
-// cleanly (along with all its imports) and returns the declaration keys of
-// the in-module functions reachable from the config's roots, the in-module
-// packages whose callers it cannot fully see, and whether it is blind
-// altogether (a root failed).
+// rtaReach builds SSA for every cleanly type-checked package of the config and returns the reachable in-module
+// declarations, the packages whose callers it cannot fully see, and whether a root failed.
 func rtaReach(c *cfgLoad, root, module string) (reached, blind map[string]bool, allBlind bool) {
 	tainted := map[*packages.Package]bool{}
 	var order []*packages.Package

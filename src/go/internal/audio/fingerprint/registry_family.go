@@ -1,20 +1,8 @@
 package fingerprint
 
-// registry_family.go — the family-specific analyzers, reconnected.
-//
-// AnalyzeSnare, AnalyzePiano, ComputeWindAttack, SpectralIrregularity and
-// KickSegmentAnalyze all existed with full DSP and full unit tests and ZERO
-// non-test callers: no report, no distance function and no CLI ever read
-// them. The measurements were real; nothing consumed them.
-//
-// Registering them here is the cheapest coverage the battery can buy — no new
-// DSP at all — and it stops them being code that only their own tests
-// exercise.
-//
-// Every row is gated by measured signal character (RequiresPercussive,
-// RequiresPitched, …), never by an instrument→family table. A hardcoded table
-// would need updating every time an instrument is added and would silently
-// go stale when one is retuned; a predicate over the actual signal cannot.
+// The family analysers (snare, piano, wind attack, irregularity, kick segments) had full DSP and no consumer;
+// registering them is coverage at no DSP cost. Every row is gated on measured signal character, never an
+// instrument→family table that goes stale.
 
 // Family descriptor IDs.
 const (
@@ -51,14 +39,8 @@ const (
 func init() {
 	r := DefaultRegistry()
 
-	// --- percussive body (snare family) -------------------------------------
-	//
-	// AnalyzeSnare splits the hit into a low "body" band and a high "buzz"
-	// band and measures each independently. That split is the point: a whole
-	// signal envelope averages a snare's fat bottom together with its wire
-	// snap, and those two decay at completely different rates. The listener's
-	// snare complaint ("ghost sound, breathy, fuzzy, hissy") is a
-	// band-specific defect that a whole-signal metric cannot localize.
+	// Body and buzz bands are measured separately: a whole-signal envelope averages a snare's bottom with its wire snap,
+	// which decay at very different rates.
 
 	snareRow := func(id, name, doc string, kind Kind, get func(SnareMetrics) float64) {
 		r.Register(Descriptor{
@@ -105,14 +87,8 @@ func init() {
 		"SnareMetrics.BuzzDecayMs: high-band -20dB decay time. See body decay.",
 		KindSeconds, func(m SnareMetrics) float64 { return m.BuzzDecayMs / 1000 })
 
-	// --- struck string (piano family) ---------------------------------------
-	//
-	// A piano's identity is two things no general descriptor captures: stiff-
-	// string INHARMONICITY (partials stretch progressively sharp, which is why
-	// an exactly-harmonic additive stack reads as electronic) and DOUBLE
-	// DECAY (a fast prompt sound over a slow aftersound). The listener's
-	// verdict on both pianos was "lo-fi and nearly indistinguishable from each
-	// other" — these are the axes that would separate them.
+	// Stiff-string inharmonicity (an exactly harmonic stack reads electronic) and double decay: what no general
+	// descriptor captures.
 
 	pianoRow := func(id, name, doc string, kind Kind, get func(PianoMetrics) float64) {
 		r.Register(Descriptor{
@@ -153,11 +129,8 @@ func init() {
 	r.Register(Descriptor{
 		ID: IDPianoStretch, Group: GroupPiano, Name: "partial stretch",
 		Scope: ScopeWhole, Repr: ReprSpectrum, Kind: KindFraction,
-		// Thresholds in CENTS, the vector's own unit -- the comparison reduces
-		// to a mean absolute difference in cents, and the KindFraction defaults
-		// (0.05/0.15) would call two identical stretch curves 0.1 cents apart a
-		// "drift". 5 cents is around the edge of audibility for a sustained
-		// pitch comparison; 20 cents is unambiguously out of tune.
+		// In CENTS, the vector's unit: KindFraction's defaults would call two curves 0.1 cent apart a drift. 5 cents is near
+		// audibility, 20 unambiguously out of tune.
 		Drift: 5, Mismatch: 20, Unit: "cents",
 		Doc: "PianoMetrics.StretchCents: per-partial stretch versus an exact n*f0 series, " +
 			"in cents. A VECTOR measurement — the shape of the stretch curve is the " +
@@ -176,12 +149,8 @@ func init() {
 		},
 	})
 
-	// --- wind attack ----------------------------------------------------------
-	//
-	// The trumpet breakthrough recorded in AGENTS.synth.md was that a note's
-	// identity lives in its ATTACK TRAJECTORY, not in a mid-sustain snapshot:
-	// the real instrument swells and brightens together over ~500 ms. These
-	// are the descriptors that measure that directly.
+	// A wind note's identity lives in its ATTACK TRAJECTORY (swelling and brightening together), not a mid-sustain
+	// snapshot.
 
 	windRow := func(id, name, doc string, kind Kind, get func(WindAttack) float64) {
 		r.Register(Descriptor{
@@ -219,11 +188,8 @@ func init() {
 	r.Register(Descriptor{
 		ID: IDWindCentroidTraj, Group: GroupWind, Name: "attack centroid trajectory",
 		Scope: ScopeSegment, Repr: ReprSpectrum, Kind: KindHz,
-		// Thresholds in HERTZ, the vector's own unit. KindHz's scalar defaults
-		// are PERCENTAGES (10% drift / 40% mismatch) and cannot apply to a
-		// reduction, which is an absolute magnitude; these are those same
-		// percentages taken at a ~2 kHz wind/brass attack centroid, the range
-		// this descriptor actually measures in.
+		// In HERTZ: KindHz's defaults are percentages and cannot apply to an absolute reduction; these are those percentages
+		// at a ~2 kHz attack centroid.
 		Drift: 200, Mismatch: 800, Unit: "Hz",
 		Doc: "WindAttack.AttackCentroids: spectral centroid at 25 / 50 / 100 / 300 ms " +
 			"after onset. A VECTOR, because the SHAPE of the brightening is the cue — " +

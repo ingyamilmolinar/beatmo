@@ -12,11 +12,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestWordSaladIsOneListForEveryInstrument: the quick round offers the SAME
-// words, in the same order, whatever the instrument, so the numbers become
-// muscle memory and a word means the same thing on every family. It keeps
-// every word the listener has been offered before (the old per-family lists
-// and the global fallback) and the words of their own notes.
+// The same words in the same order whatever the instrument, so numbers become muscle memory and a word means one
+// thing; it keeps every word offered before and those of the listener's notes.
 func TestWordSaladIsOneListForEveryInstrument(t *testing.T) {
 	words := saladWords()
 	seen := map[string]bool{}
@@ -51,10 +48,8 @@ func TestWordSaladIsOneListForEveryInstrument(t *testing.T) {
 	}
 }
 
-// TestDeepWordsAreRelevantAndMeasured: every instrument a session can audition
-// (the curated tune picks and the candidates file) has its own short list of
-// deep words, each one a word of the salad that a descriptor measures, on
-// distinct axes -- two words on one axis ask the same question twice.
+// Each auditionable instrument has its own deep words, each measured by a descriptor, on distinct axes (two on one
+// axis ask the same question twice).
 func TestDeepWordsAreRelevantAndMeasured(t *testing.T) {
 	picks, err := loadTunePicks()
 	if err != nil {
@@ -99,11 +94,7 @@ func TestDeepWordsAreRelevantAndMeasured(t *testing.T) {
 	}
 }
 
-// TestDeepScaleIsStoredOnTheAxis: the listener always reads "1 not X enough
-// · 3 about right · 5 too X" -- the word, never the axis -- and the stored
-// answer is turned to the axis, so +2 still means "the synth reads HIGH on
-// Axis" (the rule `refs validate` scores by). "warm" is the brightness axis
-// read backwards: "too warm" is a synth that reads LOW on brightness.
+// The listener reads the word, the answer is stored on the axis: "too warm" is a synth reading LOW on brightness.
 func TestDeepScaleIsStoredOnTheAxis(t *testing.T) {
 	q := wordQuestion(t, "warm")
 	if q.Axis != fingerprint.IDBrightnessRatio || q.storedAnswer(5) != -2 || q.storedAnswer(1) != 2 || q.storedAnswer(3) != 0 {
@@ -115,9 +106,7 @@ func TestDeepScaleIsStoredOnTheAxis(t *testing.T) {
 	if want := "warm — clip T: 1 not warm enough · 3 about right · 5 too warm"; !strings.HasPrefix(q.prompt("T"), want) {
 		t.Fatalf("prompt %q, want it to start %q", q.prompt("T"), want)
 	}
-	// The polarities the old hand-worded questions pinned, now carried by
-	// the words: an irregular, breathing movement reads HIGH on the
-	// AM-flatness axis (one fixed LFO rate is one spectral peak, LOW).
+	// An irregular, breathing movement reads HIGH on AM flatness; one fixed LFO rate is one spectral peak, LOW.
 	if q := wordQuestion(t, "alive"); q.Axis != fingerprint.IDModAMFlatness || q.storedAnswer(5) != 2 {
 		t.Fatalf("alive: %+v", q)
 	}

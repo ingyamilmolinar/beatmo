@@ -1,11 +1,6 @@
-// Package async provides a small, resource-constrained worker pool for
-// running background jobs without leaking goroutines or unbounded memory.
-//
-// The Pool is intended for callers that must hand off work from a real-time
-// thread (audio callback, UI Update) without ever blocking and without
-// allocating. Submit is non-blocking: when the queue is full, jobs are
-// rejected with ErrBackpressure and a drop counter is incremented. Callers
-// that can wait should use SubmitBlocking, which respects context cancellation.
+// Package async is a bounded worker pool for handing work off a real-time thread (audio callback, UI Update) without
+// blocking or allocating: Submit rejects with ErrBackpressure (and counts the drop) when full; SubmitBlocking waits with
+// context cancellation.
 package async
 
 import (
@@ -70,18 +65,9 @@ type Pool struct {
 
 	closeOnce sync.Once
 	closed    atomic.Bool
-	// closeMu serializes Close()'s channel-close against any Submit/
-	// SubmitBlocking call currently attempting to send on queue. Without
-	// this, a send that reads closed==false just before Close() runs can
-	// still be mid-select when Close() closes queue — a send on a closed
-	// channel panics unconditionally even if ctx.Done()/p.ctx.Done() is
-	// ALSO ready in the same select, so the race is real, not theoretical
-	// (see TestPoolSubmitBlockingDuringCloseNeverPanics). Submitters hold
-	// the read lock only for the duration of their own select (which
-	// resolves promptly once Close cancels p.ctx), so concurrent
-	// submitters are never serialized against each other — only against
-	// Close, which takes the write lock after cancelling but before
-	// closing the channel.
+	// Serialises Close's channel close against in-flight sends: a send racing close(queue) panics even when a Done case is
+	// ready in the same select. Submitters share the read lock (never serialised against each other); Close takes the write
+	// lock after cancelling and before closing.
 	closeMu sync.RWMutex
 }
 
@@ -118,10 +104,7 @@ func NewPool(parent context.Context, opts Options) *Pool {
 
 func (p *Pool) run() {
 	defer p.wg.Done()
-	// Drain semantics: keep ranging until the queue is closed AND empty.
-	// Close() closes the queue, so all queued jobs run before workers exit.
-	// Job authors that want to abort early should respect ctx (passed to
-	// each job and cancelled by Close).
+	// Drains: ranging until the queue is closed AND empty runs every queued job; a job wanting to abort respects ctx.
 	for job := range p.queue {
 		p.queued.Add(-1)
 		p.inflight.Add(1)
@@ -139,15 +122,8 @@ func (p *Pool) run() {
 	}
 }
 
-// Submit enqueues j without blocking. Returns ErrBackpressure if the queue
-// is full or ErrClosed if the pool has been closed. Callable from any
-// goroutine, including real-time threads — but note it now takes closeMu's
-// read lock for the duration of the call (see the closeMu field doc), so it
-// is no longer a hard guarantee of zero contention: a call can briefly block
-// behind Close()'s write lock if Close is running concurrently. No current
-// caller in this codebase submits from an actual real-time audio callback
-// (the audio-thread paths use their own lock-free buffers), so this is a
-// theoretical caveat today, not a regression against any real usage.
+// Never waits for queue space. It takes closeMu's read lock, so it can briefly block behind a concurrent Close; no
+// real-time audio callback submits here (those paths use lock-free buffers).
 func (p *Pool) Submit(j Job) error {
 	p.closeMu.RLock()
 	defer p.closeMu.RUnlock()
@@ -207,12 +183,8 @@ func (p *Pool) Stats() Stats {
 func (p *Pool) Close() error {
 	p.closeOnce.Do(func() {
 		p.closed.Store(true)
-		// Cancel first so any Submit/SubmitBlocking call currently blocked
-		// in its select (holding closeMu's read lock) has its p.ctx.Done()
-		// case become ready and can return promptly, releasing the read
-		// lock. Only THEN take the write lock — which waits for exactly
-		// that — before closing the channel, so no send can ever land on
-		// an already-closed queue.
+		// Cancel first, so a submitter blocked in its select (holding the read lock) returns and releases it; only then the
+		// write lock and the close, so no send ever lands on a closed queue.
 		p.cancel()
 		p.closeMu.Lock()
 		close(p.queue)

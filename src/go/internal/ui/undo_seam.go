@@ -6,30 +6,17 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
-// undoCaptureHook, when non-nil, is invoked at the top of every undoCapture that
-// actually serializes the document. It exists so perf-regression tests can count
-// full-document serializations (exportBytes) without a wall-clock threshold. It
-// is nil in production (a single pointer comparison per capture).
+// Lets perf tests count full serializations without a wall-clock threshold; nil in production.
 var undoCaptureHook func()
 
-// undoCapture returns a deterministic byte snapshot of the whole document via
-// the goldens-tested export serializer. It is panic-safe: the undo tap runs
-// synchronously inside emit helpers (e.g. SetLength → emitLengthChange →
-// recordUndo → undoCapture), so a malformed or partially-initialised document
-// (a row with no color, a half-built test fixture) must never crash the app
-// through a user action. On any failure it returns nil, which record() treats
-// as "no snapshot available" and skips.
+// Panic-safe: the tap runs synchronously inside emit helpers, so a half-built document must never crash the app
+// through a user action. nil means "no snapshot", which record() skips.
 func (g *Game) undoCapture() (snapshot []byte) {
 	if g.drum == nil {
 		return nil
 	}
-	// During Import, every node/edge/row mutation fires the undo tap. Capturing
-	// a full-document snapshot per mutation is O(N^2) serialization (7s+ on a
-	// large template, a multi-second freeze on single-threaded WASM mobile), and
-	// it is pure waste: Import clears undo history at the end (OnExternalLoad).
-	// Skip the snapshot; commitNow treats a nil capture as "no snapshot" and does
-	// not touch the committed baseline. The final post-import baseline is captured
-	// by the deferred OnExternalLoad, which runs after g.importing is cleared.
+	// Skipped during Import: a snapshot per mutation is O(N²) serialization (seconds on a large template, a freeze on
+	// WASM mobile), and Import resets history anyway; the deferred OnExternalLoad captures the final baseline.
 	if g.importing {
 		return nil
 	}
@@ -48,12 +35,8 @@ func (g *Game) undoCapture() (snapshot []byte) {
 	return b
 }
 
-// performUndo applies one undo step and raises a short, clear notification
-// naming the reverted action (e.g. "Undo: edit synth"). The notification is the
-// only feedback when the affected control lives in a now-hidden menu/tab. This
-// is the single chokepoint every undo trigger routes through (transport button +
-// keyboard shortcut), so the message fires for ALL undo actions. No-op (and no
-// notification) when nothing is undoable.
+// The single chokepoint for every undo trigger; the notification is the only feedback when the control lives in a
+// hidden menu or tab.
 func (g *Game) performUndo() {
 	if g.undoManager == nil || !g.undoManager.CanUndo() {
 		return
@@ -66,8 +49,7 @@ func (g *Game) performUndo() {
 		return
 	}
 	pre := g.undoCapture() // live doc = the restored (pre-action) state
-	// Diff describes the original forward action (pre → post); when it resolves to
-	// a single scalar the notification names the parameter and its from → to.
+	// The diff describes the original forward action (pre → post).
 	if d, ok := describeUndoChange(pre, post); ok {
 		g.drum.notifyUndoRedoDetail(i18n.KeyNotifUndoDetail, d)
 		return
@@ -75,8 +57,6 @@ func (g *Game) performUndo() {
 	g.drum.notifyUndoRedo(i18n.KeyNotifUndo, label)
 }
 
-// performRedo re-applies one undo step and raises a short notification naming
-// the re-applied action (e.g. "Redo: adjust EQ"). Mirror of performUndo.
 func (g *Game) performRedo() {
 	if g.undoManager == nil || !g.undoManager.CanRedo() {
 		return
@@ -89,8 +69,7 @@ func (g *Game) performRedo() {
 		return
 	}
 	post := g.undoCapture() // live doc = the re-applied state
-	// Same forward-action diff (pre → post) as undo, so redo names the same
-	// parameter and from → to it re-applies.
+	// The same forward diff as undo, so redo names the same change.
 	if d, ok := describeUndoChange(pre, post); ok {
 		g.drum.notifyUndoRedoDetail(i18n.KeyNotifRedoDetail, d)
 		return
@@ -98,24 +77,17 @@ func (g *Game) performRedo() {
 	g.drum.notifyUndoRedo(i18n.KeyNotifRedo, label)
 }
 
-// restoringUndo reports whether the current Import is an undo/redo restore
-// (a snapshot re-import) rather than a circuit being opened. Its own flag, not
-// the undo manager's restoring: buildDemo raises that one too (to keep the
-// startup load out of the history), and the startup circuit IS an open.
+// Its own flag, not the manager's restoring: buildDemo raises that too, and the startup circuit IS an open.
 func (g *Game) restoringUndo() bool { return g.undoRestoring }
 
-// undoRestore re-imports a snapshot while preserving the playhead. The
-// restoring guard keeps Import from clearing the undo stack and keeps the
-// record tap a no-op during the rebuild.
+// The restoring guard keeps Import from clearing the stack and the record tap quiet during the rebuild.
 func (g *Game) undoRestore(snapshot []byte) error {
 	if len(snapshot) == 0 {
 		return nil
 	}
 	div := max1(g.grid.MaxDiv())
 	beat := g.playheadAbsSubdiv() / div
-	// What has played is history, not document: carry it across the re-import
-	// (which rebuilds rows and drops the timeline) instead of letting the past
-	// be re-derived from the restored circuit.
+	// What has played is history, not document: carried across the re-import instead of re-derived.
 	var held map[model.NodeID]*timeline.PlayedHistory
 	if g.Playing() || g.Paused() {
 		g.freezePlayedThroughPlayhead()
@@ -130,11 +102,8 @@ func (g *Game) undoRestore(snapshot []byte) error {
 	if err := g.Import(snapshot); err != nil {
 		return err
 	}
-	// Reattach BEFORE the seek: the seek rewinds to the start of the current
-	// beat, and that stretch is genuinely replayed with the restored circuit,
-	// so its RewindTo must truncate it (re-recorded as it plays again, like
-	// any backward seek). Everything before it keeps what played.
-	// Abs indices only mean the same cells on the same grid.
+	// Before the seek: the seek rewinds to the beat start, and that stretch really replays and must be truncated. Abs
+	// indices only match on the same grid.
 	if held != nil && max1(g.grid.MaxDiv()) == div {
 		g.reattachPlayedByOrigin(held)
 	}

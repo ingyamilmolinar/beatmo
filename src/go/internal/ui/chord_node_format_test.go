@@ -8,8 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// setNodeTypeAndChord edits the start node in place, the way the sidebar
-// does (type on the graph node, spec through SetNodeParams).
+// As the sidebar does: the type on the graph node, the spec through SetNodeParams.
 func setNodeTypeAndChord(t *testing.T, g *Game, id model.NodeID, typ model.NodeType, c model.ChordSpec) {
 	t.Helper()
 	n, ok := g.graph.GetNodeByID(id)
@@ -33,8 +32,7 @@ func nodeOf(t *testing.T, g *Game, id model.NodeID) model.Node {
 	return n
 }
 
-// fileNodes decodes an exported project generically, so tests can read and
-// rewrite node fields without depending on the exportNode struct.
+// Generically, so tests read and rewrite fields without the exportNode struct.
 func fileNodes(t *testing.T, file []byte) (map[string]any, []map[string]any) {
 	t.Helper()
 	var doc map[string]any
@@ -113,8 +111,7 @@ func TestChordNodeExportImportRoundTrip(t *testing.T) {
 	}
 }
 
-// A chord collapsed to a single note keeps its spec, and so must the file:
-// undo replays the export, so a spec the file dropped would vanish on undo.
+// Undo replays the export, so a spec the file dropped would vanish on undo.
 func TestDormantChordSpecSurvivesExport(t *testing.T) {
 	g := newTestGameForUndo(t)
 	id := startNodeID(t, g)
@@ -160,8 +157,7 @@ func TestImportRejectsInvalidChordBlocks(t *testing.T) {
 	}
 }
 
-// Review Focus 5: a chord node with no spec block is a major triad (what the
-// type cycle seeds), never a silent or regular node.
+// A chord with no spec is a major triad, as the type cycle seeds.
 func TestImportChordTypeWithoutSpecSeedsMajor(t *testing.T) {
 	src := newTestGameForUndo(t)
 	setNodeTypeAndChord(t, src, startNodeID(t, src), model.NodeTypeChord, model.ChordSpec{Quality: "maj"})
@@ -176,8 +172,7 @@ func TestImportChordTypeWithoutSpecSeedsMajor(t *testing.T) {
 	}
 }
 
-// Review Focus 3: undo/redo across a type change restores the chord, and a
-// redo onto the collapsed node keeps the dormant spec.
+// The chord comes back, and a redo onto the collapsed node keeps the dormant spec.
 func TestUndoRedoRestoresChordAcrossTypeChange(t *testing.T) {
 	g := newTestGameForUndo(t)
 	id := startNodeID(t, g)

@@ -4,16 +4,8 @@ package audio
 
 import "math"
 
-// transientShaper implements a dual-envelope transient detection algorithm that
-// independently controls the gain of the attack (transient) and sustain portions
-// of a signal. A fast envelope tracks rapid changes (transients) while a slow
-// envelope captures the overall sustain level. The difference between the two
-// determines how much of the attack vs sustain gain to apply.
-//
-// Parameters:
-//   - attack:  0-200 (percentage mapped to 0-2 gain; 100 = unity)
-//   - sustain: 0-200 (percentage mapped to 0-2 gain; 100 = unity)
-//   - speed:   1-50 ms (controls fast envelope time constant)
+// A fast envelope follows transients, a slow one the sustain; their difference splits attack from sustain gain.
+// attack / sustain 0–200 % (100 = unity), speed 1–50 ms.
 type transientShaper struct {
 	attack  smoothParam // 0-200 percentage -> 0-2 gain
 	sustain smoothParam // 0-200 percentage -> 0-2 gain

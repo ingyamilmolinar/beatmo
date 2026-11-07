@@ -9,40 +9,9 @@ import (
 
 const envHop = 256
 
-// computeEnvelope fills fp's envelope and timbre-noise fields from w.
-//
-// The wave w is assumed to already be peak-normalized (as done in FromWave).
-// Envelope is computed at hop=256 samples (nPoints=0 → full resolution).
-//
-// AttackTimeSec: time (seconds) from first env >= 10% of peak to first env
-// >= 90% of peak before the peak index. Measured in envelope frames;
-// one frame = hop/sampleRate seconds.
-//
-// LogAttackTime: log10(max(AttackTimeSec, 1e-4)). MPEG-7 LAT.
-//
-// DecaySlope: least-squares slope (dB/sec) of 20*log10(env) vs time over the
-// post-peak region. Negative means decaying. Returns 0 when fewer than 2
-// post-peak frames exist.
-//
-// SustainLevel: median of the middle third of the envelope divided by peak.
-// Returns 0 when peak == 0.
-//
-// ReleaseTimeSec: scanning from the peak to end, find the last frame where
-// env >= 90% of the tail peak (the peak in the post-peak region) and the
-// last frame where env >= 10% of the tail peak. Release = time between those
-// two frames. This is a simple, fully deterministic rule.
-//
-// HNR (Harmonic-to-Noise Ratio) via real cepstrum on the sustain window:
-//  1. Compute magnitude spectrum M[] of the sustain window.
-//  2. Log-magnitude: LM[k] = log(M[k] + eps).
-//  3. Inverse-DFT (IDFT) of LM[] → real cepstrum C[].
-//     We use the IDFT of the symmetric magnitude spectrum (symmetric extension),
-//     computed here as a cosine transform of the one-sided log-magnitude:
-//     C[n] = (1/M) * Σ_{k=0}^{M-1} lm[k] * cos(π·k·n/(M-1)), M = N/2+1.
-//  4. Find the peak quefrency q* in the pitch-relevant band [1/2000 .. 1/50 sec].
-//  5. HNR = 10*log10(C[q*]² / residualEnergy) where residualEnergy is the mean
-//     squared cepstrum excluding the pitch-quefrency band.
-//     Guarded: if residual == 0 or peak energy <= residual, returns 0.
+// w is already peak-normalised; envelope hop 256. Attack is 10 % → 90 % of the peak (MPEG-7 log attack), release the
+// last 90 % → 10 % of the post-peak tail peak, and HNR comes from the real cepstrum of the sustain window, guarded
+// against zero residual.
 func computeEnvelope(w wave.Wave, fp *Fingerprint) {
 	sr := w.SampleRate
 	if sr <= 0 {
@@ -132,11 +101,7 @@ func computeEnvelope(w wave.Wave, fp *Fingerprint) {
 		fp.SustainLevel = med / peakVal
 	}
 
-	// ---- ReleaseTimeSec ------------------------------------------------------
-	// Rule: scan from peak to end to find the "tail peak" (max of post-peak env).
-	// Then find the last frame >= 90% of tail peak and the last frame >= 10% of
-	// tail peak. Release = (last10 - last90) * secPerFrame.
-	// If last90 > last10 (shouldn't happen in normal signals), returns 0.
+	// 0 if last90 > last10, which a normal signal never produces.
 	if peakIdx < nFrames {
 		tailPeak := 0.0
 		for i := peakIdx; i < nFrames; i++ {
@@ -167,24 +132,8 @@ func computeEnvelope(w wave.Wave, fp *Fingerprint) {
 	fp.HNR = computeHNR(w, sr)
 }
 
-// computeHNR computes the Harmonic-to-Noise Ratio via the real cepstrum of the
-// sustain window's magnitude spectrum.
-//
-// Formula:
-//  1. Extract sustain window (skip SustainSkipSec, take up to SustainLenSec).
-//  2. mag[] = MagnitudeSpectrum(seg, 4096, WindowHann) — N/2+1 bins.
-//  3. lm[k] = log(mag[k] + eps) for k = 0..N/2.
-//  4. Real cepstrum C[n] = (1/M) * Σ_{k=0}^{M-1} lm[k] * cos(π·k·n/(M-1))
-//     where M = N/2+1 (the one-sided length); this cosine transform of the
-//     one-sided log-magnitude is the real cepstrum used here
-//     taken as real part. We compute it via a direct DCT-like sum for correctness.
-//  5. Pitch quefrency band: q in [sr/2000 .. sr/50] samples (period band).
-//     qLo = ceil(sr/2000 / secPerSample) = ceil(sr/(2000)) quefrency bins.
-//     But env is at full resolution: quefrency bin n corresponds to period n/sr.
-//     So: qLo = floor(sr/2000), qHi = floor(sr/50).
-//  6. peakQ = argmax C[n]² for n in [qLo, qHi].
-//  7. residualEnergy = mean(C[n]² for n NOT in [qLo-margin, qHi+margin]).
-//  8. HNR = 10*log10(C[peakQ]² / residualEnergy).  Guarded against zeros.
+// The cepstrum's peak in the pitch quefrency band [sr/2000, sr/50] against the mean energy outside it, guarded against
+// zeros.
 func computeHNR(w wave.Wave, sr int) float64 {
 	seg := sustainWindow(w)
 	if len(seg.Samples) < 4 {
@@ -203,11 +152,7 @@ func computeHNR(w wave.Wave, sr int) float64 {
 		lm[i] = math.Log(m + eps)
 	}
 
-	// Real cepstrum via DCT-II style: C[n] = (1/nBins)*Σ_{k=0}^{nBins-1} lm[k]*cos(π*k*n/(nBins-1))
-	// This is the real cepstrum of the one-sided log-magnitude spectrum.
-	// We need quefrency indices n = 0..nBins-1.
-	// Quefrency n corresponds to period n/(sr) seconds (at sample resolution sr).
-	// sr/2000 = qLo, sr/50 = qHi.
+	// A cosine transform of the one-sided log magnitude; quefrency n is a period of n/sr seconds.
 	qLo := sr / 2000 // e.g. 44100/2000 = 22
 	qHi := sr / 50   // e.g. 44100/50  = 882
 
@@ -222,13 +167,7 @@ func computeHNR(w wave.Wave, sr int) float64 {
 		return 0
 	}
 
-	// Compute only the cepstrum quefrency values we need (pitch band + a sample
-	// of the residual band).  For large nBins a full O(N²) sum is expensive, so
-	// we compute the cepstrum for [1..qHi+1] and a sample beyond.
-	//
-	// However for correctness with fftSize=4096 → nBins=2049 and qHi≈882 this
-	// is at most O(882*2049) ≈ 1.8M ops — acceptable for a one-shot analysis.
-	// We compute C[n] for n = 0 .. min(nBins-1, qHi+qLo).
+	// Only the quefrencies needed (the pitch band and a residual sample): a full O(N²) sum is expensive.
 	maxQ := qHi + qLo + 1
 	if maxQ >= nBins {
 		maxQ = nBins - 1
@@ -272,10 +211,7 @@ func computeHNR(w wave.Wave, sr int) float64 {
 	return 10.0 * math.Log10(peakEnergy/residMean)
 }
 
-// LogSpectralDistance returns the mean |20*log10(a[i]/b[i])| over all bins.
-// Both a and b must be linear magnitude spectra of the same length.
-// Each bin is floored at eps before taking the ratio to avoid log(0).
-// Used by Distance (Task 9).
+// Same-length linear spectra; each bin is floored at eps.
 func LogSpectralDistance(a, b []float64) float64 {
 	n := len(a)
 	if n == 0 || len(b) != n {
@@ -297,9 +233,7 @@ func LogSpectralDistance(a, b []float64) float64 {
 	return sum / float64(n)
 }
 
-// SpectralConvergence returns ||a-b||_2 / ||a||_2 (linear magnitude spectra,
-// same length). Returns 0 when a == b exactly (or both are zero).
-// Used by Distance (Task 9).
+// 0 when equal or both zero.
 func SpectralConvergence(a, b []float64) float64 {
 	n := len(a)
 	if n == 0 || len(b) != n {

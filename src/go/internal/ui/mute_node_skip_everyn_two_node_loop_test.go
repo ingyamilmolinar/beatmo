@@ -8,8 +8,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// verifyMutePattern steps the sequencer for steps beats and collects whether
-// the mute node triggered and whether an audio stop occurred per encounter.
 func verifyMutePattern(t *testing.T, g *Game, row int, muteID model.NodeID, steps int, want []bool) {
 	t.Helper()
 	stops := 0
@@ -46,8 +44,6 @@ func verifyMutePattern(t *testing.T, g *Game, row int, muteID model.NodeID, step
 	}
 }
 
-// Two-node loop: A(regular) <-> B(mute). Verify skip_every_n and every_n_triggers
-// patterns for N=2 and N=3.
 func TestMuteNodeSkipEveryN_TwoNodeLoop(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

@@ -1,20 +1,5 @@
-// sampler_register_pcm.browser.test.js
-//
-// Validates the one new Go↔WebAudio seam introduced by the Sampler tab:
-// registerSamplePCM(id, Uint8Array-of-float32-LE, sr) must turn a raw PCM
-// buffer (exactly the little-endian float32 bytes Go marshals via
-// f32ToJSBytes) into a playable AudioBuffer that produces audible output
-// through the normal playSound path. The editing-math correctness (trim /
-// pitch / gain / reverse / normalize / fade) is covered in Go
-// (internal/audio/sample_edit_test.go); this test owns only the boundary.
-//
-// COVERED-BY-GO:
-//   internal/audio/sample_edit_test.go      (BakeSample pipeline)
-//   internal/audio/sample_capture_test.go   (RegisterSamplePCM availability)
-//   internal/ui/sampler_panel_zone_test.go  (preview/save wiring)
-//
-// Reuses the playtest.wasm harness so audio.js loads in its normal Go-WASM
-// context; the PCM register + play are driven from page.evaluate.
+// registerSamplePCM turns the float32-LE bytes Go marshals into a playable, audible AudioBuffer: the boundary only.
+// COVERED-BY-GO: audio/sample_edit_test.go, audio/sample_capture_test.go, ui/sampler_panel_zone_test.go
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";
@@ -98,8 +83,7 @@ await page.goto(`http://localhost:${port}/play.html`);
 await page.waitForFunction(() => typeof window.registerSamplePCM === "function" && typeof window.playSound === "function");
 await page.evaluate(() => document.dispatchEvent(new Event("mousedown")));
 
-// Build a 440 Hz sine as little-endian float32 bytes (exactly what Go's
-// f32ToJSBytes produces), register it, and play it.
+// Exactly what Go's f32ToJSBytes produces.
 const result = await page.evaluate(async () => {
   const sr = 44100;
   const n = 8000;

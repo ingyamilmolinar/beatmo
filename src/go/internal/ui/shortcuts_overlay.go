@@ -9,9 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// Shared geometry for the shortcuts overlay. Layout (panel height) and Draw
-// (row stride) must agree, so they read the same constants — never redeclare
-// these locally in one method without the other.
+// Layout and Draw must agree, so both read these.
 const (
 	shortcutsOverlayW    = 460 // panel width (px)
 	shortcutsOverlayLine = 26  // per-row vertical stride (px)
@@ -20,8 +18,6 @@ const (
 	shortcutsOverlayActX = 110 // x-offset of the action column from the panel's left padding
 )
 
-// shortcutRow is one line in the help overlay: a key glyph and a localized
-// action description.
 type shortcutRow struct {
 	keys      string
 	actionKey i18n.Key
@@ -36,8 +32,7 @@ func (r shortcutRow) action() string {
 	return i18n.T(r.actionKey)
 }
 
-// tabShortcutRow describes the number keys from the tabs they actually reach
-// (AllPanelTabs: the production UI has no Chain tab, so it is "1 - 6").
+// From the tabs the keys actually reach: production has no Chain tab.
 func tabShortcutRow() shortcutRow {
 	tabs := AllPanelTabs()
 	names := make([]string, len(tabs))
@@ -47,8 +42,7 @@ func tabShortcutRow() shortcutRow {
 	return shortcutRow{keys: "1 - " + strconv.Itoa(len(tabs)), actionKey: i18n.KeyShortcutTabs, text: strings.Join(names, " / ")}
 }
 
-// localizedShortcutRows returns the keyboard-shortcut rows with localized action
-// descriptions (the physical key glyphs stay literal).
+// The key glyphs stay literal.
 func localizedShortcutRows() []shortcutRow {
 	return []shortcutRow{
 		{keys: "Space", actionKey: i18n.KeyShortcutPlayPause},
@@ -62,8 +56,7 @@ func localizedShortcutRows() []shortcutRow {
 	}
 }
 
-// ShortcutsOverlay is a modal portal panel listing the keyboard shortcuts.
-// Presentational only (no hit areas); dismissed via the ? key, Esc, or toggling.
+// Presentational: no hit areas; a click anywhere closes it via click-outside.
 type ShortcutsOverlay struct {
 	rect   image.Rectangle
 	closed bool
@@ -75,19 +68,13 @@ func NewShortcutsOverlay() *ShortcutsOverlay { return &ShortcutsOverlay{} }
 // Close marks the overlay for removal on the next portal sweep.
 func (o *ShortcutsOverlay) Close() { o.closed = true }
 
-// Layout is a no-op: this overlay is window-global, so it centers on the full
-// framebuffer at Draw time (the portal's screenBounds is only the drum pane).
-// Kept to satisfy the PortalOverlay interface.
+// A no-op: the overlay centres on the whole framebuffer at Draw, since the portal's bounds are only the drum pane.
 func (o *ShortcutsOverlay) Layout(_, _ image.Rectangle) {}
 
-// HitAreas always returns nil — the shortcuts overlay does not consume input.
-// A click anywhere routes through the tree's click-outside → CloseTop.
+// A click anywhere routes to the tree's click-outside → CloseTop.
 func (o *ShortcutsOverlay) HitAreas() []HitArea { return nil }
 
-// Draw paints a full-window scrim and the shortcut panel centered on the whole
-// framebuffer. The portal hands Draw the full screen image, so deriving
-// geometry from screen.Bounds() centers the panel window-globally regardless of
-// which pane opened it.
+// Draw gets the full screen, so centring on its bounds is window-global whichever pane opened it.
 func (o *ShortcutsOverlay) Draw(screen *ebiten.Image) {
 	b := screen.Bounds()
 	if b.Empty() {
@@ -119,6 +106,4 @@ func (o *ShortcutsOverlay) Draw(screen *ebiten.Image) {
 	}
 }
 
-// ShouldClose reports whether Close() has been invoked. Polled by
-// OverlayPortal.CleanupClosed each frame.
 func (o *ShortcutsOverlay) ShouldClose() bool { return o.closed }

@@ -1,29 +1,6 @@
-// webaudio_zoom_stress.browser.test.js
-//
-// Perf regression: camera zoom during playback must NOT inflate per-frame work.
-//
-// THE BUG (user-reported "zooming in/out during playback hurts audio a lot"):
-// The single WASM thread runs Ebiten draw AND the sequencer goroutine. The grid
-// pane caches its tiles keyed by the *continuous* cam.Scale, so every zoom step is
-// a 100% cache miss — the grid re-rasterizes and uploads fresh GPU textures every
-// frame. Those per-frame texture allocations + GL uploads stall the single thread,
-// starving the sequencer between frames so audio events fire late / choppy.
-//
-// WHY THIS METRIC (and not audio-schedule latency directly): under headless
-// software GL (SwiftShader, what CI runs) the whole pipeline already crawls at
-// ~3 fps and the WebAudio buffers never warm up, so getAudioScheduleMetrics()
-// reports zero events — audio latency is unmeasurable here. The UPSTREAM CAUSE,
-// per-frame image/texture allocation, IS deterministically measurable via
-// perfStats().imagesAllocatedTotal and is the thing that must be fixed. Measured
-// signal is a rock-steady +3.0 image-allocs/frame under zoom vs a static camera,
-// independent of circuit size (grid-tile re-raster). A well-behaved zoom keeps
-// that delta at ~0 (quantized-scale tile cache / GPU-scaled blit).
-//
-// DESIGN: differential. Two phases at an identical forced-draw cadence during live
-// playback; the only variable is whether cam.Scale changes between draws. Baseline
-// per-frame allocation churn (row repaints, playback highlights) cancels in the
-// delta, leaving the zoom-attributable cost. Differential is self-normalizing
-// against BROWSER_JOBS CPU contention (both phases share it).
+// Zoom during playback must not add per-frame work: tiles keyed by the continuous scale re-rasterize every step and
+// starve the single thread. Headless audio latency is unmeasurable, so the cause is measured instead: image allocations
+// per frame, zooming vs a static camera at the same draw cadence (self-normalizing under contention).
 
 import { chromium } from "playwright";
 import http from "http";
@@ -75,13 +52,10 @@ await clearSchedulerMismatches(page);
 const frames = Number(process.env.ZOOM_STRESS_FRAMES ?? "30");      // draws per phase per round
 const rounds = Number(process.env.ZOOM_STRESS_ROUNDS ?? "3");       // A/B rounds, averaged
 const extraRows = Number(process.env.ZOOM_STRESS_EXTRA_ROWS ?? "6");// circuit geometry to exercise the grid
-// Budget: avg extra image/texture allocations per frame attributable to zoom.
-// A correct zoom (scale-quantized tile cache) re-rasterizes ~never => ~0.
-// The current grid-tile cache keys on continuous scale => steady +3.0/frame.
+// A scale-quantized tile cache re-rasterizes ~never, so ~0.
 const allocDeltaMax = Number(process.env.ZOOM_ALLOC_DELTA_MAX ?? "1.0");
 
-// Build a denser circuit so the grid/edge caches have real geometry, raise BPM so
-// playback is dense, and start playback — this is a "during playback" scenario.
+// Real geometry and dense playback: a "during playback" scenario.
 await page.evaluate((rows) => {
   if (rows > 0) buildPerfRect?.(rows, 2);
   setBPM?.(200);
@@ -100,9 +74,7 @@ await page.evaluate((rows) => {
   console.log(`zoomAt verified: scale ${s0.toFixed(3)} -> ${s1.toFixed(3)}`);
 }
 
-// One A/B round, run entirely in the page so draw cadence and zoom injection share
-// the game's thread. Returns steady-state image-allocs/frame for each phase plus
-// the scale span swept during the zoom phase.
+// In the page, so draw cadence and zoom share the game's thread.
 async function abRound({ frames }) {
   return await page.evaluate(async ({ frames }) => {
     const cx = window.innerWidth / 2, cy = window.innerHeight * 0.45;
@@ -151,16 +123,8 @@ for (let r = 0; r < rounds; r++) {
   });
 }
 
-// Second, distinct bug: a fast zoom-OUT explodes a single grid rebuild. The grid
-// tiles a stepPx-sized tile, so the per-rebuild blit count grows ~area/stepPx² —
-// quadratically as stepPx shrinks. At full zoom-out that is tens of thousands of
-// DrawImage calls per frame, blocking Draw long enough to starve the sequencer
-// (audio degrades worse the further out, and stays bad). The fix tiles a
-// multi-cell block so the blit count stays roughly FLAT across zoom. Absolute
-// blit count is environment-dependent (cache/viewport size), so we assert the
-// GROWTH RATIO from a reference zoom to full zoom-out: pre-fix it is ~100×,
-// post-fix it stays single-digit. perfStats().gridTileBlits is deterministic
-// (timing under SwiftShader is not).
+// A fast zoom-OUT once grew one rebuild's blits ~area/stepPx², quadratically; a multi-cell tile keeps them flat. The
+// absolute count depends on the environment, so the GROWTH RATIO to full zoom-out is gated; gridTileBlits is deterministic.
 const blitGrowthMax = Number(process.env.ZOOM_BLIT_GROWTH_MAX ?? "12");
 // Measure the blits a single fresh grid rebuild performs at a given scale.
 const rebuildBlitsAt = (s) => page.evaluate((s) => {
@@ -215,9 +179,7 @@ if (!(spanMax - spanMin > 0.5)) {
   throw new Error(`zoom phase did not exercise scale (span ${spanMin.toFixed(2)}..${spanMax.toFixed(2)})`);
 }
 
-// The gate: zoom must not allocate materially more textures per frame than a static
-// camera. Every-frame grid-tile re-rasterization is what stalls the WASM thread and
-// starves audio.
+// Every-frame tile re-rasterization is what stalls the thread and starves audio.
 if (allocDelta > allocDeltaMax) {
   throw new Error(
     `zoom inflates per-frame texture allocation by ${allocDelta.toFixed(2)}/frame ` +

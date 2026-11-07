@@ -7,26 +7,16 @@ import (
 	"testing"
 )
 
-// button_geometry_discipline_test.go — the two geometry invariants from
-// docs/superpowers/specs/2026-07-27-unified-button-geometry-design.md:
-//
-//   1. Cluster alignment — controls that sit in the same cluster share their
-//      vertical bounds. A control that insets itself relative to its siblings
-//      leaves a visible seam in the strip it lives in.
-//   2. The anti-pill invariant — no rounded rect may request a corner radius
-//      greater than a quarter of its shorter side (see
-//      TestNoPillShapedControls in rounded_literal_discipline_test.go).
+// Controls in one cluster share their vertical bounds (an inset sibling leaves a seam), and no rounded rect asks for
+// a radius over a quarter of its shorter side.
 
-// clusterMember pairs a control's display name with a live accessor for its
-// rect, so a failure names the offending control rather than an index.
+// So a failure names the control.
 type clusterMember struct {
 	name string
 	rect func() image.Rectangle
 }
 
-// assertSharedVerticalBounds fails when the members of a cluster disagree on
-// Min.Y, Max.Y or Dy. The first non-empty member is the reference; empty rects
-// are skipped (a control hidden on this profile is not part of the cluster).
+// Against the first non-empty member; a control hidden on this profile is skipped.
 func assertSharedVerticalBounds(t *testing.T, cluster string, members []clusterMember) {
 	t.Helper()
 	var refName string
@@ -48,21 +38,13 @@ func assertSharedVerticalBounds(t *testing.T, cluster string, members []clusterM
 	}
 }
 
-// TestTransportRecordMatchesPlayStopBounds is the regression test for the
-// reported bug: on mobile the record button was shrunk by
-// recordDemoteInsetMobile (8 px top AND bottom), leaving two ~6 px bands of the
-// surrounding chip visible above and below it. Those bands render as a
-// horizontal line cutting across the top of the control's slot.
-//
-// Record must occupy exactly the same vertical extent as play and stop. Its
-// lower visual weight is carried by tone (colRecordIdle vs. the saturated play
-// green), not by geometry.
+// Record shares play and stop's vertical extent exactly: an inset left bands of the chip visible above and below it,
+// reading as a line. Its lower weight is carried by tone.
 func TestTransportRecordMatchesPlayStopBounds(t *testing.T) {
 	withSmallScreen(t, true)
 
 	z, _ := newTestTransportZone()
-	// Sweep realistic phone widths — the demote was gated on a height floor, so
-	// a single width could pass by accident.
+	// The demote was gated on a height floor, so one width could pass by accident.
 	for _, w := range []int{320, 360, 390, 414, 480} {
 		z.Layout(image.Rect(0, 0, w, 56))
 		play := z.playBtn.Rect()
@@ -82,9 +64,7 @@ func TestTransportRecordMatchesPlayStopBounds(t *testing.T) {
 	}
 }
 
-// TestTransportClusterSharesBounds generalises the record regression to the
-// whole transport strip, on both profiles. Every control the user reads as
-// belonging to one horizontal run must line up.
+// Every control in the strip lines up, on both profiles.
 func TestTransportClusterSharesBounds(t *testing.T) {
 	for _, mobile := range []bool{false, true} {
 		name := "desktop"
@@ -101,9 +81,7 @@ func TestTransportClusterSharesBounds(t *testing.T) {
 			}
 			z.Layout(image.Rect(0, 0, w, h))
 
-			// The BPM chevrons STACK inside one column on desktop, so each half
-			// legitimately spans less than the row. The cluster member is their
-			// union — the column they share — which must match the row.
+			// The desktop BPM chevrons stack in one column, so the member is their union.
 			bpmStepper := func() image.Rectangle {
 				return z.bpmDecBtn.Rect().Union(z.bpmIncBtn.Rect())
 			}

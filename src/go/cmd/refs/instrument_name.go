@@ -12,14 +12,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// rosterIDs is the game's instrument registration: the canonical list every
-// reference tool measures itself against.
-//
-// This is deliberately roster.All rather than "whatever
-// catalogue.json happens to mention". The catalogue does not mention every
-// registered id (snare-crack, kick-lofi, fm-bell-soft, ...), each of which
-// carries its own document and so its own sound; auditing against the
-// catalogue would keep them invisible forever.
+// roster.All, not what catalogue.json mentions: unmentioned registered ids each carry their own document, and auditing
+// against the catalogue would keep them invisible.
 func rosterIDs() []instrument.ID { return slices.Clone(roster.All) }
 
 // normalizeStem folds a filename stem into instrument-id shape: lowercase,
@@ -32,17 +26,9 @@ func normalizeStem(stem string) string {
 	return strings.Trim(s, "-")
 }
 
-// instrumentFromFilename maps a drop-in filename to a registered instrument
-// id, so the drop-in directory is self-describing and `refs adopt` needs no
-// -instrument for the common case.
-//
-// The id must match the whole normalised stem, or a prefix of it ending at a
-// hyphen -- so "kick-lofi_garage_take3.wav" is a kick-lofi reference, while
-// "mycrash.wav" is rejected rather than silently adopted as a crash. The
-// LONGEST match wins, which is what keeps "kick-lofi.wav" from collapsing
-// onto "kick". Adopting a file for the wrong instrument is the worst thing
-// this command could do quietly, so an ambiguous name is an error carrying
-// the near misses rather than a guess.
+// The id must match the whole normalised stem or a prefix ending at a hyphen, the LONGEST winning ("kick-lofi_take3" is
+// kick-lofi, "mycrash" is rejected). Adopting for the wrong instrument is the worst quiet failure, so an ambiguous name
+// is an error with the near misses.
 
 func instrumentFromFilename(name string) (instrument.ID, error) {
 	stem := normalizeStem(strings.TrimSuffix(filepath.Base(name), filepath.Ext(name)))
@@ -72,11 +58,8 @@ func instrumentFromFilename(name string) (instrument.ID, error) {
 	return "", fmt.Errorf("%s; or pass -instrument explicitly", msg)
 }
 
-// nearMissMinPrefix is the shortest stem prefix allowed to produce a
-// suggestion. Two characters is a coincidence, not a near miss --
-// "backing-track" would otherwise be offered "banjo" and "bass-808", which
-// is noise in a scan report that lists every unclaimed file. Below this,
-// stating the naming rule alone is more useful than five wrong ids.
+// Two characters is a coincidence ("backing-track" → "banjo"), noise in a scan report; below this the naming rule alone
+// is more useful.
 const nearMissMinPrefix = 3
 
 // nearestRosterIDs suggests registered ids for a stem that resolved to

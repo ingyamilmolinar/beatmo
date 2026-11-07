@@ -2,9 +2,7 @@ package ui
 
 import "testing"
 
-// Task 3: each synth grid cell is now a full ParamCard slot (the card fills the
-// whole cell), so the cell height is exactly the density's ParamCardH — no dial
-// diameter, caption band, or concept-viz band arithmetic.
+// The card fills its cell, so the cell is exactly ParamCardH.
 func TestKnobCellHeight_IsParamCardHeight(t *testing.T) {
 	restore := SetDensityForTest(DensityComfortable)
 	defer restore()

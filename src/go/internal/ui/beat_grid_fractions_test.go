@@ -7,9 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestBeatGridFractions_SilentRow asserts the helper returns no fractions
-// when the requested row has no beatInfos behind it. The helper must not
-// panic and must not emit out-of-range fractions for a silent row.
+// No panic and nothing out of range for a row with no beatInfos.
 func TestBeatGridFractions_SilentRow(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -20,9 +18,7 @@ func TestBeatGridFractions_SilentRow(t *testing.T) {
 	g.isLoopByRow = []bool{false}
 
 	fracs := g.beatGridFractions(0, 2200)
-	// Silent row: the helper still emits subdivision ticks (a missing/mute
-	// cell still occupies the time slot) — but they must be in range. The
-	// row's emptiness must not cause a panic.
+	// Ticks still occupy the time slots, but in range.
 	for _, f := range fracs {
 		if f < 0 || f >= 1 {
 			t.Fatalf("frac out of [0,1): %v (slice=%v)", f, fracs)
@@ -30,10 +26,7 @@ func TestBeatGridFractions_SilentRow(t *testing.T) {
 	}
 }
 
-// TestBeatGridFractions_DenseRow asserts the small-window case: at the
-// default test sample rate (44.1 kHz), BPM=120, subdiv=8, one tick spans
-// ~62.5 ms (~2756 samples). A 2200-sample window therefore catches at
-// most one tick.
+// At 44.1 kHz, 120 BPM, subdiv 8 a tick is ~2756 samples, so a 2200-sample window holds at most one.
 func TestBeatGridFractions_DenseRow(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -53,9 +46,7 @@ func TestBeatGridFractions_DenseRow(t *testing.T) {
 	}
 }
 
-// TestBeatGridFractions_LongerWindow asserts a wider window catches many
-// subdivision ticks. At 22050 samples (~500 ms @ 44.1 kHz) we expect at
-// least 6 ticks (BPM=120 / subdiv=8 → 1 tick ≈ 62.5 ms → 22050/2756 ≈ 8).
+// 22050 samples hold ~8 ticks; at least 6 expected.
 func TestBeatGridFractions_LongerWindow(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -75,9 +66,7 @@ func TestBeatGridFractions_LongerWindow(t *testing.T) {
 	}
 }
 
-// TestBeatGridFractions_OutOfBounds asserts negative or beyond-range row
-// indices return nil. Defensive contract: the caller may resolve from a
-// channel ID that doesn't map to a current row.
+// The caller may resolve a channel that maps to no current row.
 func TestBeatGridFractions_OutOfBounds(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -98,9 +87,7 @@ func TestBeatGridFractions_OutOfBounds(t *testing.T) {
 	}
 }
 
-// TestBeatGridFractions_FractionsInRange asserts every returned fraction
-// is strictly inside [0, 1). The renderer relies on this invariant to
-// place vertical ticks within the wave content rect.
+// Strictly in [0, 1): the renderer places ticks inside the content rect by it.
 func TestBeatGridFractions_FractionsInRange(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -125,9 +112,7 @@ func TestBeatGridFractions_FractionsInRange(t *testing.T) {
 	}
 }
 
-// TestBeatGridFractions_WiredThroughEQCallbacks asserts the drumview ctor
-// wires the BeatGridFrac callback into EQPanelZone. Without the wiring
-// the wave-panel beat-grid overlay never renders.
+// Without the wiring the beat-grid overlay never renders.
 func TestBeatGridFractions_WiredThroughEQCallbacks(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

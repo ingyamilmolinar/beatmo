@@ -8,11 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// While the user performs heavy UI operations (resizing, layout, etc.),
-// audio playback must remain responsive and decoupled from the UI loop.
-// This test queues sounds on a tight interval while hammering Update() with
-// length changes and verifies that play callbacks continue to arrive without
-// long gaps.
+// Play callbacks keep arriving without long gaps while Update is hammered with length changes.
 func TestAudioDecoupledDuringHeavyUIOperations(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

@@ -6,8 +6,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Regression: import the real project, play, pause, resume, and keep playing
-// without triggering parity panics.
 func TestImportPauseResumeParityStable(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

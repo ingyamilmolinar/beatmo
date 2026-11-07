@@ -1,19 +1,9 @@
-/**
- * LLM Visual Testing — Recording Engine
- *
- * Two recording modes (same output format):
- *   - Test mode: Proxy-wraps Playwright page.mouse/keyboard/evaluate
- *   - Interactive mode: Injects DOM event listeners via page.exposeFunction
- *
- * Captures periodic screenshots + game state snapshots.
- */
+/** Two modes, one output: test mode proxies Playwright's mouse/keyboard/evaluate, interactive mode injects DOM
+ * listeners. Captures periodic screenshots and game state. */
 
 import fs from "fs";
 import path from "path";
 
-/**
- * Capture current game state from the WASM exports.
- */
 async function captureState(page) {
   return page.evaluate(() => ({
     playing: typeof isPlaying === "function" ? isPlaying() : false,
@@ -23,9 +13,6 @@ async function captureState(page) {
   }));
 }
 
-/**
- * Capture full exported JSON state.
- */
 async function captureExported(page) {
   return page.evaluate(() => {
     if (typeof exportJSON === "function") return exportJSON();
@@ -33,15 +20,7 @@ async function captureExported(page) {
   });
 }
 
-/**
- * Create a recorder that wraps a Playwright page.
- *
- * @param {import('playwright').Page} page
- * @param {Object} options
- * @param {number} options.frameIntervalMs - Screenshot interval (default 500)
- * @param {string} options.mode - "test" (proxy Playwright APIs) or "interactive" (DOM listeners)
- * @returns {Recorder}
- */
+/** mode "test" (proxy Playwright APIs) or "interactive" (DOM listeners); frameIntervalMs default 500. */
 export function createRecorder(page, options = {}) {
   const frameIntervalMs = options.frameIntervalMs ?? 500;
   const mode = options.mode ?? "test";
@@ -60,9 +39,7 @@ export function createRecorder(page, options = {}) {
   let annotations = [];
   let agentLogData = null; // Set via setAgentLog() for agent mode
 
-  // Serialize all page.screenshot() calls to prevent concurrent CDP corruption.
-  // Both the recorder's setInterval loop and the agent's safeScreenshot() call
-  // page.screenshot() — overlapping calls corrupt Playwright's CDP session.
+  // Overlapping page.screenshot() calls (this loop and the agent's) corrupt Playwright's CDP session.
   let screenshotInFlight = null;
 
   async function takeScreenshot(opts) {
@@ -351,9 +328,7 @@ export function createRecorder(page, options = {}) {
     async stop() {
       stopFrameLoop();
 
-      // Capture final frame + state while page may still be alive.
-      // If the browser window was closed, these calls will fail —
-      // that's fine, we still save whatever we already captured.
+      // If the window was closed these fail, and what was captured is still saved.
       try {
         await captureFrame(); // running must still be true for this to work
       } catch (_) {}

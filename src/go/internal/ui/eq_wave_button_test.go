@@ -12,8 +12,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
-// TestEQWaveButtonRendersWithoutTilde verifies that the EQ/Wave toggle button
-// displays the current tab name without a tilde prefix.
 func TestEQWaveButtonRendersWithoutTilde(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -50,14 +48,8 @@ func TestEQWaveButtonRendersWithoutTilde(t *testing.T) {
 	}
 }
 
-// TestEQWaveButtonAlwaysHasVisibleBody verifies that the EQ/Wave toggle button
-// has a visible silhouette in BOTH active and inactive states.
-//
-// Formerly TestEQWaveButtonAlwaysHasBorder. The flat-tonal restyle removed
-// borders at rest (DESIGN.md "Elevation & Depth": a control's silhouette is a
-// tone step, never a line), so asserting a stroke would now pin the wrong
-// thing. The real intent — "this control is never invisible" — is preserved by
-// asserting a FILLED body instead.
+// Never invisible: a filled body in both states, since a resting control's silhouette is a tone step, never a
+// stroke.
 func TestEQWaveButtonAlwaysHasVisibleBody(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -72,8 +64,7 @@ func TestEQWaveButtonAlwaysHasVisibleBody(t *testing.T) {
 
 	screen := ebiten.NewImage(400, 200)
 
-	// Flat-tonal: the pill paints one FILLED rounded rect as its body. Accept
-	// either the uncached primitive or the cached rounded-button composite.
+	// The uncached primitive or the cached rounded-button composite.
 	hasFilledBody := func(rec *drawCallRecorder) bool {
 		for _, c := range rec.inRegion(toggleRect) {
 			if c.Kind == drawCallRoundedRect && c.Filled {
@@ -102,9 +93,7 @@ func TestEQWaveButtonAlwaysHasVisibleBody(t *testing.T) {
 	}
 }
 
-// TestEQPillTabsDrawAboveSpectrumBands verifies that the EQ panel pill tab
-// buttons (channel, HPF, LPF, toggle) are drawn after the spectrum band
-// overlays so they are not occluded.
+// Drawn after the spectrum band overlays, so they are never occluded.
 func TestEQPillTabsDrawAboveSpectrumBands(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -132,11 +121,7 @@ func TestEQPillTabsDrawAboveSpectrumBands(t *testing.T) {
 	var rec drawCallRecorder
 	rec.record(t, func() { z.Draw(screen) })
 
-	// For each button region, find the highest-sequence drawCallRoundedRect
-	// (the pill tab border) and the highest-sequence spectrum band fill.
-	// Band fills are tall drawRect calls that span significantly more height
-	// than the button itself (drawRoundedRect internally emits small drawRect
-	// calls for corners/body which must not be mistaken for band fills).
+	// Band fills are tall drawRects; drawRoundedRect's small corner/body rects must not count as fills.
 	panelRect := image.Rect(0, 0, 400, 200)
 	for name, br := range btnRects {
 		if br.Empty() {
@@ -145,9 +130,7 @@ func TestEQPillTabsDrawAboveSpectrumBands(t *testing.T) {
 		minPillSeq := -1
 		maxBandFillSeq := -1
 		for _, c := range rec.inRegion(br) {
-			// Pill tabs draw their shell + cap face as cached drawRoundedButton
-			// composites (keycap redesign); the legacy raw stroked rounded-rect
-			// path still counts for any pill not yet migrated.
+			// Cached keycap composites, or a raw stroked rounded rect for any pill not migrated.
 			if c.Kind == drawCallRoundedRect || c.Kind == drawCallRoundedButton {
 				if minPillSeq < 0 || c.Seq < minPillSeq {
 					minPillSeq = c.Seq

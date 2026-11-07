@@ -14,11 +14,10 @@ type samplerSource int
 
 const (
 	samplerSourceSynth samplerSource = iota // captured from an instrument's rendered one-shot
-	samplerSourceWAV                        // loaded from a WAV file (Phase 2)
+	samplerSourceWAV
 )
 
-// Knob indices for the Sampler control row. The order is the on-screen
-// left-to-right order and the index used by samplerKnobHitAdapter.
+// On-screen left-to-right order.
 const (
 	samplerKnobStart = iota
 	samplerKnobEnd
@@ -36,33 +35,18 @@ const (
 	samplerGainMaxDB      = 6.0
 )
 
-// samplerState is the canonical model for the Sampler tab. The UI knobs and
-// trim handles derive from these fields every Layout; the baked buffer is
-// produced by audio.BakeSample. It is self-contained (no UI dependencies in
-// its logic) so the edit/capture/save behavior is testable without a DrumView.
+// Free of UI dependencies, so the edit/capture/save behaviour is testable without a DrumView.
 type samplerState struct {
 	source        samplerSource
 	captureID     instrument.ID // instrument id the buffer was captured from / Save overrides
 	raw           []float32
 	rawSampleRate int
 
-	// srcSignature is the synth-signal fingerprint of the source instrument at
-	// the moment raw was last captured (synth sources only). ensureSamplerLoaded
-	// re-renders the one-shot whenever the live signature diverges from this, so
-	// the waveform tracks synth edits in real time without a manual Preview or
-	// tab switch. Zero / unused for WAV sources (their PCM is fixed).
+	// Synth sources only; WAV PCM is fixed.
 	srcSignature uint64
 
-	// Edit params (canonical). Knobs and handles read/write these.
-	//
-	// Note on reverse: the Reverse control flips the working buffer in place
-	// (reverseBuffer), so the visible waveform and the baked audio both reflect
-	// it directly — and the playback highlight always sweeps forward (it has no
-	// direction flag to honour). `reverse` tracks the NET flip parity: it feeds
-	// editDescriptor() (the non-destructive synth path re-renders the recipe
-	// forward at trigger time, so the descriptor must carry reversal
-	// declaratively) AND drives the Reverse toggle's latched on/off visual, so
-	// the button reads its reversed state like every other toggle.
+	// Reverse flips the working buffer in place, so the waveform and the bake reflect it directly; `reverse`
+	// is the net flip parity, which the descriptor (re-rendered forward at trigger time) and the toggle visual need.
 	startFrac      float64
 	endFrac        float64
 	transposeSemis float64
@@ -84,51 +68,29 @@ type samplerState struct {
 	knobCells      [samplerKnobCount]image.Rectangle // full per-knob cell (caption/label/badge center here, decoupled from the dial)
 	readoutRects   [samplerKnobCount]image.Rectangle // caption hit-rects; populated each Draw
 
-	// knobGrid scrolls the single-column knob list on mobile (desktop keeps the
-	// side-by-side one-row layout and never uses it). Persisted across Layout so
-	// the scroll position survives re-layout — mirrors the Synth tab's per-section
-	// grids. knobGridRect is the area it lays the cells inside, reused by the
-	// scroll body catch-all hit area.
+	// Mobile only; kept across Layout so the scroll position survives.
 	knobGrid     *ControlGrid
 	knobGridRect image.Rectangle
 	btns         []*Button // header + control-row buttons, rebuilt each Layout
 
 	dragHandle int // -1 none, 0 start handle, 1 end handle
 
-	// hoverHandle is the trim handle the desktop cursor is over (-1 none, 0
-	// start, 1 end), refreshed each frame by updateSamplerHandleHover. Drives
-	// the own-color hover highlight (the same language as EQ handles / grid
-	// nodes). Stays -1 on mobile (no pointer hover).
+	// -1 none, 0 start, 1 end; stays -1 on mobile.
 	hoverHandle int
 
-	// status is a transient one-line message shown in the waveform card —
-	// e.g. when a synth capture returned no audio (the silent-no-op fix).
-	// Empty means "no message".
+	// A transient line in the waveform card, e.g. a capture that returned no audio. Empty = none.
 	status string
 
-	// waveF64 is a reusable float32→float64 scratch buffer for the waveform
-	// trace renderer. Owned here (not re-allocated per Draw) so the Sampler
-	// tab honours the audio-panel per-tab alloc budget. dispF32 is its
-	// float32 sibling: waveFloat64 applies the amplitude overlays
-	// (normalize/gain/fade) into it before widening, so the rendered trace
-	// reflects the same button state the baked audio does.
+	// Reused scratch so the tab stays within its alloc budget; dispF32 carries the amplitude overlays so the trace
+	// matches the baked audio.
 	waveF64 []float64
 	dispF32 []float32
 
-	// playheads tracks the in-flight preview/playback lines. Each trigger gets
-	// its own line so overlapping voices render as separate coloured lines.
 	playheads samplerPlayheadTracker
 }
 
-// waveFloat64 returns the RENDERED signal as float64 for the trace renderer:
-// the working buffer with the length-preserving amplitude overlays applied —
-// normalize → gain → fade, the same transforms (and the same DSP functions)
-// BakeSample applies to produce the audio. The Reverse order-edit already lives
-// in s.raw, and trim is drawn as a shading overlay rather than truncating the
-// trace, so the displayed waveform reflects every toggle button exactly as the
-// sound does. Both backing arrays are cached so the per-frame Draw path
-// allocates nothing once the buffer length is stable; with no overlay active it
-// widens s.raw directly (the original fast path).
+// The working buffer with normalize → gain → fade applied through the same DSP functions BakeSample uses,
+// so the trace matches the sound. Reverse is already in s.raw; trim is a shading overlay.
 func (s *samplerState) waveFloat64() []float64 {
 	n := len(s.raw)
 	if cap(s.waveF64) < n {
@@ -164,8 +126,7 @@ func (s *samplerState) waveFloat64() []float64 {
 	return s.waveF64
 }
 
-// lengthSeconds returns the captured buffer's duration in seconds (0 when
-// empty or the sample rate is unknown).
+// 0 when empty or the rate is unknown.
 func (s *samplerState) lengthSeconds() float64 {
 	sr := s.rawSampleRate
 	if sr <= 0 || len(s.raw) == 0 {
@@ -183,12 +144,7 @@ func (s *samplerState) trimSeconds() float64 {
 	return s.lengthSeconds() * (hi - lo)
 }
 
-// audibleDurationSeconds returns how long the current edit's kept region takes
-// to play, in seconds: the trimmed length scaled by the pitch ratio (a higher
-// transpose/detune plays faster and shortens it, matching how BakeSample
-// resamples). It is derived from current state, so it self-corrects whenever
-// the trim handles, pitch knobs, or loaded sample change. Returns 0 when
-// nothing audible is loaded — the playhead reads this to know its sweep length.
+// Pitched like BakeSample resamples (higher plays shorter); 0 when nothing audible is loaded.
 func (s *samplerState) audibleDurationSeconds() float64 {
 	trim := s.trimSeconds()
 	if trim <= 0 {
@@ -201,14 +157,8 @@ func (s *samplerState) audibleDurationSeconds() float64 {
 	return trim / ratio
 }
 
-// samplerPlayheadFrac maps elapsed playback time to a [0,1] x-fraction over the
-// waveform for the preview playhead line, and reports whether the line should
-// be drawn at all. The line is visible only while playback is in progress
-// (0 <= elapsed <= duration); a non-positive duration is never visible. lo/hi
-// are the trim fractions (ordered here defensively so the line always lands in
-// the kept region). The sweep is ALWAYS forward (lo→hi, left→right) regardless
-// of whether the buffer was reversed — a reversed sound still plays front-to-
-// back through the kept region, so the highlight must never run right→left.
+// Visible only while 0 ≤ elapsed ≤ duration. Always forward: a reversed sound still plays front to back
+// through the kept region.
 func samplerPlayheadFrac(elapsedSec, durationSec, lo, hi float64) (float64, bool) {
 	if durationSec <= 0 {
 		return 0, false
@@ -223,8 +173,7 @@ func samplerPlayheadFrac(elapsedSec, durationSec, lo, hi float64) (float64, bool
 	return lo + p*(hi-lo), true
 }
 
-// reset restores default edit params (full untrimmed buffer, no pitch shift,
-// unity gain). It preserves the loaded raw buffer.
+// Keeps the loaded buffer.
 func (s *samplerState) reset() {
 	s.startFrac = 0
 	s.endFrac = 1
@@ -265,8 +214,6 @@ func (s *samplerState) setKnob(idx int, v float64) {
 	}
 }
 
-// knobValue is the inverse of setKnob: the normalized [0,1] value that
-// represents the current edit param for the given knob.
 func (s *samplerState) knobValue(idx int) float64 {
 	switch idx {
 	case samplerKnobStart:
@@ -283,9 +230,6 @@ func (s *samplerState) knobValue(idx int) float64 {
 	return 0
 }
 
-// samplerKnobScale returns the real-unit domain for a sampler knob so the
-// endless drag, step badge, and numeric editor operate in real units. The
-// normalized knob Value still maps through setKnob/knobValue.
 func samplerKnobScale(idx int) KnobScale {
 	switch idx {
 	case samplerKnobStart, samplerKnobEnd:
@@ -317,11 +261,7 @@ func samplerStepPrefName(idx int) string {
 	return "sampler.unknown"
 }
 
-// samplerKnobBipolar reports whether a sampler knob's range straddles zero
-// and, if so, the normalized [0,1] position of that zero. Transpose/Detune are
-// symmetric (±range → 0.5); Gain is asymmetric (-24..+6 dB → 0 dB at 0.8);
-// Start/End are unipolar position fractions. Drives Knob.Bipolar/ZeroFrac so
-// the neutral value reads as a centred (un-filled) arc.
+// Gain is asymmetric (-24..+6 dB), so its zero sits at 0.8; Start/End are unipolar.
 func samplerKnobBipolar(idx int) (zeroFrac float64, bipolar bool) {
 	switch idx {
 	case samplerKnobTranspose, samplerKnobDetune:
@@ -332,16 +272,12 @@ func samplerKnobBipolar(idx int) (zeroFrac float64, bipolar bool) {
 	return 0, false
 }
 
-// edit snapshots the current params into an audio.SampleEdit, ordering the
-// trim fractions so start <= end.
 func (s *samplerState) edit() audio.SampleEdit {
 	lo, hi := s.startFrac, s.endFrac
 	if lo > hi {
 		lo, hi = hi, lo
 	}
-	// Reverse is intentionally NOT set here: reverseBuffer already flipped the
-	// working buffer in place, so the kept region (and thus the bake) is reversed
-	// at the source. Setting Reverse here too would double-reverse and cancel it.
+	// Not Reverse: the buffer is already flipped, and setting it here would reverse twice.
 	return audio.SampleEdit{
 		StartFrac:      lo,
 		EndFrac:        hi,
@@ -353,19 +289,8 @@ func (s *samplerState) edit() audio.SampleEdit {
 	}
 }
 
-// editDescriptor snapshots the current params for the NON-DESTRUCTIVE path,
-// where the FORWARD source (recipe render, or a user sample's pristine PCM) is
-// baked at trigger time. It is edit() plus a declarative Reverse — the
-// working-buffer flip that edit() relies on cannot travel with a descriptor
-// applied to a fresh forward render.
-//
-// Trim is expressed over the DISPLAYED working buffer, which is physically
-// reversed when s.reverse is set; but BakeSample applies the descriptor to the
-// forward source and trims BEFORE it reverses (trim → reverse). Selecting
-// [lo,hi] of reverse(P) equals reverse(P[1-hi : 1-lo]), so when reverse is on we
-// must MIRROR the trim fractions into the source frame — otherwise the audible
-// trim lands on the wrong (mirror-image) region while the UI/preview show the
-// selected one. loadEditDescriptor performs the inverse mirror on load.
+// For the non-destructive path, which bakes the FORWARD source at trigger time and trims before reversing:
+// [lo,hi] of reverse(P) is reverse(P[1-hi : 1-lo]), so a reversed edit mirrors the trim into the source frame.
 func (s *samplerState) editDescriptor() audio.SampleEdit {
 	e := s.edit()
 	if s.reverse {
@@ -375,16 +300,9 @@ func (s *samplerState) editDescriptor() audio.SampleEdit {
 	return e
 }
 
-// loadEditDescriptor maps a saved SampleEdit back into the editor's
-// knob-backing fields (the inverse of editDescriptor), so reopening the
-// Sampler on a descriptor-bearing instrument shows the saved trim/pitch/gain.
-// The working buffer must hold the RAW (un-edited) source render; a saved
-// reverse is re-applied to it once so the displayed waveform matches.
+// The buffer must hold the raw source; a saved reverse is re-applied once so the waveform matches.
 func (s *samplerState) loadEditDescriptor(e audio.SampleEdit) {
-	// Inverse of editDescriptor's source-frame mirror: a reversed descriptor
-	// stores trim in the forward-source frame, so un-mirror it back to the
-	// display frame the handles live in (1-EndFrac .. 1-StartFrac). Without this,
-	// reopening a reversed+trimmed chop would show the handles on the wrong end.
+	// Un-mirror into the display frame, or a reversed+trimmed chop reopens with its handles on the wrong end.
 	if e.Reverse {
 		s.startFrac, s.endFrac = 1-e.EndFrac, 1-e.StartFrac
 	} else {
@@ -401,19 +319,12 @@ func (s *samplerState) loadEditDescriptor(e audio.SampleEdit) {
 	}
 }
 
-// samplerCaptureFn renders an instrument's one-shot PCM. Defaults to the
-// platform audio.RenderInstrumentOneShot; swappable in tests so the
-// empty-capture feedback path can be exercised without a real renderer.
+// A var so tests can drive the empty-capture path.
 var samplerCaptureFn = audio.RenderInstrumentOneShot
 
-// samplerRawCaptureFn renders an instrument's one-shot IGNORING any saved
-// sample-edit descriptor. ensureSamplerLoaded uses it for descriptor-bearing
-// instruments so the editor shows the un-edited source waveform and overlays
-// the saved edit itself (capturing the edited render would double-apply it).
+// Ignores the saved edit, which the editor overlays itself (the edited render would apply it twice).
 var samplerRawCaptureFn = audio.RenderInstrumentOneShotRaw
 
-// SwapSamplerRawCaptureFnForTest installs a test fake for the raw synth-capture
-// renderer and returns the previous value, mirroring SwapSamplerCaptureFnForTest.
 func SwapSamplerRawCaptureFnForTest(fn func(instrument.ID) ([]float32, int)) func(instrument.ID) ([]float32, int) {
 	prev := samplerRawCaptureFn
 	if fn != nil {
@@ -422,8 +333,6 @@ func SwapSamplerRawCaptureFnForTest(fn func(instrument.ID) ([]float32, int)) fun
 	return prev
 }
 
-// SwapSamplerCaptureFnForTest installs a test fake for the synth-capture
-// renderer and returns the previous value.
 func SwapSamplerCaptureFnForTest(fn func(instrument.ID) ([]float32, int)) func(instrument.ID) ([]float32, int) {
 	prev := samplerCaptureFn
 	if fn != nil {
@@ -432,11 +341,8 @@ func SwapSamplerCaptureFnForTest(fn func(instrument.ID) ([]float32, int)) func(i
 	return prev
 }
 
-// captureFromSynth renders the given instrument's one-shot into the working
-// buffer and resets the edit params to the full untrimmed region. When the
-// renderer returns no audio (e.g. the browser synth hasn't rendered yet) the
-// buffer is left empty and a status message is set so the UI can explain the
-// no-op instead of silently doing nothing.
+// No audio (the browser has not rendered yet) leaves the buffer empty with a status message, never a
+// silent no-op.
 func (s *samplerState) captureFromSynth(id instrument.ID) {
 	pcm, sr := samplerCaptureFn(id)
 	if len(pcm) == 0 {
@@ -451,11 +357,7 @@ func (s *samplerState) captureFromSynth(id instrument.ID) {
 	s.reset()
 }
 
-// loadFromInstrument installs an instrument's audio as the working buffer and
-// resets the edit params. Used by the dropdown-driven auto-load: synth-backed
-// instruments arrive as a freshly-rendered one-shot (src=synth), user samples
-// (WAV-loaded or previously saved) arrive straight from the canonical PCM store
-// (src=WAV). captureID is set so a follow-up Save overrides this instrument.
+// captureID is set so a follow-up Save targets this instrument.
 func (s *samplerState) loadFromInstrument(id instrument.ID, pcm []float32, sr int, src samplerSource) {
 	s.raw = pcm
 	s.rawSampleRate = sr
@@ -465,18 +367,8 @@ func (s *samplerState) loadFromInstrument(id instrument.ID, pcm []float32, sr in
 	s.reset()
 }
 
-// recaptureRaw swaps in a freshly-rendered one-shot for the SAME instrument
-// while deliberately preserving the user's in-progress edit (trim handles,
-// pitch, gain, toggles). Used when the source synth's signal changed and the
-// waveform must track it live — unlike loadFromInstrument (a new selection),
-// re-rendering the current sound must not discard the chop the user is shaping.
-// Trim handles stay valid because start/end are fractions of the buffer length.
-//
-// The fresh render arrives FORWARD; the Reverse button is the source of truth
-// for order, so when it is latched we re-apply the flip to keep the working
-// buffer (and thus the displayed trace) consistent with the button — otherwise
-// the audio (editDescriptor().Reverse) would play reversed while the waveform
-// showed it forward.
+// Keeps the in-progress edit (a re-render must not discard the chop); trim fractions stay valid. The render
+// arrives forward, so a latched Reverse is re-applied, or the waveform would show forward while the audio plays reversed.
 func (s *samplerState) recaptureRaw(pcm []float32, sr int) {
 	s.raw = pcm
 	s.rawSampleRate = sr
@@ -487,17 +379,8 @@ func (s *samplerState) recaptureRaw(pcm []float32, sr int) {
 	}
 }
 
-// toggleReverse is the user-facing Reverse control. It flips the working buffer
-// (reverseBuffer) AND mirrors the trim window so the kept [start,end] region
-// keeps covering the SAME audio, now reversed. Without the mirror, flipping the
-// buffer under fixed handles slides the kept region onto the mirror-image part
-// of the sound (the trim window and the audio would no longer agree). The mirror
-// is expressed in the displayed-buffer frame: [start,end] → [1-end, 1-start].
-// A no-op on an empty buffer, so the handles stay put when nothing flips.
-//
-// reverseBuffer stays the low-level primitive: the descriptor-load path
-// (loadEditDescriptor) computes the display-frame handles itself and must not
-// have them mirrored a second time, so it calls reverseBuffer directly.
+// Mirrors the trim ([s,e] → [1-e, 1-s]) so the kept region still covers the same audio. loadEditDescriptor
+// computes its own handles and calls reverseBuffer directly.
 func (s *samplerState) toggleReverse() {
 	if len(s.raw) == 0 {
 		return
@@ -506,14 +389,7 @@ func (s *samplerState) toggleReverse() {
 	s.reverseBuffer()
 }
 
-// reverseBuffer flips the working buffer in place — the Reverse control is an
-// ACTION (one click reverses the signal), not a stateful toggle. Because the
-// reversal lives in the buffer, the visible waveform flips, the baked audio
-// matches what is shown, and the playback highlight keeps sweeping forward
-// (it has no direction flag). A no-op on an empty buffer. Note: a later live
-// re-capture from a synth source (recaptureRaw) renders the new sound forward,
-// so a manual reversal is not re-applied across a synth edit — the user re-
-// clicks if they still want it reversed.
+// A no-op on an empty buffer.
 func (s *samplerState) reverseBuffer() {
 	if len(s.raw) == 0 {
 		return
@@ -522,7 +398,6 @@ func (s *samplerState) reverseBuffer() {
 	s.reverse = !s.reverse // net flip parity, consumed only by editDescriptor()
 }
 
-// loadPCM installs an externally-decoded buffer (WAV import, Phase 2).
 func (s *samplerState) loadPCM(pcm []float32, sr int) {
 	s.raw = pcm
 	s.rawSampleRate = sr
@@ -543,8 +418,7 @@ func (s *samplerState) bake() ([]float32, int) {
 	return audio.BakeSample(s.raw, sr, s.edit()), sr
 }
 
-// userSampleID derives a user-sample id from a display name and a seed that
-// tells same-named samples of different origins apart.
+// The seed tells same-named samples of different origins apart.
 func userSampleID(displayName, seed string) instrument.ID {
 	return instrument.UserSampleID(crc32.ChecksumIEEE([]byte(displayName + "|" + seed)))
 }

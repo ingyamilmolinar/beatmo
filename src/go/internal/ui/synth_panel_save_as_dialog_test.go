@@ -12,10 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// pressFooterTag drives a press at the visible center of the footer button
-// carrying the given sentinel tag through the synth hit-area dispatcher.
-// Routes through synthTabHitAreas, picking the highest-z hit that contains
-// the point and returns its result.
+// The highest-z hit containing the button's visible centre.
 func pressFooterTag(t *testing.T, env *synthFooterClickTestEnv, tag string) InputResult {
 	t.Helper()
 	btn := findFooterButton(t, env.g.drum, tag)
@@ -35,9 +32,7 @@ func pressFooterTag(t *testing.T, env *synthFooterClickTestEnv, tag string) Inpu
 	return winner.Handler.OnPress(cx, cy)
 }
 
-// TestSaveAsDialog_OpensOnSaveAsPress — pressing the Save As footer button
-// opens the inline name dialog (does NOT directly call SaveActiveRecipeAs).
-// The dialog's TextInput must be focused with the suggested default name.
+// Opens the name dialog, focused, with the suggested name, rather than saving at once.
 func TestSaveAsDialog_OpensOnSaveAsPress(t *testing.T) {
 	env := setupSynthFooterEnv(t, 1280, 800, false)
 	dv := env.g.drum
@@ -57,9 +52,7 @@ func TestSaveAsDialog_OpensOnSaveAsPress(t *testing.T) {
 	}
 }
 
-// TestSaveAsDialog_SubmitPersistsTypedName — typing a name into the dialog
-// and confirming routes through SaveActiveRecipeAs with the typed string as
-// the displayName. The persisted document must carry that name.
+// The typed name is the saved document's name.
 func TestSaveAsDialog_SubmitPersistsTypedName(t *testing.T) {
 	env := setupSynthFooterEnv(t, 1280, 800, false)
 	dv := env.g.drum
@@ -98,8 +91,7 @@ func TestSaveAsDialog_SubmitPersistsTypedName(t *testing.T) {
 	}
 }
 
-// TestSaveAsDialog_CancelDiscards — cancel must close the dialog without
-// invoking the sink.
+// Closed, with no sink call.
 func TestSaveAsDialog_CancelDiscards(t *testing.T) {
 	env := setupSynthFooterEnv(t, 1280, 800, false)
 	dv := env.g.drum
@@ -120,8 +112,7 @@ func TestSaveAsDialog_CancelDiscards(t *testing.T) {
 	}
 }
 
-// TestSaveAsDialog_EscapeKeyDismisses — pressing Escape while the dialog
-// is open closes it without saving. Drives via the dialog's Update poll.
+// Closed without saving.
 func TestSaveAsDialog_EscapeKeyDismisses(t *testing.T) {
 	env := setupSynthFooterEnv(t, 1280, 800, false)
 	dv := env.g.drum
@@ -132,9 +123,7 @@ func TestSaveAsDialog_EscapeKeyDismisses(t *testing.T) {
 	if dv.SynthSaveAsDialog() == nil {
 		t.Fatal("dialog not open")
 	}
-	// Esc is owned by the universal handler (Game.handleEscape → rung 2b
-	// CancelActiveTextDialog), which is edge-triggered. Drive isKeyJustPressed
-	// via stubKeys — SetInputForTest only sets isKeyPressed.
+	// handleEscape owns Esc and is edge-triggered, hence stubKeys.
 	restoreInput := stubKeys(
 		map[ebiten.Key]bool{ebiten.KeyEscape: true},
 		map[ebiten.Key]bool{ebiten.KeyEscape: true},

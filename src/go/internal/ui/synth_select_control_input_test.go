@@ -8,11 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestKnobPress_SelectsKnobForFocusGraph_ViaTreeDispatch proves that pressing a
-// synth knob makes it the SELECTED knob (the value the focus graph explains).
-// The press is dispatched through the REAL production input path —
-// SetInputForTest + g.Update() → DrumViewTree.handleInput → HitIndex.At →
-// synthControlHitAdapter.OnPress — NOT a synthetic call to a dead handler.
+// Through the real input path, not a direct call.
 func TestKnobPress_SelectsKnobForFocusGraph_ViaTreeDispatch(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
@@ -59,12 +55,7 @@ func TestKnobPress_SelectsKnobForFocusGraph_ViaTreeDispatch(t *testing.T) {
 	}
 }
 
-// TestHover_DoesNotChangeSelection guards that merely having the pointer over a
-// DIFFERENT knob (no press) never reassigns the focus-graph selection — there
-// is no hover path by design, and a hover-driven selection would thrash the
-// graph as the cursor crosses dials. We position the cursor over the second
-// knob and run a normal Update tick WITHOUT pressing the mouse; the selection
-// must stay on the first knob we set explicitly.
+// There is no hover path by design: a hover-driven selection would thrash the graph as the cursor crosses dials.
 func TestHover_DoesNotChangeSelection(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)

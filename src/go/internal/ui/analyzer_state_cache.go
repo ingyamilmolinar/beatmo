@@ -9,18 +9,11 @@ import (
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
-// stateCacheTTL caps the rebuild rate for the synthesized analyzer.State /
-// scope.State. The Draw loop runs at 60-120 fps but the underlying
-// AnalyserNodes update at ~30 Hz, so rebuilding the State more often than
-// this just churns allocator pressure for no visible difference. Matches
-// the per-snapshot cache TTL in internal/audio/analyzer_snapshot_cache.go
-// so both layers refresh on the same wall-clock heartbeat.
+// The AnalyserNodes update at ~30 Hz, so rebuilding faster only churns the allocator. Matches the snapshot
+// cache's TTL so both layers refresh together.
 const stateCacheTTL = 33 * time.Millisecond
 
-// Cache types are in a no-build-tag file so tests can exercise them
-// without spinning up a WASM environment. The cache callers
-// (BuildAnalyzerStateFromSnapshots etc.) live in the WASM-only file
-// wasm_analyzer_bridge.go and inject the fetch function.
+// No build tag, so tests exercise the cache without WASM; the WASM bridge injects the fetch function.
 
 type analyzerStateCacheEntry struct {
 	mu         sync.Mutex
@@ -53,10 +46,7 @@ var (
 	scopeStateCache      = &scopeStateCacheEntry{}
 )
 
-// rowsFingerprint produces a cheap uint64 hash over the (id, name)
-// pairs of the row slice. Used as a cache key so a row rename or
-// instrument swap forces a fresh State build even within the TTL
-// window. Skips nil/empty rows the way the builder loop does.
+// A rename or instrument swap must force a fresh build even within the TTL.
 func rowsFingerprint(rows []*DrumRow) uint64 {
 	var h uint64 = 1469598103934665603 // FNV-1a 64 offset basis
 	const prime uint64 = 1099511628211
@@ -80,11 +70,7 @@ func rowsFingerprint(rows []*DrumRow) uint64 {
 	return h
 }
 
-// cachedAnalyzerState returns the cached *analyzer.State for the given
-// (activeID, rowsFP, sampleRate) key if it is within stateCacheTTL,
-// otherwise calls build and caches the result. Pure Go; no platform
-// dependencies — same signature on every build so tests + the WASM
-// bridge share the same code path.
+// The same signature on every build, so tests and the WASM bridge share one path.
 func cachedAnalyzerState(activeID channel.ID, rowsFP uint64, sampleRate int, build func() *analyzer.State) *analyzer.State {
 	c := analyzerStateCache
 	c.mu.Lock()
@@ -147,9 +133,7 @@ func cachedScopeState(instID channel.ID, tapA, tapB scope.Stage, build func() *s
 	return st
 }
 
-// InvalidateAnalyzerStateCacheForTest clears the cached analyzer states.
-// Tests that toggle freeze / change rows / switch tabs in quick
-// succession must call this to avoid stale-cache flakes.
+// Tests that change state in quick succession call this to avoid stale-cache flakes.
 func InvalidateAnalyzerStateCacheForTest() {
 	analyzerStateCache.mu.Lock()
 	analyzerStateCache.state = nil

@@ -8,11 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
-// openEQWheel sets up the EQ tab with the wheel popup open and returns a grid
-// point outside the popup (a "tap on the scrim over the grid"). Mirrors
-// openMobileSynthWheel in synth_wheel_popup_isolation_test.go, using
-// setupEQTabForTest (eq_wheel_popup_test.go) as the canonical EQ-tab bring-up
-// sequence.
+// Returns a grid point outside the popup: a tap on the scrim over the grid.
 func openEQWheel(t *testing.T) (g *Game, gx, gy int) {
 	t.Helper()
 	g = New(testLogger)
@@ -59,11 +55,7 @@ func TestEQWheelPopup_BlocksGridTap(t *testing.T) {
 	}
 }
 
-// TestEQWheelPopup_AppliesToMasterChannel: a wheel step on the master channel
-// (default eqActiveChannel == "main") must flow through OnGainChange ->
-// OnApplyEQ -> dv.applyEQ() -> dv.applyMasterEQ(), landing in dv.eqApplied —
-// the same observation seam TestEQBandMuteUnmutePreservesGain and
-// TestEQPanelMuteVisualState use (eq_per_instrument_test.go).
+// On the master channel a wheel step flows OnGainChange → OnApplyEQ → applyMasterEQ into dv.eqApplied.
 func TestEQWheelPopup_AppliesToMasterChannel(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -81,10 +73,7 @@ func TestEQWheelPopup_AppliesToMasterChannel(t *testing.T) {
 	dv.openEQKnobWheelPopup(0)
 	b := dv.eqWheelPopup.binding
 
-	// Drive one wheel step: move the transient knob to a known dB value and
-	// fire the same OnChange the wheel fires per notch (per Task 2's test,
-	// HandleWheel's notcher needs many events to move — drive Value+OnChange
-	// directly instead).
+	// The knob and the per-notch OnChange directly: HandleWheel's notcher needs many events to move.
 	const wantDB = 4.5
 	b.Knob.Value = (wantDB - eqDBMin) / eqDBSpan
 	b.OnChange()
@@ -100,9 +89,7 @@ func TestEQWheelPopup_AppliesToMasterChannel(t *testing.T) {
 	}
 }
 
-// TestEQWheelPopup_AppliesToRowChannel: the same wheel wiring, but with a row
-// (per-instrument) channel selected, must flow through applyRowEQ instead of
-// applyMasterEQ, landing in that row's EQGainsDB.
+// A row channel goes through applyRowEQ into that row's gains.
 func TestEQWheelPopup_AppliesToRowChannel(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)

@@ -7,22 +7,9 @@ import (
 	"testing"
 )
 
-// Node-rule cross-platform parity golden generator. Companion to
-// node_logic_parity.browser.test.js: it pins the predictor schedule for a
-// circuit exercising EVERY built-in logic kind (every_n_triggers, skip_every_n,
-// probability, trigger_if_prev_*) over a deep horizon (many loop iterations).
-// The browser test asserts the WASM predictor reproduces this byte-for-byte —
-// proving logic-kind evaluation AND the uint64 probability roll are identical
-// across the native↔WASM compile boundary, with the bounded dirty-rebuild fix
-// compiled into the WASM binary (i.e. the fix did not perturb the schedule).
-//
-// Why no large-windowStart probe here: in the game/UI context the predictor
-// window is anchored to the visible region (visibleMinAbs), so Ensure cannot
-// slide windowStart past windowCap without real playback advancing the view —
-// idx beyond [0, windowCap) is uncomputable in a static import. The bounded
-// rebuild's large-windowStart byte-identity is proven natively (and exhaustively
-// across windowStart values) by core/engine TestDirtyRebuildEquivalentToFullWalk;
-// that path is pure integer logic, hence architecture-independent.
+// The predictor schedule for a circuit using every logic kind over a deep horizon; the browser test asserts WASM
+// reproduces it byte for byte, probability rolls included. No large-windowStart probe: a static UI predictor
+// window cannot slide there, and that path is pure integer logic proven natively.
 
 type nodeRuleRowData struct {
 	Row       int    `json:"row"`
@@ -85,8 +72,7 @@ func TestNodeRuleParityGolden(t *testing.T) {
 		Small:   small,
 	}
 
-	// Sanity: the circuit must actually fire and the logic must gate something
-	// (otherwise the parity check is vacuous).
+	// Otherwise the parity check is vacuous.
 	anyAudible, anyGated := false, false
 	for _, rd := range small {
 		for k := 0; k < len(rd.Audible); k++ {

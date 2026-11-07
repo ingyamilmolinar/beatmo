@@ -112,11 +112,9 @@ func TestScrollBehavior_TouchScrollPixelConversion(t *testing.T) {
 
 	sb.HandleTouchBegin(100, 200)
 
-	// Move UP beyond dead zone to lock direction (returns 0 on lock frame).
-	// Finger up = scroll down = First increases.
+	// Past the dead zone, which locks the direction (0 on the lock frame); finger up = First increases.
 	sb.HandleTouchMove(100, 188) // 12px up > 8px dead zone, locks direction
-	// The lock frame sets lastY=188, subsequent moves measure delta from there.
-	// Move 52px UP (1 item height) from current lastY.
+	// The lock frame set lastY, so this 52 px (one item) is measured from there.
 	changed := sb.HandleTouchMove(100, 188-52)
 	if !changed || sb.VS.First != 1 {
 		t.Fatalf("touch scroll: changed=%v first=%d want 1", changed, sb.VS.First)

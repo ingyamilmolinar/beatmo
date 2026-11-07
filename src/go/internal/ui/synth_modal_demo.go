@@ -7,17 +7,13 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// synth_modal_demo.go — a fixed document shaped like a WAV clone (MODAL +
-// STRIKE + NOISE stages, ratio rows, a measured-looking decay law) for the
-// Synth-tab scenes and tests of those stages. Generated, never measured: the
-// real clones come from `make clone` and are local dev artifacts; nothing here
+// A fixed, generated document shaped like a WAV clone, for the modal-stage scenes and tests: nothing here
 // reads reference audio.
 
 // demoModalRatios are a free-free bar's partial ratios (and two doublets).
 var demoModalRatios = []float64{1, 2.756, 2.764, 5.404, 8.933, 8.951, 13.345, 18.64, 24.81, 31.87, 39.8, 48.6, 58.2, 68.8}
 
-// demoModalDoc replaces base's sound with the demo modal model, keeping its
-// identity (id, name, category) like `clone -into`.
+// Keeps base's identity, like `clone -into`.
 func demoModalDoc(base instrument.Doc) (instrument.Doc, error) {
 	reg := audio.BuiltinModuleRegistry()
 	d := instrument.Doc{ID: base.ID, Origin: base.Origin, Name: base.Name, Category: base.Category,

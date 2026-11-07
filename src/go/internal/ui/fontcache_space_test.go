@@ -4,16 +4,8 @@ package ui
 
 import "testing"
 
-// These tests exercise the REAL TrueType measurement path in fontcache.go
-// (compiled only WITHOUT the `test` tag — under `-tags test` the debug font is
-// used and space always has width, so the fast suite can't catch this). Run via
-// `make test-real` / `xvfb-run go test ./internal/ui/`.
-//
-// Regression: measurement used text.BoundString (INK bounds), so a space — which
-// has no ink — measured 0 wide. A LEADING space was then invisible: the caret
-// (drawn at x+TextWidth(prefix)) never advanced and the text sprite clipped the
-// space, so typing a space at the start of a name looked like "nothing happened"
-// on desktop AND WASM. The fix measures/renders by glyph ADVANCE.
+// Real build only: under -tags test the debug font always gives a space width. Width must come from glyph
+// ADVANCE, not ink bounds — a space has no ink, so a leading space would be invisible and the caret would not move.
 
 func TestSpaceHasWidth(t *testing.T) {
 	if fontFaceBold(FontSizeBody) == nil {

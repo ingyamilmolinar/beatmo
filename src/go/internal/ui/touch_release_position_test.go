@@ -8,30 +8,12 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestTouchReleasePosition_HoldsLiftCoords verifies that on the frame a single
-// touch ends, updateTouchOverride keeps publishing the *last touch position*
-// (with the button reported as released) so that any captured handler whose
-// OnRelease fires that frame sees the lift coords instead of a stale (0,0)
-// desktop-cursor reading.
-//
-// Pre-fix: when globalTouchState removes the ended touch and ActiveTouchCount
-// drops to 0, updateTouchOverride sets touchOverrideActive=false on the same
-// frame the dispatcher reads cursorPosition() for the release branch — so
-// OnRelease handlers receive (0,0) and any cursor-position-dependent commit
-// (e.g., Knob.updateFromDrag on release) snaps to an extreme.
-//
-// Post-fix: the override holds the last single-touch position for exactly one
-// post-end frame with touchOverrideLeft=false.
+// On the frame a touch ends the override keeps publishing its last position with the button up, so an
+// OnRelease that frame sees the lift point, not a stale (0,0) that snaps a knob to an extreme.
 func TestTouchReleasePosition_HoldsLiftCoords(t *testing.T) {
-	// Restore the package-default input function variables first: a prior test
-	// that replaced cursorPosition/isMouseButtonPressed via a stub helper whose
-	// restore never ran would otherwise leak its mock into this test (which
-	// reads cursorPosition through the real touch-override wrapper to verify
-	// lift-coordinate handling). resetInputForTest re-installs the defaults so
-	// the test is order-independent.
+	// Defaults first: a stub helper whose restore never ran would leak its mock into this real-wrapper test.
 	resetInputForTest()
-	// Use the real globalTouchState so we exercise the same code paths the
-	// dispatcher does. Reset before and after to avoid leaking state.
+	// The real globalTouchState, reset around the test.
 	globalTouchState.Reset()
 	resetTouchOverride()
 	t.Cleanup(func() {
@@ -67,10 +49,7 @@ func TestTouchReleasePosition_HoldsLiftCoords(t *testing.T) {
 		t.Fatal("frame 2 (drag): isMouseButtonPressed=false, want true")
 	}
 
-	// Frame 3: finger lifts. globalTouchState.Update removes the touch;
-	// updateTouchOverride MUST publish one final override frame with the lift
-	// position and button=false so the dispatcher's release branch sees the
-	// correct lift coords.
+	// One final override frame with the lift position and the button up.
 	mock.removeTouch(1)
 	globalTouchState.Update()
 	updateTouchOverride()
@@ -84,8 +63,7 @@ func TestTouchReleasePosition_HoldsLiftCoords(t *testing.T) {
 		t.Fatal("frame 3 (release): isMouseButtonPressed=true, want false")
 	}
 
-	// Frame 4: a full frame after release with no touches — override fully
-	// clears. cursorPosition falls through to the underlying Ebiten cursor.
+	// Fully cleared: the cursor falls through to Ebiten's.
 	globalTouchState.Update()
 	updateTouchOverride()
 	if touchOverrideActive {

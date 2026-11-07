@@ -1,16 +1,5 @@
-/**
- * Audible-change regression test — Phase 5 follow-up.
- *
- * Verifies that calling setInstrumentParam during playback ACTUALLY
- * changes the rendered audio bytes — not just the JS-side params map.
- * This catches the bug pattern where the renderCache invalidation is
- * wired but the next render path doesn't pick up the new params.
- *
- * Approach: render the same instrument twice via ensureRenderedSample,
- * once at defaults and once after setting decay=0.3. Compare the raw
- * Float32 bytes; they MUST differ (the `_p` variant applies a shorter
- * envelope when decay < 1, so the buffer tail decays faster).
- */
+/** setInstrumentParam must change the rendered BYTES, not only a params map: the instrument rendered twice, the second
+ * after post_decay 0.3, and the buffers must differ. */
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";
@@ -84,16 +73,8 @@ const baseline = await page.evaluate(() => window.__testCaptureSynthRender('snar
 if (!baseline) throw new Error('baseline render snapshot returned null');
 console.log(`[TEST] baseline tailRMS=${baseline.tailRMS.toFixed(6)} length=${baseline.length}`);
 
-// Change the POST decay macro to a value far from identity (1.0);
-// post_decay=0.3 shortens the envelope substantially → tail RMS should drop.
-//
-// The knob is `post_decay`, NOT `decay`: `snare` is config-first over the
-// shared modular voice (recipe synth-modular-snare), where the legacy POST
-// macro is pushed as post_decay (family_modular_push.go: out["post_decay"] =
-// elidedVal(elided, "decay", 1)). An unknown key is DROPPED by the renderer
-// rather than rejected, so spelling it `decay` here re-rendered the shipped
-// sound and produced a bit-identical buffer — which this test then reported
-// as a renderCache-invalidation bug.
+// post_decay, not decay: an unknown key is dropped by the renderer, which made a bit-identical buffer look like a cache
+// bug.
 await page.evaluate(() => setInstrumentParam('snare', 'post_decay', 0.3));
 const modified = await page.evaluate(() => window.__testCaptureSynthRender('snare'));
 if (!modified) throw new Error('modified render snapshot returned null');
@@ -103,8 +84,7 @@ if (baseline.length !== modified.length) {
   throw new Error(`buffer length changed unexpectedly: ${baseline.length} → ${modified.length}`);
 }
 
-// Bit-equality check: the buffers MUST differ. If they're identical,
-// it means setInstrumentParam didn't actually reach the C `_p` variant.
+// Identical would mean the edit never reached the C render.
 let allEqual = true;
 for (let i = 0; i < baseline.head.length; i++) {
   if (Math.abs(baseline.head[i] - modified.head[i]) > 1e-9) { allEqual = false; break; }
@@ -124,9 +104,7 @@ if (allEqual) {
   );
 }
 
-// Stronger check: decay=0.3 should reduce tail RMS by at least 25%.
-// (Empirically the envelope shortens enough to drop 50%+; 25% is a
-// conservative guard against future C-side tweaks to the helper.)
+// A conservative 25 % against C-side tweaks.
 const drop = (baseline.tailRMS - modified.tailRMS) / Math.max(baseline.tailRMS, 1e-12);
 if (drop < 0.25) {
   throw new Error(

@@ -2,14 +2,9 @@ package audio
 
 import "github.com/ingyamilmolinar/beatmo/internal/instrument"
 
-// module_decls.go — THE built-in module types (spec §4). A type groups the ABI
-// fields one engine stage / source / voice reads; its values ARE ABI field
-// names (slot-relative for layers). A voice variant is its own type only when
-// it runs a different C function (kick/snare/cymbal); a variant that only picks
-// constants from a table stays a value (tom_variant, fm_variant).
-//
-// Adding a synth step or voice: append one declaration here, write the C that
-// reads its fields, `make gen-synth-abi`. No existing document changes.
+// THE built-in module types: a type groups the ABI fields one stage, source or voice reads. A variant is its own type
+// only when it runs a different C function; one that picks constants from a table stays a value. Adding a voice:
+// one declaration, its C, `make gen-synth-abi`; no document changes.
 
 func declVals(names ...string) []instrument.ValueDecl {
 	out := make([]instrument.ValueDecl, len(names))
@@ -35,8 +30,7 @@ func declPrefixed(prefix string, names ...string) []string {
 	return out
 }
 
-// slotsOf is the ABI slot count of a modularFields block — a family voice's
-// capacity is whatever its arrays hold, never a hand-typed number.
+// A family voice's capacity is whatever its arrays hold, never a hand-typed number.
 func slotsOf(block string) int {
 	for _, f := range modularFields {
 		if f.Block == block {
@@ -70,8 +64,7 @@ func builtinModuleDecls() []instrument.ModuleTypeDecl {
 			"formant_shift", "formant_breath", "formant_sing", "formant_morph_rate", "formant_morph_to", "formant_dry")},
 		{Type: "finish", Kind: st, Required: true, Values: declVals("post_pitch", "post_decay", "post_decay_rate", "post_body",
 			"post_brightness", "post_darken", "post_drive", "out_clamp")},
-		// WAV-clone stages (spec 2026-10-12 §3): a measured modal model. The
-		// tables hold model parameters only (TestTablesAreModelParametersOnly).
+		// The tables hold model parameters only.
 		{Type: "modal", Kind: st, Enable: declSwitch("modal_enabled", 1),
 			Values: declVals("modal_freq_mode", "modal_tune", "modal_stretch", "modal_decay_x", "modal_bright",
 				"modal_keep", "modal_law_a", "modal_law_p", "modal_law_b"),
@@ -129,9 +122,7 @@ func builtinModuleDecls() []instrument.ModuleTypeDecl {
 			"fm_r1", "fm_r2", "fm_r3", "fm_r4", "fm_d1", "fm_d2", "fm_d3", "fm_d4", "fm_dec1", "fm_dec2", "fm_dec3", "fm_dec4")},
 	}
 
-	// Kick: one type per C voice function (gen_kick_<variant>).
-	// Every kick voice reads freq/freq_mode; all but the physical one (which
-	// discards kWave in C) read the generator wave.
+	// One type per C voice function. The physical kick discards the generator wave in C, so it does not declare it.
 	kick := func(typ string, variant float64, own ...string) instrument.ModuleTypeDecl {
 		common := []string{"freq_mode", "freq", "wave"}
 		if typ == "kick.physical" {
@@ -170,8 +161,7 @@ func builtinModuleDecls() []instrument.ModuleTypeDecl {
 		snare("snare.acoustic", 3, full...),
 	)
 
-	// Cymbal: hi-hat and ride always play the modal plate; open hi-hat and crash
-	// play it when cym_modes >= 1 and their partial voice below that.
+	// Hi-hat and ride always play the modal plate; open hi-hat and crash once cym_modes ≥ 1.
 	cym := func(typ string, variant float64, own ...string) instrument.ModuleTypeDecl {
 		return instrument.ModuleTypeDecl{Type: typ, Kind: ly, Enable: declSwitch("source", 9), Capacity: slotsOf("cym"),
 			Set: declSet("cym_variant", variant), Values: declVals(own...)}
@@ -179,9 +169,7 @@ func builtinModuleDecls() []instrument.ModuleTypeDecl {
 	partial := declPrefixed("cym_", "tune", "env_fast", "env_tail", "tone_m", "noise_m", "noise_d")
 	plate := append(append([]string{}, partial...), declPrefixed("cym_", "modes", "mode_lo", "mode_hi", "decay_tilt", "hf_corner", "beat",
 		"tone_f", "tone_w", "body_f", "body_w", "body", "spark_f", "spark_w", "spark", "wash", "attack")...)
-	// The rattle (and the wire delay that only acts on it) exists only on the
-	// hi-hats: gen_cymbal_modal forces it off for the ride and crash (one
-	// suspended cymbal has nothing to rattle against).
+	// Hi-hats only: the C forces the rattle off for one suspended cymbal, which has nothing to rattle against.
 	hat := append(append([]string{}, plate...), declPrefixed("cym_", "rattle", "rattle_rate", "rattle_decay", "drive_delay", "rattle_hold")...)
 	d = append(d,
 		cym("cym.hihat", 0, hat...),
@@ -192,8 +180,7 @@ func builtinModuleDecls() []instrument.ModuleTypeDecl {
 		cym("cym.crash", 5, append([]string{"wave"}, plate...)...),
 	)
 
-	// Voice render effects: only the ones both platforms apply to a voice
-	// (voice_fx.go); free-form until the FX lift declares their values.
+	// Only the effects both platforms apply to a voice.
 	for _, et := range voiceFXTypes() {
 		d = append(d, instrument.ModuleTypeDecl{Type: "fx." + string(et), Kind: instrument.KindFX, FreeForm: true})
 	}

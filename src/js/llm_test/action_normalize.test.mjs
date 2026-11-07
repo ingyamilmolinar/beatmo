@@ -1,10 +1,4 @@
-/**
- * Unit tests for computer-action normalization (pure, no browser).
- * Run with: node --test src/js/llm_test/action_normalize.test.mjs
- *
- * Regression guard for the real mobile bug: Haiku emitted name="left_click"
- * with coordinate="[568, 592]", which silently no-op'd every tap.
- */
+/** Pure, no browser: node --test src/js/llm_test/action_normalize.test.mjs */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { normCoord, normalizeComputerAction } from "./action_normalize.js";

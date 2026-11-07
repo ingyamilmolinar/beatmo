@@ -10,30 +10,17 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// sampler_realtime.go — keeps the Sampler tab's waveform in sync with the live
-// synth signal. The displayed buffer is captured from the source instrument's
-// rendered one-shot; when the user edits that instrument's synth params (on the
-// Synth tab or via the bridge) the capture would otherwise go stale until a
-// manual Preview / tab switch. ensureSamplerLoaded re-renders whenever the
-// source signature here diverges from the one recorded at capture time.
+// The waveform is a capture of the instrument's one-shot; without this signature it would go stale after a
+// synth edit until a manual Preview or tab switch.
 
-// samplerSourceSignatureFn returns an opaque fingerprint of an instrument's
-// current synth signal. The Sampler re-captures whenever it changes. The
-// default fingerprints the live per-instrument param overlay (the values the
-// Synth-tab knobs write through audio.SetInstrumentParam); swappable in tests so
-// the re-capture trigger can be exercised without the real renderer (which, in
-// the test build, ignores params).
+// Fingerprints the live param overlay. A var so tests can exercise the re-capture without the real renderer,
+// which ignores params in the test build.
 var samplerSourceSignatureFn = func(instID instrument.ID) uint64 {
-	// The descriptor signature is folded in so an externally-changed sample
-	// edit (import, startup rehydration) re-syncs the open editor, not just
-	// live param edits.
+	// The sample-edit signature is folded in so an external edit (import, startup rehydration) re-syncs too.
 	return recipeParamsSignature(audio.GetInstrumentParams(instID)) ^
 		audio.SampleEditSignature(instID)
 }
 
-// SwapSamplerSourceSignatureFnForTest installs a test fake for the source
-// signature provider and returns the previous value, mirroring
-// SwapSamplerCaptureFnForTest / SwapSamplerAuditionFnForTest.
 func SwapSamplerSourceSignatureFnForTest(fn func(instrument.ID) uint64) func(instrument.ID) uint64 {
 	prev := samplerSourceSignatureFn
 	if fn != nil {
@@ -42,10 +29,7 @@ func SwapSamplerSourceSignatureFnForTest(fn func(instrument.ID) uint64) func(ins
 	return prev
 }
 
-// recipeParamsSignature hashes a parameter overlay into a stable, order-
-// independent fingerprint. Two overlays with the same name→value pairs produce
-// the same value regardless of map iteration order; any added, removed, or
-// changed value produces a different one.
+// Order-independent: the same pairs give the same value whatever the map iteration order.
 func recipeParamsSignature(p audio.RecipeParams) uint64 {
 	if len(p) == 0 {
 		return 0

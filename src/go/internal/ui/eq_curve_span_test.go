@@ -7,10 +7,7 @@ import (
 	"testing"
 )
 
-// TestEQCurveSpanXInsetFromEdges pins the fix for the EQ curve/hatch running
-// flush to x=0 / x=max (amputated by the panel edge): eqCurveSpanX insets the
-// curve span by SpaceXS on each side for a normal-width plot, and degrades
-// gracefully to the full span for a degenerate (too-narrow) rect.
+// Inset by SpaceXS each side so the curve is not cut by the panel edge; too narrow a rect gets the full span.
 func TestEQCurveSpanXInsetFromEdges(t *testing.T) {
 	z := &EQPanelZone{}
 
@@ -26,8 +23,7 @@ func TestEQCurveSpanXInsetFromEdges(t *testing.T) {
 		t.Errorf("curve span [%d,%d] is flush with panel edges [%d,%d]", minX, maxX, wide.Min.X, wide.Max.X)
 	}
 
-	// Degenerate: narrower than two insets → fall back to the full span
-	// rather than inverting.
+	// Rather than inverting.
 	narrow := image.Rect(10, 0, 10+SpaceXS, 20)
 	nMin, nMax := z.eqCurveSpanX(narrow)
 	if nMin != narrow.Min.X || nMax != narrow.Max.X {

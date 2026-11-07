@@ -10,11 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestSignTestP pins signTestP's exact two-sided binomial values against
-// hand-checked cases: 7/7 and 6/7 are asymmetric enough for one tail to
-// dominate (doubling it directly), while 4/8 sits exactly on the
-// distribution's centre, where both tails are equal and the doubled value
-// exceeds 1 and must clamp.
+// 7/7 and 6/7 are dominated by one tail; 4/8 is the centre, where the doubled value exceeds 1 and must clamp.
 func TestSignTestP(t *testing.T) {
 	cases := []struct {
 		agree, total int
@@ -32,10 +28,7 @@ func TestSignTestP(t *testing.T) {
 	}
 }
 
-// TestScorePreferencesFromNorms drives the pure counting core directly with
-// precomputed per-clip norm maps -- no rendering, no diagnosis -- so the
-// agreement rule itself (chosen's Norm strictly lower than rejected's) is
-// exercised in isolation.
+// The counting core on precomputed norms: chosen's Norm strictly below rejected's, with no rendering or diagnosis.
 func TestScorePreferencesFromNorms(t *testing.T) {
 	pairs := []prefPair{
 		{Family: roster.Oboe, RefID: "oboe-A4"},
@@ -65,10 +58,7 @@ func TestScorePreferencesFromNorms(t *testing.T) {
 	}
 }
 
-// TestScorePreferencesFromNorms_MissingAxisOnRejected: a descriptor present
-// only on the chosen clip's map (e.g. RefNA/SynthNA suppressed it on the
-// rejected clip) must not count -- both sides have to be measurable for the
-// comparison to mean anything.
+// Both sides must be measurable for the comparison to mean anything.
 func TestScorePreferencesFromNorms_MissingAxisOnRejected(t *testing.T) {
 	pairs := []prefPair{{Family: "x", RefID: "x-A4"}}
 	chosen := []map[string]float64{{"axis.only.chosen": 0.1}}
@@ -98,11 +88,7 @@ func TestMergePreferenceScores(t *testing.T) {
 	}
 }
 
-// TestAxisFlagAppendsPredictivePref exercises the three boundary cases the
-// controller specified directly: enough pairs and a high enough rate labels
-// the axis; a lower rate on the same sample size does not; and a rate of 1.0
-// with too few pairs still does not, because prefPredictiveMinTotal (6) is a
-// floor on its own regardless of the rate.
+// Enough pairs and a high rate label the axis; a lower rate does not; 1.0 on too few pairs does not either.
 func TestAxisFlagAppendsPredictivePref(t *testing.T) {
 	cases := []struct {
 		name         string
@@ -125,12 +111,8 @@ func TestAxisFlagAppendsPredictivePref(t *testing.T) {
 	}
 }
 
-// TestScoreCandidateScales drives the pure per-candidate counting core
-// directly against precomputed axis directions -- no diagnosis, no
-// rendering -- covering the sign-agreement rule: a positive answer agrees
-// with a "high" direction, a negative answer agrees with "low", disagreement
-// is BACKWARDS, an axis absent or not measurable reports n/a and does not
-// count toward Total, and Answer==0 is skipped entirely (no hit at all).
+// Positive agrees with "high", negative with "low", disagreement is BACKWARDS, an absent or unmeasurable axis is n/a
+// and not counted, and 0 is skipped entirely.
 func TestScoreCandidateScales(t *testing.T) {
 	scales := []sessionScale{
 		{Q: "brighter?", Axis: "axis.bright", Answer: 2},    // agrees (high/high)
@@ -187,10 +169,7 @@ func TestScoreCandidateScales(t *testing.T) {
 	}
 }
 
-// TestPrefCell_MarksSignificantlyBackwardsAxes: a small AGREE/TOTAL with a
-// small p is not a weak result, it is a strong one pointing the wrong way.
-// Reading it as weak is the mistake that let bright.centroid (AUC 0.36) look
-// reasonable for as long as it did.
+// A small AGREE/TOTAL with a small p is a strong result pointing the wrong way, not a weak one.
 func TestPrefCell_MarksSignificantlyBackwardsAxes(t *testing.T) {
 	for _, c := range []struct {
 		name          string
@@ -214,9 +193,7 @@ func TestPrefCell_MarksSignificantlyBackwardsAxes(t *testing.T) {
 	}
 }
 
-// An empty group has no mean. mean() reports NaN; the column must not print
-// the literal "NaN", which reads as a computation that went wrong rather than
-// as "there was nothing to average".
+// Never the literal "NaN", which reads as a computation that went wrong.
 func TestMeanCell_EmptyGroupPrintsADash(t *testing.T) {
 	if got := meanCell(mean(nil)); strings.Contains(got, "NaN") {
 		t.Errorf("empty group rendered as %q", got)

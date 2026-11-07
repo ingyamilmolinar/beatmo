@@ -5,14 +5,10 @@ import "math"
 // HarmonicPeak is one spectral peak (frequency + magnitude).
 type HarmonicPeak struct{ Hz, Mag float64 }
 
-// harmonicMinHz floors peak detection: sub-audio rumble / DC / room noise below
-// this is ignored so PrimaryHz is always a plausible musical pitch. 25 Hz sits
-// just below the lowest piano note (A0 ≈ 27.5 Hz) so no real fundamental is lost.
+// Just below A0 (27.5 Hz), so no real fundamental is lost while rumble and DC are ignored.
 const harmonicMinHz = 25.0
 
-// HarmonicProfile returns the n strongest local-maximum peaks, descending by
-// magnitude. peaks[0] is the primary; the rest are secondary harmonics/partials.
-// Peaks below harmonicMinHz are ignored.
+// peaks[0] is the primary.
 func HarmonicProfile(mag []float64, binHz float64, n int) []HarmonicPeak {
 	var peaks []HarmonicPeak
 	for i := 1; i < len(mag)-1; i++ {
@@ -39,8 +35,7 @@ func HarmonicProfile(mag []float64, binHz float64, n int) []HarmonicPeak {
 	return peaks
 }
 
-// IntervalHistogram is the circular autocorrelation of chroma: how much energy
-// sits at each pitch-class interval (index 0 = unison, 7 = perfect fifth, …).
+// Index 0 = unison, 7 = perfect fifth.
 func IntervalHistogram(chroma [12]float64) [12]float64 {
 	var h [12]float64
 	for lag := 0; lag < 12; lag++ {
@@ -53,8 +48,7 @@ func IntervalHistogram(chroma [12]float64) [12]float64 {
 	return h
 }
 
-// IntonationCents returns the magnitude-weighted mean cents deviation of strong
-// peaks from the nearest equal-tempered semitone (A4=440). Positive = sharp.
+// Positive = sharp, against A4 = 440 equal temperament.
 func IntonationCents(mag []float64, binHz float64) float64 {
 	if binHz <= 0 {
 		return 0

@@ -7,12 +7,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/utils"
 )
 
-// guideLayerVisible gates the grid-guide crosshair layer. Desktop: whenever
-// the pointer is inside the grid pane (same gate as the cursor label). Touch:
-// only while a finger is down — otherwise the crosshair would stick at the
-// last lift position. Hidden outright while a link drag or marquee owns the
-// gesture: those gestures never place a node, and the ghost/crosshair would
-// bury the link-drag helper arrow (drawn at GZEdges) under placement chrome.
+// Touch: only while a finger is down, or the crosshair sticks at the last lift. Hidden during a
+// link drag or marquee, which never place and whose helper arrow it would bury.
 func (g *Game) guideLayerVisible() bool {
 	if g.modalOverlayActive() || g.landscapeUnsupported() {
 		return false
@@ -30,11 +26,8 @@ func (g *Game) guideLayerVisible() bool {
 	return Profile().ShowCursorLabel
 }
 
-// drawGridGuide renders the placement guide: a screen-constant crosshair
-// through the snapped target, fraction ticks + a brightened line on the
-// active edge, and a ghost-node preview at the commit cell. All chrome except
-// the ghost is screen-constant so nothing grows when zooming in; the ghost
-// previews a real node, so it scales with zoom like one (see NodeRadius).
+// Screen-constant chrome so nothing grows when zooming in; the ghost previews a real node, so it
+// scales like one.
 func (g *Game) drawGridGuide(dst *ebiten.Image) {
 	if !g.guideLayerVisible() {
 		return
@@ -56,8 +49,7 @@ func (g *Game) drawGridGuide(dst *ebiten.Image) {
 		g.drawGuideEdgeTicks(dst, t, &idm)
 	}
 
-	// Ghost node preview at the commit cell. Move mode draws its own ghost
-	// (drawGridMoveMode); a node target needs no preview — the node exists.
+	// Move mode draws its own ghost; a node target needs none.
 	if t.Kind != GuideNode && !g.modes.Is(GridModeMove) {
 		gr := g.grid.NodeRadius(g.cam.Scale) * g.cam.Scale
 		ghostRect := image.Rect(int(sx-gr), int(sy-gr), int(sx+gr), int(sy+gr))
@@ -66,8 +58,6 @@ func (g *Game) drawGridGuide(dst *ebiten.Image) {
 	}
 }
 
-// drawGuideEdgeTicks brightens the active edge and marks its simple-fraction
-// positions (reduced denominator 2, 3, or 4) with small screen-constant ticks.
 func (g *Game) drawGuideEdgeTicks(dst *ebiten.Image, t GuideTarget, idm *ebiten.GeoM) {
 	ctx := &g.gridDrawCtx
 	unitPx := ctx.unitPx

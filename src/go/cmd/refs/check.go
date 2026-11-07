@@ -14,20 +14,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
-// refs check — the corpus-dependent calibration gates, run ON DEMAND.
-//
-// Reference audio is local tuning material: it is never committed, and no
-// `go test` may read it (a test whose verdict depends on what one machine has
-// in ~/.beatmo/wav-refs passes or skips by accident of the checkout). The
-// checks below USED to be tests for exactly the reason they still exist --
-// the committed calibrations (thresholds.json, organic_range.json, the
-// F0ReliableConfidence constant, the shipped audition candidates) are derived
-// from the corpus, and only a re-run against the corpus can tell that one has
-// gone stale. So they run here instead: `make refs-check` locally, and as an
-// explicit CI step after the corpus is fetched.
-//
-// A check whose corpus is not present SKIPS loudly (never a silent pass); any
-// failure makes the command exit non-zero.
+// The corpus-dependent calibration gates, run on demand: no go test may read reference audio, yet only a re-run against
+// the corpus shows a committed calibration (thresholds, organic range, f0 confidence, audition candidates) has gone stale.
+// A check without its corpus SKIPS loudly; any failure exits non-zero.
 
 // checkReport collects one check's outcome. Errorf marks the check failed;
 // Logf is detail printed under -v.
@@ -50,9 +39,7 @@ func (r *checkReport) Skipf(format string, args ...any) {
 	r.skipped = fmt.Sprintf(format, args...)
 }
 
-// corpusCheck is one named gate. run fills the report; it returns an error only
-// when the check itself could not run (a missing committed file, a decode
-// failure) -- a calibration that disagrees is a report failure, not an error.
+// An error only when the check could not run; a calibration that disagrees is a report failure.
 type corpusCheck struct {
 	name string
 	doc  string
@@ -154,10 +141,8 @@ func cmdCheck(args []string) error {
 			sel[n] = true
 		}
 	}
-	// Diagnosis writes its comparison audio under wavref.Dir(), which honours
-	// only an EXPLICIT $BEATMO_WAV_REFS. Pin it to the root the corpus already
-	// resolves from, so a plain `refs check` (default ~/.beatmo/wav-refs) runs
-	// every check instead of failing the ones that diagnose.
+	// wavref.Dir() honours only an EXPLICIT $BEATMO_WAV_REFS: pinned to the corpus root, so a plain refs check runs the
+	// diagnosing checks too.
 	if os.Getenv(wavref.EnvVar) == "" {
 		if err := os.Setenv(wavref.EnvVar, wavref.Root()); err != nil {
 			return err

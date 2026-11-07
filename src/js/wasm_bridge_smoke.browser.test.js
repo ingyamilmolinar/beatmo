@@ -1,30 +1,6 @@
-/**
- * WASM bridge smoke test
- *
- * THIS IS THE CANONICAL HOME for asserting that the JS↔Go WASM bridge is wired
- * up. Every JS export registered by `src/go/internal/ui/js_exports_*.go` MUST
- * appear in the catalogue below — it's a registry of the JS surface area.
- *
- * What this test does:
- *   1. Boots the play_ui WASM harness with a default circuit.
- *   2. Asserts every catalogued export name is a function on the global scope
- *      after WASM init (existence check — 260+ exports).
- *   3. For exports with safe, well-defined args, calls them and verifies the
- *      return value's shape (typeof / Array.isArray / required keys).
- *
- * What this test DOES NOT do (intentionally):
- *   - Verify that the underlying Go logic is correct. That's covered by the
- *     Go suite (`internal/ui`, `core/engine`, `core/model`, `internal/audio`,
- *     `internal/timeline`). If you care about logic correctness, write a Go
- *     test, not a browser test.
- *   - Verify WebAudio/AudioWorklet behavior. That belongs in the
- *     `webaudio_*` / `worklet_*` / `recording_*` browser tests.
- *
- * When adding a new JS export in Go:
- *   - Add an entry to the catalogue below (existence at minimum, callable if
- *     safe args exist). Do NOT create a new dedicated `*.browser.test.js`
- *     file just to verify the export got registered.
- */
+/** THE catalogue of the JS surface: every export registered by js_exports_*.go appears here, exists after init, and,
+ * with safe args, returns the expected shape. Not Go logic and not WebAudio; a new export gets an entry here, never a
+ * new test file. */
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";
@@ -107,17 +83,7 @@ await page.evaluate(() => {
 });
 await page.waitForTimeout(100);
 
-// ─── Catalogue: every JS export, grouped by source file ───────────────────
-//
-// Each entry is one of:
-//   { name }                                      — existence-only (skipCall: true)
-//   { name, args, returns }                       — call and check shape
-//
-// `returns` shape grammar — see bridge_smoke_helpers.js:
-//   "boolean" | "number" | "string" | "object" | "array" | "undefined"
-//   "any"                                            (matches anything)
-//   "nullable"                                       (null/undefined accepted)
-//   { kind: "object", keys: ["x","y"] }              (required keys subset)
+// { name } existence-only (skipCall), or { name, args, returns } checked against a shape (see bridge_smoke_helpers.js).
 
 const CATALOGUE = {
   // ───────── coverage (js_exports_coverage.go) ─────────
@@ -148,8 +114,7 @@ const CATALOGUE = {
     { name: "setEQLPF", skipCall: true },
     { name: "setEQTab", args: [0], returns: "any" },
     { name: "setEQView", args: [0], returns: "any" },
-    // setViewMode(slug): mobile bottom-nav / view-mode switch used by the LLM
-    // agent sanity tests. "pads" = the default Rows view (safe to call).
+    // "pads" is the default view, safe to call.
     { name: "setViewMode", args: ["pads"], returns: "any" },
     // setSubdivisions(n): direct deterministic subdiv setter (agent set_subdiv tool).
     { name: "setSubdivisions", args: [8], returns: "boolean" },
@@ -158,23 +123,16 @@ const CATALOGUE = {
     { name: "chainDisplayMode", args: [], returns: "any" },
     { name: "autoGain", args: [], returns: "any" },
     { name: "scopeFrozen", args: [], returns: "any" },
-    // Synth-tab redesign exports (per hey-please-review-the-vectorized-rocket.md).
-    // synthControlRects returns one entry per wired control, but collapsed
-    // (non-selected) stages have zero-size rects (w=0,h=0) — only the selected
-    // stage's controls are drag-targetable in the chip-strip layout.
+    // Collapsed stages report zero-size rects; only the open stage's controls can be targeted.
     { name: "synthControlRects", args: [], returns: "any" },
-    // The Synth root's macro dials [{card, dial, x, y, w, h}] (benches drive
-    // them with real pointer input).
+    // Benches drive them with real pointer input.
     { name: "synthDialRects", args: [], returns: "any" },
-    // Pipeline chip strip: synthChipRects lists one chip per stage in pipeline
-    // order; selectSynthSection opens a stage by chip label (next frame).
+    // One chip per stage in pipeline order; selectSynthSection opens one by label next frame.
     { name: "synthChipRects", args: [], returns: "any" },
     { name: "selectSynthSection", args: ["OSC"], returns: "any" },
-    // Detail-header enable-pill rect for the selected stage; Harness B clicks
-    // its centre to toggle a pipeline stage via real input.
+    // Benches click its centre to toggle a stage through real input.
     { name: "synthEnablePillRect", args: [], returns: "any" },
-    // Synth footer + Save As dialog (added in the synth-footer fix; see
-    // src/js/synth_panel_footer.browser.test.js for the end-to-end flow).
+    // The end-to-end flow is synth_panel_footer.browser.test.js.
     { name: "synthFooterButtonRects", args: [], returns: "any" },
     { name: "synthSaveAsDialogState", args: [], returns: "any" },
     { name: "synthSaveAsDialogSetValue", skipCall: true }, // mutating
@@ -207,8 +165,7 @@ const CATALOGUE = {
     { name: "contextMenuOpen", args: [], returns: "boolean" },
     { name: "contextMenuRect", args: [], returns: "any" },
     { name: "contextMenuRow", args: [], returns: "number" },
-    // Node groups (marquee-select "group these nodes" flow, Task 1-9).
-    // createNodeGroup() with no ids safely returns -1 (no group created).
+    // With no ids it returns -1: no group.
     { name: "createNodeGroup", args: [], returns: "number" },
     { name: "debugGridInputState", args: [], returns: "any" },
     { name: "deleteEdgeGrid", skipCall: true },
@@ -321,8 +278,7 @@ const CATALOGUE = {
     { name: "selectedNodeId", args: [], returns: "any" },
     { name: "setDrumLength", skipCall: true },
     { name: "setFastPath", skipCall: true },
-    // setGroupRule(999999, 'pitch', 1, 1) targets a nonexistent group; returns
-    // false, no mutation.
+    // A nonexistent group: false, no mutation.
     { name: "setGroupRule", args: [999999, "pitch", 1, 1], returns: "boolean" },
     { name: "setMainVolume", skipCall: true },
     { name: "setNodeLogicGrid", skipCall: true },
@@ -389,9 +345,7 @@ const CATALOGUE = {
     { name: "zoomAt", skipCall: true },
   ],
 
-  // ───────── init (js_exports_init.go) ─────────
-  // initJS() runs at WASM start and only fans out to per-subsystem
-  // registrar functions; it has no JS-callable exports of its own.
+  // initJS only fans out to registrars; no exports of its own.
   init: [],
 
   // ───────── insert effects (js_exports_insert_effects.go) ─────────
@@ -407,11 +361,7 @@ const CATALOGUE = {
     { name: "toggleInsertEffect", skipCall: true },
   ],
 
-  // ───────── synth recipe (js_exports_synth_recipe.go, Phase 5) ─────────
-  // Per-instrument SynthRecipe params + recipe registry. Mirrors the
-  // insert-effect surface so browser tests can drive the registry
-  // identically. setInstrumentParam mutates audio state; we skip the
-  // call here and let instrument_params.browser.test.js exercise it.
+  // setInstrumentParam mutates audio state, so it is skipped here; instrument_params.browser.test.js exercises it.
   synth_recipe: [
     { name: "setInstrumentParam", skipCall: true },
     { name: "setInstrumentParams", skipCall: true },
@@ -420,25 +370,17 @@ const CATALOGUE = {
     { name: "setActiveEQTab", skipCall: true },
     { name: "getInstrumentParams", args: ["kick"], returns: "object" },
     { name: "resetInstrumentParams", skipCall: true },
-    // Mirror the Synth-tab Save / Save As / Reset buttons for an explicit
-    // instrument id. They mutate the instrument library; behavior is covered by
-    // webaudio_synth_save_persist.browser.test.js, so skipCall here.
+    // They mutate the instrument library; webaudio_synth_save_persist.browser.test.js covers them.
     { name: "saveActiveRecipe", skipCall: true },
     { name: "saveActiveRecipeAs", skipCall: true },
-    // Instrument documents (spec 2026-10-04): the project document as JSON
-    // ("" for an id without one). Read-only.
+    // "" for an id without one. Read-only.
     { name: "getInstrumentDoc", args: ["kick"], returns: "string" },
     // The Synth tab's knob schema for an instrument's document.
     { name: "instrumentParamDefs", args: ["kick"], returns: "object" },
-    // Go → audio.js: the flattened param block a render reads (pushed by
-    // internal/audio/instrument_docs_wasm.go) and its removal. Mutating —
-    // existence-only; instrument_params.browser.test.js drives them.
+    // Mutating, so existence-only; instrument_params.browser.test.js drives them.
     { name: "setInstrumentBlock", skipCall: true },
     { name: "clearInstrumentBlock", skipCall: true },
-    // Phase 6: kit (instrument-set / drum-kit) infra. No UI in this
-    // round; the exports exist for browser tests + future picker UI.
-    // applyKit / createKit mutate process state — skipCall keeps the
-    // smoke test idempotent. listKits is read-only.
+    // applyKit / createKit mutate state, skipped to keep the smoke idempotent; listKits is read-only.
     { name: "applyKit", skipCall: true },
     { name: "listKits", args: [], returns: "object" },
     { name: "createKit", skipCall: true },
@@ -446,18 +388,11 @@ const CATALOGUE = {
     { name: "deleteKit", skipCall: true },
   ],
 
-  // ───────── sampler tab (sampler_panel_zone.go + audio.js bridge) ─────────
-  // The Go↔WebAudio seam for the Sampler tab. registerSamplePCM installs a
-  // baked PCM buffer as a playable instrument; captureInstrumentPCM returns a
-  // rendered one-shot for "From Synth"; decodeWavToPCM decodes a picked WAV for
-  // "Load WAV". All take typed-array / URL args or mutate audio state, so
-  // skipCall — semantic coverage lives in sampler_register_pcm.browser.test.js.
+  // Typed-array / URL args or audio mutation, so skipCall; sampler_register_pcm.browser.test.js covers them.
   sampler: [
     { name: "registerSamplePCM", skipCall: true },
     { name: "captureInstrumentPCM", skipCall: true },
-    // The Synth-tab graph render (Go audio.RenderDocForGraph): renders a
-    // flattened document like playback does. Typed-array args → skipCall;
-    // identity with the played voice: synth_graph_render.browser.test.js.
+    // Typed-array args; identity with the played voice is synth_graph_render.browser.test.js's.
     { name: "renderDocPCM", skipCall: true },
     { name: "decodeWavToPCM", skipCall: true },
     // Cross-session sample persistence (IndexedDB) — wasm SampleStore backend.
@@ -466,21 +401,13 @@ const CATALOGUE = {
     { name: "idbDeleteSample", skipCall: true },
   ],
 
-  // ───────── warm-up gate bridge (audio.js + voice_prewarm_js.go) ─────────
-  // The browser side of the playback-readiness gate's warmBackend. Go's
-  // VoiceCached / IsMelodicInstrument / WarmVoiceItem
-  // (internal/audio/voice_prewarm_js.go) delegate to these three globals.
-  // warmInstrumentBatch mutates renderCache + fires an async callback, so it
-  // is existence-only here — its behavior is pinned end-to-end by
-  // warm_batch.browser.test.js. voiceCachedFor / isMelodicInstrumentJS are
-  // pure reads, safe to call.
+  // Go's VoiceCached / IsMelodicInstrument / WarmVoiceItem delegate to these. warmInstrumentBatch mutates and is pinned
+  // by warm_batch.browser.test.js; the two reads are safe to call.
   warmup_bridge: [
     { name: "warmInstrumentBatch", skipCall: true },
     { name: "voiceCachedFor", args: ["kick", 0], returns: "boolean" },
     { name: "isMelodicInstrumentJS", args: ["cello"], returns: "boolean" },
-    // flushPendingChannelOps forces the AudioContext into existence as a
-    // side effect (getCtx()), so it is existence-only here rather than
-    // called for real in the smoke pass.
+    // Creates the AudioContext as a side effect.
     { name: "flushPendingChannelOps", skipCall: true },
   ],
 
@@ -505,19 +432,13 @@ const CATALOGUE = {
     { name: "startPlay", skipCall: true },
     { name: "stopPlay", skipCall: true },
     { name: "syncHighlights", args: [], returns: "any" },
-    // Playback-readiness gate: pure read of the warm-up controller's state,
-    // safe to call. import-cold bench (Task 2) and the re-import acceptance
-    // check (Task 15) poll this.
+    // A pure read of the warm-up controller, safe to call.
     {
       name: "warmupProgress",
       args: [],
       returns: { kind: "object", keys: ["done", "total", "ready"] },
     },
-    // Audio-tab source-of-truth taps (read-only). audioTabTapDigest runs
-    // the shared Go derivations over a canonical fixture so the browser can
-    // be compared byte-for-byte against the native golden;
-    // audioTabTapLiveShape reports what the LIVE analyser bridge actually
-    // delivers. See xplat_audio_tab_tap.browser.test.js.
+    // Read-only; see xplat_audio_tab_tap.browser.test.js.
     {
       name: "audioTabTapDigest",
       args: [],
@@ -535,33 +456,22 @@ const CATALOGUE = {
     // Mutating perf/sequencer controls — existence-only.
     { name: "resetThreeStageLatency", skipCall: true },
     { name: "tickSequencer", skipCall: true },
-    // WebAudio emission-timing ring (audio.js, parity-timing-sync Stage-D).
-    // Existence-only here — recording behavior is verified end-to-end by
-    // timing_traces.browser.test.js.
+    // Recording is verified by timing_traces.browser.test.js.
     { name: "getTimingTraces", args: [], returns: "array" },
     { name: "resetTimingTraces", skipCall: true },
-    // Playback probe (audio.js + audio_probe_worklet.js): what the listener
-    // actually hears. Existence-only — exercised end-to-end by
-    // webaudio_audio_isolation_bench.browser.test.js and the probe-enabled
-    // benches (audio_probe_bench_helpers.js).
+    // Exercised by the isolation bench and the probe-enabled benches.
     { name: "startAudioProbe", skipCall: true },
     { name: "stopAudioProbe", skipCall: true },
     { name: "audioProbeRaw", args: [], returns: "any" },
     { name: "audioProbeReport", skipCall: true },
     // Which host runs each insert effect on a channel (worklet vs fallback).
     { name: "insertEffectHosts", args: ["kick"], returns: "array" },
-    // WebAudio graph churn counters (insert-chain rebuilds vs in-place param
-    // updates, worklet nodes built, EQ rebuilds, channel rewires) — the hard
-    // gates of webaudio_live_edit_budget.browser.test.js.
+    // The hard gates of webaudio_live_edit_budget.browser.test.js.
     { name: "audioGraphStats", args: [], returns: "object" },
-    // In-place insert-FX param edit and the DSP-state reset, called from Go
-    // (internal/audio/insert_effects_wasm.go). Behavior: live_edit_budget,
-    // xplat_audio_stages.
+    // Called from Go; behaviour in live_edit_budget and xplat_audio_stages.
     { name: "retuneInsertEffect", skipCall: true },
     { name: "resetDSPState", args: [], returns: "any" },
-    // Audio lane (audio.js): cancel / stop / cancel-all lane voices, called
-    // from Go (internal/audio/lane_wasm.go). Existence-only — behavior is
-    // verified by audio_lane_cancel.browser.test.js.
+    // Called from Go; behaviour in audio_lane_cancel.browser.test.js.
     { name: "cancelLaneVoices", skipCall: true },
     { name: "stopLaneAt", skipCall: true },
     { name: "cancelAllLaneFuture", skipCall: true },
@@ -575,17 +485,13 @@ const CATALOGUE = {
     { name: "resetAnalyzerBridgeStats", skipCall: true },
   ],
 
-  // ───────── media session (game_media_session_wasm.go) ─────────
-  // Start/stop playback as side effects — existence-only.
+  // Playback side effects, so existence-only.
   media_session: [
     { name: "mediaSessionPlay", skipCall: true },
     { name: "mediaSessionPause", skipCall: true },
   ],
 
-  // ───────── recording (js_exports_recording.go) ─────────
-  // Recording requires real WebAudio + AudioWorklet; out of scope for smoke.
-  // These are existence-only here — the recording_*.browser.test.js suite
-  // owns their behavioral testing.
+  // Needs real WebAudio and worklets; the recording_*.browser.test.js suite owns them.
   recording: [
     { name: "availableFormats", args: [], returns: "any" },
     { name: "isRecording", args: [], returns: "boolean" },
@@ -597,9 +503,7 @@ const CATALOGUE = {
 
   // ───────── scenes + popups + master mix (js_exports_scenes.go) ─────────
   scenes: [
-    // Mobile file-picker overlay → Go entry points: the real <input type=file>
-    // overlay's change handler calls these to run the import/upload flow after a
-    // pick (see mobile_import_gesture.browser.test.js). Mutating; existence-only.
+    // Called by the file-input overlay after a pick; mutating, existence-only.
     { name: "_fpStartImport", skipCall: true },
     { name: "_fpStartUpload", skipCall: true },
     { name: "closeColorMenu", args: [], returns: "any" },
@@ -703,18 +607,15 @@ console.log(
   `[bridge-smoke] catalogued=${totalExports} called=${totalCalled} existence-only=${totalExports - totalCalled} failures=${failures.length}`,
 );
 
-// Verify catalogue covers the actual JS export surface — fail if Go added an
-// export we haven't catalogued, so this test stays the canonical registry.
+// Fails on an uncatalogued export, so this stays the canonical registry.
 const catalogueNames = new Set();
 for (const entries of Object.values(CATALOGUE)) {
   for (const e of entries) catalogueNames.add(e.name);
 }
 const missingFromCatalogue = await page.evaluate((knownNames) => {
   const known = new Set(knownNames);
-  // We can't enumerate "all Go-registered exports" from JS directly, but we
-  // can spot-check a curated set of names that MUST be present and report
-  // any name in `known` that isn't a function (which would mean the
-  // catalogue lists a nonexistent export — also a problem).
+  // Go's exports cannot be enumerated from JS, so a curated set is spot-checked and a catalogued name that is not a
+  // function is reported.
   const ghosts = [];
   for (const n of known) {
     if (typeof globalThis[n] !== "function") ghosts.push(n);
@@ -728,9 +629,7 @@ if (missingFromCatalogue.length > 0) {
   );
 }
 
-// ─── fullLayoutSnapshot enriched-fields check (LLM agent sanity-test deps) ──
-// The agent harness drives the new audio-panel tabs / mobile bottom-nav and
-// verifies objective state via these fields. Assert their shape + plumbing.
+// The agent harness verifies state through these fields.
 {
   const snapCheck = await page.evaluate(() => {
     const out = { errs: [] };
@@ -774,9 +673,7 @@ if (missingFromCatalogue.length > 0) {
       const p = fullLayoutSnapshot().state.viewMode;
       if (p !== "pads") out.errs.push(`setViewMode(pads) → viewMode=${p}`);
     }
-    // Deterministic BPM/subdiv setters used by the agent's set_bpm/set_subdiv tools.
-    // Subdivision can only change while STOPPED (validateSubdivisions guards on
-    // g.Playing()), which mirrors the test flow (Phase 2 stops before Phase 3).
+    // Subdivision changes only while STOPPED.
     if (typeof stopPlay === "function") stopPlay();
     if (typeof setBPM === "function") {
       setBPM(90);
@@ -817,11 +714,8 @@ if (missingFromCatalogue.length > 0) {
       if (after !== before) out.errs.push(`export→import roundtrip changed totalRows ${before}→${after}`);
     }
 
-    // setSubdivisions plumbing: a no-op set to the CURRENT value must succeed
-    // (returns true, value unchanged). We can't assert a *change* here because
-    // the catalogue leaves an unpredictable subdiv and the engine legitimately
-    // rejects lowering that would orphan misaligned demo nodes. The real 8→16
-    // raise is asserted by the agent sanity test's subdiv_16 checkpoint.
+    // A no-op set to the CURRENT value must succeed; a change cannot be asserted, since lowering may legitimately be
+    // rejected (the agent sanity test asserts the raise).
     if (typeof setSubdivisions === "function") {
       const cur = fullLayoutSnapshot().state.subdiv;
       const r = setSubdivisions(cur);
@@ -838,9 +732,7 @@ if (missingFromCatalogue.length > 0) {
   }
 }
 
-// ─── gridModeState idle-shape check (node quick-action gesture flow) ──────
-// No long-press popup is open at this point in the harness, so gridModeState
-// must report the idle sentinel: mode "none" and no armed subject.
+// No popup is open here, so it must report the idle sentinel.
 {
   const idle = await page.evaluate(() => gridModeState());
   if (!idle || idle.mode !== "none") {

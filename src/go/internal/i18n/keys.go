@@ -1,10 +1,7 @@
 package i18n
 
-// Key identifies one user-facing message.
-//
-// ADD-A-KEY CHOKEPOINT: to add a message you must touch exactly four places —
-// (1) a const here, (2) AllKeys(), (3) catalog_en.go, (4) catalog_es.go. The
-// completeness test fails loudly if any of the four is missed.
+// Adding a message touches exactly four places (a const here, AllKeys(), catalog_en.go, catalog_es.go); the
+// completeness test fails on a miss.
 type Key string
 
 const (
@@ -697,8 +694,7 @@ const (
 	KeyGlossBodyModel    Key = "gloss.body_model"
 	KeyGlossBodyMix      Key = "gloss.body_mix"
 	KeyGlossBowDynamics  Key = "gloss.bow_dynamics"
-	// Phase-16 voice-realism knob glosses: ens_jitter (Roughness) + formant_dry
-	// (Dry Blend).
+	// Voice-realism knob glosses: ens_jitter (Roughness), formant_dry (Dry Blend).
 	KeyGlossRoughness Key = "gloss.roughness"
 	KeyGlossDryBlend  Key = "gloss.dry_blend"
 
@@ -818,9 +814,7 @@ const (
 	KeyNotifImportedNamed    Key = "notif.imported_named"
 	KeyNotifInvalidBPMDetail Key = "notif.invalid_bpm_detail"
 
-	// Undo/redo action labels — the %s substituted into notif.undo / notif.redo.
-	// One per undoable hooks.Kind (mapped in internal/ui; a drift test asserts
-	// every undoable action has a key here).
+	// One per undoable hooks.Kind (a drift test checks every undoable action has one).
 	KeyActionChangeBPM          Key = "action.change_bpm"
 	KeyActionChangeSubdivision  Key = "action.change_subdivision"
 	KeyActionAddNode            Key = "action.add_node"
@@ -855,10 +849,8 @@ const (
 	KeyActionEditGroup          Key = "action.edit_group"
 	KeyActionDeleteGroup        Key = "action.delete_group"
 
-	// Synth-tab pipeline stage chip labels (VOICE · OSC · FM · PITCH · LFO ·
-	// BURST · ENVELOPE · FILTER · POST, plus the TONE stage). These are the
-	// localized DISPLAY labels; the canonical English label backing hit-area
-	// tags + the selectSynthSection JS lookup stays in internal/ui.
+	// Localised DISPLAY labels only; the canonical English label behind hit-area tags and selectSynthSection stays in
+	// internal/ui.
 	KeySynthStageVoice     Key = "synth.stage.voice"
 	KeySynthStageOsc       Key = "synth.stage.osc"
 	KeySynthStageFM        Key = "synth.stage.fm"
@@ -908,10 +900,8 @@ const (
 	KeySynthStageNoiseSub     Key = "synth.stage.noise.sub"
 	KeySynthStageFinishSub    Key = "synth.stage.finish.sub"
 
-	// Synth-tab KNOB labels — the curated knob captions (one key per distinct
-	// caption value; several param ids share a key, e.g. every "Wave" knob). The
-	// canonical English caption backing the editor round-trip + the param-id ABI
-	// stays in internal/ui; these are the localized DISPLAY labels only.
+	// One key per distinct caption (params share, e.g. every "Wave"); the canonical English caption and the param ABI stay in
+	// internal/ui.
 	KeySynthControlTune      Key = "synth.knob.tune"
 	KeySynthControlDecayMult Key = "synth.knob.decay-mult"
 	KeySynthControlTone      Key = "synth.knob.tone"
@@ -954,18 +944,14 @@ const (
 	KeySynthControlClick         Key = "synth.knob.click"
 	KeySynthControlNoise         Key = "synth.knob.noise"
 
-	// Synth-tab knob NOUNS — back the composed FM-operator and burst-hit
-	// captions ("Op1 Ratio", "Hit 1 Level"). The universal "OpN"/"Hit N" prefix
-	// stays English; only the noun is keyed. Depth/Decay reuse the knob keys.
+	// The "OpN" / "Hit N" prefix stays English; only the noun is keyed. Depth/Decay reuse the knob keys.
 	KeySynthNounRatio Key = "synth.noun.ratio"
 	KeySynthNounLevel Key = "synth.noun.level"
 	KeySynthNounTime  Key = "synth.noun.time"
 	KeySynthNounHit   Key = "synth.noun.hit"
 
-	// Synth-tab value ENUMS — the knob VALUE that reads "Triangle", "Low-pass",
-	// "Exponential", … Canonical strings stay the storage form (audio.ParamDef
-	// .Enum); these localize the display + editor prefill. "FM" and "2-op" are
-	// universal and intentionally keyless (they pass through unchanged).
+	// The canonical strings stay the storage form; these localise display and prefill. "FM" and "2-op" are universal and
+	// keyless.
 	KeySynthEnumSine        Key = "synth.enum.wave-sine"
 	KeySynthEnumSaw         Key = "synth.enum.wave-saw"
 	KeySynthEnumSquare      Key = "synth.enum.wave-square"
@@ -996,9 +982,7 @@ const (
 	KeyLevelsClear      Key = "levels.clear"
 	KeyLevelsReadoutFmt Key = "levels.readout_fmt"
 
-	// Chain tab — display-mode pills + auto-gain/fit. DIF is identical in both
-	// locales but routed for consistency. Stage names keep their common DAW
-	// English form (Synth/AntiPop/FX/EQ/Bus/Master) but route through i18n.
+	// DIF is identical in both locales but routed for consistency; stage names keep their DAW English form.
 	KeyChainOverlay      Key = "chain.overlay"
 	KeyChainSplit        Key = "chain.split"
 	KeyChainDiff         Key = "chain.diff"
@@ -1045,42 +1029,24 @@ const (
 	KeyGroupRuleOn    Key = "group.menu.rule.on"
 	KeyGroupRuleOff   Key = "group.menu.rule.off"
 	KeyGroupEveryN    Key = "group.menu.everyn"
-	// KeyGroupEveryNShort is a compact form of KeyGroupEveryN ("Every %d")
-	// for the combined delta/everyN half-row pill, which is too narrow for
-	// the full "Every %d rounds" sentence (see the Every-N row layout fix in
-	// game_group_menu.go).
+	// The half-row pill is too narrow for "Every %d rounds".
 	KeyGroupEveryNShort   Key = "group.menu.everyn_short"
 	KeyGroupDelete        Key = "group.menu.delete"
 	KeyGroupSave          Key = "group.menu.save"
 	KeyGroupParamPitch    Key = "group.menu.param.pitch"
 	KeyGroupParamVolume   Key = "group.menu.param.volume"
 	KeyGroupParamDuration Key = "group.menu.param.duration"
-	// KeyGroupAddTo labels the node-sidebar row that opens a dropdown of
-	// groups the selected node is NOT yet a member of (see
-	// game_node_sidebar.go's "grpadd" row / groupAddDropdownOpen).
+	// Opens a dropdown of the groups the selected node is NOT in.
 	KeyGroupAddTo Key = "group.menu.add_to"
-	// KeyGroupCreateNew labels the node-sidebar's always-present "grpnew" row
-	// (task-sidebar-create brief): turns the selected node into a brand-new
-	// PROVISIONAL single-member group and opens its GroupMenu (see
-	// NodeSidebar.createNewGroup).
+	// The always-present row that makes the selected node a new PROVISIONAL single-member group and opens its menu.
 	KeyGroupCreateNew Key = "group.menu.create_new"
-	// KeyGroupRemoveFrom labels the node-sidebar row that opens a dropdown of
-	// groups the selected node IS currently a member of (see
-	// game_node_sidebar.go's "grpremove" row / groupRemoveDropdownOpen).
-	// Picking one removes that membership (task-remove-selector brief).
+	// Opens a dropdown of the groups the selected node IS in; picking one removes that membership.
 	KeyGroupRemoveFrom Key = "group.menu.remove_from"
 
-	// KeyBannerPasting is the copy-mode grid banner shown while a copied node
-	// is armed and awaiting placement (see grid_pane_draw.go's
-	// drawGridMoveMode, GridModeCopy case).
+	// Shown while a copied node is armed and awaiting placement.
 	KeyBannerPasting Key = "banner.pasting"
-	// KeyBannerMoving / KeyBannerConnectFrom are the move / connect armed-mode
-	// grid banners; both take the subject's (i,j) grid coordinate as two %d
-	// verbs. KeyBannerConnecting is an armed-mode banner for connecting to a
-	// target node; also takes (i,j) as two %d verbs. KeyBannerEscHint is the
-	// desktop-only suffix appended to every armed-mode banner when
-	// Profile().ShowEscHint (note its leading space). All render through
-	// gridModeBannerText (grid_mode_banner.go).
+	// Armed-mode banners take the subject's (i,j) as two %d verbs; KeyBannerEscHint is the desktop suffix (leading space)
+	// when Profile().ShowEscHint.
 	KeyBannerMoving      Key = "banner.moving"
 	KeyBannerConnectFrom Key = "banner.connect_from"
 	KeyBannerConnecting  Key = "banner.connecting"
@@ -1100,9 +1066,7 @@ const (
 	// KeyCapOverwrite is the caption shown when pasting over an occupied node.
 	KeyCapOverwrite Key = "cap.overwrite"
 
-	// KeyBreakCircuitTitle titles the "Break the circuit?" confirmation
-	// dialog shown when an armed move would disconnect the circuit
-	// unhealably (grid_move_break_confirm.go).
+	// Shown when an armed move would disconnect the circuit unhealably.
 	KeyBreakCircuitTitle Key = "confirm.break_circuit"
 
 	// Logs Navigation Panel (logs_component.go) — searchable/filterable/paginated

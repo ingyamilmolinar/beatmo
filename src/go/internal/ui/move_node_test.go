@@ -9,10 +9,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// hasEdgeBetween reports whether a UI edge exists between the two node IDs,
-// in either direction. Defined in this untagged file (rather than the
-// //go:build test grid_mode_flow_test.go) so it's available to both the fast
-// ebitenstub path and the real-Ebiten build.
+// Untagged, so both the stub and the real-Ebiten builds have it.
 func hasEdgeBetween(g *Game, id1, id2 model.NodeID) bool {
 	for _, e := range g.edges {
 		if (e.A.ID == id1 && e.B.ID == id2) || (e.A.ID == id2 && e.B.ID == id1) {
@@ -22,10 +19,7 @@ func hasEdgeBetween(g *Game, id1, id2 model.NodeID) bool {
 	return false
 }
 
-// hasDirectedEdge reports whether a UI edge exists from fromID to toID,
-// direction-sensitive (A==from, B==to only). Heal preserves the direction of
-// the healed Np->Nn pair, so several extraction/heal tests need to assert the
-// reverse direction is NOT present — hasEdgeBetween can't distinguish that.
+// Heal keeps the healed pair's direction, so some tests must assert the reverse edge is absent.
 func hasDirectedEdge(g *Game, fromID, toID model.NodeID) bool {
 	for _, e := range g.edges {
 		if e.A.ID == fromID && e.B.ID == toID {
@@ -35,9 +29,6 @@ func hasDirectedEdge(g *Game, fromID, toID model.NodeID) bool {
 	return false
 }
 
-// directedEdgeCount counts UI edges from fromID to toID (direction-sensitive).
-// Used by the heal-dedup test to assert extraction+heal never produces a
-// second parallel edge when a direct edge already exists.
 func directedEdgeCount(g *Game, fromID, toID model.NodeID) int {
 	n := 0
 	for _, e := range g.edges {
@@ -58,9 +49,7 @@ func TestMoveNodeBasic(t *testing.T) {
 	n := g.tryAddNode(2, 3, model.NodeTypeRegular)
 	origID := n.ID
 
-	// A bystander edge x-y that the destination (5,7) sits on the interior
-	// of: moveNode must splice n into it (stitchEdgesAt), same as
-	// tryAddNode/pasteNodeFrom do for a node placed onto an edge.
+	// The destination sits inside the bystander edge x-y, so moveNode must splice n in, as a placed node would.
 	x := g.tryAddNode(5, 0, model.NodeTypeRegular)
 	y := g.tryAddNode(5, 14, model.NodeTypeRegular)
 	g.addEdge(x, y)
@@ -92,16 +81,8 @@ func TestMoveNodeBasic(t *testing.T) {
 	}
 }
 
-// TestMoveNodeExtractsAndHeals (was TestMoveNodePreservesEdges): b is a
-// pass-through node (a->b->c, a and c orthogonal), moved to (6,0) — a point
-// on the healed a-c span. Under extraction+heal semantics the old a->b/b->c
-// edges are removed, the chain heals as a->c, and since b's NEW position
-// lands on that healed span it immediately re-splices into a->b/b->c again
-// (nodesOnSpan naturally includes the moved node — see grid_move_heal.go).
-// The final topology is edge-count-identical to the old re-anchor behavior,
-// but reached via extraction+heal+resplice, not a "keep surviving edges"
-// re-add loop — assert the healed-then-resliced outcome directly, plus that
-// no unsplit a->c edge survives.
+// Moving onto the healed a-c span re-splices b into it: extraction, heal and re-splice, with no unsplit a->c edge
+// left behind.
 func TestMoveNodeExtractsAndHeals(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -139,12 +120,8 @@ func TestMoveNodeExtractsAndHeals(t *testing.T) {
 	}
 }
 
-// TestMoveNodeDropsNonOrthogonalEdges: b sits between a and c but a-c is NOT
-// orthogonal (a.I=0,a.J=0 vs c.I=4,c.J=4), so moveHealPlan classifies b as
-// healUnhealable — extraction still removes ALL of b's old edges regardless
-// of orthogonality, but no heal edge is produced since the endpoints can't
-// be closed without a dialog (Task 3 wires the confirm; a direct moveNode
-// call here breaks silently, matching spec #13's programmatic-corner case).
+// a-c is not orthogonal, so b is unhealable: extraction drops all its edges and no heal edge appears without the
+// confirm dialog.
 func TestMoveNodeDropsNonOrthogonalEdges(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -262,9 +239,7 @@ func TestMoveNodeDrumRowOriginPreserved(t *testing.T) {
 	}
 }
 
-// TestMoveButtonClickDoesNotImmediatelyPlace verifies that clicking the MOVE
-// button and then releasing the mouse does NOT place the node on the release.
-// The user must perform a separate click to choose the destination.
+// The release that follows the MOVE press must not place the node; the destination is a separate click.
 func TestMoveButtonClickDoesNotImmediatelyPlace(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -305,8 +280,7 @@ func TestMoveButtonClickDoesNotImmediatelyPlace(t *testing.T) {
 		t.Fatal("moveSkipRelease should be true while pressed")
 	}
 
-	// Frame 2: release — this should be eaten by moveSkipRelease guard,
-	// NOT interpreted as a destination click.
+	// Eaten by the moveSkipRelease guard.
 	pressed = false
 	_ = g.Update()
 
@@ -322,10 +296,7 @@ func TestMoveButtonClickDoesNotImmediatelyPlace(t *testing.T) {
 	}
 }
 
-// TestMoveButtonRemovedFromMobilePopup verifies that on a small screen the
-// node popup menu does NOT contain a "Move Node" button rect (moving is
-// provided via copy/paste and the long-press popup instead). The desktop
-// counterpart is TestNodePopupHasNoMoveButton.
+// Mobile moves through copy/paste and the long-press popup instead.
 func TestMoveButtonRemovedFromMobilePopup(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -371,9 +342,7 @@ func TestMoveModeCancelEsc(t *testing.T) {
 
 // --- Extraction + heal spec matrix (Task 2) --------------------------------
 
-// TestMoveNode_HealsStraightChain (spec #1): A(0,0)->N(0,4)->B(0,8) plus a
-// separate edge C(6,0)->D(6,8). moveNode(N, 6, 4) heals A->B (N's old chain
-// closes behind it) and splices N into the C-D edge at its new position.
+// N's old chain heals behind it and N splices into the C-D edge at its destination.
 func TestMoveNode_HealsStraightChain(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -410,8 +379,6 @@ func TestMoveNode_HealsStraightChain(t *testing.T) {
 	}
 }
 
-// TestMoveNode_HealPreservesDirection (spec #2): B(0,8)->N(0,4)->A(0,0);
-// after the move, the healed edge is B->A, never A->B.
 func TestMoveNode_HealPreservesDirection(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -438,9 +405,7 @@ func TestMoveNode_HealPreservesDirection(t *testing.T) {
 	}
 }
 
-// TestMoveNode_HealStitchesThroughIntermediate (spec #3): A(0,0)->N(0,6)->B(0,12)
-// with bystander M(0,3) (no edges of its own). Moving N away heals the chain
-// as A->M and M->B (split at the bystander), never a direct A->B edge.
+// Split at the bystander M, never a direct A->B.
 func TestMoveNode_HealStitchesThroughIntermediate(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -468,8 +433,6 @@ func TestMoveNode_HealStitchesThroughIntermediate(t *testing.T) {
 	}
 }
 
-// TestMoveNode_HealDedupes (spec #4): A->N, N->B, AND a pre-existing direct
-// A->B edge. Moving N away must not produce a second parallel A->B edge.
 func TestMoveNode_HealDedupes(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -495,16 +458,8 @@ func TestMoveNode_HealDedupes(t *testing.T) {
 	}
 }
 
-// TestMoveNode_EndpointSilent (spec #6, #7): a node with a single edge has no
-// heal (silent extraction) and splices at its destination like any other
-// node placement; an isolated node with no edges moves fine.
-//
-// A(0,0)-N and the C-D span are deliberately placed on the SAME column
-// (I=0) as N's destination, so N's own A-N edge would REMAIN orthogonal at
-// the new position. Extraction must still drop it unconditionally — under
-// the old re-anchor semantics this edge would have survived (re-added
-// because it stayed orthogonal), which is exactly the "re-anchoring
-// retired" behavior this test pins.
+// A single-edge node moves without a heal; an isolated node moves fine. A-N would stay orthogonal at the
+// destination, and extraction must still drop it: edges are never re-anchored.
 func TestMoveNode_EndpointSilent(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -551,18 +506,8 @@ func TestMoveNode_EndpointSilent(t *testing.T) {
 	}
 }
 
-// TestMoveNode_ProgrammaticCornerBreaksSilently (spec #13): a square-corner
-// A->N->B (perpendicular, unhealable) breaks silently under a direct
-// moveNode call — both edges gone, no heal edge, no panic. The interactive
-// confirm dialog for this case is Task 3's job; direct moveNode calls bypass
-// the GuideEdge-gated interactive path entirely.
-//
-// Destination (0,9) is deliberately chosen so N's A-N edge would REMAIN
-// orthogonal at the new position (A and the destination share I=0) while
-// N-B would not — under the old re-anchor semantics this would have kept
-// A-N alive (re-added per-edge) while dropping N-B, a partial "half heal".
-// Extraction must drop BOTH regardless, since the pair as a whole is
-// unhealable.
+// An unhealable corner breaks silently on a direct moveNode call, which bypasses the interactive confirm. A-N
+// would stay orthogonal at the destination, yet both edges go: no half heal.
 func TestMoveNode_ProgrammaticCornerBreaksSilently(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)

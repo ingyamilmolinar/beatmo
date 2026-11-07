@@ -35,9 +35,7 @@ func TestColorContrast(t *testing.T) {
 			t.Errorf("text-hi on surface %v contrast %.2f < 4.5", s, r)
 		}
 	}
-	// Secondary text (text-mid) is real body copy, not a hint, so it must clear
-	// the 4.5:1 text target on every surface too (text-dim/disabled is exempt —
-	// it is the de-emphasised hint role).
+	// Secondary text is body copy, so it clears 4.5:1 on every surface; the dim hint role is exempt.
 	for _, s := range surfaces {
 		if r := wcagContrastRatio(genColorOnSurfaceMuted, s); r < 4.5 {
 			t.Errorf("text-mid on surface %v contrast %.2f < 4.5", s, r)
@@ -57,10 +55,7 @@ func TestColorContrast(t *testing.T) {
 			t.Errorf("dark-on-%s fill contrast %.2f < 3.0", name, r)
 		}
 	}
-	// Ghost-outline pattern (spec §7.3): a secondary control is a neon stroke +
-	// neon label sitting ON a surface (no fill). Per §7.2 graphical/control
-	// strokes must clear 3:1, so every neon role must read against the LIGHTEST
-	// surface it can sit on (surface-3, the worst case).
+	// A secondary control is a neon stroke and label on a surface, so each neon clears 3:1 on the lightest, surface-3.
 	for name, n := range neons {
 		for _, s := range surfaces {
 			if r := wcagContrastRatio(n, s); r < 3.0 {

@@ -8,12 +8,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestRowEQDivider_GlowsWhenCursorProbeDisabled is the bug repro: on WASM the
-// RuntimeProfile disables the cursor-hover probe (SkipCursorHover=true), which
-// gates layoutResizeZone.Update — the ONLY thing that set the EQ divider's hover
-// state. The main splitter reads the cursor directly in Draw and still glows, so
-// the EQ pill must too. Drives the REAL Update+Draw loop with the cursor on the
-// pill and asserts the glow ramps regardless of the probe gate.
+// On WASM the cursor-hover probe is off, and it gated the only code that set the EQ divider's hover; the pill
+// must glow like the main splitter, which reads the cursor in Draw.
 func TestRowEQDivider_GlowsWhenCursorProbeDisabled(t *testing.T) {
 	restore := SetRuntimeProfileForTest(browserRuntimeProfile())
 	defer restore()
@@ -35,20 +31,12 @@ func TestRowEQDivider_GlowsWhenCursorProbeDisabled(t *testing.T) {
 	}
 }
 
-// driveRealEQDivider builds a real Game with a production-FLOORED audio panel
-// (eqPanelHeightForTest), settles the layout, and returns the game plus the
-// visible divider-pill center the user would aim for. The mx/my/pressed vars
-// the caller mutates are wired into the real input functions, so subsequent
-// g.Update() calls dispatch through the WHOLE stack (legacy InputDispatcher →
-// DrumView → DrumViewTree HitIndex → layoutResizeZone), exactly like a user.
+// With a production-floored audio panel; the caller's mx/my/pressed feed the real input functions, so Update
+// dispatches through the whole stack.
 func driveRealEQDivider(t *testing.T) (g *Game, mx, my *int, pressed *bool, px, py int) {
 	t.Helper()
 	assertDefaultParityState(t)
-	// Guarantee a clean DESKTOP layout profile regardless of a prior test that
-	// left forceSmallScreenForTest / a small touchScreenWidth behind (the
-	// documented cross-test leak that hides the EQ divider — see setupMobileTest).
-	// The EQ divider is a desktop feature, so a leaked mobile profile makes
-	// eqDividerRowIdx return -1 ("no EQ divider present").
+	// A leaked mobile profile makes eqDividerRowIdx return -1; the divider is a desktop feature.
 	forceSmallScreenForTest = false
 	SetTouchScreenSize(0, 0)
 	UpdateProfile()
@@ -80,8 +68,7 @@ func driveRealEQDivider(t *testing.T) (g *Game, mx, my *int, pressed *bool, px, 
 	if idx < 0 {
 		t.Fatalf("no EQ divider present")
 	}
-	// Precondition: the panel really is floored (top edge above the widget
-	// boundary) — otherwise we're not exercising the production scenario.
+	// Otherwise this is not the production scenario.
 	widgetBoundaryY := dv.widgets.rowPos[idx+1] + dv.Bounds.Min.Y
 	if dv.eqRect.Min.Y >= widgetBoundaryY {
 		t.Fatalf("audio panel not floored (top=%d, widget boundary=%d); functional scenario not reproduced",
@@ -91,10 +78,8 @@ func driveRealEQDivider(t *testing.T) (g *Game, mx, my *int, pressed *bool, px, 
 	return g, mx, my, pressed, (hr.Min.X + hr.Max.X) / 2, (hr.Min.Y + hr.Max.Y) / 2
 }
 
-// TestRowEQDivider_RealDragResizesPanel drives the full input loop and proves
-// the divider is usable: pressing the pill starts a resize, and dragging the
-// cursor moves the audio-panel top edge to follow it — both shrinking (below
-// the analysis-tab floor) and growing.
+// Pressing the pill starts a resize, and the panel top follows the cursor both ways, shrinking below the
+// analysis-tab floor too.
 func TestRowEQDivider_RealDragResizesPanel(t *testing.T) {
 	g, mx, my, pressed, px, py := driveRealEQDivider(t)
 	dv := g.drum
@@ -128,8 +113,7 @@ func TestRowEQDivider_RealDragResizesPanel(t *testing.T) {
 		t.Errorf("after drag-down the panel top %d does not track the cursor y=%d", shrunkTop, *my)
 	}
 
-	// Drag UP to grow the panel past where it started (a modest amount that
-	// stays within the clamp range so the top tracks the cursor exactly).
+	// Within the clamp range, so the top tracks exactly.
 	dragTo(py - 40)
 	grownTop := dv.eqRect.Min.Y
 	if grownTop >= startTop {
@@ -143,9 +127,7 @@ func TestRowEQDivider_RealDragResizesPanel(t *testing.T) {
 	_ = g.Update()
 }
 
-// TestRowEQDivider_RealHoverRegisters proves a real cursor hover over the pill
-// is picked up by the live frame loop (not just a direct Update() call), so the
-// divider gives feedback and is discoverable.
+// Picked up by the live frame loop, not only a direct Update() call.
 func TestRowEQDivider_RealHoverRegisters(t *testing.T) {
 	g, mx, my, pressed, px, py := driveRealEQDivider(t)
 	dv := g.drum
@@ -160,11 +142,8 @@ func TestRowEQDivider_RealHoverRegisters(t *testing.T) {
 	}
 }
 
-// TestRowEQDivider_RealHoverGlows drives the FULL real frame loop — Update()
-// (which runs the tree's hover detection) THEN Draw() (which advances the pill's
-// glow animation) — with the cursor parked on the visible pill. The glow must
-// actually ramp up. The unit animation test set dv.layoutHoverAxis by hand and
-// only called the layer's Draw, so it never exercised this cross-component path.
+// Update (hover detection) then Draw (glow animation) with the cursor on the pill: the cross-component path a
+// hand-set hover never exercised.
 func TestRowEQDivider_RealHoverGlows(t *testing.T) {
 	g, mx, my, pressed, px, py := driveRealEQDivider(t)
 	dv := g.drum

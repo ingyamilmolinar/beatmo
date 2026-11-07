@@ -7,30 +7,12 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// DetectF0 estimates the fundamental frequency (Hz) of w. It uses a
-// median-of-short-windows YIN approach for vibrato robustness: the sustain
-// window is sliced into overlapping ~93 ms frames (4096 samples at 44.1 kHz),
-// each frame produces a YIN CMNDF period estimate, and the median of all
-// per-frame estimates is taken as the robust f0. This prevents the full-window
-// YIN from being fooled by vibrato-induced period variation, which smears the
-// CMNDF dip and lets a subharmonic lag win.
-//
-// The median f0 is then refined via the existing spectral octave guard (among
-// {f/2, f, 2f} pick the one with the most harmonic coverage in the full-window
-// spectrum) and snapped to the nearest strong spectral peak for sub-bin
-// accuracy. Returns 0 if no pitch is found.
+// Median-of-short-windows YIN (~93 ms frames), so vibrato's period variation cannot smear the CMNDF dip and let a
+// subharmonic win; then the spectral octave guard and a snap to the nearest strong peak. 0 if none.
 func DetectF0(w wave.Wave) float64 { return DetectF0Detailed(w).Hz }
 
-// DetectF0Detailed is DetectF0 plus the CONFIDENCE the detector already had
-// and used to throw away.
-//
-// The per-frame YIN loop below already decides, frame by frame, whether its
-// period estimate is trustworthy (the frameConfidenceThreshold gate). That
-// judgement is exactly what tells a pitched instrument apart from an unpitched
-// one — a hi-hat still yields SOME number from the octave guard, and the bare
-// float64 return made that number indistinguishable from a cello's. Several
-// descriptors are only meaningful when a harmonic series genuinely exists, so
-// the judgement has to survive the return.
+// The per-frame YIN gate already judges whether a period is trustworthy, which is what separates a pitched instrument
+// from a hi-hat that still yields some number; descriptors that need a harmonic series need that judgement.
 func DetectF0Detailed(w wave.Wave) F0Estimate {
 	// Use the shared sustain window (sustainWindow handles the <4-sample fallback).
 	seg := sustainWindow(w)
@@ -55,18 +37,13 @@ func DetectF0Detailed(w wave.Wave) F0Estimate {
 		return F0Estimate{}
 	}
 
-	// --- Median-of-short-windows YIN ---
-	// Frame size ≈ 93 ms at 44.1 kHz — short enough that a 5 Hz vibrato
-	// (period ~200 ms) moves the pitch by less than half a cycle per frame,
-	// so within-frame period variation is negligible. Hop = frameLen/2.
+	// Short enough that a 5 Hz vibrato moves less than half a cycle per frame.
 	const frameLen = 4096
 	const hop = 2048
 
 	var perFrameF0s []float64
-	// Frame energies feed the confidence score (pitch_confidence.go): a
-	// plucked or struck note spends its tail near the noise floor, where YIN
-	// legitimately gives up, and counting those frames equally with the loud
-	// periodic ones would score a koto or a felt piano as unpitched.
+	// A plucked note spends its tail near the floor where YIN rightly gives up; counting those frames equally would score
+	// a koto as unpitched.
 	totalFrames := 0
 	var confidentEnergy, totalEnergy float64
 	for start := 0; start+frameLen <= len(buf); start += hop {
@@ -81,21 +58,17 @@ func DetectF0Detailed(w wave.Wave) F0Estimate {
 		if f0 <= 0 {
 			continue
 		}
-		// Reject frames where YIN is not confident — these are likely
-		// transient or noisy segments. Keep confident estimates only.
+		// Transient or noisy frames are dropped.
 		if dp < frameConfidenceThreshold {
 			perFrameF0s = append(perFrameF0s, f0)
 			confidentEnergy += frameEnergy
 		}
 	}
 
-	// If the buffer is shorter than one frame, fall back to a single-frame run
-	// on the full buffer (handles short test signals and edge cases).
+	// Shorter than one frame: a single run over the whole buffer.
 	var yinF0 float64
-	// haveFrameMedian indicates that yinF0 comes from a robust per-frame median
-	// rather than a single full-window run. When true, we skip the fast-path
-	// spectral snap (which can snap to vibrato sidebands instead of the center
-	// frequency) and always run the octave guard for a more reliable result.
+	// A per-frame median skips the fast-path snap, which can land on a vibrato sideband, and always runs the octave
+	// guard.
 	haveFrameMedian := false
 	var bestDp float64
 	if len(perFrameF0s) == 0 {
@@ -116,50 +89,22 @@ func DetectF0Detailed(w wave.Wave) F0Estimate {
 			yinF0 = perFrameF0s[n/2]
 		}
 		haveFrameMedian = true
-		// bestDp stays zero here: it is only consulted on the non-median path
-		// (guarded by !haveFrameMedian below), so the per-frame median path does
-		// not pay for a redundant full-buffer YIN run.
+		// Only the non-median path reads bestDp, so the median path skips a redundant full-buffer run.
 	}
 
-	// Compute magnitude spectrum — needed for both the optional octave guard
-	// and the final snap-to-peak refinement regardless of which path is taken.
+	// Both the octave guard and the snap need it.
 	mag, binHz := wave.MagnitudeSpectrum(seg, 16384, wave.WindowHann)
 
-	// YIN-confidence gate: when d'(τ) is very low AND we did not use per-frame
-	// median (which is always more reliable for vibrato signals), the period
-	// estimate is highly reliable. Skip the spectral octave guard in that case —
-	// overriding a confident single-window YIN with spectral heuristics
-	// reintroduces octave errors on dominant-2nd-harmonic instruments (e.g.
-	// piano, guitar) where the fundamental bin falls below the spectral noise
-	// floor.
-	//
-	// We do NOT apply this shortcut when haveFrameMedian is true: the
-	// per-frame median is a better estimate of the center frequency for vibrato
-	// signals, and the spectral snap in the fast path can accidentally snap to
-	// a vibrato sideband (e.g. f0-vibHz) instead of the true center.
+	// A very confident single-window YIN skips the octave guard, which reintroduces octave errors on dominant-2nd-harmonic
+	// instruments whose fundamental sits under the noise floor. Never with a per-frame median.
 	const yinConfidenceThreshold = 0.10
 	if !haveFrameMedian && bestDp < yinConfidenceThreshold {
 		return f0Estimate(snapToSpectralPeak(mag, binHz, yinF0, 0.03), perFrameF0s, totalFrames, confidentEnergy, totalEnergy, bestDp)
 	}
 
-	// Spectral octave guard: among {f/3, f/2, f, 2f, 3f}, pick the candidate
-	// with the highest harmonic coverage count. Extending to f/3 and 3f catches
-	// the case where YIN locks onto a 1/3 sub-harmonic: when yinF0 ≈ f0/3, the
-	// old {f/2, f, 2f} candidate list never tested 3×yinF0 = f0.
-	//
-	// Coverage count avoids the problem of a sub-octave candidate "borrowing"
-	// its parent's energy at k=2: a pure 220 Hz tone gives both 110 Hz and
-	// 220 Hz a single strong harmonic, so they tie — and we keep YIN's answer.
-	// For a missing-fundamental signal (440+660+880), 220 Hz has 3 harmonics
-	// covered while 110 Hz has only 2, so 220 Hz wins.
-	//
-	// On count ties the secondary tiebreak is the k=1 magnitude (energy at the
-	// candidate's own fundamental bin). When two candidates cover the same number
-	// of harmonics, the one whose comb starts with real energy at k=1 is more
-	// likely to be the true fundamental (vs. a sub-harmonic whose comb teeth
-	// happen to land on the true fundamental's harmonics). Tertiary: prefer the
-	// candidate closest to yinF0, preserving the YIN estimate when spectral
-	// evidence is ambiguous.
+	// The candidate among {f/3, f/2, f, 2f, 3f} with the most covered harmonics (f/3 and 3f catch a lock onto the third
+	// sub-harmonic). Coverage counts so a sub-octave cannot borrow its parent's energy; ties go to the k=1 energy, then to
+	// the candidate nearest YIN.
 	candidates := []float64{yinF0 / 3, yinF0 / 2, yinF0, yinF0 * 2, yinF0 * 3}
 
 	// Compute the global spectral noise floor as mean+σ for significance test.
@@ -181,25 +126,17 @@ func DetectF0Detailed(w wave.Wave) F0Estimate {
 	bestTotalEnergy := 0.0
 
 	for _, cand := range candidates {
-		// Reject candidates outside a sane frequency range for pitched instruments.
-		// Lower bound of 80 Hz avoids f/3 sub-candidates that fall into the
-		// sub-bass range where spectral leakage from short windows can spuriously
-		// inflate harmonic counts. Upper bound of 3000 Hz allows the 3f candidate
-		// for fundamentals up to 1000 Hz (covering the full melodic range).
+		// Below 80 Hz leakage from short windows inflates sub-candidates' counts; 3000 Hz admits 3f up to a 1 kHz
+		// fundamental.
 		if cand < 80 || cand > 3000 {
 			continue
 		}
 		count, energy := harmonicCoverage(mag, binHz, cand, 6, noiseFloor)
 
-		// Compute k=1 magnitude: the magnitude at the candidate's own fundamental
-		// bin. A true fundamental always has energy at k=1; a sub-harmonic whose
-		// comb teeth coincide with the true fundamental's harmonics typically has
-		// little or no energy at its own k=1 position.
+		// A true fundamental has energy at its own k=1; a sub-harmonic whose teeth coincide with the real harmonics has little.
 		k1Mag := k1Magnitude(mag, binHz, cand)
 
-		// Primary: harmonic count. Secondary (count tie): k=1 magnitude (more
-		// energy at the candidate's own fundamental = more likely a true pitch).
-		// Tertiary: total comb energy. Quaternary: prefer candidate nearest yinF0.
+		// Count, then k=1 energy, then total comb energy, then nearest yinF0.
 		better := count > bestCount
 		if !better && count == bestCount {
 			if k1Mag > bestK1Mag+1e-9 {
@@ -222,45 +159,21 @@ func DetectF0Detailed(w wave.Wave) F0Estimate {
 		}
 	}
 
-	// Odd-harmonic subharmonic evidence: a rich reed/brass spectrum with a
-	// weak fundamental (e.g. baritone sax — H2 ~7 dB ABOVE H1, full 12+
-	// harmonic series) makes the 6-harmonic coverage count TIE between f0 and
-	// 2f0, and the k1Mag tiebreak then picks the louder 2nd harmonic — an
-	// octave-up error. The half-frequency candidate's ODD multiples (1, 3,
-	// 5 × f0/2) cannot be explained by the doubled candidate; when the half
-	// frequency itself is present AND another odd multiple is above the noise
-	// floor, the lower octave is the true fundamental.
+	// A reed with a weak fundamental (H2 above H1) ties f0 and 2f0 and the k=1 tiebreak picks the octave up; the half
+	// frequency's ODD multiples cannot come from the doubled candidate, so with the half frequency present the lower
+	// octave wins.
 	bestCandidate = halveOnOddHarmonicEvidence(mag, binHz, bestCandidate, noiseFloor)
 
-	// Snap to nearest strong spectral peak within ±3% for refinement.
-	//
-	// When the estimate comes from a per-frame median (haveFrameMedian), the
-	// center frequency of a vibrato signal sits between sidebands (e.g. f0±vibHz).
-	// A simple ±3% snap can land on a sideband rather than the true center,
-	// degrading accuracy. Skip the snap in that case — the per-frame median plus
-	// the octave guard already produced a reliable center-frequency estimate.
+	// Not after a per-frame median: a vibrato centre sits between sidebands and a ±3 % snap can land on one.
 	if haveFrameMedian {
 		return f0Estimate(bestCandidate, perFrameF0s, totalFrames, confidentEnergy, totalEnergy, bestDp)
 	}
 	return f0Estimate(snapToSpectralPeak(mag, binHz, bestCandidate, 0.03), perFrameF0s, totalFrames, confidentEnergy, totalEnergy, bestDp)
 }
 
-// halveOnOddHarmonicEvidence returns f0/3 or f0/2 when the spectrum contains
-// real energy at that sub-frequency AND the sub-grid's "new" harmonics (the
-// teeth the detected f0's comb cannot account for) carry energy COMPARABLE to
-// the accounted-for teeth. Requirements:
-//
-//   - The sub-frequency itself (the true weak fundamental) must be present, so
-//     genuinely missing-fundamental signals keep the detected f0.
-//   - newE/oldE > 0.5: the unexplained teeth must carry at least half the
-//     energy of the explained ones. A true weak-fundamental reed series (bari
-//     sax: H1 ~7 dB below H2, H3 ≈ H2) measures ~0.75 here; a sub-octave
-//     LAYER (the cello's bowed waveguide + sub gen slot at D2: half-grid teeth
-//     at 36-83% but odd-dominated-DOWN) measures ~0.38 and must NOT drop the
-//     octave — the note is still D2.
-//
-// The f/3 case covers equal-H2/H3 reed spectra where YIN locks onto the H3
-// period and the k1Mag tiebreak keeps it.
+// Only when the sub-frequency itself is present (a genuinely missing fundamental keeps f0) AND the teeth f0's comb
+// cannot explain carry over half the energy of those it can: a weak-fundamental reed measures ~0.75, a cello's
+// sub-octave layer ~0.38 and stays put. The f/3 case covers equal-H2/H3 reeds.
 func halveOnOddHarmonicEvidence(mag []float64, binHz, f0, noiseFloor float64) float64 {
 	for _, div := range []int{3, 2} {
 		sub := f0 / float64(div)
@@ -270,11 +183,8 @@ func halveOnOddHarmonicEvidence(mag []float64, binHz, f0, noiseFloor float64) fl
 		if k1Magnitude(mag, binHz, sub) <= noiseFloor {
 			continue
 		}
-		// Only the first 6 sub-grid teeth vote: the low harmonics carry the
-		// perceptual fundamental decision (bari sax scores ~0.69 there vs the
-		// cello sub-layer's ~0.34), while a bowed waveguide's period-doubling
-		// components at high k would pollute a wider window (12 teeth read
-		// ~0.73 for BOTH cases — no separation).
+		// Only the first 6 sub-grid teeth: they carry the fundamental decision, while a waveguide's period-doubling at high k
+		// would erase the separation.
 		var newE, oldE float64
 		nyq := binHz * float64(len(mag))
 		for k := 1; k <= 6 && sub*float64(k) < nyq; k++ {
@@ -292,10 +202,7 @@ func halveOnOddHarmonicEvidence(mag []float64, binHz, f0, noiseFloor float64) fl
 	return f0
 }
 
-// yinF0ForFrame runs the YIN CMNDF algorithm on a single audio frame and
-// returns (f0Hz, bestDp) where bestDp is the normalized difference value at
-// the chosen lag. Returns (0, 1) if no pitch is detected. The frame must be
-// at least 4 samples long.
+// (0, 1) when no pitch is found; the frame must be at least 4 samples.
 func yinF0ForFrame(buf []float64, sr int) (f0 float64, dp float64) {
 	if len(buf) < 4 || sr == 0 {
 		return 0, 1
@@ -326,8 +233,7 @@ func yinF0ForFrame(buf []float64, sr int) (f0 float64, dp float64) {
 		d[tau] = sum
 	}
 
-	// Cumulative mean normalized difference function d'(τ):
-	// d'(0) = 1, d'(τ) = d(τ) * τ / Σ_{j=1}^{τ} d(j)
+	// d'(0) = 1, d'(τ) = d(τ)·τ / Σ_{j=1}^{τ} d(j).
 	dpArr := make([]float64, tauMax+1)
 	dpArr[0] = 1.0
 	runningSum := 0.0
@@ -340,8 +246,7 @@ func yinF0ForFrame(buf []float64, sr int) (f0 float64, dp float64) {
 		}
 	}
 
-	// Find the first local minimum in [tauMin, tauMax] where dp drops below
-	// the absolute threshold. If none found, fall back to the global minimum.
+	// The first local minimum below the absolute threshold, else the global minimum.
 	const threshold = 0.15
 	bestTau := -1
 	bestDpVal := math.MaxFloat64
@@ -393,13 +298,7 @@ func yinF0ForFrame(buf []float64, sr int) (f0 float64, dp float64) {
 	return float64(sr) / tauF, bestDpVal
 }
 
-// harmonicCoverage returns (count, totalMag) for the first nHarmonics integer
-// multiples of f0. count is the number of harmonics whose magnitude exceeds
-// noiseFloor. totalMag is the sum of magnitudes at all harmonic bins.
-//
-// A ±2-bin window is used around each target bin so that slightly inharmonic
-// or off-bin partials (e.g. piano stretched tuning, bell inharmonicity) still
-// register as covered rather than being silently missed.
+// ±2 bins, so slightly inharmonic or off-bin partials (piano stretch, bells) still count.
 func harmonicCoverage(mag []float64, binHz float64, f0 float64, nHarmonics int, noiseFloor float64) (int, float64) {
 	const binWindow = 2
 	count := 0
@@ -433,11 +332,7 @@ func harmonicCoverage(mag []float64, binHz float64, f0 float64, nHarmonics int, 
 	return count, total
 }
 
-// k1Magnitude returns the maximum magnitude within a ±2-bin window around the
-// k=1 (fundamental) bin of f0. This is the energy at the candidate's own
-// pitch frequency. A true fundamental has real energy here; a sub-harmonic
-// whose comb teeth coincide with the true fundamental's harmonics typically
-// has little or no energy at its own k=1 position.
+// ±2 bins around the candidate's own fundamental.
 func k1Magnitude(mag []float64, binHz float64, f0 float64) float64 {
 	const binWindow = 2
 	centerBin := int(f0/binHz + 0.5)
@@ -461,8 +356,7 @@ func k1Magnitude(mag []float64, binHz float64, f0 float64) float64 {
 	return m
 }
 
-// snapToSpectralPeak finds the strongest spectral peak within ±tolFrac of f0
-// and returns that frequency if found, otherwise returns f0.
+// f0 unchanged when none is found.
 func snapToSpectralPeak(mag []float64, binHz float64, f0 float64, tolFrac float64) float64 {
 	loHz := f0 * (1 - tolFrac)
 	hiHz := f0 * (1 + tolFrac)

@@ -16,12 +16,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
-// adopt.go — `clone adopt -inst <id>`: the ONLY writer of a cloned document
-// into the shipped instruments, and only behind a recorded `y` (spec §6a).
-// The verdict is keyed by the candidate's doc_sha (render.amplitude
-// excluded), so a session that rated a different candidate cannot ship this
-// one, and measure-loudness rewriting the amplitude afterwards changes
-// nothing.
+// The ONLY writer of a cloned document into the shipped instruments, and only behind a recorded y. The verdict is keyed
+// by doc_sha (render.amplitude excluded), so a session that rated another candidate cannot ship this one.
 
 const sessionsRel = "internal/audio/testdata/ear_sessions.jsonl"
 

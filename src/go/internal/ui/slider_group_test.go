@@ -18,8 +18,6 @@ func makeTestSliders(n int) []*Slider {
 	return sliders
 }
 
-// TestSliderGroup_PressStartsCapture verifies that pressing inside a slider
-// captures the group and fires onChange.
 func TestSliderGroup_PressStartsCapture(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -67,8 +65,6 @@ func TestSliderGroup_PressStartsCapture(t *testing.T) {
 	}
 }
 
-// TestSliderGroup_MutualExclusion verifies that once a slider captures,
-// other sliders do not receive input.
 func TestSliderGroup_MutualExclusion(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -103,8 +99,6 @@ func TestSliderGroup_MutualExclusion(t *testing.T) {
 	}
 }
 
-// TestSliderGroup_MissReturnsIgnored verifies that pressing outside all
-// sliders returns InputIgnored.
 func TestSliderGroup_MissReturnsIgnored(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -122,8 +116,6 @@ func TestSliderGroup_MissReturnsIgnored(t *testing.T) {
 	}
 }
 
-// TestSliderGroup_ReleaseWithoutCapture verifies that releasing without a
-// prior capture returns InputIgnored.
 func TestSliderGroup_ReleaseWithoutCapture(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -138,8 +130,6 @@ func TestSliderGroup_ReleaseWithoutCapture(t *testing.T) {
 	}
 }
 
-// TestSliderGroup_DragUpdatesValue verifies that dragging within a captured
-// slider updates the value and fires onChange each time.
 func TestSliderGroup_DragUpdatesValue(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -197,8 +187,6 @@ func TestSliderGroup_ForceRelease(t *testing.T) {
 	}
 }
 
-// TestSliderGroup_NilSliderSkipped verifies that nil entries in the slider
-// slice are safely skipped.
 func TestSliderGroup_NilSliderSkipped(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -260,8 +248,6 @@ func TestSliderGroup_InputBounds(t *testing.T) {
 	}
 }
 
-// TestSliderGroup_Sliders verifies that Sliders() returns the current
-// slider slice.
 func TestSliderGroup_Sliders(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -302,8 +288,6 @@ func TestSliderGroup_HandleWheel(t *testing.T) {
 	}
 }
 
-// TestSliderGroup_ContainerBoundsRejectsMiss verifies that when container
-// bounds are set, a press outside the container is rejected.
 func TestSliderGroup_ContainerBoundsRejectsMiss(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -324,8 +308,6 @@ func TestSliderGroup_ContainerBoundsRejectsMiss(t *testing.T) {
 	}
 }
 
-// TestSliderGroup_ContainerBoundsAllowsHit verifies that when container
-// bounds are set, a press inside the container works normally.
 func TestSliderGroup_ContainerBoundsAllowsHit(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false

@@ -59,8 +59,7 @@ func TestSpectralEnvelope_FormantBandwidth(t *testing.T) {
 			t.Errorf("Formant[%d].Hz is not finite: %v", i, f.Hz)
 		}
 	}
-	// I1: the formant nearest 2400 Hz must have a bounded, sane bandwidth.
-	// A broad/monotone peak could walk to bin 0 without the cap, yielding multi-kHz bogus BW.
+	// Without the cap a broad peak could walk to bin 0.
 	for _, f := range env.Formants {
 		if f.Hz > 2200 && f.Hz < 2600 {
 			if f.BandwidthHz <= 20 || f.BandwidthHz >= 2000 {

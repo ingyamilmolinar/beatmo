@@ -1,13 +1,5 @@
-// Startup-demo benchmark (`make bench-browser`).
-//
-// Env:
-//   TEST_PLATFORM=chrome-local TEST_HEADED=1   real Chrome with a real GPU (the
-//                     default headless Chromium rasterizes WebGL in software)
-//   BENCH_BPMS=120,200          tempo levels (default 120,200,240,300)
-//   BENCH_ADD_FX=pitchshift     once playback runs, add this insert effect to
-//                     row 0 (the kick) — a live edit DURING playback, like a
-//                     user in the FX panel; `<row>:<type>` picks another row
-//   BENCH_TAG=after             results → bench-results/browser_<tag>.json
+// `make bench-browser`. Env: TEST_PLATFORM=chrome-local TEST_HEADED=1 (a real GPU; headless rasterizes in software),
+// BENCH_BPMS, BENCH_ADD_FX=[<row>:]<type> (an insert effect added during playback), BENCH_TAG (→ browser_<tag>.json).
 import http from "http";
 import { spawnSync } from "child_process";
 import fs from "fs";
@@ -79,13 +71,7 @@ function printAudioMetrics(label, m) {
   console.log(`  ${label}: count=${m.count} overdue=${m.overdue} minLead=${fmtMs(m.minLead)} avgLag=${fmtMs(m.avgLag)} lagP90=${fmtMs(m.lagP90)} lagP99=${fmtMs(m.lagP99)} maxLag=${fmtMs(m.maxLag)}`);
 }
 
-// ---------------------------------------------------------------------------
-// Benchmark: Startup demo at 4 BPM levels (matching desktop `make bench`)
-//
-// The WASM app auto-loads startup_demo.json on boot — 58 nodes, 7 instruments,
-// full EQ + effects. No importJSON() needed. This is the exact same circuit
-// that desktop `make bench` runs.
-// ---------------------------------------------------------------------------
+// The startup demo, which the app loads on boot: the same circuit desktop `make bench` runs.
 
 const BPM_LEVELS = process.env.BENCH_BPMS
   ? process.env.BENCH_BPMS.split(",").map((x) => Number(x.trim())).filter((x) => x > 0)
@@ -100,17 +86,8 @@ const ADD_FX = (() => {
 const DURATION_SEC = 15;
 const results = [];
 
-// Phase E (Phase F prep): Allow per-knob runtime profile overrides via env.
-// Pass a JSON object in BEATMO_ENV_OVERRIDE keyed by BEATMO_* variable names
-// (internal/env/vars.go); it's injected as window.__beatmoEnv before WASM
-// init, which index.html folds into go.env, so applyEnvProfileOverride
-// (internal/ui/runtime_profile_env.go) reads it via os.Getenv — the same
-// path desktop bench sweeps use. Values must be strings (wasm_exec.js
-// coerces via String() when building the KEY=value environ, so a raw number
-// works but is coerced anyway).
-//
-// Example:
-//   BEATMO_ENV_OVERRIDE='{"BEATMO_TIMELINE_INFO_THROTTLE_MS":"0"}' make bench-browser
+// BEATMO_ENV_OVERRIDE (JSON keyed by BEATMO_* names) reaches Go's os.Getenv through window.__beatmoEnv, the path
+// desktop sweeps use. Values are strings.
 let profileOverride = null;
 if (process.env.BEATMO_ENV_OVERRIDE) {
   try {
@@ -126,8 +103,7 @@ for (const bpm of BPM_LEVELS) {
 
   const page = await browser.newPage();
   if (profileOverride) {
-    // Env-var overrides reach Go via go.env (see index.html). Keys are the
-    // BEATMO_* names from internal/env/vars.go; values must be strings.
+    // Keys are the BEATMO_* names; values strings.
     await page.addInitScript((cfg) => {
       window.__beatmoEnv = Object.fromEntries(
         Object.entries(cfg).map(([k, v]) => [k, String(v)]),
@@ -135,10 +111,7 @@ for (const bpm of BPM_LEVELS) {
     }, profileOverride);
   }
   await page.goto(`http://localhost:${port}/`);
-  // Gate on forceDraw, not just startPlay: js_bootstrap_wasm.go registers a
-  // STUB startPlay early (before Game.initJS registers the real exports), so
-  // startPlay alone can pass while forceDraw below is still unregistered —
-  // the bare-identifier `forceDraw?.()` then throws ReferenceError.
+  // A STUB startPlay registers before the real exports, so forceDraw is the gate.
   await page.waitForFunction(
     () => typeof startPlay === "function" && typeof forceDraw === "function", null,
     { timeout: 30000 },
@@ -154,8 +127,7 @@ for (const bpm of BPM_LEVELS) {
   });
   await page.waitForTimeout(500);
 
-  // Reset metrics, set BPM, start playback — once the readiness gate opens
-  // (a bare startPlay() during voice warm-up is ignored).
+  // A bare startPlay() during voice warm-up is ignored.
   await page.evaluate(() => {
     resetPerfStats?.();
     resetAudioScheduleMetrics?.();
@@ -238,9 +210,6 @@ for (const bpm of BPM_LEVELS) {
   await page.close();
 }
 
-// ---------------------------------------------------------------------------
-// Summary table
-// ---------------------------------------------------------------------------
 console.log("\n╔══════════════════════════════════════════════════════════════════════════════════════════════════════╗");
 console.log("║  BROWSER BENCHMARK: Startup Demo (58 nodes, 7 instruments, EQ+effects)                            ║");
 console.log("╠══════╦═══════╦═════════╦═════════╦═════════╦═════════╦═══════╦═════════╦═════════╦═════════╦═══════╣");
@@ -284,11 +253,7 @@ for (const r of results) {
 }
 console.log("╚══════╩════════╩════════╩══════════╩══════════╩══════════════╝");
 
-// ---------------------------------------------------------------------------
-// Save machine-readable JSON (matches desktop bench-results/desktop.json
-// schema). Written BEFORE the threshold assertions below so a tripped gate
-// still leaves browser.json on disk — a benchmark must record its data.
-// ---------------------------------------------------------------------------
+// Written BEFORE the threshold assertions, so a tripped gate still leaves its data.
 const jsonResults = results.map(r => ({
   bpm: r.bpm,
   fps: r.fpsAvg,
@@ -324,15 +289,8 @@ const resultsName = process.env.BENCH_TAG ? `browser_${process.env.BENCH_TAG}.js
 fs.writeFileSync(path.join(resultsDir, resultsName), JSON.stringify(jsonResults, null, 2) + "\n");
 console.log(`\nResults saved to bench-results/${resultsName}`);
 
-// ---------------------------------------------------------------------------
-// Threshold assertions (run AFTER the JSON save so a tripped gate still leaves
-// browser.json on disk). Audio-smoothness gates (overdue/lag) are the hard floor.
-// ---------------------------------------------------------------------------
-// Lateness is measured on the REQUESTED start time (before audio.js's 4 ms
-// floor clamp — observed after it, a late note read as lead=+4ms and these
-// gates could never fail). In headless Chromium the lateness is dominated by
-// software-GL frames starving the single WASM thread, so it is enforced only
-// with AUDIO_PROBE_STRICT=1; structural probe gates stay hard below.
+// Lateness is measured on the REQUESTED start, before audio.js's floor (after it a late note read as +4 ms lead).
+// Headless software GL dominates it, so it is enforced only with AUDIO_PROBE_STRICT=1; the structural gates stay hard.
 const latenessAssert = (cond, msg) => {
   if (PROBE_STRICT) hardAssert(cond, msg);
   else if (!cond) console.log(`  [lateness info] ${msg}`);
@@ -343,8 +301,7 @@ for (const r of results) {
     `BPM=${r.bpm}: lagP90 ${fmtMs(r.lagP90)} > 10ms`);
   latenessAssert(r.lagP99 == null || r.lagP99 <= 0.020,
     `BPM=${r.bpm}: lagP99 ${fmtMs(r.lagP99)} > 20ms`);
-  // What the listener heard: every judged note audible, none dropped, and
-  // start() never queued behind a UI frame (the sync-flush contract).
+  // Every judged note audible, none dropped, start() never queued behind a UI frame.
   const p = r.probe || {};
   if (p.probeNotesJudged != null) {
     hardAssert(p.probeNotesJudged > 0, `BPM=${r.bpm}: playback probe judged no notes`);
@@ -360,20 +317,12 @@ for (const r of results) {
   const fpsFloor = r.bpm <= 200 ? 20 : (r.bpm <= 240 ? 18 : 12);
   hardAssert(r.fpsAvg >= fpsFloor,
     `BPM=${r.bpm}: fpsAvg ${r.fpsAvg.toFixed(1)} below floor ${fpsFloor}`);
-  // updateAvg ceiling raised from 2.5/3.0 after the 2026-07-16 GC-disable fix
-  // (async.Snapshot no longer turns GC off). With automatic GC restored,
-  // single-threaded WASM does its GC mark-assist work inside Update(), so the
-  // honest updateAvg is ~3.8-4.7ms — the old ~1.4ms was an artifact of GC being
-  // accidentally disabled. Audio stays clean (overdue=0, gated above) and FPS is
-  // well above floor; this ceiling still catches a true >2x regression.
+  // Single-threaded WASM does its GC mark-assist inside Update(), so ~4-5 ms is honest; this still catches a > 2× regression.
   const updateMax = r.bpm <= 200 ? 6.0 : 7.0;
   hardAssert(r.updateAvgMS <= updateMax,
     `BPM=${r.bpm}: updateAvgMS ${r.updateAvgMS.toFixed(3)}ms exceeded ${updateMax}ms`);
 }
 
-// ---------------------------------------------------------------------------
-// Cleanup
-// ---------------------------------------------------------------------------
 await browser.close();
 server.close();
 

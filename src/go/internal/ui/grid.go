@@ -10,17 +10,13 @@ import (
 
 const DefaultGridStep = 60 // world-space px between vertices
 
-// LineStyle describes how a grid subdivision should be rendered.
-// Width specifies the desired on-screen thickness in pixels.
+// Width is in screen pixels.
 type LineStyle struct {
 	Color color.Color
 	Width float64
 }
 
-// Subdivision defines a set of grid lines drawn between beats.
-// Div specifies how many slices a beat is divided into.
-// MinPx controls the minimum on-screen spacing (in pixels) required before this
-// subdivision becomes visible to avoid crowding.
+// Div slices a beat; MinPx is the spacing below which the subdivision hides.
 type Subdivision struct {
 	Div   int
 	MinPx int
@@ -53,11 +49,7 @@ type Grid struct {
 	subSig uint64
 }
 
-// gridLineColorForDiv is the ONE table mapping a subdivision to its line
-// token. NewGrid, SetSubdivisions and RefreshLineColors all read it, so a
-// theme change re-resolves every line from the live tokens instead of the
-// copies the styles captured at construction (a preset pick used to leave
-// the grid lines in the previous theme's color until restart).
+// The ONE subdivision-to-token table, so a theme change re-resolves every line from the live tokens.
 func gridLineColorForDiv(div int) color.RGBA {
 	switch div {
 	case 1:
@@ -77,8 +69,6 @@ func gridLineColorForDiv(div int) color.RGBA {
 	}
 }
 
-// RefreshLineColors re-reads every subdivision's line color from the live
-// theme tokens. Called from Game.OnThemeChanged; MinPx/Width are untouched.
 func (g *Grid) RefreshLineColors() {
 	if g == nil {
 		return
@@ -105,9 +95,7 @@ func NewGrid(step float64) *Grid {
 	return g
 }
 
-// SetSubs replaces the grid subdivision configuration and recomputes internal
-// caches. Prefer using this instead of assigning Subs directly so caches stay
-// coherent.
+// Use this rather than assigning Subs, so the caches stay coherent.
 func (g *Grid) SetSubs(subs []Subdivision) {
 	g.Subs = subs
 	g.recomputeSubSig()
@@ -133,22 +121,14 @@ func (g *Grid) MaxDiv() int {
 // Unit returns the world-space distance between the smallest subdivisions.
 func (g *Grid) Unit() float64 { return g.Step / float64(g.MaxDiv()) }
 
-// UnitPixels returns the on-screen pixel distance between the smallest
-// subdivisions for a given camera scale.
 func (g *Grid) UnitPixels(scale float64) float64 {
 	return float64(g.StepPixels(scale)) / float64(g.MaxDiv())
 }
 
-// NodeRadius returns a world-space radius for nodes based on the camera zoom.
-// The radius grows with the zoom level but remains a fraction of the smallest
-// subdivision so adjacent nodes never overlap. The visual size is capped to a
-// reasonable maximum to keep nodes readable when heavily zoomed in.
+// A fraction of the finest subdivision so adjacent nodes never overlap, capped on screen.
 func (g *Grid) NodeRadius(scale float64) float64 {
-	// Base world radius capped so two adjacent nodes at the finest
-	// subdivision never overlap (<= 0.8*Unit apart).
 	base := 0.4 * g.Unit()
-	// Apply min/max on-screen sizes for readability while zoomed in/out.
-	// Mobile uses larger minimums for tap targets and visibility.
+	// Mobile has larger minimums for tap targets.
 	p := Profile()
 	minPx := float64(p.NodeMinPx)
 	maxPx := float64(p.NodeMaxPx)
@@ -168,9 +148,6 @@ func (g *Grid) NodeRadius(scale float64) float64 {
 	return r
 }
 
-// SignalRadius returns a world-space radius for travelling pulses. Like
-// NodeRadius it scales with zoom and caps the on-screen size to avoid oversized
-// pulses at extreme zoom factors.
 func (g *Grid) SignalRadius(scale float64) float64 {
 	// Base follows grid unit for proportional look.
 	base := 0.2 * g.Unit()
@@ -189,8 +166,7 @@ func (g *Grid) SignalRadius(scale float64) float64 {
 	return r
 }
 
-// EdgeThickness returns a world-space thickness for connection lines so they
-// remain one screen pixel wide regardless of zoom level.
+// One screen pixel at any zoom.
 func (g *Grid) EdgeThickness(scale float64) float64 {
 	if scale <= 0 {
 		return 1
@@ -198,13 +174,8 @@ func (g *Grid) EdgeThickness(scale float64) float64 {
 	return float64(Profile().EdgeThickMul) / scale
 }
 
-// EdgeArrowSize returns the world-space length of arrow heads. Keeping them at
-// one subdivision unit ensures connection arrows remain understated.
 func (g *Grid) EdgeArrowSize() float64 {
-	// Keep arrowheads at a fixed fraction of a beat in world-space so they
-	// remain visually consistent across subdivision changes. Using Step (px
-	// per beat in world units) decouples size from MaxDiv. The fraction is
-	// sourced from DESIGN.md geometry.edge-arrow-step-fraction.
+	// A fraction of a beat (Step), so the size is independent of MaxDiv.
 	return genGeomEdgeArrowStepFraction * g.Step
 }
 
@@ -216,8 +187,6 @@ func (g *Grid) Snap(x, y float64) (gx, gy float64, ix, iy int) {
 	return float64(ix) * unit, float64(iy) * unit, ix, iy
 }
 
-// BeatSubdivision splits a subdivision index into a beat count and a reduced
-// fraction (num/den) representing the remaining sub-beat portion.
 func (g *Grid) BeatSubdivision(idx int) (beat, num, den int) {
 	div := g.MaxDiv()
 	if div <= 0 {
@@ -232,11 +201,8 @@ func (g *Grid) BeatSubdivision(idx int) (beat, num, den int) {
 	return beat, rem / d, div / d
 }
 
-// BeatAxisLabel formats a signed grid-axis subdivision index as a "beat:fraction"
-// coordinate for the cursor readout. The sign is carried on the whole coordinate
-// (magnitude convention): a point 2.5 beats left of the origin reads "-2:1/2",
-// NOT floor's "-3:1/2". A point exactly on a beat drops the fraction ("-2", not
-// "-2:0"). The fraction is reduced (BeatSubdivision), so a half-beat reads "1/2".
+// The sign belongs to the whole coordinate: 2.5 beats left reads "-2:1/2", not floor's "-3:1/2";
+// an exact beat drops the fraction.
 func (g *Grid) BeatAxisLabel(idx int) string {
 	sign := ""
 	if idx < 0 {
@@ -250,14 +216,8 @@ func (g *Grid) BeatAxisLabel(idx int) string {
 	return fmt.Sprintf("%s%d:%d/%d", sign, beat, num, den)
 }
 
-// BeatSlot converts an absolute subdivision index into a 1-based beat number and
-// how far into that beat the index sits, as the raw (unreduced) fraction
-// num/den with den = MaxDiv. num is the count of subdivisions past the start of
-// the beat, so a node exactly on the beat has num == 0 and a node halfway
-// through has num == den/2. Examples (div=8): idx 0 -> Beat 1, 0/8; idx 4 (the
-// midpoint between two beat-aligned nodes) -> Beat 1, 4/8; idx 8 -> Beat 2, 0/8;
-// idx 19 -> Beat 3, 3/8. This is the user-facing "beat and subdivision" form for
-// a node's position in its circuit. Negative idx and div<=0 clamp to beat 1.
+// 1-based beat plus the raw fraction num/den with den = MaxDiv: idx 4 at div 8 is "Beat 1, 4/8".
+// Negative idx and div <= 0 clamp to beat 1.
 func (g *Grid) BeatSlot(idx int) (beat, num, den int) {
 	den = g.MaxDiv()
 	if den <= 0 {
@@ -271,9 +231,7 @@ func (g *Grid) BeatSlot(idx int) (beat, num, den int) {
 	return beat, num, den
 }
 
-// StepPixels converts a camera scale to an integer pixel spacing between grid
-// lines. This helps keep vertical and horizontal gaps consistent across zoom
-// levels.
+// Integer spacing keeps horizontal and vertical gaps equal across zoom levels.
 func (g *Grid) StepPixels(scale float64) int {
 	px := int(math.Round(scale * g.Step))
 	if px < 1 {
@@ -282,13 +240,10 @@ func (g *Grid) StepPixels(scale float64) int {
 	return px
 }
 
-// Lines returns world-space coordinates for visible grid subdivisions based on
-// the camera and screen size.
 func (g *Grid) Lines(cam *Camera, screenW, screenH int) []LineGroup {
 	// Use precomputed subdivision signature; recomputed via SetSubs/NewGrid.
 	subSig := g.subSig
-	// Fast path: if camera, screen, step and subdivision signature are unchanged,
-	// reuse cached lines. Camera offsets are snapped to integer pixels by Camera.Snap().
+	// Camera offsets are snapped to whole pixels, so an unchanged signature can reuse the lines.
 	if g.cacheValid &&
 		g.cacheScale == cam.Scale &&
 		g.cacheOffX == cam.OffsetX &&
@@ -299,9 +254,7 @@ func (g *Grid) Lines(cam *Camera, screenW, screenH int) []LineGroup {
 	}
 	stepPx := g.StepPixels(cam.Scale)
 	minX, maxX, minY, maxY := visibleWorldRect(cam, screenW, screenH)
-	// pad the visible rectangle by one beat on each side so grid lines extend
-	// beyond the screen edges. This avoids gaps when panning and gives the
-	// impression of an infinite lattice.
+	// One beat of padding each side, so panning never shows a gap at the edges.
 	minX -= g.Step
 	maxX += g.Step
 	minY -= g.Step

@@ -6,27 +6,13 @@ import (
 	"testing"
 )
 
-// These tests reproduce the user-visible startup-chrome bugs in
-// crop_drum_view_default that the existing beat_counter_visibility_test.go
-// suite missed:
-//   - beat counter pill is taller than its rect (renders behind the timeline bar)
-//   - len +/− stack overflows the header band into the rows area
-//   - track button has no minimum touch height inside the header
-//
-// They run at the production capture viewport (1280×720 desktop, 390×844
-// mobile) — NOT the inflated 720-tall dv.Bounds the existing tests use —
-// so the math reflects what the screenshot harness actually captures.
+// At the production capture viewport (1280×720, 390×844), not an inflated test bounds, so the math matches the
+// screenshot harness.
 
-// minStartupChromeGap is the minimum vertical breathing room (in px) we
-// require between the bottom of the beat counter chip and the top of the
-// timeline progress bar. Without this, the pill background paints flush
-// against the bar and the readout reads as part of the bar geometry.
+// Without it the pill paints flush against the bar and reads as part of it.
 const minStartupChromeGap = 2
 
-// productionDrumView builds a Game at the given viewport and returns its
-// laid-out drum view, mirroring the path the screenshot harness uses
-// (`Game.Layout` → `Splitter.DrumRect`). All chrome rects are populated
-// after this call.
+// The screenshot harness's path (Game.Layout → Splitter.DrumRect).
 func productionDrumView(t *testing.T, w, h int) *DrumView {
 	t.Helper()
 	g := New(testLogger)
@@ -37,9 +23,6 @@ func productionDrumView(t *testing.T, w, h int) *DrumView {
 	return dv
 }
 
-// TestStartupHeader_BeatCounterRectFitsAboveTimeline_Desktop asserts the
-// counter rect leaves at least minStartupChromeGap px of breathing room
-// above the timeline progress bar at the production viewport.
 func TestStartupHeader_BeatCounterRectFitsAboveTimeline_Desktop(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := productionDrumView(t, 1280, 720)
@@ -56,10 +39,7 @@ func TestStartupHeader_BeatCounterRectFitsAboveTimeline_Desktop(t *testing.T) {
 	}
 }
 
-// TestStartupHeader_BeatCounterPillFitsInRect_Desktop computes the same
-// pill dimensions drawBeatCounter uses (`pillH = TextHeight() + 2*pillPadY`)
-// and asserts the pill fits inside the counter rect — i.e. the chip cannot
-// bleed below the rect into the timeline bar.
+// The same pill dimensions as drawBeatCounter.
 func TestStartupHeader_BeatCounterPillFitsInRect_Desktop(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := productionDrumView(t, 1280, 720)
@@ -73,9 +53,6 @@ func TestStartupHeader_BeatCounterPillFitsInRect_Desktop(t *testing.T) {
 	}
 }
 
-// TestStartupHeader_LenButtonsInsideHeader_Desktop asserts both inc and
-// dec buttons fit inside dv.Bounds.Min.Y..+headerH so they cannot
-// overflow into the rows area below the header.
 func TestStartupHeader_LenButtonsInsideHeader_Desktop(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := productionDrumView(t, 1280, 720)
@@ -96,12 +73,7 @@ func TestStartupHeader_LenButtonsInsideHeader_Desktop(t *testing.T) {
 	}
 }
 
-// TestStartupHeader_TrackButtonInsideHeader_Desktop asserts the lock/free
-// keycap is anchored at the header top and — per the "take over the left strip
-// of the timeline" design — extends DOWN past the header band into the
-// timeline's left gutter as a chunky square, while staying within the drum
-// bounds and remaining a usable click target. Guards against shrinkage and
-// against escaping the drum surface.
+// By design it extends below the header into the timeline's left gutter, while staying in bounds and usable.
 func TestStartupHeader_TrackButtonInsideHeader_Desktop(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := productionDrumView(t, 1280, 720)
@@ -125,9 +97,6 @@ func TestStartupHeader_TrackButtonInsideHeader_Desktop(t *testing.T) {
 	}
 }
 
-// TestStartupHeader_BeatCounterRectFitsAboveTimeline_Mobile is the mobile
-// variant — passes today thanks to the 56-px header, locks in the invariant
-// for the regression-safety net.
 func TestStartupHeader_BeatCounterRectFitsAboveTimeline_Mobile(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -160,12 +129,7 @@ func TestStartupHeader_BeatCounterPillFitsInRect_Mobile(t *testing.T) {
 	}
 }
 
-// TestStartupHeader_HeaderChromeFitsOnMobile asserts mobile len buttons
-// stay empty (per TestLenButtonsHiddenOnMobile) AND the beat counter rect
-// fits inside the header band. The mobile track chip is exempt — it
-// extends below the header floor by design (touch-ergonomics: the chip
-// expands to TouchMinTarget for finger-sized hit area, locked in by
-// TestTrackChip_VisibleOnMobile).
+// The mobile track chip is exempt: it extends below the header to reach the touch minimum.
 func TestStartupHeader_HeaderChromeFitsOnMobile(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)

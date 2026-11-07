@@ -7,18 +7,12 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// ChordMatrixComponent is the chord picker opened from a chord node's chip:
-// every chord the builder knows (12 roots × 20 qualities), Root × Quality,
-// paged by quality family. It is the second instance of the shared
-// GridPickerComponent (the note matrix is the first); this type supplies the
-// chord model and the page bar.
+// The second instance of GridPickerComponent; this type supplies the chord model and the page bar.
 type ChordMatrixComponent struct {
 	*GridPickerComponent
 	m chordMatrixModel
 
-	// OnPageChange runs after every page switch (page-bar tap, Tab, SetPage):
-	// the host re-seats its keyboard cursor so it never sits on a cell of a
-	// page that does not hold the current chord.
+	// The host re-seats its keyboard cursor so it never sits on a page that does not hold the current chord.
 	OnPageChange func()
 }
 
@@ -44,8 +38,6 @@ func chordPageLabels() []string {
 	}
 }
 
-// Open shows the picker for a chord rooted at rootPitch, on the page holding
-// the current quality.
 func (c *ChordMatrixComponent) Open(anchor, container image.Rectangle, rootPitch, instOffset float64, spec model.ChordSpec, onClose func()) {
 	q := spec.Quality
 	if q == "" {
@@ -57,8 +49,7 @@ func (c *ChordMatrixComponent) Open(anchor, container image.Rectangle, rootPitch
 	c.openWith(chordGridModel{c}, onClose)
 }
 
-// Sync refreshes what changes while the picker is open: the anchor (the
-// sidebar re-lays out every frame) and the node's current chord.
+// The sidebar re-lays out every frame, so the anchor moves.
 func (c *ChordMatrixComponent) Sync(anchor image.Rectangle, rootPitch float64, spec model.ChordSpec) {
 	c.anchor = anchor
 	c.m.rootPitch, c.m.spec = rootPitch, spec
@@ -67,8 +58,7 @@ func (c *ChordMatrixComponent) Sync(anchor image.Rectangle, rootPitch float64, s
 // Page is the visible quality page.
 func (c *ChordMatrixComponent) Page() int { return c.m.page }
 
-// SetPage shows quality page i (wrapping). Every page has the same shape,
-// so the geometry does not change.
+// Every page has the same shape, so the geometry does not change.
 func (c *ChordMatrixComponent) SetPage(i int) {
 	n := len(model.ChordPages)
 	c.m.page = ((i % n) + n) % n

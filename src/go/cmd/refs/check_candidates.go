@@ -13,29 +13,17 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// The candidates check — the pre-audition gate (spec §5).
-//
-// The gate is a FILTER, not the verdict: the listener is the verdict. What it
-// exists to stop is a candidate that reads better on the counting criteria
-// while being a worse render — which, in practice, is easy to do by accident.
-// Every criterion below was added because a real candidate authored in Task 15
-// tripped it.
+// The pre-audition gate is a FILTER, the listener the verdict: it stops a candidate that reads better on the counting
+// criteria while being a worse render, which is easy to do by accident.
 
-// gateExemption records a bound axis a family's gate must NOT count, and WHY.
-// An exemption is a deliberate, reviewed statement that the axis does not
-// measure what its question asks on this family — never a convenience for a
-// candidate that could not clear it. Both current entries are measurement
-// artifacts identified from the tool's own output, not tuning failures.
+// A reviewed statement that the axis does not measure its question on this family (a measurement artifact), never a
+// convenience for a candidate that could not clear it.
 type gateExemption struct {
 	Axis   string
 	Reason string
 }
 
-// gateExemptions is the ONE table of exempt (family, axis) pairs. An exempt
-// axis is dropped from every criterion below — the MISMATCH count, the
-// direction check, and the liveness count — and is logged as exempt so the
-// exemption stays visible in the gate's own output rather than being silently
-// absorbed.
+// Dropped from every criterion (MISMATCH count, direction, liveness) and logged as exempt, so it stays visible.
 var gateExemptions = map[instrument.ID][]gateExemption{
 	roster.TubularBells: {{
 		Axis: fingerprint.IDBrightnessRatio,
@@ -56,13 +44,8 @@ var gateExemptions = map[instrument.ID][]gateExemption{
 	}},
 }
 
-// directionAxes are the listener-named axes per family: the ones whose
-// question the listener's own words this round point at. The direction
-// criterion below is THRESHOLD-INDEPENDENT — it looks at |synth - ref|
-// directly rather than at a verdict — because the corpus calibration (Task 8)
-// loosened several verdict bands until axes the listener complained about read
-// "ok". A candidate that only shuffles verdicts within a loosened band would
-// pass the counting criteria while moving nothing the listener can hear.
+// The axes the listener's own words point at. THRESHOLD-INDEPENDENT (|synth - ref|, not a verdict): the corpus
+// calibration loosened bands until complained-about axes read "ok", so reshuffling verdicts must not count.
 var directionAxes = map[instrument.ID][]string{
 	roster.TubularBells: {fingerprint.IDModeBeatingDepth, fingerprint.IDModeCountPerOctave},
 	roster.Snare:        {fingerprint.IDNoiseFlatness, fingerprint.IDDecayT20},
@@ -70,51 +53,25 @@ var directionAxes = map[instrument.ID][]string{
 }
 
 const (
-	// directionImprove is the share of the current |synth - ref| gap a
-	// candidate must close on at least ONE listener-named axis to count as
-	// aimed at the complaint rather than incidental.
+	// The share of the gap a candidate must close on at least ONE listener-named axis to count as aimed at the complaint.
 	directionImprove = 0.25
-	// directionWorsen is how far the gap may GROW on any listener-named axis
-	// before the candidate is trading the listener's complaint for something
-	// else. Same magnitude as directionImprove so the criterion is symmetric.
+	// How far the gap may grow on a listener-named axis; symmetric with directionImprove.
 	directionWorsen = 0.25
 )
 
-// predictiveAxes is spec §5's "no PREDICTIVE axis made worse" clause. The
-// PREDICTIVE set is what `refs validate` classifies as AUC >= 0.70 against the
-// ear verdicts. Rather than recomputing that whole correlation here (it needs
-// the full ear_verdicts corpus and takes minutes), the gate hard-codes the
-// axis with the strongest live result:
-//
-//	$ refs validate
-//	inharmonicity  AUC 1.00  95% CI 1.00-1.00  PREDICTIVE  ... corpus  partial structure
-//
-// AUC 1.00 with a CI that clears chance entirely — when this axis says the
-// synth got further from the reference, the listener agreed every time in the
-// corpus. Re-read the live table before adding to this list; an axis that has
-// drifted out of PREDICTIVE must come out of it.
+// The "no PREDICTIVE axis made worse" clause: refs validate's strongest live axis (inharmonicity, AUC 1.00, CI clear of
+// chance) instead of recomputing the whole correlation here. Re-read the live table first; an axis no longer PREDICTIVE
+// comes out.
 var predictiveAxes = []string{fingerprint.IDInharmonicity}
 
-// noRegressAxes are per-family axes a candidate may not push further from the
-// reference, beyond the general PREDICTIVE rule. The bells entries exist
-// because the first round of bells candidates bought their numbers by
-// shortening the ring (ring T60 ok -> MISMATCH, "decays far too fast", against
-// a listener who asked for a ring that PROLONGS) and by retuning the hum
-// partial (mode anchor ok +1% -> drift -19%) purely to make DetectF0 lock.
+// Per-family axes a candidate may not push further from the reference: bells candidates bought their numbers by
+// shortening the ring (asked to PROLONG) and retuning the hum partial just to make DetectF0 lock.
 var noRegressAxes = map[instrument.ID][]string{
 	roster.TubularBells: {fingerprint.IDEnvRingT60, fingerprint.IDModeAnchorHz},
 }
 
-// noRegressTol is the relative slack the no-regress and PREDICTIVE checks
-// allow before calling a gap "further from the reference". Rendering is
-// deterministic; the slack exists because an override aimed at one axis still
-// perturbs the MEASUREMENT of others by a hair. The bells' mode anchor is
-// 2.987 Hz from the reference both before and after a candidate that never
-// touches the hum partial, but the estimate lands a few ULPs apart because the
-// spectrum it is estimated from changed elsewhere — which a bare
-// `after > before` reported as a regression. 1% is far below any audible or
-// verdict-changing move; the real regression this check was written for took
-// the same axis from 2.987 to 108.4 Hz, a 36x move.
+// Slack for measurement jitter: an edit aimed at one axis nudges others' estimates by ULPs (the bells' mode anchor),
+// which a bare after > before reports as a regression. Far below any audible move; the real regression was 36x.
 const noRegressTol = 0.01
 
 // worsened reports whether after is meaningfully further from the reference
@@ -124,12 +81,8 @@ func worsened(before, after float64) bool {
 	return after > before*(1+noRegressTol)+1e-9
 }
 
-// minLiveBoundAxes is how many of a family's bound axes must actually MEASURE
-// on both sides for the gate's verdict to mean anything. A family whose
-// questions are mostly bound to axes that read n/a is not being gated at all —
-// the snare, for instance, has two bound axes that never produce a row
-// (snare.low_body_frac's reference fails RequiresPercussive; noise.fraction's
-// f0 confidence is below 0.65 on both sides).
+// A family whose questions mostly bind to axes reading n/a is not being gated at all (the snare has two that never
+// produce a row).
 const minLiveBoundAxes = 2
 
 // axisByID indexes a diagnosis's rows by descriptor id.
@@ -149,10 +102,7 @@ func live(a axisResult, ok bool) bool {
 	return ok && a.Verdict != "" && a.RefNA == "" && a.SynthNA == ""
 }
 
-// gap is |synth - ref| for a live axis, and false when the axis is not
-// comparable. It is deliberately in the descriptor's own units and NOT
-// normalised by any threshold: the point of the direction criterion is to be
-// independent of the calibrated bands.
+// In the descriptor's own units, never normalised by a threshold: the direction criterion is independent of the bands.
 func gap(a axisResult, ok bool) (float64, bool) {
 	if !live(a, ok) {
 		return 0, false
@@ -160,8 +110,7 @@ func gap(a axisResult, ok bool) (float64, bool) {
 	return math.Abs(a.Synth - a.Ref), true
 }
 
-// gapOf is gap() over an id-indexed diagnosis, since a map index only yields
-// its comma-ok second value in an assignment, not as a call argument.
+// A map index yields its comma-ok value only in an assignment, not as a call argument.
 func gapOf(m map[string]axisResult, id string) (float64, bool) {
 	a, ok := m[id]
 	return gap(a, ok)
@@ -209,10 +158,7 @@ func checkCandidateGate(r *checkReport) error {
 		}
 		curAx := axisByID(cur)
 
-		// ---- liveness -------------------------------------------------
-		// Report every dead bound axis by name, then fail if too few are
-		// left, so "the gate passed" can never mean "the gate measured one
-		// axis".
+		// Every dead bound axis is named, so "the gate passed" never means "the gate measured one axis".
 		nLive := 0
 		for id := range bound {
 			a, ok := curAx[id]
@@ -266,12 +212,8 @@ func checkCandidateGate(r *checkReport) error {
 				if !ok {
 					continue
 				}
-				// An axis the current version MEASURES but the candidate does
-				// not is never an improvement: an unmeasurable axis carries no
-				// verdict, so it would silently leave the MISMATCH column and
-				// be counted as progress. The bells' brightness ratio goes
-				// unmeasurable ("no fundamental to normalise the centroid by")
-				// as soon as the hum partial stops anchoring f0 detection.
+				// An axis that stops measuring is never an improvement: with no verdict it would leave the MISMATCH column and read as
+				// progress (the bells' brightness once the hum partial stops anchoring f0).
 				if a.Verdict == "" && curV[id] != "" {
 					r.Errorf("%s/%s: %s was %s and is now UNMEASURABLE — %s", name, c.ID, a.Name, curV[id], a.SynthNA)
 				}

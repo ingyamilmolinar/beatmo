@@ -22,8 +22,6 @@ func nodeCenter(g *Game, n *uiNode) (int, int) {
 	return cx, cy
 }
 
-// centerCameraOn positions the camera so grid (gi, gj) maps to screen
-// center of the grid pane.
 func centerCameraOn(g *Game, gi, gj int) {
 	unitPx := g.grid.UnitPixels(g.cam.Scale)
 	paneH := float64(g.split.Y - gridTopOffset())
@@ -37,8 +35,7 @@ type drawnRect struct {
 	Color color.RGBA
 }
 
-// collectFilledRects intercepts drawRect calls during fn() and returns
-// all filled rects with colors. The original drawRect is also invoked.
+// The original drawRect still runs.
 func collectFilledRects(t *testing.T, fn func()) []drawnRect {
 	t.Helper()
 	var rects []drawnRect
@@ -57,8 +54,6 @@ func collectFilledRects(t *testing.T, fn func()) []drawnRect {
 	return rects
 }
 
-// nonBgRectAt returns the first filled rect containing (x,y) whose color
-// is not the grid-pane background.
 func nonBgRectAt(rects []drawnRect, x, y int) (drawnRect, bool) {
 	pt := image.Pt(x, y)
 	bg := color.RGBAModel.Convert(colBGTop).(color.RGBA)
@@ -72,9 +67,7 @@ func nonBgRectAt(rects []drawnRect, x, y int) (drawnRect, bool) {
 
 // ── tests ────────────────────────────────────────────────────────────────
 
-// TestNodeRenderedAtCorrectPosition verifies that nodes are drawn at
-// their expected screen positions by checking the draw node counter and
-// intercepting drawRect calls (RENDER_SAFE path writes via drawRect).
+// The RENDER_SAFE path draws nodes through drawRect, where they are interceptable.
 func TestNodeRenderedAtCorrectPosition(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -122,8 +115,6 @@ func TestNodeRenderedAtCorrectPosition(t *testing.T) {
 	}
 }
 
-// TestDeletedNodeNotRendered verifies that a deleted node no longer
-// produces drawRect calls at its screen position.
 func TestDeletedNodeNotRendered(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -178,11 +169,7 @@ func TestDeletedNodeNotRendered(t *testing.T) {
 	bg := color.RGBAModel.Convert(colBGTop).(color.RGBA)
 	bandThreshold := screen2.Bounds().Dx() / 2
 	for _, r := range rects2 {
-		// The grid pane background is a vertical sunset gradient painted as
-		// full-width horizontal bands (colBGTop → colGridHorizon). Those bands
-		// legitimately cover every point and are NOT node remnants — a leftover
-		// node would be a small node-sized rect. Skip anything spanning most of
-		// the screen width.
+		// The background gradient is full-width bands that cover every point; a leftover node would be node-sized.
 		if r.Rect.Dx() >= bandThreshold {
 			continue
 		}
@@ -192,9 +179,7 @@ func TestDeletedNodeNotRendered(t *testing.T) {
 	}
 }
 
-// TestHighlightedNodeGlowDiffers verifies that highlighting a node changes
-// the rendering output. Highlights draw glow overlays via SignalStyle.Draw
-// directly onto the screen (not the subimage), so pixel reads work.
+// Glow overlays draw straight onto the screen, not the sub-image, so pixel reads see them.
 func TestHighlightedNodeGlowDiffers(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -265,8 +250,7 @@ func TestHighlightedNodeGlowDiffers(t *testing.T) {
 	}
 }
 
-// TestDrumRowCellsRendered verifies that drum row cells produce drawRect
-// calls in the drum pane region with step-like colors.
+// Step-like colours in the drum pane.
 func TestDrumRowCellsRendered(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, true) // default start creates origin + drum row
@@ -332,8 +316,6 @@ func TestDrumRowCellsRendered(t *testing.T) {
 	}
 }
 
-// TestInvisibleNodeNotDrawn verifies that invisible nodes produce no
-// additional drawRect calls at their position.
 func TestInvisibleNodeNotDrawn(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -368,10 +350,7 @@ func TestInvisibleNodeNotDrawn(t *testing.T) {
 	}
 }
 
-// TestPixelDirectGlowPresence verifies that the glow signal overlay
-// is pixel-visible when a node has an active highlight, using direct
-// pixel reads on the screen buffer. Glow draws to screen directly
-// (not the subimage), making pixel reads work in the ebitenstub.
+// The glow draws to the screen directly, where stub pixel reads work.
 func TestPixelDirectGlowPresence(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)

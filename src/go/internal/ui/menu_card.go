@@ -7,22 +7,9 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// MenuCard is the ONE frame every floating menu shares. It is a value type
-// composed strictly from the existing primitives — drawPanel (surface +
-// border + shadow), drawMenuHeaderBandAccent (accent hairline), drawMenuTitle
-// (leading chip + section-header title), DrawIcon, newPopupCloseButton /
-// closeButtonRect (desktop close ×, none on mobile per desktopCloseVisible),
-// buttonHitAdapter (footer keycaps) — so it introduces no drawing of its own.
-//
-// Reference: the swatch color picker (drumview_overlay_color_comp.go), whose
-// geometry constants (colorSwatchHeader / colorSwatchPad / colorShadeHintH)
-// ARE the card's bands, so the picker adopting the card is pixel-identical
-// (TestMenuCardReproducesSwatchPickerFrame).
-//
-// Owners keep their own type, body drawing and input handling; the card only
-// knows rects. It never reads Game / DrumView state — component-tree
-// isolation stays intact: an owner publishes the card's HitAreas (or routes
-// presses through HandleInput) inside its own portal entry / GridTree layer.
+// The ONE frame every floating menu shares, composed only of existing primitives. The swatch picker
+// is the reference: its bands are the card's. The card knows only rects and never reads Game state, so
+// owners keep their own body and input.
 type MenuCardSpec struct {
 	Title        string      // already-localized title (instrument name, i18n.T(key), …)
 	Swatch       color.Color // leading rounded chip for identity menus (instrument / group); nil → none
@@ -59,10 +46,7 @@ func NewMenuCard(onClose func()) *MenuCard {
 	return &MenuCard{closeBtn: newPopupCloseButton(onClose)}
 }
 
-// SetCloseButton hands the card an owner-built close × (menus whose input
-// plumbing already tracks that Button by identity — the row context menu's
-// button list, the FX panel). nil hides the ×. The card positions, draws and
-// hit-tests it exactly like its own.
+// For menus whose input already tracks their × by identity; nil hides it.
 func (c *MenuCard) SetCloseButton(b *Button) { c.closeBtn = b }
 
 // Layout solves the bands for panel. Call every Layout pass (cheap; rects only).
@@ -122,8 +106,7 @@ func (c *MenuCard) Layout(panel image.Rectangle, spec MenuCardSpec) {
 	c.body = body
 }
 
-// Draw paints the frame: panel, title band (+ chip/icon + title), caption
-// band, footer keycaps, close ×. Owners draw their body afterwards.
+// Owners draw their body afterwards.
 func (c *MenuCard) Draw(dst *ebiten.Image) {
 	if dst == nil || c.panel.Empty() {
 		return
@@ -137,8 +120,7 @@ func (c *MenuCard) Draw(dst *ebiten.Image) {
 	c.DrawBand(dst)
 }
 
-// DrawBand paints everything but the panel surface — the title band, caption,
-// footer and close × — for DOCKED panels that own their surface (FX panel).
+// For docked panels that own their surface.
 func (c *MenuCard) DrawBand(dst *ebiten.Image) {
 	if dst == nil || c.panel.Empty() {
 		return
@@ -149,8 +131,7 @@ func (c *MenuCard) DrawBand(dst *ebiten.Image) {
 	}
 	drawMenuHeaderBandAccent(dst, c.title, accent)
 	titleRect := image.Rect(c.title.Min.X+menuCardPad, c.title.Min.Y, c.titleTextRight(), c.title.Max.Y)
-	// Clip the title to the band (drawMenuTitle does not clip): a long
-	// instrument name must never run under the actions / close ×.
+	// drawMenuTitle does not clip, and a long name must never run under the actions.
 	avail := titleRect.Dx()
 	if c.spec.Swatch != nil || c.spec.IconID != "" {
 		avail -= menuTitleSwatchSz + SpaceSM
@@ -188,8 +169,6 @@ func (c *MenuCard) DrawBand(dst *ebiten.Image) {
 	}
 }
 
-// titleTextRight is where the title text must stop: before the leftmost
-// header action, else before the close × lane.
 func (c *MenuCard) titleTextRight() int {
 	if len(c.spec.Actions) > 0 {
 		return c.spec.Actions[0].Rect().Min.X - SpaceSM
@@ -200,11 +179,8 @@ func (c *MenuCard) titleTextRight() int {
 	return c.title.Max.X - menuCardPad
 }
 
-// HitAreas publishes the frame's controls for zone-style overlays: footer
-// keycaps and the close × through the shared buttonHitAdapter FIRST (they win
-// the portal's equal-z stable sort), then the panel catch-all LAST. Owners
-// append their body areas between the two by calling ControlAreas/CatchAll
-// separately, or use this helper when the body has no controls of its own.
+// Frame controls FIRST (they win the equal-z stable sort), the catch-all LAST; owners put body
+// areas between via ControlAreas/CatchAll.
 func (c *MenuCard) HitAreas(z int, tag string, catchAll HitHandler) []HitArea {
 	areas := c.ControlAreas(z, tag)
 	return append(areas, c.CatchAll(z, tag, catchAll))
@@ -230,9 +206,7 @@ func (c *MenuCard) CatchAll(z int, tag string, h HitHandler) HitArea {
 	return HitArea{Rect: c.panel, ZIndex: z, Tag: tag + "-panel", Handler: h}
 }
 
-// HandleInput routes a press to the frame's controls for comp-style overlays
-// (those that receive HandleInput(x, y, pressed) through compPortalOverlay).
-// Returns InputIgnored when no frame control took the press.
+// InputIgnored when no frame control took the press.
 func (c *MenuCard) HandleInput(x, y int, pressed bool) InputResult {
 	if c.closeBtn != nil {
 		if r := c.closeBtn.HandleInputResult(x, y, pressed); r != InputIgnored {
@@ -272,13 +246,8 @@ func (c *MenuCard) Body() image.Rectangle       { return c.body }
 func (c *MenuCard) FooterRect() image.Rectangle { return c.footer }
 func (c *MenuCard) CloseBtn() *Button           { return c.closeBtn }
 
-// menuCardEntry builds the portal entry every menu opens with, so open/close
-// semantics cannot drift: non-modal + scrim (Esc, the ×, and a tap outside all
-// close it; the tree's click-outside closes only the top overlay), or modal
-// (mustAnswer) for menus that must be answered — confirm dialogs, value-wheel
-// popups — and for a picker STACKED on another open menu, where only the modal
-// filter makes a tap on the menu beneath dismiss the picker instead of acting
-// on that menu.
+// One entry builder so open/close semantics cannot drift. mustAnswer (modal) for dialogs, value
+// popups, and a picker stacked on an open menu, where only the modal filter stops a tap reaching the menu beneath.
 func menuCardEntry(id string, ov PortalOverlay, anchor image.Rectangle, mustAnswer bool, onClose func()) PortalEntry {
 	return PortalEntry{ID: id, Overlay: ov, Modal: mustAnswer, Scrim: true, Anchor: anchor, OnClose: onClose}
 }

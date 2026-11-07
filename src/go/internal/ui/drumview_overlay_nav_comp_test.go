@@ -9,8 +9,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// navMenuCompForTest builds an opened NavigationMenuComponent backed by mutable
-// unit/amount state so tests can drive HandleInput like the tree would.
 func navMenuCompForTest(t *testing.T, unitBeats *bool) *NavigationMenuComponent {
 	t.Helper()
 	panel := &NavigationPanel{}
@@ -28,10 +26,7 @@ func navMenuCompForTest(t *testing.T, unitBeats *bool) *NavigationMenuComponent 
 	return c
 }
 
-// TestNavMenuCloseButton_DesktopVsMobile pins the "add missing close button"
-// deliverable: the nav menu shows a desktop close × (a press on it closes the
-// menu) and none on mobile, where tap-away is the dismiss. It routes through the
-// same shared newPopupCloseButton helper every other pop-up uses.
+// A desktop × that closes the menu, none on mobile, through the shared newPopupCloseButton.
 func TestNavMenuCloseButton_DesktopVsMobile(t *testing.T) {
 	// Desktop: close × present and wired to Close via HandleInput's press path.
 	withSmallScreen(t, false)
@@ -65,18 +60,13 @@ func TestNavMenuCloseButton_DesktopVsMobile(t *testing.T) {
 	}
 }
 
-// TestNavMenuComponentIsCompOverlayable is the compile-time + runtime proof that
-// the nav menu is a first-class portal component (compOverlayable), so it flows
-// through compPortalOverlay/compHitHandler and the tree's native input dispatch.
+// So it flows through the tree's native input dispatch.
 func TestNavMenuComponentIsCompOverlayable(t *testing.T) {
 	unit := true
 	var _ compOverlayable = navMenuCompForTest(t, &unit)
 }
 
-// TestNavMenuComponentCapturesControlPress verifies a press on a nav control
-// returns InputCaptured — the framework-native way to receive OnDrag/OnRelease
-// (via compHitHandler) so momentary buttons pop back and the segment latch
-// resets. No bespoke overflowNavCapturing flag is involved.
+// InputCaptured is the native way to receive OnDrag/OnRelease, so buttons pop back and the segment latch resets.
 func TestNavMenuComponentCapturesControlPress(t *testing.T) {
 	unit := true
 	c := navMenuCompForTest(t, &unit)
@@ -94,9 +84,7 @@ func TestNavMenuComponentCapturesControlPress(t *testing.T) {
 	}
 }
 
-// TestNavMenuComponentSegmentTogglesBothWays reproduces the "can't click Beats
-// after Subdiv" bug through the component's HandleInput (press+release both
-// ways). With native release delivery the segArmed latch resets each time.
+// Native release delivery resets the segArmed latch, so Beats works after Subdiv.
 func TestNavMenuComponentSegmentTogglesBothWays(t *testing.T) {
 	unit := true // Beats
 	c := navMenuCompForTest(t, &unit)
@@ -118,10 +106,7 @@ func TestNavMenuComponentSegmentTogglesBothWays(t *testing.T) {
 	}
 }
 
-// TestNavMenuComponentClaimsOnlyTheWheelArrows replaces the go-to text
-// editor's TOTAL keyboard claim: the inline go-to wheel is a PARTIAL claimant —
-// it owns the arrows while the menu is open (so they step the wheel, not the
-// camera) and nothing else (Space still plays). A closed menu claims nothing.
+// A PARTIAL claim: the arrows step the wheel while open, Space still plays, and a closed menu claims nothing.
 func TestNavMenuComponentClaimsOnlyTheWheelArrows(t *testing.T) {
 	unit := true
 	c := navMenuCompForTest(t, &unit)

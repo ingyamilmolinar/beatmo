@@ -1,16 +1,5 @@
-// serve_lan.js
-//
-// Builds the WASM and serves the test bundle on 0.0.0.0 so devices on the same
-// network (your phone over WiFi) can reach it. Prints a LAN URL plus an
-// ASCII-QR code if `qrencode` is installed, otherwise just the URL with a hint.
-//
-// Invoked by `make serve-lan` (which builds wasm first via dependency).
-// Direct usage:
-//   GO=$(pwd)/.tools/go/bin/go BEATMO_LAN_PORT=8080 node src/js/serve_lan.js
-//
-// The server routes "/" to index.html and "/?probe=audio" to the standalone
-// in-page audio probe (see sanity_audio_probe_page.html). Hit either from
-// your phone.
+// Serves the test bundle on 0.0.0.0 for a phone on the LAN and prints the URL (and a QR if qrencode exists). "/" is
+// index.html, "/?probe=audio" the in-page audio probe. GO=… BEATMO_LAN_PORT=8080 node src/js/serve_lan.js
 
 import os from "os";
 import { spawnSync } from "child_process";

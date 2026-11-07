@@ -9,25 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// TestParityPruneRunsAfterAddRow proves a regression-class bug: after
-// g.drum.AddRow() is consumed by Update(), g.pendingStartRow is set to the
-// row index and only cleared by an origin-selection gesture (a click on a
-// node to set it as start). For programmatic flows that assign origins
-// directly via Rows[i].Origin = ... — including imports and tests — this
-// field stays >=0 indefinitely, which causes parityScan() to early-return
-// at game_parity_diff_scan.go:137. Because parityPrune(audioStart) is
-// invoked at the end of parityScan, it never runs, and
-// g.paritySeqDecisions grows unbounded with one entry per (row, abs).
-//
-// This is the upstream amplifier for the production WASM OOM whose stack
-// lands in RowRackZone.drawRowControlsToCache: the heap fills with parity
-// state until the next vector.Path tessellation cannot allocate.
-//
-// The test sets up the same scene the soak suite uses (6 rows × 8 nodes),
-// runs sustained playback, and asserts parityPrune ran at least once with
-// a non-zero minAbs. Once the underlying bug is fixed (either by clearing
-// pendingStartRow in non-click origin assignments, or by relaxing the
-// parityScan guard so it doesn't gate prune), this test flips green.
+// pendingStartRow is cleared only by a click-to-set-origin; a programmatic origin (import, scene build) left it
+// set, parityScan returned early and parityPrune never ran, growing the decisions map without bound.
 func TestParityPruneRunsAfterAddRow(t *testing.T) {
 	withDefaultAudio(t)
 	withDefaultStart(t, false)
@@ -55,10 +38,6 @@ func TestParityPruneRunsAfterAddRow(t *testing.T) {
 	const rows = 6
 	buildSoakScene(t, g, rows, 8)
 
-	// One Update tick consumes drum.AddedRows queue → pendingStartRow=N.
-	// This is the production regression scenario: a flow that assigns row
-	// origins programmatically (import / scene build) leaves pendingStartRow
-	// dangling because no click-to-set-origin gesture clears it.
 	_ = g.Update()
 	if g.pendingStartRow < 0 {
 		t.Fatal("test precondition: pendingStartRow should be set after Update " +
@@ -68,9 +47,6 @@ func TestParityPruneRunsAfterAddRow(t *testing.T) {
 	screen := ebiten.NewImage(1280, 720)
 	g.SetPlaying(true)
 
-	// Drive playback long enough that recordSeqDecision has populated
-	// thousands of entries; if pruning works, paritySeqDecisions stays
-	// bounded and parityPruneCallsForTest > 0.
 	for i := 0; i < 2000; i++ {
 		advancePlaybackByAbs(g, 1)
 		g.Draw(screen)

@@ -14,18 +14,9 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// These tests pin the architectural invariant the user asked for:
-//
-//   "Going back and forth using the tab system should own the entirety of
-//    the drum view layout and switch it not doing ad-hoc switches through
-//    code."
-//
-// Concretely: dv.currentViewMode is the ONLY source of truth for which
-// top-level zones the DrumViewTree paints on mobile. dv.mobileEQMode is a
-// derived getter, never a parallel field. EQPanelZone is hidden by the
-// tree's visibility gate (not by an internal Draw() guard) when the user
-// is on the Pads tab. Switching Pads → EQ → Pads does not leak the EQ
-// "Master / HP / LP" pill strip into the rows area.
+// The tab system owns the drum-view layout: currentViewMode is the ONLY source of which zones paint on mobile,
+// mobileEQMode is derived from it, and EQPanelZone is hidden by the tree's visibility gate rather than its own
+// Draw guard.
 
 // findLayerByID returns the registered layer with the given ID, or nil.
 func findLayerByID(t *testing.T, dv *DrumView, id string) Layer {
@@ -33,8 +24,7 @@ func findLayerByID(t *testing.T, dv *DrumView, id string) Layer {
 	if dv.tree == nil {
 		t.Fatalf("dv.tree nil")
 	}
-	// Search both subtrees: the audio-panel layers (eq-panel, view-switch,
-	// row-eq-divider) live in dv.audioTree; everything else in dv.tree.
+	// The audio-panel layers live in dv.audioTree, everything else in dv.tree.
 	for _, l := range dv.tree.LayersForTest() {
 		if l.ID() == id {
 			return l
@@ -50,9 +40,6 @@ func findLayerByID(t *testing.T, dv *DrumView, id string) Layer {
 	return nil
 }
 
-// TestMobile_PadsMode_HidesEQPanelZone_InTree is the architectural assertion.
-// On mobile, the EQ panel zone must report Visible()=false from the tree's
-// perspective when currentViewMode == viewModeRows.
 func TestMobile_PadsMode_HidesEQPanelZone_InTree(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -83,9 +70,7 @@ func TestMobile_PadsMode_HidesEQPanelZone_InTree(t *testing.T) {
 	}
 }
 
-// TestDesktop_AllModesShowEQPanel guards desktop against the same gate.
-// Desktop has no Pads/Audio swap concept — the EQ panel coexists side-by-side
-// with rows, so it must remain Visible() in every viewMode.
+// Desktop has no Pads/Audio swap: the panel sits beside the rows in every mode.
 func TestDesktop_AllModesShowEQPanel(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -109,32 +94,16 @@ func TestDesktop_AllModesShowEQPanel(t *testing.T) {
 	}
 }
 
-// TestMobile_PadsAfterEQ_EQPanelDrawNotInvoked is the strongest reproducer
-// of the screenshot bug (screenshot.png 2026-05-10): in mobile Pads mode
-// after a visit to the EQ tab, the EQ panel zone's Draw method MUST NOT
-// be invoked — that's the only way the pills can leak. We assert this
-// directly via the zone's drawCalls counter, which increments on every
-// entry into Draw before any short-circuit.
-//
-// Why a counter rather than a pixel test: the layout system collapses the
-// EQ widget to zero height in viewModeRows so the existing
-// `if rect.Dy() < 8` guard inside Draw masks the leak from pixel observers
-// in test viewports. In production the widget can retain a non-zero rect
-// (peek mode, larger viewports), and only the tree-level visibility gate
-// is sufficient to guarantee the zone never paints. The counter is
-// layout-agnostic: it catches the bug regardless of where the panel rect
-// happens to land.
+// A counter, not pixels: layout collapses the panel to zero height in tests, where Draw's own small-rect guard
+// hides a leak that a real, larger viewport would show. Only the tree gate guarantees it never paints.
 func TestMobile_PadsAfterEQ_EQPanelDrawNotInvoked(t *testing.T) {
 	setupMobileTest(t, true)
 
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	g := New(logger)
 	t.Cleanup(g.CloseForTest)
-	// Portrait viewport: mobile landscape is disabled (landscapeUnsupported()
-	// replaces the whole UI with the rotate-to-portrait notice, so no zone
-	// draws). Use a tall-enough portrait pane that the EQ widget still gets a
-	// non-zero rect in viewModeRows, exercising the tree visibility gate rather
-	// than the zero-rect Draw guard.
+	// Portrait (mobile landscape replaces the UI with a notice), tall enough that the EQ widget keeps a non-zero rect
+	// and the tree gate, not the zero-rect guard, is exercised.
 	g.Layout(430, 720)
 	advanceFrames(g, 2)
 	dv := g.drum
@@ -147,9 +116,7 @@ func TestMobile_PadsAfterEQ_EQPanelDrawNotInvoked(t *testing.T) {
 		t.Fatalf("precondition: EQPanelZone.Draw should have been invoked at least once during viewModeEQ")
 	}
 
-	// Switch to Pads, snapshot the counter, draw a frame, and assert the
-	// counter did not move — the tree's RegisterZoneVisible gate must
-	// short-circuit Draw at the dispatch level.
+	// The tree's visibility gate must short-circuit Draw at dispatch.
 	dv.setViewMode(viewModeRows)
 	advanceFrames(g, 2)
 	before := dv.eqPanelZone.DrawCallsForTest()
@@ -160,9 +127,6 @@ func TestMobile_PadsAfterEQ_EQPanelDrawNotInvoked(t *testing.T) {
 	}
 }
 
-// TestMobileEQMode_DerivedFromCurrentViewMode pins the single source of
-// truth: dv.MobileEQMode() must reflect dv.currentViewMode, never a
-// separately-mutated parallel flag.
 func TestMobileEQMode_DerivedFromCurrentViewMode(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -201,10 +165,7 @@ func TestMobileEQMode_DerivedFromCurrentViewMode(t *testing.T) {
 	}
 }
 
-// TestSetMobileEQMode_RoutesThroughSetViewMode verifies that the legacy
-// SetMobileEQMode helper goes through the canonical setViewMode entry
-// point — i.e. flipping it must update currentViewMode AND segmented
-// control AND tabState in lockstep, just like any other tab switch.
+// currentViewMode, the segmented control and tabState change in lockstep, as on any tab switch.
 func TestSetMobileEQMode_RoutesThroughSetViewMode(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -215,8 +176,6 @@ func TestSetMobileEQMode_RoutesThroughSetViewMode(t *testing.T) {
 	advanceFrames(g, 2)
 	dv := g.drum
 
-	// Start on Rows. SetMobileEQMode(true) should land on viewModeEQ AND
-	// sync the segmented control to segment 1 (the EQ slot).
 	dv.setViewMode(viewModeRows)
 	dv.SetMobileEQMode(true)
 	if dv.currentViewMode != viewModeEQ {
@@ -236,16 +195,7 @@ func TestSetMobileEQMode_RoutesThroughSetViewMode(t *testing.T) {
 	}
 }
 
-// TestNoAdHocViewModeMutation is the durable enforcer of the user's
-// "tab system owns the swap, no ad-hoc switches" principle. It walks every
-// non-test .go file in internal/ui and forbids assignments to either
-// dv.currentViewMode or dv.mobileEQMode outside the canonical owner files.
-//
-// Canonical writers:
-//   - drumview_context_menu.go — owns setViewMode and SetMobileEQMode.
-//   - drumview.go              — owns the field declarations themselves.
-//
-// Any other production file that writes either field will fail this test.
+// Only the owner files may assign currentViewMode or mobileEQMode: the tab system owns the swap.
 func TestNoAdHocViewModeMutation(t *testing.T) {
 	allowedWriters := map[string]bool{
 		"drumview_context_menu.go": true,

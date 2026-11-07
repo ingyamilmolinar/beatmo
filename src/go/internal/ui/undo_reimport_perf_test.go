@@ -10,12 +10,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestReimportSameDocSkipsInstrumentRerender proves that re-importing an
-// identical document — exactly what an undo/redo restore does — does NOT
-// re-render any instrument. Before the audio-layer no-op skip, every undo/redo
-// re-applied (and on WASM re-rendered) every instrument's params + recipe, so
-// undoing a single synth-control change re-rendered the whole kit: the
-// "applying actions is slow" lag.
+// An undo/redo restore re-imports an identical document; re-rendering every instrument on it made a single synth
+// edit's undo re-render the whole kit.
 func TestReimportSameDocSkipsInstrumentRerender(t *testing.T) {
 	g := newTestGameForUndo(t)
 	id := g.drum.Rows[0].Instrument

@@ -9,13 +9,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// eq_settings.go — an instrument's EQ as the user set it: band gains, band
-// mutes and the high-/low-pass filters. Its compiled form (biquad bands) is
-// what reaches the channel (SetChannelEQ); this is the bundle's EQ part (spec
-// 2026-10-31 §2.6).
+// An instrument's EQ as the user set it; its compiled biquad form is what reaches the channel.
 
-// EQBandEdges are the ten ISO one-octave bands (31 Hz … 16 kHz): lo and hi
-// edge in Hz, the last capped at 20 kHz.
+// The last capped at 20 kHz.
 var EQBandEdges = [EQBandCount][2]float64{
 	{22, 44}, {44, 88}, {88, 177}, {177, 354}, {354, 707},
 	{707, 1414}, {1414, 2828}, {2828, 5657}, {5657, 11314}, {11314, 20000},
@@ -72,8 +68,7 @@ func (s *EQSettings) Clone() *EQSettings {
 	return &c
 }
 
-// Bands compiles the settings into the channel's EQ chain: [high-pass] →
-// low shelf, peaking bands, high shelf → [low-pass].
+// [high-pass] → low shelf, peaking bands, high shelf → [low-pass].
 func (s *EQSettings) Bands() []EQBand {
 	bands := make([]EQBand, 0, EQBandCount+2)
 	if s.hpfActive() {
@@ -105,9 +100,7 @@ var eqSettings = struct {
 	byInst map[instrument.ID]*EQSettings
 }{byInst: map[instrument.ID]*EQSettings{}}
 
-// EQSettingsOf is id's EQ settings, created flat on first use. The pointer is
-// stable: the UI edits it in place (UI goroutine) and applies it with
-// ApplyEQSettings.
+// Created flat on first use; the pointer is stable because the UI edits it in place.
 func EQSettingsOf(id instrument.ID) *EQSettings {
 	eqSettings.Lock()
 	defer eqSettings.Unlock()
@@ -119,10 +112,8 @@ func EQSettingsOf(id instrument.ID) *EQSettings {
 	return s
 }
 
-// ApplyEQSettings pushes id's settings to its channel: the compiled chain, or
-// no EQ at all when flat (a unity chain differs from an absent one in the last
-// bits — export→import must stay bit-exact). The channel's analyzers live in
-// the same processor list and are re-enabled.
+// A flat EQ installs none: a unity chain differs from an absent one in the last bits, and export→import must stay
+// bit-exact. The analyzers in the same list are re-enabled.
 func ApplyEQSettings(id instrument.ID) {
 	s := EQSettingsOf(id)
 	ch := channel.Of(id)
@@ -136,9 +127,7 @@ func ApplyEQSettings(id instrument.ID) {
 	_ = EnableSynthAnalyzer(ch, 512)
 }
 
-// ResetEQSettings forgets every instrument's settings (a new circuit) and
-// takes the EQ of each that had one off its channel — no channel may keep
-// filtering behind a store that reads flat.
+// No channel may keep filtering behind a store that reads flat.
 func ResetEQSettings() {
 	eqSettings.Lock()
 	var had []instrument.ID

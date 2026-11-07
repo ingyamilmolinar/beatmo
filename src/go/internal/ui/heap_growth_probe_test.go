@@ -8,12 +8,7 @@ import (
 	"time"
 )
 
-// TestForceGCPacingRunsRuntimeGC asserts that heapProbeTick triggers a real
-// runtime.GC() when ForceGCInterval is positive and at least the interval
-// of wall-clock time has elapsed since the last forced GC. Catches the
-// WASM GC-starvation regression (gc=0 across 5 min of synth-tab + param-
-// drag playback) demonstrated on 2026-05-17 (Go heap grew 26.7 MB →
-// 493 MB with gcCount=0).
+// WASM's GC can starve: without a forced GC the heap grew for minutes of playback with no collection at all.
 func TestForceGCPacingRunsRuntimeGC(t *testing.T) {
 	withDefaultAudio(t)
 
@@ -32,8 +27,6 @@ func TestForceGCPacingRunsRuntimeGC(t *testing.T) {
 
 	var before runtime.MemStats
 	runtime.ReadMemStats(&before)
-	// Three sleep+tick cycles, each 60ms apart — first interval-elapsed
-	// tick fires; we expect ~2-3 forced GCs in 180ms.
 	for i := 0; i < 3; i++ {
 		time.Sleep(60 * time.Millisecond)
 		g.frame = int64(i + 2)
@@ -51,10 +44,7 @@ func TestForceGCPacingRunsRuntimeGC(t *testing.T) {
 	}
 }
 
-// TestForceGCPacingDisabledByZeroInterval asserts that the forced-GC
-// path is inactive when ForceGCInterval=0 (desktop default).
-// Spontaneous GC may still happen under allocation pressure, but the
-// intentional path should fire zero times via forcedGCRuns.
+// Spontaneous GC may still run under pressure; only the intentional path must stay at zero.
 func TestForceGCPacingDisabledByZeroInterval(t *testing.T) {
 	withDefaultAudio(t)
 

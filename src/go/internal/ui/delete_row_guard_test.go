@@ -7,10 +7,8 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// Verify the two-click delete confirmation: first click sets confirm mode,
-// second click within the timeout window actually deletes the row.
-// On desktop the delete button has an empty rect (it lives in the overflow
-// menu), so we invoke the callback directly instead of simulating Handle.
+// The first click arms the confirm, a second within the window deletes; the desktop button lives in the overflow
+// menu, so the callback is invoked directly.
 func TestDeleteRow_NoCascadeOnHeldPress(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)

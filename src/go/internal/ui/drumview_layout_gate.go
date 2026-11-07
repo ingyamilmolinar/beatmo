@@ -7,30 +7,21 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// recalcButtons runs every frame and used to force a full re-layout of the
-// timeline and audio-panel zones every frame too — on WASM the panel's alone
-// was ~10% of Update while nothing on screen changed. These gates skip a
-// forced layout whose inputs did not move.
+// recalcButtons runs every frame; these gates skip a forced layout whose inputs did not move.
 
-// jsExportSeq counts bridge calls (jsFn): an export can change any UI state
-// between frames, so a gated layout re-runs after one.
+// An export can change any UI state between frames, so a gated layout re-runs after one.
 var jsExportSeq atomic.Uint64
 
-// timelineLayoutKey is every input TimelineZone.Layout reads — all of it set
-// by recalcButtons just before — so an equal key lays out identically.
+// Every input TimelineZone.Layout reads, so an equal key lays out identically.
 type timelineLayoutKey struct {
 	zone, bar, beatCounter, track, lenDec, lenInc image.Rectangle
 	barH                                          int
 }
 
-// eqPanelRelayoutEvery bounds how long an audio-panel change that neither
-// moves eqLayoutKey nor arrives as input can leave the layout stale: the
-// panel is laid out at least every this many frames.
+// Bounds how long a change that neither moves eqLayoutKey nor arrives as input can stay stale.
 const eqPanelRelayoutEvery = 8
 
-// eqLayoutKey is the audio panel's layout state that can change without input
-// to the panel itself: its rect and tab, the profile, theme, font and locale
-// (labels), and the channel pill, which follows the selected row and its name.
+// Panel state that can change without input to the panel itself.
 type eqLayoutKey struct {
 	rect              image.Rectangle
 	tab               PanelTab
@@ -50,8 +41,6 @@ type eqLayoutGate struct {
 	sinceForced int
 }
 
-// timelineLayoutDue reports whether the timeline zone must be laid out: its
-// inputs moved or it asked for a layout.
 func (dv *DrumView) timelineLayoutDue(zoneRect image.Rectangle) bool {
 	z := dv.timelineZone
 	key := timelineLayoutKey{
@@ -66,12 +55,8 @@ func (dv *DrumView) timelineLayoutDue(zoneRect image.Rectangle) bool {
 	return true
 }
 
-// eqPanelLayoutDue reports whether the audio panel must be laid out this
-// frame. The editor tabs (Synth, Sampler, Chain) lay out every frame: their
-// layout reads live instrument / stage state. The analysis tabs re-lay out
-// when eqLayoutKey moves, after the panel handled input (its pills and
-// toggles change it), after a bridge call, and at least every
-// eqPanelRelayoutEvery frames.
+// The editor tabs lay out every frame because they read live instrument state; analysis tabs
+// only when the key moves, after input or a bridge call, or every eqPanelRelayoutEvery frames.
 func (dv *DrumView) eqPanelLayoutDue() bool {
 	z := dv.eqPanelZone
 	tab := z.ActiveTab()

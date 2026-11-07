@@ -18,8 +18,7 @@ func eqHitByTag(z *EQPanelZone, tag string) *HitArea {
 	return nil
 }
 
-// TestEQNoStepperButtons — the +/- stepper was removed; drag-to-slide is the
-// mobile edit gesture. No stepper hit areas may exist on any layout.
+// Drag-to-slide is the edit gesture, so no stepper hit areas on any layout.
 func TestEQNoStepperButtons(t *testing.T) {
 	for _, mobile := range []bool{false, true} {
 		forceSmallScreenForTest = mobile
@@ -41,8 +40,7 @@ func TestEQNoStepperButtons(t *testing.T) {
 	UpdateProfile()
 }
 
-// TestEQMobileDragSlidesBand — the core requirement: on mobile the user drags
-// a band node up/down to change its gain (column grab + drag), no stepper.
+// Dragging a band node up/down changes its gain (column grab + drag).
 func TestEQMobileDragSlidesBand(t *testing.T) {
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })
@@ -77,9 +75,7 @@ func TestEQMobileDragSlidesBand(t *testing.T) {
 	}
 }
 
-// TestEQBandLabelsStackedNotOverlapped — each band renders its frequency above
-// its level (stacked), the two never overlap, and neighbouring bands' label
-// cells don't overlap either. Both desktop and mobile.
+// Frequency above level; neither they nor neighbouring cells overlap, on desktop and mobile.
 func TestEQBandLabelsStackedNotOverlapped(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -123,9 +119,7 @@ func TestEQBandLabelsStackedNotOverlapped(t *testing.T) {
 	UpdateProfile()
 }
 
-// TestEQFilterButtonsLargerOnMobile — HP/LP toggle buttons must be visibly
-// larger on mobile than desktop (so they're easy to hit), in addition to the
-// touch-min hit expansion.
+// Visibly larger on mobile, besides the touch-min expansion.
 func TestEQFilterButtonsLargerOnMobile(t *testing.T) {
 	measure := func(mobile bool) (w, h int) {
 		forceSmallScreenForTest = mobile
@@ -151,9 +145,7 @@ func TestEQFilterButtonsLargerOnMobile(t *testing.T) {
 	}
 }
 
-// TestEQChannelPillTouchMinMobile — the Master/channel dropdown pill must
-// present a touch-min hit target on mobile (its hit area is touch-expanded;
-// the visible pill grows with the taller mobile sticky bar).
+// The hit area is touch-expanded; the visible pill grows with the taller mobile bar.
 func TestEQChannelPillTouchMinMobile(t *testing.T) {
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })
@@ -192,11 +184,8 @@ func eqCurveHandlerFor(t *testing.T, z *EQPanelZone) HitHandler {
 	return nil
 }
 
-// TestEQMobileColumnGrabSelectsNearestBand — on mobile, a press anywhere in
-// the curve plot (not precisely on a handle circle) must select the nearest
-// band by frequency column and begin a drag. This is the core "EQ is hard to
-// use on mobile" fix: a finger can't reliably hit a 26-px handle among 10
-// packed bands, so the whole column is the grab target.
+// A finger cannot reliably hit a 26 px handle among 10 packed bands, so anywhere in the plot grabs the nearest
+// band by column and starts a drag.
 func TestEQMobileColumnGrabSelectsNearestBand(t *testing.T) {
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })
@@ -211,8 +200,7 @@ func TestEQMobileColumnGrabSelectsNearestBand(t *testing.T) {
 	r := image.Rect(0, 200, 400, 500)
 	z.Layout(r)
 
-	// Push every band's handle to the top of the plot so a press near the
-	// bottom of the plot is far from every handle (precise hit fails).
+	// Every handle at the top, so a low press misses them all.
 	for i := range z.bandGainsDB {
 		z.bandGainsDB[i] = 12
 	}
@@ -223,8 +211,7 @@ func TestEQMobileColumnGrabSelectsNearestBand(t *testing.T) {
 	def := eqBandDefs[band]
 	cx := freqToX(math.Sqrt(def.loHz*def.hiHz), r)
 
-	// Press low in the plot (just above the mute/dB chrome), at band 3's
-	// column X — nowhere near any handle.
+	// Just above the mute/dB chrome, at band 3's column.
 	muteTop := z.eqMuteBtns[0].Rect().Min.Y
 	py := muteTop - 2
 	z.curveDragBand = -1
@@ -236,9 +223,7 @@ func TestEQMobileColumnGrabSelectsNearestBand(t *testing.T) {
 	}
 }
 
-// TestEQDesktopNoColumnGrab — desktop keeps precise-handle grab (mouse is
-// precise; column grab would be ambiguous over overlapping bands). A press
-// off the handle must miss.
+// A mouse is precise and the column grab would be ambiguous over overlapping bands.
 func TestEQDesktopNoColumnGrab(t *testing.T) {
 	forceSmallScreenForTest = false
 	UpdateProfile()
@@ -267,9 +252,7 @@ func TestEQDesktopNoColumnGrab(t *testing.T) {
 	}
 }
 
-// TestEQMobileColumnGrabExcludesBottomChrome — the column grab must not fire
-// over the mute / dB-input chrome at the bottom; that region belongs to those
-// controls. Guards TestMobileHitRadiusNew's bottom-edge "miss".
+// The bottom mute/dB chrome belongs to those controls.
 func TestEQMobileColumnGrabExcludesBottomChrome(t *testing.T) {
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })
@@ -293,11 +276,7 @@ func TestEQMobileColumnGrabExcludesBottomChrome(t *testing.T) {
 	}
 }
 
-// TestEQHandlesClearBottomLabelsAllLayouts — the gain plot region must not
-// overlap the bottom freq-label / dB strip, so a band handle (even at an
-// extreme ±12 dB gain) never covers the frequency-range label or the level
-// number. Guards the "numbers not visible — handle on top of the labels" bug
-// on both desktop and mobile.
+// The plot stays clear of the bottom label/dB strip, so even a ±12 dB handle never covers the numbers.
 func TestEQHandlesClearBottomLabelsAllLayouts(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -320,9 +299,7 @@ func TestEQHandlesClearBottomLabelsAllLayouts(t *testing.T) {
 		if plot.Max.Y > labelTop {
 			t.Errorf("%s: plot bottom %d overlaps label strip starting at %d", tc.name, plot.Max.Y, labelTop)
 		}
-		// Drive every band to the extreme gains and assert the handle the
-		// renderer/hit-test actually uses (eqBandHandlePos) stays inside the
-		// plot, clear of the bottom label strip.
+		// The position the renderer and hit test actually use.
 		for _, db := range []float64{eqCurveMaxDB, eqCurveMinDB} {
 			for i := range z.bandGainsDB {
 				z.bandGainsDB[i] = db
@@ -343,9 +320,7 @@ func TestEQHandlesClearBottomLabelsAllLayouts(t *testing.T) {
 	UpdateProfile()
 }
 
-// TestEQFilterButtonsTouchMinMobile — the HP / LP toggle buttons must present
-// a touch-min hit target on mobile (the visible 28×18 chrome is below 44 px;
-// the hit area is expanded via Touch + ClipRect without growing the visual).
+// The visible 28×18 chrome is under 44 px; Touch + ClipRect expand the hit area without growing it.
 func TestEQFilterButtonsTouchMinMobile(t *testing.T) {
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })

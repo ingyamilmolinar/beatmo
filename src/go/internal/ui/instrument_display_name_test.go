@@ -12,9 +12,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestComputeInstLabel_HyphenatedIDFallback pins the regression target:
-// when the catalog has no entry, an id like "hi-hat" must render as
-// "Hi Hat" — not the previous broken "Hi-hat".
+// With no catalogue entry "hi-hat" renders "Hi Hat".
 func TestComputeInstLabel_HyphenatedIDFallback(t *testing.T) {
 	dv := &DrumView{}
 	got := dv.computeInstLabel("hi-hat")
@@ -39,10 +37,7 @@ func newTestDrumViewForName(t *testing.T) *DrumView {
 	return NewDrumView(image.Rect(0, 0, 200, 200), graph, logger)
 }
 
-// TestNewDrumView_RowNameUsesPrettyName ensures the initial row's
-// Name flows through audio.PrettyName, not an inline title-case.
-// We pass through a known builtin id (no separators) so any builtin
-// rotation still passes — the goal is the wiring, not a specific id.
+// A builtin id with no separators, so roster changes don't matter: this checks the wiring.
 func TestNewDrumView_RowNameUsesPrettyName(t *testing.T) {
 	dv := newTestDrumViewForName(t)
 	if len(dv.Rows) == 0 {
@@ -55,9 +50,7 @@ func TestNewDrumView_RowNameUsesPrettyName(t *testing.T) {
 	}
 }
 
-// TestAddRow_RowNameUsesComputeInstLabel covers the runtime AddRow
-// path. Override instOptions[0] to "hi-hat" so the regression bites
-// if AddRow falls back to the inline title-case.
+// "hi-hat" bites if AddRow falls back to an inline title-case.
 func TestAddRow_RowNameUsesComputeInstLabel(t *testing.T) {
 	dv := newTestDrumViewForName(t)
 	dv.instOptions = []instrument.ID{"hi-hat"}
@@ -72,9 +65,6 @@ func TestAddRow_RowNameUsesComputeInstLabel(t *testing.T) {
 	}
 }
 
-// TestSetInstrument_RowNameUsesComputeInstLabel covers the dropdown
-// path. Seed instMeta so computeInstLabel finds a catalog entry, and
-// verify SetInstrument writes that entry's Name to Rows[selRow].Name.
 func TestSetInstrument_RowNameFromCatalogName(t *testing.T) {
 	dv := newTestDrumViewForName(t)
 	if len(dv.Rows) == 0 {
@@ -95,9 +85,6 @@ func TestSetInstrument_RowNameFromCatalogName(t *testing.T) {
 	}
 }
 
-// TestSetInstrument_RowNameFallsBackToPrettyName covers the fallback
-// path: when instMeta has no entry for the id, SetInstrument must
-// still produce a properly pretty-cased name (not "Hi-hat").
 func TestSetInstrument_RowNameFallsBackToPrettyName(t *testing.T) {
 	dv := newTestDrumViewForName(t)
 	if len(dv.Rows) == 0 {

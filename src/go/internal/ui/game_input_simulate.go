@@ -8,17 +8,9 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// game_input_simulate.go provides production-only input simulators for the
-// screenshot harness and scene catalog. Tests still use SetInputForTest +
-// SetTouchOverrideXYForTest from input.go and touch.go — these helpers are
-// the parallel "scene setup" path for non-test builds.
-//
-// Contract: call before ebiten.RunGame starts (i.e. during scene Setup).
-// Each helper runs internal Update ticks; do not interleave with the live
-// frame loop, or schedule via QueueAction instead.
+// Production-only simulators for scene setup (tests use SetInputForTest). Call before
+// ebiten.RunGame; each runs its own Update ticks, so never interleave with the live loop.
 
-// SimulateClickAt simulates a single left-click at screen-space (x, y) by
-// pressing for one Update tick and releasing on the next.
 func (g *Game) SimulateClickAt(x, y int) {
 	restore := overrideMouse(x, y, true)
 	g.Update()
@@ -28,8 +20,6 @@ func (g *Game) SimulateClickAt(x, y int) {
 	restore()
 }
 
-// SimulateDrag simulates a left-button drag from `from` to `to` interpolated
-// across `frames` Update ticks. Press/release are added at start/end.
 func (g *Game) SimulateDrag(from, to image.Point, frames int) {
 	if frames < 2 {
 		frames = 2
@@ -53,8 +43,6 @@ func (g *Game) SimulateDrag(from, to image.Point, frames int) {
 	restore()
 }
 
-// SimulateKey simulates pressing-then-releasing a keyboard key. Two Update
-// ticks: one with the key pressed, one with it released.
 func (g *Game) SimulateKey(k ebiten.Key) {
 	restore := overrideKey(k, true)
 	g.Update()
@@ -73,8 +61,6 @@ func (g *Game) SimulateScroll(x, y int, dy float64) {
 	restoreM()
 }
 
-// overrideMouse temporarily sets cursorPosition/isMouseButtonPressed and
-// returns a restore function. Mirrors SetInputForTest's mechanism.
 func overrideMouse(x, y int, pressed bool) func() {
 	oldCursor := cursorPosition
 	oldMouse := isMouseButtonPressed

@@ -7,16 +7,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// kick_segments.go — SEGMENT-based kick comparison. A whole-wave metric tells you
-// THAT two kicks differ; a per-segment metric tells you WHERE in time — and time
-// maps to a knob: ATTACK ↔ the beater click, BODY ↔ the modes/harmonics, TAIL ↔
-// decay + reverb. This re-bins the same kind of per-window spectra KickAnalyze
-// already computes into three fixed-time segments and exposes a
-// per-segment × per-metric divergence grid (KickSegmentDistance), whose sorted
-// "top deltas" read out as actionable targets ("ATTACK centroid +1.2 oct →
-// darken the click", "TAIL flatness low → reverb not diffuse", "BODY MFCC Δ high
-// → mode balance"). It complements (does not replace) the whole-signal traces in
-// KickAnalyze, which remain the right shape for the pointwise trace distances.
+// A whole-wave metric says THAT two kicks differ; per segment says WHERE, and time maps to a knob: attack ↔ click,
+// body ↔ modes, tail ↔ decay and reverb. The ranked deltas read as targets; KickAnalyze's traces remain the pointwise
+// distances.
 
 // Segment names (stable keys for the distance grid).
 const (
@@ -25,13 +18,8 @@ const (
 	SegTail   = "tail"
 )
 
-// Fixed perceptual segment boundaries (ms), applied IDENTICALLY to both the
-// synth and the reference. Fixed (not per-signal envelope-derived) boundaries are
-// essential for a comparison tool: envelope-derived bounds shift when the signals
-// differ (a brighter attack raises the peak → moves every boundary → even the
-// "tail" then covers different samples, fabricating divergence). A kick's coarse
-// structure is roughly time-stationary: click in the first ~35 ms, tonal body to
-// ~150 ms, decay/reverb tail after.
+// FIXED boundaries, identical for both signals: envelope-derived bounds move when the signals differ and fabricate
+// divergence. Click in the first ~35 ms, body to ~150 ms, tail after.
 const (
 	segAttackEndMs = 35.0
 	segBodyEndMs   = 150.0
@@ -65,8 +53,6 @@ func (ks KickSegments) Segment(name string) *KickSegment {
 	return nil
 }
 
-// KickSegmentAnalyze splits a peak-normalized kick into ATTACK/BODY/TAIL by fixed
-// perceptual time boundaries (aligned across signals) and computes each segment's metrics.
 func KickSegmentAnalyze(w wave.Wave) KickSegments {
 	sr := w.SampleRate
 	if sr <= 0 {
@@ -106,8 +92,7 @@ func KickSegmentAnalyze(w wave.Wave) KickSegments {
 	return out
 }
 
-// kickSegmentBounds returns the fixed sample indices [0, attackEnd, bodyEnd],
-// clamped to the signal length (a short kick may have an empty tail/body).
+// A short kick may have an empty body or tail.
 func kickSegmentBounds(x []float64, sr int) (attackStart, attackEnd, bodyEnd int) {
 	attackEnd = secToSamples(segAttackEndMs/1000, sr)
 	bodyEnd = secToSamples(segBodyEndMs/1000, sr)
@@ -141,9 +126,7 @@ func segmentMetrics(x []float64, sr int, name string, a, b int, totalEnergy floa
 	}
 	s := x[a:b]
 
-	// Energy fraction (per-segment crest is intentionally NOT computed — it is
-	// confounded by segment length/decay: a long decaying tail reads as high
-	// crest. Transient sharpness is a whole-signal property, in KickFingerprint).
+	// No per-segment crest: a long decaying tail reads as high crest, so transient sharpness stays whole-signal.
 	e := 0.0
 	for _, v := range s {
 		e += v * v
@@ -194,8 +177,7 @@ func segmentMetrics(x []float64, sr int, name string, a, b int, totalEnergy floa
 
 // --- distance -----------------------------------------------------------------
 
-// SegmentDelta is one (segment, metric) divergence between ref and synth.
-// NormDelta is scaled so magnitudes are comparable across metrics (used to rank).
+// NormDelta is comparable across metrics, for ranking.
 type SegmentDelta struct {
 	Segment   string
 	Metric    string
@@ -204,16 +186,14 @@ type SegmentDelta struct {
 	NormDelta float64
 }
 
-// KickSegmentDistanceBreakdown is the per-segment × per-metric grid. Deltas is
-// sorted by |NormDelta| descending — the actionable "top divergences" list.
+// Deltas sorted by |NormDelta|: the actionable list.
 type KickSegmentDistanceBreakdown struct {
 	PerSegment map[string]float64 // segment name → summed distance for that segment
 	Deltas     []SegmentDelta
 	Total      float64
 }
 
-// KickSegmentDistance compares two segmented kicks and returns the divergence
-// grid + a ranked delta list. Lower Total = more similar.
+// Lower Total is more similar.
 func KickSegmentDistance(ref, synth KickSegments) KickSegmentDistanceBreakdown {
 	out := KickSegmentDistanceBreakdown{PerSegment: map[string]float64{}}
 	for _, rs := range ref.Segments {

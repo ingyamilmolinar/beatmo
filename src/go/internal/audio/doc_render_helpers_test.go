@@ -9,9 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// renderFieldsForTest renders id's document with fields set through it — RAW
-// C output, n samples at sr (RenderInstrumentWithFields). The test-side form of
-// "render this instrument with these knob values".
+// RAW C output.
 func renderFieldsForTest(t testing.TB, id instrument.ID, sr, n int, fields map[string]float64) []float32 {
 	t.Helper()
 	buf, err := RenderInstrumentWithFields(id, sr, n, fields)
@@ -21,8 +19,6 @@ func renderFieldsForTest(t testing.TB, id instrument.ID, sr, n int, fields map[s
 	return buf
 }
 
-// fieldsOfForTest is a copy of id's flat field view (instrument.FieldValues of
-// its document): what used to be "the recipe's merged params".
 func fieldsOfForTest(id string) map[string]float64 {
 	src := MergedInstrumentParamsRO(instrument.ID(id))
 	out := make(map[string]float64, len(src))
@@ -32,10 +28,8 @@ func fieldsOfForTest(id string) map[string]float64 {
 	return out
 }
 
-// initBlockForTest is the engine-level tests' neutral voice: every field at its
-// creation value (the modularFields Init column) overlaid by fields. It builds
-// a raw engine block for tests of the C engine itself; product voices come from
-// documents (Flatten).
+// Every field at its Init value overlaid by fields: a raw block for tests of the C engine itself; product voices
+// come from documents.
 func initBlockForTest(fields map[string]float64) modularBlock {
 	inits := modularFieldInits()
 	b := make(modularBlock, len(modularParamSchema))

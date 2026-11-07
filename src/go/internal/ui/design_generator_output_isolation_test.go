@@ -9,24 +9,10 @@ import (
 	"testing"
 )
 
-// generatorOutFlags is every output flag cmd/gen_design_tokens accepts. Each
-// one DEFAULTS to a real, tracked, generated file (see the flag.String block
-// in cmd/gen_design_tokens/main.go):
-//
-//	-out            -> internal/ui/design_tokens.gen.go
-//	-out-components -> internal/ui/design_components.gen.go
-//	-out-profile    -> internal/ui/design_profile.gen.go
-//	-out-density    -> internal/ui/design_density.gen.go
-//	-out-sequence   -> internal/templates/instrument_sequence.gen.go
+// Each defaults to a real tracked generated file.
 var generatorOutFlags = []string{"-out", "-out-components", "-out-profile", "-out-density", "-out-sequence"}
 
-// generatorCallArgs returns, for every exec.Command(...) call in the parsed
-// file that invokes ./cmd/gen_design_tokens, the set of string-literal
-// arguments passed to it.
-//
-// This walks the AST rather than grepping the source so that a generator path
-// or flag name appearing inside a comment or a string literal (such as the
-// ones in this very file) can never be mistaken for a real invocation.
+// By AST, so a path or flag inside a comment or string (like this file's) never counts as a call.
 func generatorCallArgs(f *ast.File) []map[string]bool {
 	var calls []map[string]bool
 	ast.Inspect(f, func(n ast.Node) bool {
@@ -59,26 +45,8 @@ func generatorCallArgs(f *ast.File) []map[string]bool {
 	return calls
 }
 
-// TestGeneratorInvocationsRedirectAllOutputs guards the developer's working
-// tree against the design-token generator tests.
-//
-// Every -out* flag defaults to a REAL tracked file, so a test that omits one
-// does not merely "use a default" — it hands the generator write access to a
-// checked-in generated file. That is destructive in both directions:
-//
-//   - TestDesignTokensFreshness omitted -out-sequence and so regenerated the
-//     real internal/templates/instrument_sequence.gen.go on every run.
-//   - TestGeneratorRejectsSchemaViolations omitted -out-density AND
-//     -out-sequence while feeding the generator a DELIBERATELY MALFORMED
-//     DESIGN.md. The generator rejects that input (which is the point of the
-//     test) and on the reject path leaves the two default-path outputs
-//     DELETED — so a PASSING test silently removed
-//     src/go/internal/ui/design_density.gen.go and
-//     src/go/internal/templates/instrument_sequence.gen.go from the working
-//     tree, breaking the next build with "undefined: densityValues".
-//
-// A test must never write outside its t.TempDir(). Redirect every output,
-// including the ones it does not assert on.
+// Every -out* defaults to a tracked file, so a test that omits one lets the generator overwrite it, and a rejected
+// malformed input once left those defaults deleted, breaking the next build. Redirect every output.
 func TestGeneratorInvocationsRedirectAllOutputs(t *testing.T) {
 	files, err := filepath.Glob("*_test.go")
 	if err != nil {

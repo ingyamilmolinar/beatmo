@@ -60,9 +60,7 @@ func TestInputIsolation_DrumViewBlocksAtSpatialCheck(t *testing.T) {
 }
 
 func TestInputIsolation_SplitterRespectsGrabZone(t *testing.T) {
-	// This test exercises the Splitter struct in isolation from any DrumView.
-	// Reset the package-level click-suppress global so prior tests that open
-	// menus/panels (which call SuppressClicksUntilMouseUp) don't interfere.
+	// Earlier tests that open menus leave the package-level click suppression set.
 	suppressClicksUntilRelease = false
 	s := NewSplitter(600)
 	s.Y = 300
@@ -92,8 +90,6 @@ func TestInputIsolation_SplitterRespectsGrabZone(t *testing.T) {
 	}
 }
 
-// TestInputIsolation_AnyDropdownOpen tests the anyDropdownOpen() helper method
-// which delegates to the portal system.
 func TestInputIsolation_AnyDropdownOpen(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 640, 200), nil, testLogger)
@@ -166,9 +162,7 @@ func TestInputIsolation_OverlayBlocksInput(t *testing.T) {
 	}
 }
 
-// Test that the column divider is NOT detected in the EQ panel area where
-// the Wave widget spans both columns. This is a regression test for the bug
-// where the resizer could be triggered from the EQ panel.
+// The divider must not be detected over the EQ panel, where the Wave widget spans both columns.
 func TestInputIsolation_ColumnDividerNotInEQArea(t *testing.T) {
 	logger := game_log.New(nil, game_log.LevelError)
 	g := model.NewGraph(logger)
@@ -201,8 +195,7 @@ func TestInputIsolation_ColumnDividerNotInEQArea(t *testing.T) {
 	}
 }
 
-// Test that the column divider IS detected in the Rack area (row 1) where
-// no widget spans both columns.
+// In the rack row no widget spans both columns.
 func TestInputIsolation_ColumnDividerValidInRackArea(t *testing.T) {
 	logger := game_log.New(nil, game_log.LevelError)
 	g := model.NewGraph(logger)
@@ -238,9 +231,7 @@ func TestInputIsolation_ColumnDividerValidInRackArea(t *testing.T) {
 	}
 }
 
-// TestPopupBlocksBPMFocus verifies that clicking at the BPM box location
-// while the instrument category selector popup is open does NOT focus the
-// BPM text input. Popups must fully block input to elements beneath them.
+// A popup fully blocks input beneath it: a click at the BPM box does not focus it.
 func TestPopupBlocksBPMFocus(t *testing.T) {
 	assertDefaultParityState(t)
 	audio.ClearAllInsertEffects()
@@ -278,8 +269,6 @@ func TestPopupBlocksBPMFocus(t *testing.T) {
 	}
 }
 
-// TestPopupBlocksBPMFocus_AllPopups tests that every popup type blocks
-// the BPM text input from gaining focus when clicked through.
 func TestPopupBlocksBPMFocus_AllPopups(t *testing.T) {
 	popups := []struct {
 		name  string
@@ -389,8 +378,7 @@ func TestInputIsolation_LayoutHandlerCapture(t *testing.T) {
 	}
 }
 
-// TestSliderCrossGroupIsolation_MainVolToEQ verifies that while dragging the
-// main volume slider, moving the cursor over the EQ panel does not change EQ gains.
+// Dragging the main volume over the EQ panel changes no EQ gain.
 func TestSliderCrossGroupIsolation_MainVolToEQ(t *testing.T) {
 	assertDefaultParityState(t)
 	audio.ClearAllInsertEffects()
@@ -490,8 +478,7 @@ func TestSliderCrossGroupIsolation_MainVolToEQ(t *testing.T) {
 	_ = origMainVol // used for documentation clarity
 }
 
-// TestSliderCrossGroupIsolation_RowVolToMainVol verifies that clicking on the
-// row volume icon area (which opens a popup) does not affect the main volume slider.
+// The row volume popup leaves the main volume alone.
 func TestSliderCrossGroupIsolation_RowVolToMainVol(t *testing.T) {
 	assertDefaultParityState(t)
 	audio.ClearAllInsertEffects()
@@ -563,8 +550,7 @@ func TestSliderCrossGroupIsolation_RowVolToMainVol(t *testing.T) {
 	}
 }
 
-// TestMainVolSliderReturnsAfterHandling verifies that clicking on the main
-// volume slider does not also activate EQ sliders (the old fall-through bug).
+// A main volume click does not fall through to the EQ sliders.
 func TestMainVolSliderReturnsAfterHandling(t *testing.T) {
 	assertDefaultParityState(t)
 	audio.ClearAllInsertEffects()
@@ -623,8 +609,6 @@ func TestMainVolSliderReturnsAfterHandling(t *testing.T) {
 	}
 }
 
-// TestAnyDragActive_IncludesMainVolSlider verifies that anyDragActive returns
-// true when the main volume slider group is capturing.
 func TestAnyDragActive_IncludesMainVolSlider(t *testing.T) {
 	mainVol := NewSlider(1.0)
 	mainVol.SetRect(image.Rect(0, 0, 100, 20))

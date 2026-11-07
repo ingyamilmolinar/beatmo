@@ -51,8 +51,7 @@ func TestWaveshaperNoNaN(t *testing.T) {
 }
 
 func TestWaveshaperHarmonics(t *testing.T) {
-	// Wave folding of a sine wave should create odd harmonics.
-	// (Symmetric folding preserves odd symmetry, so only odd harmonics appear.)
+	// Symmetric folding keeps odd symmetry, so only odd harmonics appear.
 	const sr = 44100
 	const n = 44100
 	const freq = 440.0
@@ -64,8 +63,6 @@ func TestWaveshaperHarmonics(t *testing.T) {
 		out[i] = ws.ProcessSample(x)
 	}
 
-	// With wave folding at drive=3, expect strong odd harmonics:
-	// 3rd harmonic at 1320 Hz and 5th harmonic at 2200 Hz
 	mag1320 := goertzelMagnitude(out, 1320, sr)
 	mag2200 := goertzelMagnitude(out, 2200, sr)
 

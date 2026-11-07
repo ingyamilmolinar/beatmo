@@ -6,19 +6,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// RackMaskLayer paints the rack-column surface elevation that visually
-// groups the row controls. It draws BEFORE the row rack zone so the surface
-// fill sits beneath row labels/buttons; painting it on top would erase the
-// per-row controls (regression caught by
-// TestDesktopRowRack_NoOpaqueOverpaintOnRackColumn).
-//
-// Z = ZRackMask (55) — between Background (50) and the primary zones.
-//
-// Also publishes panelMaskRect so other systems (history clip, layout-gap
-// invariant) can read the rack column bounds without recomputing them.
-//
-// Suppressed when the mobile EQ mode is active (the EQ panel takes over the
-// rack column on mobile and the surface would conflict with it).
+// Drawn BEFORE the row rack: on top it would erase the row controls. Publishes panelMaskRect for the history
+// clip and the layout-gap invariant; suppressed in mobile EQ mode, where the panel takes the column.
 type RackMaskLayer struct {
 	dv *DrumView
 }

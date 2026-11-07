@@ -12,12 +12,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/scripts/gograph/rank"
 )
 
-// AnalyzeMetrics walks every non-test .go file under cfg.Root that the
-// configured build (GOOS + tags) would compile, groups declarations by package
-// import path (module + relative dir), and computes LOC, nesting depth, and
-// cyclomatic complexity. It does no type checking. Honouring build constraints
-// keeps build-tag variants of one function (x_js.go / x_notjs.go) from being
-// merged into a single, double-counted entry.
+// AnalyzeMetrics measures LOC, nesting and cyclomatic complexity of every non-test file the configured GOOS + tags
+// compile, with no type checking. Honouring build constraints keeps x_js.go / x_notjs.go from merging into one entry.
 func AnalyzeMetrics(cfg Config) (map[string]*Package, error) {
 	root, module := cfg.Root, cfg.Module
 	bctx := buildContext(cfg)
@@ -69,12 +65,8 @@ func AnalyzeMetrics(cfg Config) (map[string]*Package, error) {
 	return pkgs, nil
 }
 
-// renestMethods moves any package-level func that is really a method (non-empty
-// Recv) — stashed in p.Funcs because its receiver type was declared in a
-// different file — under its receiver type. Runs after ALL files in the package
-// are collected, so p.Types is complete. Go methods always have a package-local
-// receiver type, so every such func nests; any that somehow doesn't match a
-// declared type is left as a func.
+// renestMethods moves methods whose receiver is declared in another file (stashed in p.Funcs) under their type, once
+// every file is collected; one that matches no declared type stays a func.
 func renestMethods(p *Package) {
 	if len(p.Funcs) == 0 {
 		return
@@ -139,9 +131,7 @@ func collectFile(fset *token.FileSet, file *ast.File, p *Package) {
 			if ti := typeIdx[recv]; ti != nil {
 				ti.Methods = append(ti.Methods, fm)
 			} else {
-				// receiver type declared in another file of the same package:
-				// stash as a package-level func carrying its Recv so Task 4 can
-				// still resolve its FuncID and CallDepth.
+				// Receiver declared in another file: stashed with its Recv for renestMethods.
 				p.Funcs = append(p.Funcs, fm)
 			}
 		} else {

@@ -1,21 +1,8 @@
 package ui
 
-// Source-of-truth capture for the audio panel's data tabs.
-//
-// CaptureAudioTabTap walks a channel from the shape of the analyser data,
-// through the analysis values, to the exact numbers each tab will draw —
-// and digests each layer separately (see internal/audiotap for why layered).
-//
-// The render layer calls the SAME functions the renderers call
-// (spectrumBandDB, audioDBWindow, audioDBNorm, eqBandLevels,
-// autoGainForPeak). That is the whole point: a digest computed by a
-// parallel reimplementation would agree with itself forever while the real
-// renderer drifted. Anything here that stops matching a renderer is a bug
-// in this file, not a reason to relax the test.
-//
-// No build tags. It has to compile and produce identical bytes both
-// natively and under GOOS=js, because the cross-platform assertion is
-// "the browser, running this code, reproduces the native golden".
+// Calls the SAME functions the renderers call: a parallel reimplementation would agree with itself
+// while the renderer drifted, so a mismatch is a bug here. No build tags: the browser must reproduce
+// the native golden byte for byte.
 
 import (
 	"math"
@@ -26,29 +13,15 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// CanonicalChannelMetrics builds a deterministic, platform-independent
-// stand-in for one channel's analyser reading.
-//
-// Cross-platform value comparison needs an input both sides can generate
-// bit-identically, which a live analyser is not: Go's observer windows with
-// Hann and runs its own FFT, a WebAudio AnalyserNode windows with Blackman
-// and runs the browser's. Comparing those values would be comparing two
-// correct answers to slightly different questions.
-//
-// So the shared input is synthesized here, from integer arithmetic and
-// math.Exp/Sin only, and both platforms run the real derivations over it.
-// The spectrum is deliberately BASS-HEAVY — a kick — because a top-heavy
-// fixture is exactly what hid the original defect: every existing fixture
-// decayed from bin 0, so the mid and high bands always had data and nobody
-// noticed the bottom four bands were empty.
+// A live analyser differs by platform (Hann + Go FFT vs Blackman + the browser's), so the shared
+// input is synthesized from integer math and Exp/Sin. Deliberately BASS-HEAVY: top-heavy fixtures hid
+// empty bass bands.
 func CanonicalChannelMetrics(id channel.ID, bins, sampleRate int) analyzer.ChannelMetrics {
 	spec := make([]float64, bins)
 	nyquist := float64(sampleRate) / 2
 	for i := range spec {
 		hz := float64(i) * nyquist / float64(bins)
-		// A 60 Hz fundamental with a decaying harmonic series, plus a small
-		// broadband floor so no band is ever exactly zero for the wrong
-		// reason.
+		// A small broadband floor so no band is zero for the wrong reason.
 		v := 0.9*math.Exp(-hz/90.0) + 0.05*math.Exp(-hz/2500.0) + 0.0008
 		spec[i] = v
 	}
@@ -78,9 +51,7 @@ func CanonicalChannelMetrics(id channel.ID, bins, sampleRate int) analyzer.Chann
 	}
 }
 
-// CanonicalAnalyzerState is a whole-panel fixture: a master bus plus one
-// selected instrument channel, at the resolution the platform actually
-// ships (pass audio.BridgeSpectrumBins for the browser's shape).
+// Pass audio.BridgeSpectrumBins for the browser's shape.
 func CanonicalAnalyzerState(masterBins, detailBins, sampleRate int) *analyzer.State {
 	master := CanonicalChannelMetrics(channel.Master, masterBins, sampleRate)
 	detail := CanonicalChannelMetrics(channel.Of(roster.DnbKick), detailBins, sampleRate)
@@ -95,11 +66,7 @@ func CanonicalAnalyzerState(masterBins, detailBins, sampleRate int) *analyzer.St
 	}
 }
 
-// CaptureAudioTabTap digests one channel across all three layers.
-//
-// `label` names what was captured (circuit + channel) and is part of the
-// overall digest, so two captures of different things can never be
-// mistaken for a match.
+// label is part of the digest, so captures of different things never match.
 func CaptureAudioTabTap(label string, ch *analyzer.ChannelMetrics, st *analyzer.State, sampleRate int) *audiotap.Snapshot {
 	snap := audiotap.New(label, sampleRate)
 	if ch == nil {
@@ -107,11 +74,8 @@ func CaptureAudioTabTap(label string, ch *analyzer.ChannelMetrics, st *analyzer.
 		return snap
 	}
 
-	// ---- shape ---------------------------------------------------------
-	// The layer the 2026-09-19 defect lived in, and the only one that is
-	// meaningfully comparable against a LIVE analyser on the other
-	// platform. binHz is recorded in millihertz as an integer so it is
-	// exact rather than a float that "nearly" matches.
+	// The only layer comparable against a live analyser on the other platform; binHz in integer
+	// millihertz so it is exact.
 	binHzMilli := 0
 	if n := len(ch.FFTBins); n > 0 {
 		binHzMilli = int(math.Round(float64(sampleRate) / 2 / float64(n) * 1000))
@@ -119,9 +83,7 @@ func CaptureAudioTabTap(label string, ch *analyzer.ChannelMetrics, st *analyzer.
 	snap.Ints("shape.spectrum", len(ch.FFTBins), len(ch.FreqBins), binHzMilli, sampleRate)
 	snap.Ints("shape.waveform", len(ch.Waveform))
 
-	// Band coverage belongs to shape, not render: "how many FFT bins land
-	// in each display band" is a property of the data's resolution, and it
-	// is the single number that went to zero for the bottom four bands.
+	// Bins per display band is a property of the data's resolution, so it belongs to shape.
 	counts := make([]int, len(isoBands))
 	for b, band := range isoBands {
 		for _, hz := range ch.FreqBins {
@@ -139,8 +101,7 @@ func CaptureAudioTabTap(label string, ch *analyzer.ChannelMetrics, st *analyzer.
 	snap.Floats("analysis.levels", ch.PeakDB, ch.RMSDB)
 	snap.Bools("analysis.active", []bool{ch.Active})
 
-	// ---- render: Spectrum ---------------------------------------------
-	// Through the renderer's own functions, in the renderer's own order.
+	// The renderer's own functions, in its own order.
 	bandDB, measured := spectrumBandDB(ch.FFTBins, ch.FreqBins, isoBands)
 	floor, ceil := audioDBWindow(spectrumPeakDB(ch))
 	bars := make([]float64, len(bandDB))
@@ -152,11 +113,7 @@ func CaptureAudioTabTap(label string, ch *analyzer.ChannelMetrics, st *analyzer.
 	snap.Floats("render.spectrum.window", floor, ceil)
 	snap.Floats("render.spectrum.bar_norms", bars...)
 
-	// ---- render: EQ backdrop -------------------------------------------
-	// eqBandLevels smooths toward its target, so one pass is a transient.
-	// Run it to a fixed point (the blend halves the error each step) and
-	// digest the settled heights — otherwise the digest would encode "how
-	// many frames had elapsed", which is not a property of the circuit.
+	// Run eqBandLevels to a fixed point, or the digest encodes how many frames elapsed.
 	lin := make([]float64, len(ch.FFTBins))
 	for i, db := range ch.FFTBins {
 		lin[i] = math.Pow(10, db/20)

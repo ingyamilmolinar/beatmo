@@ -12,12 +12,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// These tests run on the NATIVE build (real CGo DSP) — under -tags test the
-// renderer is a no-op stub, so the //go:build !test guard is required. They pin
-// the physical-model oscillators in src/c/modular.c (bowed string osc_type:7,
-// brass osc_type:8, reed osc_type:9, air-jet flute osc_type:10) and the
-// Karplus-Strong guitar so a future C edit that breaks self-oscillation, blows
-// up the feedback loop, or detunes the pitch fails loudly.
+// Native only: under -tags test the renderer is a stub. A C edit that breaks self-oscillation, blows up the feedback
+// loop or detunes must fail loudly.
 
 const pmSampleRate = 48000
 
@@ -40,9 +36,7 @@ func waveStats(w wave.Wave) (rms, peak float64, finite bool) {
 	return
 }
 
-// lateStable guards against runaway feedback: the peak of the last 20% of the
-// render must not exceed 4× the peak of the first 80% (a self-oscillating
-// waveguide settles into a limit cycle; an unstable one grows without bound).
+// A waveguide settles into a limit cycle; an unstable one grows without bound.
 func lateStable(w wave.Wave) bool {
 	n := len(w.Samples)
 	if n < 100 {
@@ -69,8 +63,7 @@ func lateStable(w wave.Wave) bool {
 	return latePeak <= 4.0*earlyPeak
 }
 
-// TestPhysicalModelInstrumentsRenderCleanly pins the SHIPPED physical-model
-// instruments: each must render finite, bounded, stable, audible, and on pitch.
+// Finite, bounded, stable, audible and on pitch.
 func TestPhysicalModelInstrumentsRenderCleanly(t *testing.T) {
 	cases := []struct {
 		id     instrument.ID
@@ -114,11 +107,8 @@ func TestPhysicalModelInstrumentsRenderCleanly(t *testing.T) {
 	}
 }
 
-// TestWaveguideOscTypesAreFinite pins the RAW C waveguides (osc_type 7..10):
-// EVERY one MUST produce finite, bounded, non-runaway output (the guards in
-// modular.c are the completeness guarantee — TestCompleteness_RecipeRenderPresets
-// HaveFiniteOutput renders osc_type at its max, so an unguarded blow-up SIGSEGVs).
-// The two shipped self-oscillators (bowed=7, reed=9) must additionally sound.
+// Every raw waveguide must stay finite (an unguarded blow-up SIGSEGVs the completeness render); the shipped
+// self-oscillators must also sound.
 func TestWaveguideOscTypesAreFinite(t *testing.T) {
 	cases := []struct {
 		oscType   int

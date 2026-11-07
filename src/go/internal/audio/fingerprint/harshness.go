@@ -6,45 +6,11 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// harshness.go — the HARSH/AGGRESSIVE vs MELLOW/DELICATE axis.
-//
-// Motivation: a listener rejected four successive ride candidates as "too
-// harsh and aggressive and strong", wanting "mellow, softer, warmer with a
-// delicate first hit and delicate tail" — while those candidates matched the
-// reference on spectral centroid, flatness, low-band share, mode density and
-// every decay time. Every axis in use was an ENERGY or SHAPE statistic, and
-// none of them contains the word "harsh". Fitting harder on them could not
-// have converged, because the thing being judged was not being measured.
-//
-// Three descriptors, each for a distinct half of the complaint:
-//
-//   Sharpness    — "harsh / piercing / strong". Zwicker's weighting rises
-//                  steeply above ~3 kHz, so it is NOT the spectral centroid:
-//                  two sounds with the same centroid differ in sharpness when
-//                  one puts its energy above 3 kHz and the other side of it.
-//   Roughness    — "aggressive / buzzy". Plomp-Levelt/Sethares sensory
-//                  dissonance over partial PAIRS. This is the one that a dense
-//                  synthetic mode bank gets wrong: packing hundreds of modes
-//                  into a band maximizes exactly the quarter-critical-band
-//                  spacing the ear hears as rough, so "more modes" can measure
-//                  denser and sound angrier.
-//   Impulsiveness— "the first hit is too direct". How much the attack spikes
-//                  above the body that follows it.
-//
-// References:
-//   E. Zwicker & H. Fastl, "Psychoacoustics: Facts and Models" (3rd ed.,
-//     Springer 2007), ch. 9 — sharpness in acum, the g(z) weighting.
-//   Plomp & Levelt (1965); Sethares (1993, 2005) — see kick_roughness.go,
-//     whose plompLeveltRoughness this reuses rather than restating.
+// Ride candidates matching the reference on every energy statistic were still judged "harsh": sharpness (Zwicker
+// weighting above ~3 kHz), roughness (dissonance over partial pairs) and impulsiveness (first hit over the body) measure it.
 
-// SharpnessAcum returns Zwicker-style sharpness for a magnitude spectrum.
-//
-// Specific loudness is approximated by the magnitude in each Bark band (the
-// full Zwicker loudness model needs a calibrated SPL the corpus does not
-// carry); the g(z) weighting above Bark 16 is what makes this "piercing" and
-// not "bright". Returned in acum-like units — the ABSOLUTE value is only
-// meaningful compared against another signal measured the same way, which is
-// the only way it is used.
+// Bark-band magnitude stands in for specific loudness (the full model needs a calibrated SPL); the g(z) weighting above
+// Bark 16 makes it "piercing", not "bright". Only meaningful compared with another signal measured the same way.
 func SharpnessAcum(mag []float64, binHz float64) float64 {
 	if len(mag) == 0 || binHz <= 0 {
 		return 0
@@ -80,9 +46,7 @@ func barkOf(f float64) float64 {
 	return z
 }
 
-// RoughnessOf is the Plomp-Levelt/Sethares sensory dissonance of an arbitrary
-// window, generalizing kick_roughness.go's body-region measurement so any
-// family can be judged on it.
+// The kick body-region measurement generalised to any window.
 func RoughnessOf(w wave.Wave, fftSize int, minHz float64, maxPartials int) float64 {
 	if len(w.Samples) < 8 {
 		return 0
@@ -91,10 +55,8 @@ func RoughnessOf(w wave.Wave, fftSize int, minHz float64, maxPartials int) float
 	return plompLeveltRoughness(peakPickPartials(mag, binHz, minHz, maxPartials))
 }
 
-// Impulsiveness is the ratio of the peak envelope to the body that follows it,
-// in dB — "how much the strike sticks out above the ring". A gentle, delicate
-// hit reads LOW; a hard direct one reads high. Measured on the RMS envelope so
-// it tracks perceived loudness rather than a single sample excursion.
+// The peak envelope over the following body in dB, on the RMS envelope so it tracks loudness: a delicate hit reads
+// low.
 func Impulsiveness(samples []float64, rate int) float64 {
 	const win = 256
 	if rate <= 0 || len(samples) < win*8 {
@@ -118,8 +80,7 @@ func Impulsiveness(samples []float64, rate int) float64 {
 	if peak <= 0 {
 		return 0
 	}
-	// Body = 100..400 ms after the peak: past the strike, still well inside the
-	// ring for anything that sustains.
+	// 100–400 ms after the peak: past the strike, inside the ring of anything that sustains.
 	a := pk + (rate/10)/win
 	b := pk + (4*rate/10)/win
 	if b > len(env) {

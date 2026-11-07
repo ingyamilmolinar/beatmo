@@ -111,11 +111,8 @@ const (
 	attackRMSSec   = 0.02  // the loudness the attack is judged by: 20 ms RMS (the envelope's window)
 )
 
-// OnsetCurve is the note's first moment at fine resolution: its peak level
-// (dBFS, clamped to FloorDB) — the largest |sample| within ±7 ms — every
-// StepSec (1 ms), from the first onset for up to onsetCurveSec. A peak envelope
-// that spans a low note's cycle does not ripple with it, and a click shows as
-// the jump it is.
+// Peak level (largest |sample| within ±7 ms) every 1 ms from the first onset: unlike RMS it does not ripple with a low
+// note's cycle, and a click shows as the jump it is.
 type OnsetCurve struct {
 	StepSec float64
 	DB      []float64
@@ -136,9 +133,7 @@ func (a *Analysis) OnsetCurve() OnsetCurve {
 	return a.onset
 }
 
-// ClickDB is how far (dB) the loudest moment of the first 10 ms stands over
-// the body that follows (30–80 ms after the onset): a click, a stick, a
-// pluck's transient. 0 when the start is no louder than the body.
+// The loudest of the first 10 ms over the body 30–80 ms later: a click, a stick, a pluck's transient.
 func (a *Analysis) ClickDB() float64 {
 	a.atkOnce.Do(a.computeAttack)
 	return a.clickDB
@@ -234,10 +229,8 @@ func (a *Analysis) computeAttack() {
 			last = t
 		}
 	}
-	// The attack ends when the note is LOUD — within 1 dB of its loudest
-	// 10 ms RMS — not when it reaches its peak SAMPLE: a peak-normalised bow
-	// or reed note can start with its loudest transient and still swell for
-	// 300 ms (TestAttackOfASwellWithATransientIsTheSwell).
+	// Ends when the note is LOUD (within 1 dB of its loudest 10 ms RMS), not at its peak SAMPLE: a peak-normalised bow or
+	// reed note can open with its loudest transient and keep swelling.
 	hold := make([]float64, nb)
 	for b := range blk {
 		a.yieldEvery(b, 400)

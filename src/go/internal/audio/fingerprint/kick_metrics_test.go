@@ -9,8 +9,7 @@ import (
 
 // --- synthetic signal generators with known ground truth ----------------------
 
-// expDecaySine renders an exponentially-decaying pure sine at f0 Hz.
-// tau is the decay time constant (seconds): amplitude ∝ e^{-t/tau}.
+// Amplitude ∝ e^{-t/tau}.
 func expDecaySine(sr int, dur, f0, tau float64) wave.Wave {
 	n := int(dur * float64(sr))
 	s := make([]float64, n)
@@ -21,10 +20,7 @@ func expDecaySine(sr int, dur, f0, tau float64) wave.Wave {
 	return wave.Wave{Samples: s, SampleRate: sr}
 }
 
-// beatingPair renders the sum of two detuned decaying sines (f1 & f2). The
-// second is delayed by delaySec (onset offset). The amplitude of the sum beats
-// at |f1-f2| Hz, producing a secondary envelope "bloom" one beat-period after
-// the attack. Both partials share the same decay time constant tau.
+// The sum beats at |f1-f2| Hz, a secondary "bloom" one beat period after the attack.
 func beatingPair(sr int, dur, f1, f2, a1, a2, tau, delaySec float64) wave.Wave {
 	n := int(dur * float64(sr))
 	s := make([]float64, n)
@@ -40,9 +36,7 @@ func beatingPair(sr int, dur, f1, f2, a1, a2, tau, delaySec float64) wave.Wave {
 	return wave.Wave{Samples: s, SampleRate: sr}
 }
 
-// chirpThenSteady renders a linear pitch glide from fStart to fEnd over
-// glideSec, then a steady tone at fEnd for steadySec. Phase is integrated so
-// the waveform is continuous.
+// Phase is integrated so the waveform is continuous.
 func chirpThenSteady(sr int, glideSec, steadySec, fStart, fEnd float64) wave.Wave {
 	n := int((glideSec + steadySec) * float64(sr))
 	s := make([]float64, n)
@@ -62,8 +56,7 @@ func chirpThenSteady(sr int, glideSec, steadySec, fStart, fEnd float64) wave.Wav
 	return wave.Wave{Samples: s, SampleRate: sr}
 }
 
-// toneWithHFBurst renders a clean low sine with a short burst of deterministic
-// high-frequency content injected in the middle (a "spit"/sputter artifact).
+// Deterministic HF content in the middle: a sputter artefact.
 func toneWithHFBurst(sr int, dur, f0, burstStart, burstDur float64) wave.Wave {
 	n := int(dur * float64(sr))
 	s := make([]float64, n)
@@ -78,9 +71,7 @@ func toneWithHFBurst(sr int, dur, f0, burstStart, burstDur float64) wave.Wave {
 	return wave.Wave{Samples: s, SampleRate: sr}
 }
 
-// plateauThenDrop renders a signal whose amplitude envelope holds a plateau
-// (constant) for holdSec then drops off exponentially — the anti-exponential
-// reference for PlateauFlatness.
+// The anti-exponential reference for PlateauFlatness.
 func plateauThenDrop(sr int, dur, f0, holdSec, tau float64) wave.Wave {
 	n := int(dur * float64(sr))
 	s := make([]float64, n)
@@ -95,9 +86,7 @@ func plateauThenDrop(sr int, dur, f0, holdSec, tau float64) wave.Wave {
 	return wave.Wave{Samples: s, SampleRate: sr}
 }
 
-// midModeDecay renders a decaying tone whose energy sits mostly in the MID band
-// (100–500 Hz) — a stand-in for a tom's prominent inharmonic body mode. A small
-// low partial is added so the low band is not exactly zero (like a real drum).
+// A tom-like mid-band mode, with a small low partial as in a real drum.
 func midModeDecay(sr int, dur, fMid, tau float64) wave.Wave {
 	n := int(dur * float64(sr))
 	s := make([]float64, n)
@@ -109,10 +98,7 @@ func midModeDecay(sr int, dur, fMid, tau float64) wave.Wave {
 	return wave.Wave{Samples: s, SampleRate: sr}
 }
 
-// reverbTail renders a fast-decaying main hit at f0 (whose own tail is
-// negligible) plus a long, low-level added tail (a slow-decaying sine out to
-// tailDur seconds) — the reverb reference. tailAmp is the tail level relative to
-// the main hit's peak.
+// A fast hit plus a long, low added tail: the reverb reference.
 func reverbTail(sr int, dur, f0, tailAmp, tailTau, tailDur float64) wave.Wave {
 	n := int(dur * float64(sr))
 	s := make([]float64, n)
@@ -233,8 +219,7 @@ func TestKickDistance_IdentityAndSeparation(t *testing.T) {
 	if math.Abs(d.Total-dr.Total) > 1e-9 {
 		t.Errorf("distance not symmetric: %g vs %g", d.Total, dr.Total)
 	}
-	// The trace/landmark terms (organic-complexity capture) should carry the
-	// distance — not the scalar Crest term.
+	// The trace and landmark terms carry the distance, not the scalar Crest.
 	traceLandmark := DefaultKickWeights.EnvShape*d.EnvShape +
 		DefaultKickWeights.Landmarks*d.Landmarks
 	crestContrib := DefaultKickWeights.Crest * d.Crest

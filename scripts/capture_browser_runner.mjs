@@ -1,16 +1,5 @@
-// Browser capture runner for the screenshots-all target.
-//
-// Iterates the comma-separated SCENES env var. For each scene:
-//   1. Loads the WASM page via a tiny static-file server.
-//   2. Awaits runScene(name) (registered by initJSScenes).
-//   3. Runs forceDraw to flush the cache.
-//   4. Queries subjectRectJS for the scene's declared subject. If the
-//      scene declares a non-empty subject, page.screenshot is called with
-//      a clip rectangle so the resulting PNG is cropped to that surface.
-//      Scenes with no subject (the legacy default) capture full-screen.
-//   5. page.screenshot to OUTDIR/{desktop,mobile}/<name>.browser.png
-//
-// MOBILE=1 enables a second pass with Playwright's mobile viewport flags.
+// Per scene in SCENES: runScene, forceDraw, then a PNG clipped to the scene's declared subject (full-screen when it
+// has none) → OUTDIR/{desktop,mobile}/<name>.browser.png. MOBILE=1 adds a mobile-viewport pass.
 
 import { chromium } from "../src/js/node_modules/playwright/index.mjs";
 import path from "node:path";
@@ -62,11 +51,7 @@ const server = http.createServer((req, res) => {
 await new Promise((r) => server.listen(0, r));
 const port = server.address().port;
 
-// --autoplay-policy=no-user-gesture-required lets WebAudio start without
-// a real user gesture. Without it, playback scenes capture silence
-// because AudioContext stays in the "suspended" state — the analyser's
-// time-domain buffer never updates and the Spectrum / Levels / Chain
-// renderers all read zeros (Phase 0a audio-panel redesign).
+// Without it the AudioContext stays suspended and every analyser-driven tab captures zeros.
 const browser = await chromium.launch({
     headless: true,
     args: ["--autoplay-policy=no-user-gesture-required"],
@@ -78,9 +63,7 @@ async function awaitWasmReady(page) {
         () => typeof window.runScene === "function" && typeof window.forceDraw === "function" && typeof window.subjectRectJS === "function",
         { timeout: 15000 }
     );
-    // A `make wasm` (shipped, -tags noscenes) binary registers runScene but has
-    // an EMPTY catalog, so every capture would silently be the default boot
-    // screen. Fail loudly instead.
+    // A make wasm (noscenes) binary registers runScene with an EMPTY catalog: every capture would be the boot screen.
     const sceneCount = await page.evaluate(() => (window.listScenes && window.listScenes().length) || 0);
     if (sceneCount === 0) {
         throw new Error("main.wasm has no scene catalog (built by `make wasm` with -tags noscenes) -- build it with `make wasm-dev`");
@@ -94,11 +77,7 @@ async function captureScene(ctx, scene, subdir, mobile) {
     try {
         await page.goto(`http://localhost:${port}/`);
         await awaitWasmReady(page);
-        // Unlock the AudioContext before running the scene. Playback
-        // scenes that don't do this capture silence: AudioContext stays
-        // "suspended", the AnalyserNode never updates, and the Spectrum
-        // / Levels / Chain renderers all read zeros (Phase 0a audio-
-        // panel redesign root cause).
+        // A suspended AudioContext never updates the analysers, so playback scenes would capture zeros.
         await page.evaluate(() => {
             try { document.dispatchEvent(new Event("pointerdown")); } catch (_) {}
             try { window.resumeAudio && window.resumeAudio(); } catch (_) {}
@@ -110,8 +89,6 @@ async function captureScene(ctx, scene, subdir, mobile) {
                 { timeout: 5000 },
             );
         } catch (_) {
-            // Some non-playback scenes don't create the audio context;
-            // proceed regardless — those scenes don't need the unlock.
         }
         await page.evaluate(() => window.audioReady).catch(() => {});
         await page.evaluate(
@@ -125,11 +102,7 @@ async function captureScene(ctx, scene, subdir, mobile) {
             { name: scene, mobile },
         );
 
-        // Honor the scene's declared SettleFrames the same way the desktop
-        // binary does (screenshotThreshold): wait frames/60 → seconds before
-        // capturing so slow-settling scenes (menus, audio analyzers, caches)
-        // are fully rendered. 0/undefined → the 90-frame default. A small floor
-        // and post-forceDraw buffer keep fast scenes stable.
+        // Honours the scene's SettleFrames like the desktop binary (frames/60 s; 0 = 90 frames).
         const settleFrames = await page.evaluate((sceneName) => {
             const all = (window.listScenes && window.listScenes()) || [];
             const meta = all.find((s) => s.name === sceneName);
@@ -140,9 +113,6 @@ async function captureScene(ctx, scene, subdir, mobile) {
         await page.evaluate(() => window.forceDraw && window.forceDraw());
         await page.waitForTimeout(200);
 
-        // Resolve the scene's declared subject (if any) and crop to its
-        // bounds. Scenes with no subject capture full-screen — same as
-        // before.
         const subjectInfo = await page.evaluate((sceneName) => {
             const all = (window.listScenes && window.listScenes()) || [];
             const meta = all.find((s) => s.name === sceneName);
@@ -164,8 +134,7 @@ async function captureScene(ctx, scene, subdir, mobile) {
                 height: subjectInfo.h,
             };
         } else if (subjectInfo.subject) {
-            // Scene declared a subject but it's not visible — emit a clear
-            // failure rather than a misleading full-screen PNG.
+            // Not visible: a full-screen PNG here would be misleading.
             throw new Error(`subject ${subjectInfo.subject} not visible (Setup did not produce it)`);
         }
         await page.screenshot(shotOpts);
@@ -188,12 +157,7 @@ for (const s of scenes) {
 }
 await desktopCtx.close();
 
-// ─── mobile browser pass ────────────────────────────────────────
-//
-// Only scenes the catalog marks Mobile=true (received via MOBILE_SCENES)
-// run here. Scenes with no mobile route (e.g. desktop-only inspectors)
-// would otherwise produce screenshots byte-identical to mobile_default,
-// which is what this rewrite fixes.
+// Only scenes marked Mobile run here; the rest would be byte-identical to mobile_default.
 if (mobileFlag) {
     const mobilePool = mobileScenes.length > 0 ? mobileScenes : scenes;
     const mobileCtx = await browser.newContext({

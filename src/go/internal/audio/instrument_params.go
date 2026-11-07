@@ -9,14 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// instrument_params.go — the flat-field adapter over instrument documents
-// (spec 2026-10-04 §6): the knob schema types the Synth tab and tools share,
-// and SetInstrumentParam / GetInstrumentParams / ResetInstrumentParams, which
-// read and edit an instrument's project document field by field.
-
-// ParamDef declares one editable parameter on a SynthRecipe. The schema is
-// shipped to UI editors and serialized as a plugin manifest, so the shape is a
-// v1 freezing surface — see plan section "Plugin-readiness".
+// Shipped to UI editors and serialized as a plugin manifest: a frozen surface, extended only additively.
 type ParamDef struct {
 	Name    string  `json:"name"`
 	Label   string  `json:"label,omitempty"`
@@ -26,22 +19,11 @@ type ParamDef struct {
 	Unit    string  `json:"unit,omitempty"` // "", "ms", "Hz", "dB", "%", "st"
 	Curve   string  `json:"curve,omitempty"`
 	Group   string  `json:"group,omitempty"`
-	// Enum (v2, additive + omitempty) carries display labels for a DISCRETE
-	// param. The param stays float-valued (Min:0, Max:len-1, Default:idx) so all
-	// clamp/hash/merge/persist machinery is unchanged; Enum only tells the UI to
-	// render a selector instead of a knob. A ParamDef without an enum serializes
-	// exactly as v1 (no "enum" key), so existing recipe goldens are unaffected.
+	// Display labels for a DISCRETE param, which stays float-valued (0..len-1) so clamp/hash/persist are unchanged.
 	Enum []string `json:"enum,omitempty"`
-	// Step (v2, additive + omitempty) marks a non-enum param as DISCRETE with
-	// detents at Min, Min+Step, ... Max. Enum params are implicitly Step:1.
-	// A zero Step serializes identically to v1 (no "step" key), so existing
-	// recipe goldens are unaffected.
+	// Detents at Min, Min+Step, … Max; enum params are implicitly Step 1.
 	Step float64 `json:"step,omitempty"`
-	// Tier (v3, additive + omitempty) is the P4 exposure priority in the Synth
-	// tab: "" (TierEssential) = always shown; "advanced" (TierAdvanced) =
-	// collapsed under the owning stage's "Advanced" expander so a beginner sees
-	// only the 3-5 character knobs per stage. A zero Tier serializes identically
-	// to v1/v2 (no "tier" key), so existing recipe goldens are unaffected.
+	// "" (TierEssential) is always shown; "advanced" collapses under the stage's More expander.
 	Tier string `json:"tier,omitempty"`
 }
 
@@ -54,18 +36,11 @@ const (
 // RecipeParams is the IPC-shaped parameter payload. Keys are ParamDef.Name.
 type RecipeParams map[string]float64
 
-// voiceCacheInvalidate drops cached voices for a single instrument. The
-// native voice_cache.go (Phase 1.4) sets this to globalVoiceCache.ClearInstrument;
-// under -tags test || js it stays a no-op (no real cache).
+// A no-op under -tags test || js, which have no voice cache.
 var voiceCacheInvalidate = func(instrumentID instrument.ID) {}
 
-// SetInstrumentParam edits one flat field of an instrument's project document
-// (spec §6, the sub-project-1 adapter: instrument.SetField). The value is run
-// through sanitizeParamValue first — NaN/Inf are dropped, out-of-range values
-// are clamped to the knob's range (widened to contain the document's own
-// value). A field of a module the instrument does not have (an inactive
-// source/layer type) or a type constant is ignored. Followed by the hook
-// publish and the off-thread warm of the new document.
+// NaN/Inf are dropped and out-of-range values clamped to the knob's range; a field of a module the instrument does not
+// have, or a type constant, is ignored.
 func SetInstrumentParam(instrumentID instrument.ID, name string, value float64) {
 	start := time.Now()
 	if !knownParamName(instrumentID, name) {
@@ -84,8 +59,7 @@ func SetInstrumentParam(instrumentID instrument.ID, name string, value float64) 
 		return
 	}
 	reg := BuiltinModuleRegistry()
-	// No-op skip: stationary drag bursts produce many same-value writes per
-	// second; collapsing them here covers every caller (UI, JS bridge).
+	// A stationary drag produces many same-value writes per second; collapsing them here covers every caller.
 	if cur, ok := instrument.FieldValues(doc, reg)[name]; ok && cur == stored {
 		if _, owned := instrument.OwnedFields(doc, reg)[name]; owned {
 			recordParamCoalesced()
@@ -105,9 +79,7 @@ func SetInstrumentParam(instrumentID instrument.ID, name string, value float64) 
 		recordParamRejected()
 		return
 	}
-	// The voice cache is keyed on the flattened block, so the new value maps to
-	// a DIFFERENT key — no invalidation (old-value entries survive for the
-	// predictive warm; see SetInstrumentDoc).
+	// The new value is a different cache key, so nothing is invalidated: old entries survive for the predictive warm.
 	hooks.PublishKind(hooks.EventInstrumentParamChanged, hooks.InstrumentParamPayload{
 		Instrument: instrumentID,
 		Origin:     instrumentDocOrigin(instrumentID),
@@ -118,17 +90,8 @@ func SetInstrumentParam(instrumentID instrument.ID, name string, value float64) 
 	recordParamDispatch(time.Since(start))
 }
 
-// SetInstrumentParamsLive applies several fields to instrumentID's CURRENT
-// project document as ONE edit — one document write, one push to the platform,
-// one binding change (so the voice prewarmer renders one new sound) — for a
-// control that moves several params per step (a Synth-tab macro dial). Each
-// value is checked exactly as SetInstrumentParam checks it, a field that cannot
-// land is skipped the same way, and every field whose value changed is
-// announced like SetInstrumentParam announces it.
-//
-// N SetInstrumentParam calls are NOT equivalent: each publishes a half-applied
-// document (only some of the fields moved), and the prewarmer renders every
-// one of them at every pitch the row plays — sounds nobody will hear.
+// ONE edit for a control that moves several params per step (a macro dial). N SetInstrumentParam calls would each
+// publish a half-applied document, and the prewarmer renders every one at every pitch the row plays.
 func SetInstrumentParamsLive(instrumentID instrument.ID, values map[string]float64) {
 	start := time.Now()
 	doc, ok := EnsureInstrumentDoc(instrumentID)
@@ -186,10 +149,7 @@ func SetInstrumentParamsLive(instrumentID instrument.ID, values map[string]float
 	recordParamDispatch(time.Since(start))
 }
 
-// SetInstrumentParams makes the instrument's project document its LIBRARY
-// document with these flat fields applied (each sanitized like
-// SetInstrumentParam; unknown fields and fields that cannot land skipped). Used by the JS bridge
-// and offline renders; an empty map resets to the library document.
+// The LIBRARY document with these fields applied; an empty map resets to it. For the JS bridge and offline renders.
 func SetInstrumentParams(instrumentID instrument.ID, p RecipeParams) {
 	doc, ok := libraryCopyFor(instrumentID)
 	if !ok {
@@ -217,8 +177,7 @@ func SetInstrumentParams(instrumentID instrument.ID, p RecipeParams) {
 	notifyInstrumentBindingChanged(instrumentID, doc)
 }
 
-// libraryCopyFor is the library document id's project copy starts from: the
-// entry named by its current Origin (or the id / its instance base).
+// The entry named by its Origin, or the id / its instance base.
 func libraryCopyFor(instrumentID instrument.ID) (instrument.Doc, bool) {
 	origin := instrumentID
 	if cur, ok := InstrumentDoc(instrumentID); ok && cur.Origin != "" {
@@ -236,9 +195,7 @@ func libraryCopyFor(instrumentID instrument.ID) (instrument.Doc, bool) {
 	return d, true
 }
 
-// ModifiedInstrumentDocCountForTest returns how many project documents differ from
-// their library entry — the soak tests' leak gauge (bounded by the instruments
-// actually edited).
+// The soak tests' leak gauge: bounded by the instruments actually edited.
 func ModifiedInstrumentDocCountForTest() int {
 	n := 0
 	docStore.RLock()
@@ -255,8 +212,7 @@ func ModifiedInstrumentDocCountForTest() int {
 	return n
 }
 
-// GetInstrumentParams returns the flat fields the instrument's document owns
-// (instrument.OwnedFields). Callers may mutate the returned map.
+// Callers may mutate the returned map.
 func GetInstrumentParams(instrumentID instrument.ID) RecipeParams {
 	d, ok := InstrumentDoc(instrumentID)
 	if !ok {
@@ -265,8 +221,6 @@ func GetInstrumentParams(instrumentID instrument.ID) RecipeParams {
 	return RecipeParams(instrument.OwnedFields(d, BuiltinModuleRegistry()))
 }
 
-// ResetInstrumentParams returns the instrument's project document to its
-// library entry (spec §6 Reset).
 func ResetInstrumentParams(instrumentID instrument.ID) {
 	d, ok := libraryCopyFor(instrumentID)
 	if !ok {
@@ -282,9 +236,7 @@ func ResetInstrumentParams(instrumentID instrument.ID) {
 	notifyInstrumentBindingChanged(instrumentID, d)
 }
 
-// InstrumentDocModified reports whether the instrument's project document
-// differs from the library entry it came from (the Synth tab's dirty dot).
-// Cached by (document rev, library rev): the Synth tab asks every frame.
+// Cached by (document rev, library rev): asked every frame.
 func InstrumentDocModified(instrumentID instrument.ID) bool {
 	key := modifiedKey{doc: InstrumentDocRev(instrumentID), lib: libraryRev.Load()}
 	modifiedMu.Lock()

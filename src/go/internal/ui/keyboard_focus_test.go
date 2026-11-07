@@ -24,11 +24,8 @@ func TestClaimsKeyboard_SaveAsDialog(t *testing.T) {
 	}
 }
 
-// An open rename component claims the keyboard; a closed one does not.
-// A nil receiver must also be safe (ClaimsKeyboard short-circuits on nil).
 func TestClaimsKeyboard_Rename(t *testing.T) {
-	// R1: nil-receiver case — ClaimsKeyboard must not panic on nil; the `r != nil &&`
-	// guard in ClaimsKeyboard short-circuits before IsOpen() reads r.state.
+	// The `r != nil &&` guard must short-circuit before IsOpen() reads r.state.
 	var nilRename *RenameComponent
 	if nilRename.ClaimsKeyboard() {
 		t.Fatal("nil RenameComponent.ClaimsKeyboard() must return false without panicking")
@@ -131,8 +128,7 @@ func TestKeyboardClaimed_AllSurfaces(t *testing.T) {
 	}
 	g.drum.tree.SetFocus("")
 
-	// 4. An open value wheel (BPM) is a PARTIAL claimant (arrows only), never a
-	// whole-keyboard claim: Space must still play while it is open.
+	// A value wheel claims only the arrows, so Space still plays.
 	if b := g.drum.bpmBox(); b != nil {
 		g.drum.openBPMWheel(b.Rect)
 		if g.drum.KeyboardClaimed() {

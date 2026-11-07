@@ -8,20 +8,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Draw renders the drum pane via the DrumViewTree. Every pixel emitted
-// inside dv.Bounds originates from a Zone or Layer registered with the
-// tree (see drumview_tree.go and layer.go); this function itself only
-// performs per-frame bookkeeping (counter resets, mask resync, lazy
-// layout, animation decay, sync of test-observable state) and then
-// hands dst to dv.tree.Draw().
-//
-// The render-pipeline discipline test (render_pipeline_discipline_test.go)
-// forbids draw primitives in this file — adding any drawRect, DrawImage,
-// or similar call here will fail CI.
+// Dispatch only: every pixel comes from a tree Zone or Layer, and a discipline test forbids
+// draw primitives in this file.
 func (dv *DrumView) Draw(dst *ebiten.Image, highlightsByRow [][]highlightEntry, frame int64, beatInfos []model.BeatInfo, elapsedBeats float64) {
 	dv.frame++
-	// Publish the frame counter for button cushion animations (toggle-pulse
-	// glow) so widgets don't need a frame argument threaded through Draw.
 	uiAnimFrame = dv.frame
 	dv.rowsLayerBytes = 0
 	dv.rowsRepaints = 0
@@ -46,14 +36,8 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightsByRow [][]highlightEntry, 
 		dv.rowFrame = rf
 	}
 
-	// Lazy layout. Normally tree.Update() runs Layout() in the frame
-	// loop, but some tests call Draw() directly without a preceding
-	// Update(), and a scroll flushed after the Update-phase pass (wheel
-	// adapter, momentum, legacy touch/step-drag) leaves needLayout set
-	// here. EnsureLayouts re-runs the tree's layout+publish pass so the
-	// HitIndex always follows what this frame renders — a bare Layout
-	// loop here used to consume needLayout WITHOUT republishing, leaving
-	// input permanently dispatched to pre-scroll row positions.
+	// Draw can run without Update (tests) or after a late scroll; EnsureLayouts also republishes the
+	// HitIndex, so input always matches what this frame renders.
 	if dv.rootTree != nil {
 		dv.rootTree.EnsureLayouts()
 	}
@@ -63,35 +47,19 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightsByRow [][]highlightEntry, 
 	// Animations — state-only, not drawing.
 	dv.decayAnims()
 
-	// Refresh per-row widget rects (vol slider, mute/solo/fx button rects)
-	// before zones consume them. Previously called from
-	// renderToolbarControls; pulled up here so the per-frame work happens
-	// regardless of which zone draws first.
+	// Before any zone reads them, whichever draws first.
 	dv.updateRowRects()
 
-	// Remember the live readout position so recalcButtons can size the
-	// beat-counter slot to the rendered text width (notif hugs the counter).
 	dv.lastElapsedBeats = elapsedBeats
 
-	// Hand timeline draw parameters to the zone before dispatching the
-	// tree's draw walk; TimelineZone reads these in its Draw method.
 	if dv.timelineZone != nil {
 		dv.timelineZone.SetDrawParams(elapsedBeats, highlightsByRow)
 	}
 
-	// Single dispatch — every pixel in dv.Bounds originates here.
-	// Mobile audio mode hides the rack mask layer at the tree level
-	// (see layer_rack_mask.go Visible()), so the mask never paints into
-	// dv.panelMaskRect — the rect naturally stays at whatever the layer
-	// last wrote (or empty) without a post-Draw fixup here.
 	if dv.rootTree != nil {
 		dv.rootTree.SetBounds(dv.Bounds)
 		dv.rootTree.Draw(dst)
 	}
-
-	// The NAVIGATION panel's go-to-beat/go-to-time editor is now owned by the
-	// nav-menu portal component (navMenuComp) and drawn as part of that portal
-	// overlay in rootTree.Draw above — no DrumView-level after-draw needed.
 
 	// Post-draw test/JS-export sync.
 	if dv.eqPanelZone != nil {
@@ -107,10 +75,7 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightsByRow [][]highlightEntry, 
 	}
 }
 
-// drawRowsDirect draws visible row cells directly to dst without intermediate
-// textures. Bypasses the multi-level compositing chain (rowCache → rowsLayer
-// → dst) that fails on mobile WebGL. Called by drawRowComposite via the
-// TimelineZone DrawRowComposite callback — not from DrumView.Draw.
+// Bypasses the rowCache → rowsLayer compositing chain, which fails on mobile WebGL.
 func (dv *DrumView) drawRowsDirect(dst *ebiten.Image) {
 	vis := dv.visibleRows()
 	rowBase := dv.Bounds.Min.Y + dv.headerH
@@ -184,10 +149,7 @@ func (dv *DrumView) drawRowsDirect(dst *ebiten.Image) {
 	dv.directDrawCells = cells
 }
 
-// zoneClipRect returns the widget rectangle a zone is permitted to draw
-// into. Each zone is clipped to its own WidgetBoard cell so it cannot bleed
-// into neighbouring widgets. Falls back to dv.Bounds when the widget rect
-// is unavailable. Used by drumview_zone_clip_test.go.
+// Each zone is clipped to its own WidgetBoard cell so it cannot bleed into a neighbour.
 func (dv *DrumView) zoneClipRect(z Zone) image.Rectangle {
 	if z == nil {
 		return dv.Bounds
@@ -211,12 +173,6 @@ func (dv *DrumView) zoneClipRect(z Zone) image.Rectangle {
 	return dv.Bounds
 }
 
-// drawRowComposite renders the row composite layer (layer/direct).
-// Called by TimelineZone.Draw() via the DrawRowComposite callback.
-//
-// On mobile (Profile().DirectDrawRows = true), bypass the rowsLayer
-// indirection and draw cells directly into dst. On desktop, build/blit
-// the rowsLayer.
 func (dv *DrumView) drawRowComposite(dst *ebiten.Image) {
 	dv.ensureRowCache()
 	if Profile().DirectDrawRows {
@@ -230,9 +186,6 @@ func (dv *DrumView) drawRowComposite(dst *ebiten.Image) {
 		}
 		return
 	}
-	// Windowed scroll cache: during scrolled follow playback this serves the
-	// composite from a wider buffer via a moving sub-rect blit, avoiding the
-	// per-scroll full-layer recomposite (drumview_cache_rows_window.go).
 	if dv.drawRowCompositeWindowed(dst) {
 		dv.lastRowsRenderPath = "windowed"
 		return

@@ -5,8 +5,7 @@ import (
 	"testing"
 )
 
-// Per-frame audit of the arm-grow animation: does any control leave the grid,
-// invade the preview ("Your sound") pane, overlap a sibling, or move sideways?
+// Does any control leave the grid, invade the graph pane, overlap a sibling or move sideways?
 func TestDiag_ArmGrowAnimationAudit(t *testing.T) {
 	for _, sz := range [][2]int{{560, 820}, {900, 1000}, {1280, 2000}} {
 		w, h := sz[0], sz[1]

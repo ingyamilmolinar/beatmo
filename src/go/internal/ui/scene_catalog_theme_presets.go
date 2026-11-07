@@ -4,10 +4,8 @@ package ui
 
 import "strings"
 
-// scene_catalog_theme_presets.go — one screenshot scene per first-party theme
-// preset, driven through the SAME path a user takes: open the Theme editor and
-// press that preset's row button. Kept as a regression surface for the visual
-// audit of every preset (buttons, sections, data canvases must all re-theme).
+// One scene per preset through the user's own path (open the editor, press the row), so every surface must
+// re-theme.
 func init() {
 	for _, p := range themePresets {
 		id := p.ID

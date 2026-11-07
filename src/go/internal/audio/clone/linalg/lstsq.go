@@ -6,18 +6,12 @@ import (
 	"math/cmplx"
 )
 
-// ErrRankDeficient is returned when a column is numerically dependent on the
-// ones before it.
 var ErrRankDeficient = errors.New("linalg: matrix is rank deficient")
 
-// QR is a thin QR factorisation (Q m×n with orthonormal columns, R n×n upper
-// triangular).
 type QR struct{ Q, R *Matrix }
 
-// FactorQR factors a (m ≥ n) by modified Gram–Schmidt with one full
-// re-orthogonalisation pass ("twice is enough"), which keeps Q orthonormal to
-// working precision for the near-dependent columns a Vandermonde matrix of a
-// doublet produces.
+// A second re-orthogonalisation pass keeps Q orthonormal for the near-dependent columns a doublet's Vandermonde
+// matrix produces.
 func FactorQR(a *Matrix) (*QR, error) {
 	m, n := a.Rows, a.Cols
 	if m < n {

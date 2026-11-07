@@ -1,48 +1,6 @@
-// mobile_import_realdevice.browser.test.js
-//
-// REAL-DEVICE reproduction for "tapping Import does nothing on mobile (iOS
-// Safari)" — the file picker never opens, while Export (a plain <a download>
-// blob) works fine.
-//
-// WHY this test exists (and why the headless suite can't catch the bug):
-//   mobile_import_gesture.browser.test.js runs under LOCAL Playwright Chromium.
-//   The mobile import mechanism places a transparent, real <input type=file>
-//   OVERLAY (position:fixed, z-index:9999) exactly over the canvas-drawn
-//   "Import" row, so the user's finger lands on a real input (the only thing
-//   iOS Safari honors). That test — AND a WebKit(Safari-engine) reproduction I
-//   ran locally — both PASS: the overlay is created, sits on the button, is the
-//   topmost hit-tested element, and the picker fires. So the failure is NOT in
-//   the Chromium/WebKit engines on Linux; it is a REAL-DEVICE viewport effect.
-//
-//   The overlay is positioned from `canvas.getBoundingClientRect().top + rectY`
-//   as a `position:fixed` element. On a real phone the dynamic viewport (URL
-//   bar show/hide, safe-area insets, pinch) makes `visualViewport` diverge from
-//   the layout viewport, so a fixed overlay computed from a visual-viewport
-//   rect can DRIFT off the visible button. When it drifts, the finger tap lands
-//   on the <canvas> underneath instead of the input → Go runs its desktop
-//   `input.click()` fallback → iOS ignores it → "nothing happens".
-//
-// WHAT THIS TEST ASSERTS on real hardware (no OS picker is triggered — we only
-// hit-test and measure, so the session never hangs on a native dialog):
-//   INV-1  the Import <input type=file> overlay actually exists once the File
-//          menu is open (it was armed for this device);
-//   INV-2  the overlay's RENDERED rect stays aligned (within tolerance) with
-//          the intended button position `canvasTop + goRectY` — i.e. it did NOT
-//          drift under the device's real viewport;
-//   INV-3  document.elementFromPoint() at the VISIBLE button center returns the
-//          Import input (not the canvas) — i.e. a finger there hits the input.
-//   If INV-2/INV-3 fail on a device, that device reproduces the bug; the full
-//   diagnostics (visualViewport offset, canvas/overlay rects) are printed so we
-//   can see exactly how far the overlay drifted.
-//
-// Prerequisites:
-//   export BROWSERSTACK_USERNAME=...   export BROWSERSTACK_ACCESS_KEY=...
-// Run (all devices, or filter):
-//   GO=$(pwd)/.tools/go/bin/go node src/js/mobile_import_realdevice.browser.test.js
-//   DEVICE_FILTER=Pixel  GO=$(pwd)/.tools/go/bin/go node src/js/mobile_import_realdevice.browser.test.js
-//   DEVICE_FILTER=iPhone GO=$(pwd)/.tools/go/bin/go node src/js/mobile_import_realdevice.browser.test.js
-//
-// On-demand only — real devices, not CI.
+// On real devices (BrowserStack, on demand), the Import overlay must exist once the File menu opens, stay aligned with
+// the button under the device's dynamic viewport, and be what elementFromPoint hits at the button centre; no OS picker is
+// triggered. Run: GO=… node src/js/mobile_import_realdevice.browser.test.js (DEVICE_FILTER=Pixel|iPhone; BROWSERSTACK_*)
 
 import {
   buildWasm,
@@ -72,9 +30,7 @@ fs.writeFileSync(importFile, JSON.stringify({
   ],
 }));
 
-// Max pixel drift allowed between where the overlay is rendered and where the
-// canvas-drawn button is. A real finger (~44px target) still lands on the input
-// under a few px of slop; a viewport-driven drift is tens/hundreds of px.
+// A finger still lands under a few px of slop; a viewport drift is tens or hundreds.
 const ALIGN_TOLERANCE_PX = 8;
 
 const deviceFilter = process.env.DEVICE_FILTER || "";
@@ -113,10 +69,7 @@ function withTimeout(promise, ms, label) {
   ]);
 }
 
-// Open the File menu and wait for the Import file-picker overlay to be armed.
-// Prefers the REAL user path (tap the grid folder button); falls back to the
-// programmatic openOverflowMenu() export if the tap didn't register (itself a
-// finding — recorded in `openedVia`). Returns { openedVia } or throws.
+// The REAL path first (tap the folder button), then the openOverflowMenu() export; openedVia records which.
 async function openFileMenuAndArm(page) {
   const folder = await page.evaluate(() => (typeof fileMenuBtnRect === "function" ? fileMenuBtnRect() : null));
   const canvasOff = await page.evaluate(() => {
@@ -127,11 +80,8 @@ async function openFileMenuAndArm(page) {
     page.evaluate(() => !!(window._fpDebugRects && window._fpDebugRects().import));
   const realTap = async (x, y) => { try { await page.touchscreen.tap(x, y); } catch (_) {} };
 
-  // iOS Safari throttles the rAF Update loop on a page with NO real user
-  // interaction, so forceDraw() (Draw only) can't advance the queued menu-open /
-  // syncNativeGestures. Real taps DO run the loop — exactly what the user does.
-  // Round 1: drive REAL folder-button taps and let real rAF frames run between
-  // them (no forceDraw). This is the faithful user path.
+  // iOS throttles the rAF loop on a page with no real interaction, so forceDraw cannot advance the menu; real taps run
+  // the loop, as the user's do.
   let openedVia = "folder-tap";
   if (folder && folder.w > 0) {
     const fx = canvasOff.left + folder.x + folder.w / 2;
@@ -143,15 +93,13 @@ async function openFileMenuAndArm(page) {
     }
   }
 
-  // Round 2: the loop is now awake (we've interacted). Open programmatically and
-  // let real frames drain the queued action + run syncNativeGestures.
+  // The loop is awake now: open programmatically and let real frames run syncNativeGestures.
   openedVia = "programmatic(openOverflowMenu, post-interaction)";
   await realTap(canvasOff.left + 5, canvasOff.top + 5); // extra wake tap (harmless corner)
   await page.evaluate(() => typeof openOverflowMenu === "function" && openOverflowMenu());
   for (let i = 0; i < 20; i++) { if (await armed()) return { openedVia }; await page.waitForTimeout(250); }
 
-  // Never armed — collect JS-side diagnostics to isolate Go (didn't call
-  // _fpRegisterRect) vs JS (the overlay IIFE is broken/absent on this engine).
+  // Tells Go (never registered a rect) from JS (the overlay code broken on this engine).
   const jsDiag = await page.evaluate(() => {
     const t = (n) => typeof window[n];
     const before = window._fpDebugRects ? window._fpDebugRects() : null;
@@ -182,8 +130,7 @@ async function openFileMenuAndArm(page) {
   throw err;
 }
 
-// Collect everything needed to judge overlay alignment + hit-testing on the
-// real device, without triggering the OS file picker.
+// Without triggering the OS file picker.
 async function collectOverlayDiag(page) {
   return page.evaluate(() => {
     const canvas = document.querySelector("canvas");
@@ -244,11 +191,7 @@ for (const device of devices) {
       const { openedVia } = await openFileMenuAndArm(page);
       console.log(`  File menu opened via: ${openedVia}`);
       if (openedVia !== "folder-tap") {
-        // DIAGNOSTIC ONLY — not a pass/fail signal. Playwright's synthetic
-        // touchscreen.tap() is a zero-dwell touch that Go's frame-based tap
-        // detector often misses on real hardware; a human finger-tap on the
-        // folder button DOES open the menu (the user reaches Export through it).
-        // The pass/fail is INV-1..3 below (the overlay-positioning reproduction).
+        // Diagnostic only: a zero-dwell synthetic tap is often missed by Go's frame-based detector, while a finger opens the menu.
         console.warn("  WARN: folder-button touchscreen.tap() did not open the menu (harness zero-dwell tap); opened programmatically instead");
       }
 
@@ -282,20 +225,8 @@ for (const device of devices) {
         );
       }
 
-      // INV-4 (the crux of "nothing happens"): a REAL trusted tap on the overlay
-      // must open the OS file chooser. page.on("filechooser") INTERCEPTS the
-      // native dialog (no hang) and fires when the picker would have opened.
-      //
-      // IMPORTANT — automation caveat (measured, not assumed): on real
-      // BrowserStack devices — iOS Safari AND Android Chrome alike —
-      // Playwright's automated touchscreen.tap() does NOT open the native file
-      // picker for ANY <input type=file> (verified on iOS with an opacity:1
-      // control input: neither opacity:0 NOR opacity:1 fired a filechooser; the
-      // same tap fails to fire on real Android too). That is a WebDriver/
-      // automation limitation, not the app. So INV-4 is DIAGNOSTIC ONLY on real
-      // hardware — the real-finger picker-open must be confirmed by hand. INV-1..3
-      // (overlay armed, aligned, hit-testable) are the authoritative real-device
-      // signals.
+      // Diagnostic only: on real BrowserStack devices an automated tap opens no native picker for any file input (an
+      // automation limit, measured on both engines); the finger case is confirmed by hand.
       let chooserFired = false;
       const onChooser = async (fc) => { chooserFired = true; try { await fc.setFiles(importFile); } catch (_) {} };
       page.on("filechooser", onChooser);
@@ -309,8 +240,7 @@ for (const device of devices) {
       if (chooserFired) {
         console.log("  INV-4: file chooser opened on tap");
       } else {
-        // Diagnostic only — automated taps can't open native pickers on real
-        // BrowserStack devices (measured for both engines). Not a pass/fail.
+        // Automated taps cannot open native pickers on real devices.
         console.warn(
           `  WARN(INV-4): tap on the Import overlay did not open a filechooser — EXPECTED under automation ` +
           `(WebDriver cannot open native file pickers on real devices; confirm the real-finger behavior by hand)`

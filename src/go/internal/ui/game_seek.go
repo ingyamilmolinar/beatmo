@@ -8,9 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
-// SeekSteps repositions the playhead to absolute subdivision `steps`. It is
-// the single engine chokepoint for all user navigation (ribbon, FF/RW,
-// counter, keyboard, JS) and for undo restore. Must be called with seqMu held.
+// The single engine chokepoint for every navigation and undo restore. Caller holds seqMu.
 func (g *Game) SeekSteps(steps int, origin hooks.SeekOrigin) {
 	if steps < 0 {
 		steps = 0
@@ -58,15 +56,8 @@ func (g *Game) SeekSteps(steps int, origin hooks.SeekOrigin) {
 
 	// Rewind the predictor window to the seek target and re-simulate forward.
 	if g.engine != nil && g.engine.Predictor != nil {
-		// RebaseAt re-walks [0, steps) per row to rebuild the position-dependent
-		// context maps — O(steps) and the dominant seek cost (see
-		// bench-results/seek_navigation_bench.md). It is only REQUIRED for a
-		// backward seek below the evicted window (steps < WindowStart), where the
-		// buffers were dropped and must be reconstructed. For a forward or
-		// in-window seek the buffers [WindowStart, WindowEnd) are already valid
-		// and Ensure(steps+1) — which extends from WindowEnd using context that
-		// is already correct at the frontier — suffices. Gating removes the
-		// O(steps) re-walk from forward seeks.
+		// RebaseAt is O(steps), the dominant seek cost, and only needed below the evicted window; forward
+		// and in-window seeks are already valid and Ensure(steps+1) suffices.
 		if steps < g.engine.Predictor.WindowStart() {
 			g.engine.Predictor.RebaseAt(steps)
 		}
@@ -88,27 +79,15 @@ func (g *Game) SeekSteps(steps int, origin hooks.SeekOrigin) {
 	// Reset sequencer counters to stay aligned with updated paths.
 	g.seqNextIdxs = make([]int, len(g.drum.Rows))
 
-	// Tracking lock: when the drum-view lock (FollowPlayback) is on, a seek/jump
-	// while STOPPED recenters the view on the new position so it follows the
-	// playback pointer. This is edge-triggered by the pointer change (not a
-	// per-frame lock), so manual panning between seeks stays free. During
-	// playback the per-frame updateDrumTracking already follows the playhead.
-	// TrackBeat self-gates on FollowPlayback(), so this no-ops when the lock is
-	// off.
+	// With the lock on, a seek while STOPPED recenters the view (edge-triggered, so panning between
+	// seeks stays free); while playing, updateDrumTracking already follows.
 	if !g.Playing() {
 		g.drum.TrackBeat(steps)
 	}
 }
 
-// drainSeekRequest applies any queued DrumView seek request. It is called from
-// Game.Update AFTER the drum.Update seqMu window has been released, so it
-// acquires seqMu itself: SeekSteps mutates seqNextIdxs / timeline / predictor
-// state shared with the background sequencer goroutine (which guards those with
-// seqMu.TryLock in seqScheduleTime). Holding seqMu here excludes that tick for
-// the duration of the seek. SeekSteps does not take seqMu, so there is no
-// re-entrant deadlock; within it timeline.mu and predictor.mu are each taken
-// and released independently (never nested with each other), with seqMu as the
-// outer lock — the same shape the sequencer uses, so no ordering conflict.
+// Takes seqMu itself (called after drum.Update released it): SeekSteps mutates state the
+// sequencer guards with TryLock. timeline.mu and predictor.mu are never nested, seqMu outermost.
 func (g *Game) drainSeekRequest() {
 	value, mode, origin, ok := g.drum.TakeSeekRequest()
 	if !ok {
@@ -149,8 +128,7 @@ func (g *Game) setPrimaryStep(step int) {
 	if g.Playing() {
 		g.elapsedBeats = step
 		g.state.SetLastStep(step)
-		// The playhead just moved: freeze what the passed cells show now,
-		// before anything later in the frame can change live state.
+		// Freeze what the passed cells show before anything later this frame changes live state.
 		g.freezePlayedThroughPlayhead()
 		return
 	}
@@ -163,12 +141,8 @@ func (g *Game) updateDrumTracking() {
 			g.state.DecSeekFreezeFrames()
 			return
 		}
-		// Single source of truth: feed TrackBeat the same canonical
-		// playhead the mini-timeline cursor renders. Sampling separate
-		// clocks here (g.elapsedBeats, LastDisplayBeat, nextBeatIdxs[0])
-		// and MAX-ing them produced the symptom in screenshot.png — the
-		// drum-view window drifted behind the cursor whenever wall-clock
-		// interpolation got ahead of (or behind) the sequencer fires.
+		// The same canonical playhead the ribbon cursor renders: mixing clocks made the view drift behind
+		// the cursor.
 		g.drum.TrackBeat(g.playheadAbsSubdiv())
 		return
 	}
@@ -177,22 +151,8 @@ func (g *Game) updateDrumTracking() {
 	}
 }
 
-// playheadAbsSubdiv is the canonical "current absolute subdivision being
-// played" — the single source of truth shared by the mini-timeline cursor
-// (which renders g.displayBeat()) and the drum-view auto-scroll (which
-// consumes this integer). Both must derive from the same clock or the
-// orange viewRect and the cursor visibly desync, exactly the bug the user
-// reported in screenshot.png.
-//
-// Derivation: PlayheadPosition().Steps == round(displayBeat() * div).
-// displayBeat() is monotonic and already combines sequencer-tick progress with
-// smooth wall/audio-clock interpolation, so the conversion to subdivisions
-// inherits all of those invariants. The ±0.5-cell quantisation gap between the
-// smooth cursor and this integer is the irreducible cost of drum.Offset being
-// an int, and is well below TrackBeat's ±1-cell recenter dead-zone.
-//
-// Routed through PlayheadPosition so the step the seek path consumes and the
-// beat/second the readouts print come from the same resolved clock sample.
+// The one source shared by the ribbon cursor and the drum-view auto-scroll, so the two cannot
+// desync. round(displayBeat() * div); the ±0.5-cell gap sits inside TrackBeat's ±1-cell dead zone.
 func (g *Game) playheadAbsSubdiv() int {
 	return g.PlayheadPosition().Steps
 }
@@ -204,24 +164,8 @@ func (g *Game) handlePlaybackTransition(prevPlaying, prevPaused bool) {
 	}
 	g.logger.Debugf("[game] playing state changed: %t -> %t", prevPlaying, curr)
 	if curr {
-		// Session-relative anchors (task-rule-replay): every FRESH playback
-		// start — stop->play, NOT resume-from-pause (prevPaused distinguishes
-		// the two; a resume must keep the mid-session anchor so the
-		// task-rule-continuity in-place-edit guarantee holds) — re-anchors
-		// every group rule to the session's starting absolute subdivision
-		// index (0 after a stop, or the seek position when playback starts
-		// from a seek — playheadAbsSubdiv is the same clock ruleAnchorIdxNow
-		// reads, sampled here BEFORE any scheduling advance this frame).
-		// Without this, a rule saved mid-session N (anchored well after abs
-		// 0) silently fails to ramp for the entire region below that stale
-		// anchor on session N+1, since GroupEffect's anchor=min(anchor,absIdx)
-		// collapse forces steps=0 until the playhead re-passes it. This is
-		// the single chokepoint shared by the transport play button and the
-		// JS startPlay export (both set dv.playPressed, consumed by
-		// Game.Update's PlayPressed() handling, which runs earlier in the
-		// same Update() call that ends with this transition check). No
-		// emits/undo: this is runtime ramp state, not a document edit — see
-		// ReanchorAllGroupRules' doc comment.
+		// Every FRESH start (not a resume) re-anchors all group rules at the session's starting position,
+		// or a rule saved mid-session never ramps below its stale anchor next time. Runtime ramp state: no emit.
 		if !prevPaused {
 			g.graph.ReanchorAllGroupRules(g.playheadAbsSubdiv())
 		}
@@ -252,11 +196,6 @@ func (g *Game) handlePlaybackTransition(prevPlaying, prevPaused bool) {
 	}
 	g.drum.SetPlaying(curr)
 	notifyMediaSessionState()
-	// Distinguish four narrative transitions so INFO reads naturally:
-	//   prevPaused=true,  curr=true  → "resumed" (was paused, now playing)
-	//   prevPaused=false, curr=true  → "play started" (fresh start)
-	//   curr=false, currently paused → "paused" (suspended, not stopped)
-	//   curr=false, not paused        → "play stopped"
 	switch {
 	case curr && prevPaused:
 		hooks.PublishWithSource(hooks.EventResumed, nil, hooks.CaptureSource(0))

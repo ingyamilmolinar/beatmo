@@ -11,9 +11,7 @@
 #define EXPORT
 #endif
 
-/* ── 4-operator FM synthesis engine ──────────────────────────────────────── */
-/* fm_operator / fm_preset / fm_render are declared in fmsynth.h so the
- * modular voice engine (modular.c) can reuse the core renderer. */
+/* 4-operator FM; the core renderer is declared in fmsynth.h so the modular engine reuses it. */
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -35,9 +33,7 @@ static void ensure_fm_sine(void) {
     beatmo_once(&fm_sine_once, build_fm_sine);
 }
 
-/* Optional operator waveforms for the fm_wave knob (band-limited, same
- * harmonic budget as the modular voice). Lazily built; the default sine
- * path never touches them, so wave==0 renders stay bit-identical. */
+/* Band-limited like the modular voice and built lazily; the sine path never touches them, so wave 0 stays bit-identical. */
 #define FM_WT_HARMONICS 48
 static float       fm_saw_buf[WT_DEFAULT_LENGTH + 1];
 static float       fm_square_buf[WT_DEFAULT_LENGTH + 1];
@@ -157,9 +153,7 @@ void fm_render(const fm_preset *p, float *out,
                                  o->attack_sec, o->decay_sec,
                                  o->sustain_level, o->release_sec);
 
-            /* Phase modulation from other operators.
-             * Convert from radians-equivalent to table units:
-             * mod_input is in radians-like units, scale to table length / (2π). */
+            /* mod_input is in radian-like units: scaled to table length / 2π. */
             double phase_mod = (double)mod_input[op] * (double)wt_len / TWO_PI;
 
             /* Advance phase in table units: freq * tableLength / sampleRate */

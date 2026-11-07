@@ -7,14 +7,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Regression: when a live edit changes beat paths during playback, we may bump
-// audioGen and clear parity buffers. If the sequencer counters were ahead of
-// the UI playhead boundary (nextBeatIdxs), leaving them "future" can cause
-// reschedules to skip the true next beat for the row (and parity can miss the
-// resulting mismatch because history/past masking remains authoritative).
-//
-// Ensure updateBeatInfos clamps seqNextIdxs back to the next-beat boundary on
-// path changes while playing.
+// A sequencer left ahead of the UI boundary after a live path change would skip the row's true next beat, and
+// parity could miss it; updateBeatInfos clamps seqNextIdxs back while playing.
 func TestUpdateBeatInfos_PathChangeClampsSequencerAheadOfView(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -50,8 +44,7 @@ func TestUpdateBeatInfos_PathChangeClampsSequencerAheadOfView(t *testing.T) {
 		t.Fatalf("unexpected nextBeatIdxs=%d", beforeNext)
 	}
 
-	// Simulate a transient race where the sequencer got ahead of the UI's
-	// next-beat boundary (e.g., highlights haven't applied yet).
+	// A transient race: highlights not yet applied.
 	g.seqMu.Lock()
 	g.seqNextIdxs[0] = beforeNext + 5
 	g.seqMu.Unlock()

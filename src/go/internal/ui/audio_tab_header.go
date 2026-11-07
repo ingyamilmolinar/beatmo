@@ -9,15 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Audio-tab header chrome shared by the Synth and Sampler tabs: one title
-// treatment and one action-button size, so the two headers read as a family
-// and sit at the same scale as the sticky bar's tab pills above them.
-//
-// The title is a GROUP label + the instrument: the tab name ("SYNTH") in the
-// uppercase muted caption role (DESIGN.md "menu-group-header" — a category,
-// not a heading) followed by the instrument's display name at body. Both sit
-// on one baseline. Actions are body-role keycaps sized by
-// densities.synthHeaderButtonH.
+// One title treatment and one button size for Synth and Sampler, at the sticky bar's scale: the tab
+// name as a muted caption, then the instrument at body, on one baseline.
 
 // audioTabHeaderTitleGap separates the tab label from the instrument name.
 const audioTabHeaderTitleGap = SpaceSM
@@ -25,15 +18,11 @@ const audioTabHeaderTitleGap = SpaceSM
 // audioTabActionButtonPadX is the horizontal inset of a header action label.
 const audioTabActionButtonPadX = SpaceMD
 
-// audioTabActionButtonWidth is the width of a text action keycap in an audio
-// tab (Preview / Save / Save As / Reset, and the Sampler's Rev / Norm / Fade
-// row): the body-role label plus a fixed inset.
 func audioTabActionButtonWidth(label string) int {
 	return StyledTextWidth(label, RoleBody) + 2*audioTabActionButtonPadX
 }
 
-// drawAudioTabHeaderTitle draws "<TAB> <name>" left-aligned at x inside the
-// header band r, clipped to maxW. name may be empty (tab label only).
+// name may be empty.
 func drawAudioTabHeaderTitle(dst *ebiten.Image, r image.Rectangle, x, maxW int, tab, name string) {
 	if maxW <= 0 || r.Empty() {
 		return
@@ -55,10 +44,7 @@ func drawAudioTabHeaderTitle(dst *ebiten.Image, r image.Rectangle, x, maxW int, 
 	}
 }
 
-// audioTabHeaderName is the instrument half of the header title — its display
-// name, else its id; "" when no instrument is selected. The recipe id is never
-// shown when a name exists — it is an engine identifier, not something a user
-// recognises.
+// The display name, else the id; never the recipe id when a name exists.
 func audioTabHeaderName(instID instrument.ID) string {
 	if name := audio.InstrumentDisplayName(instID); name != "" {
 		return name

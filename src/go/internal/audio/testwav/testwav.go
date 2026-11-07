@@ -1,7 +1,4 @@
-// Package testwav writes minimal, valid PCM WAV files into a t.TempDir() and
-// returns audio.SoundMeta entries that point at them. Test code uses these to
-// drive the catalog without depending on any embedded or repo-tracked sample
-// bytes.
+// So tests drive the catalog without any repo-tracked sample bytes.
 package testwav
 
 import (
@@ -26,9 +23,7 @@ type Spec struct {
 	Filename string
 }
 
-// Stage writes one tiny WAV per spec into a fresh subdirectory of t.TempDir()
-// and returns SoundMeta entries with absolute Path values. The catalog is not
-// touched; callers may pass the result to audio.ResetCatalogForTest.
+// The catalog is not touched; pass the result to audio.ResetCatalogForTest.
 func Stage(t testing.TB, specs []Spec) []audio.SoundMeta {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "wav")
@@ -64,8 +59,6 @@ func Stage(t testing.TB, specs []Spec) []audio.SoundMeta {
 	return out
 }
 
-// WritePath writes a single tiny WAV at an explicit path. Used when tests need
-// the file at a specific location (e.g. mirroring a project layout).
 func WritePath(t testing.TB, path string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

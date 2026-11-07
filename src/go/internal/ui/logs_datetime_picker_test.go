@@ -111,8 +111,7 @@ func TestPickerHourMinuteWrap(t *testing.T) {
 	}
 }
 
-// The HH and MM wheels scroll through the picker's own input path (the logs
-// panel hands it pointer + wheel events), and Set commits what they show.
+// Through the picker's own input path: the logs panel hands it pointer and wheel events.
 func TestPickerTimeWheelsDriveTheSelection(t *testing.T) {
 	restore := setLogsNow(t, time.Date(2026, 7, 20, 10, 30, 0, 0, time.Local))
 	defer restore()
@@ -188,9 +187,7 @@ func TestIconCalendarDispatch(t *testing.T) {
 	}
 }
 
-// A finger DRAG on a time wheel goes through the tree's hit handler: the press
-// must capture (or the tree never delivers OnDrag), and the drag moves the
-// value one detent per notch like every other wheel.
+// The press must capture, or the tree never delivers OnDrag; a drag moves one detent per notch.
 func TestPickerTimeWheelDragThroughTheHitHandler(t *testing.T) {
 	restore := setLogsNow(t, time.Date(2026, 7, 20, 10, 30, 0, 0, time.Local))
 	defer restore()

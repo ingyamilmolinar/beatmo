@@ -8,11 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestSynthCellHasNoVizBand guards the post-Task-8 layout: the per-knob
-// concept-viz band is gone (the focus graph in the right pane explains the
-// selected knob), so the knob cell reserves NO band below the dial+caption.
-// The knob fills the cell (dial + caption span the whole cell height) instead
-// of yielding room for a mini-picture.
+// The cell reserves no band below the knob: the graph pane explains the focused dial.
 func TestSynthCellHasNoVizBand(t *testing.T) {
 	g := setupModularSynthGame(t)
 	expandSynthPanelForTest(t, g)
@@ -40,8 +36,7 @@ func TestSynthCellHasNoVizBand(t *testing.T) {
 		t.Fatalf("section %v has no knobs", secID)
 	}
 	knobR := g.drum.instEditorControls[knobIdx].Rect()
-	// No viz band: the gap between the knob bottom and the cell bottom is just
-	// the inter-row gap (SpaceXS), never a reserved drawing band.
+	// Only the inter-row gap (SpaceXS).
 	band := cell.Max.Y - knobR.Max.Y
 	if band > SpaceXS {
 		t.Fatalf("knob cell reserves %d px below the knob (cell=%v knob=%v) — Task 8 removed the per-knob viz band; expected <= %d (gap only)", band, cell, knobR, SpaceXS)

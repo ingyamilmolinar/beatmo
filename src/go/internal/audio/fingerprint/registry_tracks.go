@@ -1,21 +1,8 @@
 package fingerprint
 
-// registry_tracks.go — whole-signal statistics as registry rows.
-//
-// Every row here reads a frame-wise track (tracks.go) reduced by TrackStats
-// (trackstats.go). This is the "overall statistically for the entire wave"
-// half of the battery, and it is deliberately a small CURATED selection from
-// a much larger cross-product: six tracks times twelve statistics is
-// seventy-two candidates, and registering all of them would bury the report
-// under near-duplicates before the Phase 6 orthogonality analysis has had a
-// chance to say which are redundant.
-//
-// The selection rule applied here: register the statistics that answer a
-// question no EXISTING descriptor already answers. Mean centroid is skipped
-// because bright.centroid already reports brightness; centroid SLOPE and
-// CURVATURE are registered because nothing in the battery could previously
-// see a note that brightens as it swells. When Phase 6 measures the
-// correlation matrix, this list gets pruned or extended on evidence.
+// Whole-signal statistics of frame tracks, a CURATED selection of the 72-way cross-product: only statistics that answer
+// a question no existing descriptor does (centroid slope and curvature, since nothing else saw a note brighten as it
+// swells).
 
 // Whole-signal statistic descriptor IDs.
 const (
@@ -34,17 +21,11 @@ const (
 	IDTrackH2MinusH1Slope    = "track.h2_minus_h1.slope"
 )
 
-// GroupWholeSignal is the report group for frame-wise whole-signal
-// statistics.
 const GroupWholeSignal = "whole-signal statistics"
 
 const naNoFrames = "signal too short for frame-wise analysis"
 
-// trackRow registers one (track, statistic) descriptor.
-//
-// pick receives the already-computed Tracks and returns the track to reduce;
-// stat pulls the wanted field out of the reduction. Splitting it this way
-// keeps each row a one-liner while the extraction stays type-safe.
+// pick chooses the track and stat the field, keeping each row a one-liner and the extraction type-safe.
 func trackRow(id, name, doc string, kind Kind, repr Repr,
 	drift, mismatch float64, unit string,
 	needsPitch bool,
@@ -102,14 +83,8 @@ func init() {
 		func(t *Tracks) []float64 { return t.Centroid },
 		func(s TrackStats) float64 { return s.IQR })
 
-	// --- amplitude shape over time --------------------------------------------
-	//
-	// These three together are the direct fix for the documented failure where
-	// a metric's MAGNITUDE matched while its CHARACTER was opposite. The
-	// violin's std/mean was tuned to 0.40 against a real 0.64 and still sounded
-	// wrong, because the real variation is a slow bow-stroke shape and the
-	// synth's was fast chaos. IQR captures the magnitude; slope and curvature
-	// capture the shape; monotonic fraction captures gesture-vs-chaos.
+	// A metric's MAGNITUDE can match while its CHARACTER is opposite (a slow bow-stroke shape vs fast chaos at equal
+	// std/mean): IQR is the magnitude, slope and curvature the shape, monotonic fraction gesture versus chaos.
 
 	trackRow(IDTrackRMSSlope, "loudness slope",
 		"OLS slope of the per-frame RMS envelope over the whole signal. Positive is "+

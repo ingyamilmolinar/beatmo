@@ -6,8 +6,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/ui/preview"
 )
 
-// buildRowWindow merges predictor state, timeline commits, freezes, and past preservation
-// into a fresh Steps/CellTypes window.
 func (s *playbackSlate) buildRowWindow(rowIdx int, cfg rowWindowConfig) ([]bool, []model.NodeType) {
 	g := s.g
 	windowLen := g.drum.Length

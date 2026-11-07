@@ -6,9 +6,7 @@ import (
 	"testing"
 )
 
-// TestDrift ensures that the committed JSON files under internal/assets/templates/
-// match exactly what build() produces. If a spec changes, the committed file must
-// be regenerated via `go run ./cmd/gen-showcase` — this test catches drift.
+// Regenerate with go run ./cmd/gen-showcase.
 func TestDrift(t *testing.T) {
 	outDir := filepath.Join("..", "..", "internal", "assets", "templates")
 	for _, s := range showcases() {

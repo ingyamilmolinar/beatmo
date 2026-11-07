@@ -9,17 +9,12 @@ import (
 	gamelog "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestContextMenuCloseBtnFoundByIdentity pins that the row context menu's close
-// button is retrieved by IDENTITY, not as "whatever was appended last". The
-// old `contextMenuBtns[len-1]` lookup silently drifts onto any trailing button
-// added later (the same fragility class as the rename-trigger index bug). This
-// test simulates a future change that appends a trailing non-close button and
-// asserts the close button is still found.
+// Found by identity, never as the last button appended: an index lookup drifts onto any trailing button
+// added later.
 func TestContextMenuCloseBtnFoundByIdentity(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultAudio(t)
-	// Desktop: the close × exists only here (mobile dismisses via tap-away), so
-	// the identity-robustness check runs on the desktop profile.
+	// The close × exists only on desktop; mobile dismisses by tap-away.
 	withSmallScreen(t, false)
 
 	logger := gamelog.New(testLogOutput(), gamelog.LevelError)
@@ -51,11 +46,7 @@ func TestContextMenuCloseBtnFoundByIdentity(t *testing.T) {
 	}
 }
 
-// TestContextMenuRenameBtnRobustToButtonDrift pins that the Rename item is
-// found by button identity, not by index alignment between the button slice and
-// a parallel icon slice. Inserting a button ahead of the others (simulating a
-// future menu change / lockstep-append desync) must NOT cause a different button
-// to be mistaken for Rename — the failure mode that let "Color" open rename.
+// Found by identity, not by alignment with a parallel icon slice: a desync once made "Color" open rename.
 func TestContextMenuRenameBtnRobustToButtonDrift(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultAudio(t)
@@ -70,8 +61,7 @@ func TestContextMenuRenameBtnRobustToButtonDrift(t *testing.T) {
 		t.Fatal("contextMenuRenameBtn() returned nil for open menu")
 	}
 
-	// Simulate the button slice drifting out of lockstep with icon metadata by
-	// inserting an unrelated button at the front.
+	// The button slice drifting out of lockstep with the icon metadata.
 	dummy := NewButton("", PopupButtonStyle, nil)
 	dv.contextMenuBtns = append([]*Button{dummy}, dv.contextMenuBtns...)
 
@@ -80,9 +70,7 @@ func TestContextMenuRenameBtnRobustToButtonDrift(t *testing.T) {
 	}
 }
 
-// TestFXPanelCloseBtnFoundByIdentity pins the same identity contract for the
-// per-row insert-effects panel's close button (previously read via
-// fxPanelBtns[len-1] at multiple draw sites).
+// The same identity contract for the FX panel's close button.
 func TestFXPanelCloseBtnFoundByIdentity(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultAudio(t)

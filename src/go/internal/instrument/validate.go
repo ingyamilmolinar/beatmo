@@ -24,9 +24,7 @@ func sortedKeys[V any](m map[string]V) []string {
 	return keys
 }
 
-// Validate checks d against reg: structure, completeness, finiteness, Allowed
-// sets, versions and layer slot limits. It never checks knob ranges (those are
-// UI hints). Spec §5.
+// Structure, completeness, finiteness, Allowed sets, versions and slot limits; never knob ranges (UI hints).
 func Validate(d Doc, reg *Registry) error {
 	var p []string
 	bad := func(format string, a ...any) { p = append(p, fmt.Sprintf(format, a...)) }

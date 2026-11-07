@@ -417,10 +417,7 @@ func TestCalculateBeatRowFrom_UsesTemporaryStart(t *testing.T) {
 	}
 }
 
-// TestCalculateBeatRowUnbounded_WithLoop verifies that the unbounded variant
-// returns the raw path with loop metadata but without expanding the loop.
-// The C→A edge spans from (2,0) to (0,0), so an intermediate at (1,0) is
-// synthesized (B is regular there, so it gets InvalidNodeID).
+// C→A spans (2,0)→(0,0), so an intermediate is synthesised at (1,0), where the regular B becomes InvalidNodeID.
 func TestCalculateBeatRowUnbounded_WithLoop(t *testing.T) {
 	g := NewGraph(testLogger)
 	nA := g.AddNode(0, 0, NodeTypeRegular)

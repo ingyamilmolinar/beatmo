@@ -5,18 +5,9 @@ import (
 	"testing"
 )
 
-// standingFootprint mirrors the "Standing pools" table in CLAUDE.md: every
-// pool that production code registers against DefaultRegistry over a normal
-// session, with the worker count it asks for at creation.
-//
-// The registry's default budget floor MUST cover this whole set. A floor that
-// is too small does NOT save any resources — every caller with a fallback just
-// allocates the same workers in a *private* pool outside the budget — but it
-// does break the callers that have no fallback (ui.dialog silently fails the
-// WAV upload; recording.lifecycle's MustGet panics the whole app). So the floor
-// is a correctness constraint, not a tuning knob.
-//
-// Adding a standing pool means adding a row here AND bumping minDefaultBudget.
+// Every pool production registers over a normal session, with its worker count. The floor is a correctness
+// constraint: below this, the callers without a fallback break. A new standing pool = a row here AND a bump of
+// minDefaultBudget.
 var standingFootprint = []struct {
 	name    string
 	workers int
@@ -41,11 +32,8 @@ func footprintTotal() int {
 	return total
 }
 
-// TestDefaultBudgetFloorFitsStandingFootprint pins the floor to the real
-// standing footprint. It asserts the *floor constant* rather than a live
-// NewRegistry budget on purpose: the default is max(minDefaultBudget,
-// NumCPU-4), so on a big host NumCPU-4 would mask a too-small floor while
-// js/wasm (NumCPU==1) and any host with <=10 cores still get the floor.
+// The floor constant, not a live budget: on a big host NumCPU-4 would mask a too-small floor that js/wasm and any
+// <= 10-core host still get.
 func TestDefaultBudgetFloorFitsStandingFootprint(t *testing.T) {
 	if want := footprintTotal(); minDefaultBudget < want {
 		t.Errorf("minDefaultBudget = %d, want >= %d (standing footprint)", minDefaultBudget, want)
@@ -55,10 +43,7 @@ func TestDefaultBudgetFloorFitsStandingFootprint(t *testing.T) {
 	}
 }
 
-// TestDefaultRegistryFitsEveryStandingPool is the end-to-end version: build a
-// registry with the default budget and actually register every standing pool
-// in order. Every one must fit — no ErrBudgetExhausted, which is what breaks
-// the WAV upload and panics recording on js/wasm and on any <=10-core host.
+// Every standing pool, registered in order against the default budget, must fit.
 func TestDefaultRegistryFitsEveryStandingPool(t *testing.T) {
 	r := NewRegistry(context.Background(), 0) // 0 → default (floor or NumCPU-4)
 	t.Cleanup(func() {

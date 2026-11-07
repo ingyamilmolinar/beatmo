@@ -9,19 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestPickerAndChipAgreeAcrossTheRoster is the guard for the bug that making
-// note display universal would otherwise have shipped.
-//
-// nodeNoteLabel used to name a note via hzToNote, which CLAMPS to the piano
-// range (MIDI 21..108); the note-matrix picker labelled its cells from raw
-// MIDI and never clamped. No instrument that displayed a note before reached
-// the clamp, so the two agreed by luck. Universal display breaks that luck: a
-// kick's range is MIDI 9..57 and the deep kick's is 4..52, so the chip would
-// have shown "A0" for every cell in the bottom octave while the picker offered
-// A-1, G#-1, G-1 — the picker promising a note the chip then denies.
-//
-// This walks every instrument's whole selectable pitch range and asserts the
-// two surfaces name each cell identically.
+// hzToNote clamps to the piano range while the picker labels raw MIDI: a kick reaches MIDI 9 and the deep kick
+// 4, so a clamped chip would read "A0" across the bottom octave the picker offers as A-1, G#-1….
 func TestPickerAndChipAgreeAcrossTheRoster(t *testing.T) {
 	checked := 0
 	for _, id := range roster.All {
@@ -52,9 +41,7 @@ func TestPickerAndChipAgreeAcrossTheRoster(t *testing.T) {
 	t.Logf("checked %d picker cells against the chip label", checked)
 }
 
-// TestDeepInstrumentsKeepDistinctNoteNames pins the clamp fix directly: the
-// bottom of a deep kick's range must be twelve DIFFERENT note names, not twelve
-// copies of "A0".
+// Twelve DIFFERENT names, not twelve copies of "A0".
 func TestDeepInstrumentsKeepDistinctNoteNames(t *testing.T) {
 	for _, id := range []instrument.ID{roster.Kick, roster.KickDeep, roster.SubBass} {
 		offset, pitched := audio.InstrumentPitchInfo(id)

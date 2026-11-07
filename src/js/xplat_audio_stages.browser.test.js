@@ -1,47 +1,6 @@
-// xplat_audio_stages.browser.test.js
-//
-// Every stage between a voice and the speaker computes the same samples on
-// desktop and in the browser (user, 2026-10-27: "the same circuit sounds
-// exactly the same at any tempo in both platforms. This is paramount." — and
-// "write some tests to compare audio pipeline stages in both platforms").
-//
-// The desktop reference is rendered FRESH from this tree by
-// `cmd/export_audio --stages`: each case through desktop's real offline mixer
-// (audio.RenderStagesOffline), with each channel's signal captured after its
-// voices, after its insert chain and after its EQ, plus the master output
-// after the soft clip. The browser renders the same case through ITS real
-// graph — audio.js's note path (played_voice.js), channel wiring, the
-// beatmo-dsp worklet running the C effects / EQ / soft clip — on an
-// OfflineAudioContext (window.__offlineRenderForTest), and every tap is
-// compared sample by sample:
-//
-//   played/*   the played voice: drums pitched and sized by resampling,
-//              melodic notes at their exact pitch and gated by Duration,
-//              volumes down to below 1/32, starts off every block boundary
-//   played/sample-edit  a Sampler edit (trim, transpose, gain, reverse,
-//              normalise, fade) on a drum and a melodic voice
-//   stop/lane  a lane stop (a mute node) on its exact sample, linear fade
-//   fx/*       all 18 insert effects at default / min / mid / max settings,
-//              and a chain with a disabled slot
-//   eq/*       every EQ shape the UI makes: flat, shaped, shelves, high- and
-//              low-pass, a muted band, muted + filters, all muted
-//   master/*   master volume, master EQ, the soft clip driven past its knee
-//   chain/*    everything at once
-//   circuits   the startup demo, the test fixture and templates (one with a
-//              user's edits), imported through Go in the page — so every
-//              document, insert chain, EQ program and the master volume the
-//              browser renders is what Go PUSHED — against desktop's
-//              RenderMasterMixOffline of the same project (the reference is
-//              written by internal/ui TestWriteXplatCircuitReference)
-//
-// Runs in Chromium, Firefox and WebKit (XPLAT_ENGINES): no stage depends on
-// an engine's own DSP (WebAudio only sums, multiplies by a constant gain and
-// ramps a stop), so all three must match desktop.
-//
-// The bound is the float-rounding seam: the C is the same code, compiled by
-// gcc (desktop) and Emscripten (browser), with different libm; the voice
-// stage rounds to float32 at a different point (desktop keeps a double until
-// the channel). MAX_DIFF is far below anything audible (−100 dB re full scale).
+// Every stage between a voice and the speaker computes the same samples on desktop and in Chromium, Firefox and WebKit:
+// desktop's offline mixer (cmd/export_audio --stages, rendered fresh) against audio.js's real graph on an
+// OfflineAudioContext, tap by tap. The bound is the float-rounding seam of one C compiled two ways, far below audible.
 
 import fs from "fs";
 import os from "os";
@@ -72,9 +31,7 @@ function desktopStages() {
   return JSON.parse(r.stdout);
 }
 
-// desktopCircuits renders the whole-circuit references through a native Go
-// test that imports each project into a real Game (it needs a display, so it
-// runs under xvfb-run where that exists).
+// Through a native Go test that imports each project into a real Game; it needs a display, so xvfb-run where present.
 function desktopCircuits() {
   const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "xplat-circuits-")), "circuits.json");
   const env = { ...process.env, CGO_ENABLED: "1", XPLAT_CIRCUIT_OUT: out };
@@ -141,8 +98,7 @@ async function runEngine(engine, ref, circuits) {
       { timeout: 60000 }
     );
     await waitForAudioReady(page);
-    // The instruments exactly as desktop rendered them (the startup circuit
-    // may hold its own versions of some).
+    // Exactly as desktop rendered them: the startup circuit may hold its own versions.
     await page.evaluate((insts) => {
       for (const [id, d] of Object.entries(insts)) {
         window.setInstrumentBlock(id, Float64Array.from(d.block), d.seconds, d.amp, d.melodic, d.gateTail, d.fx);
@@ -205,9 +161,8 @@ async function runEngine(engine, ref, circuits) {
       for (const [name, s] of Object.entries(res.stats)) {
         if (s.missing) { failures.push(`${scene.name} ${name}: no browser tap`); continue; }
         if (s.wantLen !== s.gotLen) failures.push(`${scene.name} ${name}: ${s.gotLen} frames, desktop ${s.wantLen}`);
-        // A quantizing effect upstream (scene.quantum) may put an input one
-        // float32 ulp apart on the neighbouring step: allow exactly one step,
-        // on at most QUANTUM_FRACTION of the samples.
+        // An upstream quantizer can put an input one float32 ulp onto the neighbouring step: exactly one step, on at most
+        // QUANTUM_FRACTION of samples.
         const quantum = (scene.quantum && scene.quantum[name]) || 0;
         const withinQuantum = quantum > 0 && s.maxDiff <= MAX_DIFF + quantum * (1 + 1e-6) && s.over <= QUANTUM_FRACTION * s.n;
         if (s.maxDiff > MAX_DIFF && !withinQuantum) {

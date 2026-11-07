@@ -7,10 +7,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Regression: parityScan should catch audio-vs-predictor/view mismatches on the
-// current beat (abs == nextBeatIdxs[row]-1). Previously, audio checks were
-// gated by `abs < playhead || inPast`, which skips the current beat because it
-// is always in the "true past" (abs < nextBeatIdxs[row]) once highlighted.
+// The current beat is always in the true past once highlighted, so an `abs < playhead || inPast` gate would
+// skip it.
 func TestParityDetectsAudioMismatchOnCurrentBeat(t *testing.T) {
 	assertDefaultParityState(t)
 	g := buildTestGame(t)

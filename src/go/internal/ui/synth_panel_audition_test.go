@@ -8,21 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Helper contract: auditionInstrumentAfterDrag fires exactly one audition
-// trigger (audio.Play) per call for the resolved instrument. Its only
-// production caller is the explicit Preview button (previewActiveSynth) —
-// knob releases and stage toggles are config-only (next-trigger model; see
-// synth_no_auto_audition_test.go). The audition reuses the production
-// trigger plumbing (effect chain, voice cache invalidation, send-FX) — no
-// parallel preview voice.
-//
-// We test through the swappable synthAuditionFn hook so the test never
-// has to spin up the real engine. Each scenario:
-//
-//   - drives auditionInstrumentAfterDrag directly with the expected
-//     instrument id; asserts the hook fires exactly once with that id.
-//   - asserts the hook is NOT called when instID is empty (resolveSynth
-//     can return "" if the active row has no instrument).
+// Exactly one audition per call through the production trigger plumbing, never for an empty id; only Preview calls
+// it. Through the synthAuditionFn hook, with no real engine.
 
 func TestAuditionInstrumentAfterDrag_FiresOncePerRelease(t *testing.T) {
 	dv := &DrumView{}
@@ -35,8 +22,7 @@ func TestAuditionInstrumentAfterDrag_FiresOncePerRelease(t *testing.T) {
 	})
 	t.Cleanup(func() { SwapSynthAuditionFnForTest(prev) })
 
-	// Each release fires exactly once. Simulate three independent drag
-	// releases on different instruments.
+	// Three releases on different instruments.
 	dv.auditionInstrumentAfterDrag(roster.Snare)
 	dv.auditionInstrumentAfterDrag(roster.Kick)
 	dv.auditionInstrumentAfterDrag(roster.Hihat)
@@ -60,9 +46,7 @@ func TestAuditionInstrumentAfterDrag_NoOpOnEmptyID(t *testing.T) {
 	prev := SwapSynthAuditionFnForTest(func(instrument.ID) { calls++ })
 	t.Cleanup(func() { SwapSynthAuditionFnForTest(prev) })
 
-	// Empty instrument id (e.g. an unbound row) must not trigger audition —
-	// otherwise the audio engine receives a Play("") which legacy code may
-	// silently drop, but worse, future code may interpret as "play default".
+	// Play("") might one day mean "play default".
 	dv.auditionInstrumentAfterDrag("")
 
 	if calls != 0 {

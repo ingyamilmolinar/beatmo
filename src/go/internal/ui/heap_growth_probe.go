@@ -11,24 +11,11 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// heapProbeEnabled is read once at init from BEATMO_HEAP_PROBE. The probe is
-// off by default — when on, it samples runtime.MemStats once per second of
-// playback and logs the per-second TotalAlloc rate plus the top tracked
-// image-allocator tags. Tuned to be cheap enough to leave on in production
-// WASM if a future regression makes it useful.
-//
-// The probe exists because the fast WASM OOM (Game.Update OOM after ~13 s of
-// play, May 2026) was diagnosed only after writing a Go-side test and a
-// pprof memprofile run; in the wild we had nothing but a panic stack trace.
-// With this probe enabled, a future similar regression logs its allocation
-// rate every second and surfaces the top contributors by tag, so the
-// diagnosis is one console line instead of an hour of code-reading.
+// Off by default; when on, logs the per-second allocation rate and the top image tags. Cheap enough for
+// production WASM, so an OOM in the wild gets a one-line diagnosis instead of only a panic stack.
 var heapProbeEnabled = os.Getenv("BEATMO_HEAP_PROBE") == "1"
 
-// heapWatchEnabled is the broader gate for the 30s rollup WARN. Activated
-// by either BEATMO_HEAP_WATCH=1 or BEATMO_HEAP_PROBE=1 (PROBE implies
-// WATCH). Phase 3E of the long-session OOM plan: catches steady-state
-// heap growth in production sessions without the per-second log spam.
+// Catches steady-state heap growth with one WARN per 30 s, without the per-second spam; PROBE implies WATCH.
 var heapWatchEnabled = heapProbeEnabled ||
 	os.Getenv("BEATMO_HEAP_WATCH") == "1"
 
@@ -53,9 +40,7 @@ var heapProbe = &heapProbeState{
 	ring: make([]heapProbeSample, heapProbeRingSize),
 }
 
-// heapWatchState tracks the rolling 30s-window heap delta for the
-// rollup WARN. Independent of heapProbeState so the two can be gated
-// separately and one's reset doesn't perturb the other.
+// Independent of heapProbeState so the two gate and reset separately.
 type heapWatchState struct {
 	mu            sync.Mutex
 	windowFrame   int64  // frame at which the window started
@@ -68,49 +53,27 @@ type heapWatchState struct {
 
 var heapWatch = &heapWatchState{}
 
-// heapWatchTickFrames is the rollup window expressed in frames. 30 s ×
-// 60 fps = 1800. Computed in frames (not wall clock) so the rollup is
-// deterministic in tests and bench runs.
+// In frames, not wall clock, so it is deterministic in tests and benches.
 const heapWatchTickFrames = 1800
 
-// forcedGCRuns counts how many times heapProbeTick has triggered
-// runtime.GC() via the ForceGCInterval path. Exposed through
-// memSizes() so soak tests can confirm the pacing actually fires (a
-// gcCount of 0 alone doesn't distinguish "trigger didn't fire" from
-// "trigger fired but NumGC counter didn't move").
+// Lets soak tests confirm the pacing fires: a gcCount of 0 cannot tell "never fired" from "NumGC did not move".
 var (
 	forcedGCRuns      uint64
 	forcedGCLastFired time.Time
 )
 
-// ForcedGCRunsForTest returns the cumulative forced-GC trigger count
-// for diagnostics + soak assertions. Atomic-style read is fine because
-// the writer is the single Update goroutine.
+// The single Update goroutine writes it.
 func ForcedGCRunsForTest() uint64 { return forcedGCRuns }
 
-// ResetForcedGCRunsForTest zeros the counter + last-fired tracker so a
-// test can measure a clean window. Must be called before the test's
-// driving loop.
 func ResetForcedGCRunsForTest() {
 	forcedGCRuns = 0
 	forcedGCLastFired = time.Time{}
 }
 
-// heapProbeTick is called from Game.Update once per frame. It is a no-op
-// when the probe is disabled. Sampling cadence is "every 60 frames" rather
-// than wall-clock-based so the probe is deterministic in tests; at 60 FPS
-// this samples roughly once per second.
+// Every 60 frames, not wall clock, so it is deterministic in tests.
 func (g *Game) heapProbeTick() {
-	// Forced GC pacing — runs regardless of BEATMO_HEAP_PROBE / WATCH env
-	// vars because it's a runtime-profile knob, not a debug toggle. Single-
-	// threaded WASM Go GC starves under sustained audio + parameter-dispatch
-	// load (gc=0 across 300 s of synth-tab + param-drag observed 2026-05-17);
-	// calling runtime.GC() at the heap-probe yield point reclaims the cycle
-	// every ForceGCInterval of wall-clock time so HeapAlloc plateaus instead
-	// of growing linearly to the 2 GB WASM ceiling. Wall-clock based (not
-	// frame-count) because the browser frame rate under sustained load
-	// drops to ~7-13 fps and a frame-count cadence would fire too rarely.
-	// See RuntimeProfile field for the bench citation.
+	// Always on: single-threaded WASM GC starves under sustained audio + param load (gc=0 for minutes) and the
+	// heap grew to the 2 GB ceiling. Wall-clock paced because the frame rate drops to ~7 fps under that load.
 	if g != nil {
 		if interval := RuntimeProf().ForceGCInterval; interval > 0 {
 			now := time.Now()
@@ -123,15 +86,11 @@ func (g *Game) heapProbeTick() {
 			}
 		}
 	}
-	// Sample GC pause histogram + heap high-water for the perf snapshot.
-	// Non-STW (runtime/metrics) and throttled so it stays off the hot path;
-	// the first call lazily captures the window baseline. Runs always (not
-	// gated on the debug probe) so perfStats()/bench output always carry GC.
+	// Always on (not the debug gate) so perf output always carries GC; non-STW and throttled.
 	if g != nil && g.frame%15 == 0 {
 		g.gcMetrics.sample()
 	}
-	// Always run the 30 s rollup if it's enabled, even when the per-second
-	// probe is off. Cheap: one ReadMemStats every 1 800 frames.
+	// One ReadMemStats every 1800 frames.
 	if heapWatchEnabled && g != nil && g.frame > 0 && g.frame%heapWatchTickFrames == 0 {
 		g.heapWatchEmit()
 	}
@@ -174,13 +133,8 @@ func (g *Game) heapProbeTick() {
 	}
 }
 
-// heapWatchEmit emits one WARN line summarising the heap-growth slope
-// across the last heapWatchTickFrames frames (~30 s at 60 FPS). Includes
-// analyzer bridge stats so a per-frame analyzer leak surfaces here even
-// without the per-second probe.
-//
-// The first call in a session is silent — the watch state is empty
-// until the second tick, when we have a real window to compare against.
+// Includes analyzer bridge stats so a per-frame analyzer leak surfaces here. Silent on the first tick: there is
+// no window to compare yet.
 func (g *Game) heapWatchEmit() {
 	if g == nil || g.logger == nil {
 		return
@@ -223,9 +177,7 @@ func (g *Game) heapWatchEmit() {
 		bridgeDelta, readsDelta)
 }
 
-// HeapProbeSnapshot returns a human-readable dump of the heap-probe ring.
-// Used by the dumpHeapProbe JS export so a WASM session can post-mortem
-// inspect what was happening in the seconds before an OOM.
+// Lets a WASM session inspect the seconds before an OOM.
 func HeapProbeSnapshot() string {
 	heapProbe.mu.Lock()
 	defer heapProbe.mu.Unlock()

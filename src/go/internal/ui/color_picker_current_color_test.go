@@ -10,11 +10,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestColorPickerSeedsCurrentColorFromRow verifies the row color picker is
-// seeded with the row's live color so the matching palette swatch renders its
-// "selected" ring (drumview_overlay_color_comp.go draws the ring on the swatch
-// equal to props.CurrentColor). Without this wiring the picker opens with no
-// indication of which color is currently applied to the node.
+// Seeded with the row's live colour, so its swatch shows the selected ring.
 func TestColorPickerSeedsCurrentColorFromRow(t *testing.T) {
 	logger := game_log.New(nil, game_log.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 800, 600), nil, logger)

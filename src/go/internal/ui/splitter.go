@@ -7,9 +7,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// Splitter holds the divider position between grid and drum panes.
-// In horizontal mode (default), the divider is a horizontal line at Y.
-// In side-by-side mode (landscape mobile), it is a vertical line at X.
+// Side-by-side mode (landscape mobile) uses a vertical line at X.
 type Splitter struct {
 	Y           int     // divider position in screen px (horizontal mode)
 	X           int     // divider position in screen px (side-by-side mode)
@@ -21,8 +19,7 @@ type Splitter struct {
 	horizontal  bool    // true = top/bottom (default), false = left/right
 	guardFrames int     // >0 prevents new drag initiation (cooldown after drum capture)
 
-	// handle owns the shared animated line+pill draw (glow + grow on hover).
-	// Shared with the EQ-boundary divider via SplitterHandle.
+	// Shared with the EQ-boundary divider.
 	handle SplitterHandle
 }
 
@@ -73,10 +70,7 @@ func NewSplitter(totalH int) *Splitter {
 	return &Splitter{Y: totalH / 2, ratio: 0.5, horizontal: true}
 }
 
-// UpdateResize adjusts the divider position based on window resize.
-// The caller must provide the total window height and width so the splitter
-// can preserve its relative location when the window resizes.
-// This should be called each frame; input handling is separate via HandleInput.
+// Keeps the relative position across resizes; called every frame.
 func (s *Splitter) UpdateResize(totalH, winW int) {
 	s.winW = winW
 	s.totalH = totalH
@@ -131,8 +125,7 @@ func (s *Splitter) UpdateResize(totalH, winW int) {
 	}
 }
 
-// Update is a legacy method that combines UpdateResize and direct input polling.
-// Prefer using UpdateResize + InputDispatcher.HandleInput for new code.
+// Prefer UpdateResize + InputDispatcher.HandleInput.
 func (s *Splitter) Update(totalH, winW int) {
 	s.UpdateResize(totalH, winW)
 	// Legacy direct input handling (bypassed when using InputDispatcher)
@@ -240,20 +233,12 @@ func (s *Splitter) HandleRect() image.Rectangle {
 
 // --- InputHandler interface implementation ---
 
-// InputBounds returns the interactive area of the splitter (the grab zone).
-// The below-divider (or right-of-divider) extent is kept small so the splitter
-// does not steal taps from drum-area controls. During active drag the
-// dispatcher's capture mechanism handles events regardless of InputBounds.
+// Kept small below the divider so it never steals drum-area taps; capture handles an active drag.
 func (s *Splitter) InputBounds() image.Rectangle {
 	grab := TouchGrabZone()
 	const belowExtent = 4
-	// The grab strip must also encompass the full visible handle pill, so the
-	// dispatcher routes presses that land on the drawn pill to the splitter.
-	// Previously belowExtent (4 px) was smaller than the pill's lower half
-	// (thick/2 + SpaceSM), so presses on the bottom of the pill never reached
-	// HandleInput and fell through to whatever sat beneath it (the notification
-	// bar). HandleInput still self-gates on the pill rect, so widening the
-	// strip never steals presses that miss the pill.
+	// Covers the whole drawn pill, or presses on its lower half fall through to whatever lies beneath; HandleInput
+	// still self-gates on the pill.
 	pill := s.HandleRect().Inset(-SpaceSM)
 	if !s.horizontal {
 		left := s.X - grab
@@ -277,24 +262,18 @@ func (s *Splitter) InputBounds() image.Rectangle {
 	return image.Rect(0, top, s.winW, bottom)
 }
 
-// ZIndex returns the splitter's z-order for input dispatch.
-// Higher than DrumView (100) to ensure splitter gets priority at the boundary.
+// Above DrumView (100) so the splitter wins at the boundary.
 func (s *Splitter) ZIndex() int { return 150 }
 
-// HandleInput processes mouse input for the splitter.
-// Returns InputCaptured during drag, InputConsumed on release, InputIgnored otherwise.
 func (s *Splitter) HandleInput(x, y int, pressed bool) InputResult {
-	// Guard: block new drag initiation for a few frames after the drum view
-	// was capturing. This prevents touch flicker from handing input to the
-	// splitter when the user is scrolling in the drum rows.
+	// Touch flicker must not hand input to the splitter while the user scrolls the drum rows.
 	if s.guardFrames > 0 && !s.dragging {
 		return InputIgnored
 	}
 
 	grab := TouchGrabZone()
 
-	// On small screens, use a tighter initiation threshold so the grab zone
-	// doesn't extend far into the drum area and steal button taps.
+	// Tighter on small screens so the grab zone never steals button taps.
 	initGrab := grab
 	if t := Profile().SplitterGrabThreshold; t > 0 && grab > t {
 		initGrab = t
@@ -308,11 +287,7 @@ func (s *Splitter) HandleInput(x, y int, pressed bool) InputResult {
 	}
 
 	if s.horizontal {
-		// --- Stacked mode: drag Y ---
-		// Reject presses well below the divider UNLESS they land on the visible
-		// handle pill (which extends below s.Y). Without the pill exception, a
-		// press on the lower half of the drawn pill fell through to the
-		// notification bar beneath it.
+		// Presses well below the divider are rejected unless they land on the visible pill, which extends below s.Y.
 		if !s.dragging && y > s.Y+initGrab && !image.Pt(x, y).In(s.HandleRect().Inset(-SpaceSM)) {
 			return InputIgnored
 		}
@@ -356,8 +331,7 @@ func (s *Splitter) HandleInput(x, y int, pressed bool) InputResult {
 			return InputConsumed
 		}
 	} else {
-		// --- Side-by-side mode: drag X ---
-		// Mirror the stacked-mode pill exception (see above).
+		// The same pill exception as stacked mode.
 		if !s.dragging && x > s.X+initGrab && !image.Pt(x, y).In(s.HandleRect().Inset(-SpaceSM)) {
 			return InputIgnored
 		}

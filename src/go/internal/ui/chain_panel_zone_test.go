@@ -59,10 +59,7 @@ func TestChainTapSelection(t *testing.T) {
 	}
 }
 
-// TestNewChainPanelZoneDefaultsTapASynth pins the UX default that the Chain
-// tab opens with Synth selected as Tap A — and verifies the OnTapAChange
-// callback fires once during construction so the audio scope service mirrors
-// the UI state.
+// OnTapAChange fires once at construction, so the scope service mirrors the UI.
 func TestNewChainPanelZoneDefaultsTapASynth(t *testing.T) {
 	assertDefaultParityState(t)
 	var tapACalls []scope.Stage
@@ -80,9 +77,7 @@ func TestNewChainPanelZoneDefaultsTapASynth(t *testing.T) {
 	}
 }
 
-// TestChainTapAllStages verifies every stage (including InsertFX) can be
-// selected as a tap point. NewChainPanelZone defaults tapA to StageSynth,
-// so we clear it first to exercise the "fresh assign to tapA" path.
+// Cleared first, to exercise a fresh assignment to A.
 func TestChainTapAllStages(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -154,8 +149,7 @@ func TestChainTapCallbacks(t *testing.T) {
 		OnClearTapA:  func() { clearACalls++ },
 		OnClearTapB:  func() { clearBCalls++ },
 	})
-	// NewChainPanelZone fires OnTapAChange(Synth) once for the default tapA.
-	// Drain that and reset tapA so the click-flow assertions below start clean.
+	// Construction fires OnTapAChange(Synth) once; reset so the click flow starts clean.
 	if len(tapACalls) != 1 || tapACalls[0] != scope.StageSynth {
 		t.Fatalf("ctor should have fired OnTapAChange(Synth) once, got %v", tapACalls)
 	}
@@ -193,8 +187,6 @@ func TestChainTapCallbacks(t *testing.T) {
 	}
 }
 
-// TestChainTapAfterClearA verifies that after clearing tapA, clicking a new
-// stage assigns to tapA (not tapB).
 func TestChainTapAfterClearA(t *testing.T) {
 	assertDefaultParityState(t)
 	z := NewChainPanelZone(ChainCallbacks{})
@@ -213,10 +205,7 @@ func TestChainTapAfterClearA(t *testing.T) {
 	}
 }
 
-// TestChainDisplayModePillsDirect verifies each of the three separate mode
-// pills sets the displayMode directly (replacing the legacy OVR→SPL→DIF
-// cycle button). Each pill keeps its own static label and is sticky on
-// repeated clicks.
+// Each pill sets its mode directly and stays on repeated clicks.
 func TestChainDisplayModePillsDirect(t *testing.T) {
 	assertDefaultParityState(t)
 	z := NewChainPanelZone(ChainCallbacks{})
@@ -268,11 +257,8 @@ func TestChainFreezeToggle(t *testing.T) {
 	if !z.frozen {
 		t.Fatal("expected frozen after toggle")
 	}
-	// The Chain freeze pill is a TEXT code (FRZ / LIVE), not the shared
-	// icon pill the other analyzer tabs use: a bare pause glyph sitting one
-	// row under the transport bar read as transport pause, and it was the only
-	// icon among five text codes (OVR / SPL / DIF / FIT / AG). Frozen shows
-	// LIVE because that names what the tap will do next.
+	// A text code, not the shared icon: a pause glyph under the transport read as transport pause. Frozen shows
+	// LIVE, what a tap does next.
 	if z.freezeBtn.Icon != "" {
 		t.Errorf("expected no icon on the text freeze pill, got Icon=%q", z.freezeBtn.Icon)
 	}
@@ -288,8 +274,6 @@ func TestChainFreezeToggle(t *testing.T) {
 	}
 }
 
-// TestChainHitAreasIncludeAllButtons verifies hit areas are generated for
-// every interactive element.
 func TestChainHitAreasIncludeAllButtons(t *testing.T) {
 	assertDefaultParityState(t)
 	z := NewChainPanelZone(ChainCallbacks{})
@@ -311,8 +295,7 @@ func TestChainHitAreasIncludeAllButtons(t *testing.T) {
 			t.Errorf("missing hit area with tag %q", tag)
 		}
 	}
-	// The Scope tab no longer owns its own instrument selector; the EQ panel's
-	// eqChannelBtn is the single shared selector for all Wave Analyzer tabs.
+	// The EQ panel's channel button is the one selector for every analyser tab.
 	if tags["scope-inst-btn"] {
 		t.Error("Scope panel must not register a 'scope-inst-btn' hit area")
 	}
@@ -461,10 +444,7 @@ func TestChainDoubleClickReset(t *testing.T) {
 	}
 }
 
-// TestChainAutoGainAPIContract — auto-gain lost its pill (it is on by
-// default now: framing the signal is not an opt-in). The API it was wired to
-// is still the one manual zoom and the scene catalog use, and enabling it
-// must still drop whatever manual zoom it overrides.
+// The API manual zoom and the scenes use; enabling it drops the manual zoom.
 func TestChainAutoGainAPIContract(t *testing.T) {
 	assertDefaultParityState(t)
 	z := NewChainPanelZone(ChainCallbacks{})
@@ -546,8 +526,7 @@ func TestChainTraceFillDrawsCalls(t *testing.T) {
 		drawWaveTrace(nil, wave, rect, midY, 4, colScopeA, 1.0, fillCol)
 	})
 
-	// Should have trace rects AND fill rects.
-	// With fill, each pixel column produces a trace rect + fill rect(s).
+	// Each column produces a trace rect and fill rects.
 	fillCount := 0
 	fillRGBA := color.RGBAModel.Convert(fillCol).(color.RGBA)
 	for _, r := range rects {
@@ -582,9 +561,7 @@ func TestChainTraceFillNilNoExtra(t *testing.T) {
 	}
 }
 
-// TestChainHitAreasCoverEveryPill — the AG and FIT tags are gone with their
-// pills; what remains must still be reachable. A pill drawn without a hit
-// area is a dead control, which is the failure this test class exists for.
+// A pill drawn without a hit area is a dead control.
 func TestChainHitAreasCoverEveryPill(t *testing.T) {
 	assertDefaultParityState(t)
 	z := NewChainPanelZone(ChainCallbacks{})
@@ -722,8 +699,7 @@ func TestChainHiddenTraceNotDrawn(t *testing.T) {
 		t.Fatal("expected blue trace rects when visible")
 	}
 
-	// When showA=false, drawChainOverlay skips the call entirely,
-	// so we verify by checking that the toggle state works.
+	// drawChainOverlay skips the call when showA is false.
 	z := NewChainPanelZone(ChainCallbacks{})
 	z.showTapA = false
 	if z.showTapA {
@@ -731,8 +707,7 @@ func TestChainHiddenTraceNotDrawn(t *testing.T) {
 	}
 }
 
-// TestChainSetTapAClearAndAssign exercises the public SetTapA/SetTapB API
-// (callback wiring + clear path) which handleStageClick alone does not hit.
+// The callback wiring and clear path handleStageClick alone never reaches.
 func TestChainSetTapAClearAndAssign(t *testing.T) {
 	assertDefaultParityState(t)
 	var clearedA, clearedB bool
@@ -761,8 +736,6 @@ func TestChainSetTapAClearAndAssign(t *testing.T) {
 	}
 }
 
-// TestChainZoneLifecycleNoOps covers the trivial Zone-interface methods
-// and stub handler bodies that are otherwise zero-coverage.
 func TestChainZoneLifecycleNoOps(t *testing.T) {
 	assertDefaultParityState(t)
 	z := NewChainPanelZone(ChainCallbacks{})
@@ -787,8 +760,7 @@ func TestChainZoneLifecycleNoOps(t *testing.T) {
 	z.SetPortal(nil) // setter; nil is a valid value
 }
 
-// TestChainLayoutTooSmallClearsHitAreas covers the early-return branch in
-// Layout when the rect is below the minimum drawable size.
+// Below the minimum drawable size.
 func TestChainLayoutTooSmallClearsHitAreas(t *testing.T) {
 	assertDefaultParityState(t)
 	z := NewChainPanelZone(ChainCallbacks{})
@@ -802,9 +774,7 @@ func TestChainLayoutTooSmallClearsHitAreas(t *testing.T) {
 	}
 }
 
-// TestChainSwatchHandlersToggleVisibility is the "concrete dispatch
-// scenario" the plan calls for: hit-area lookup → handler invocation →
-// state transition, all without an Ebiten draw call.
+// Hit-area lookup → handler → state, with no draw.
 func TestChainSwatchHandlersToggleVisibility(t *testing.T) {
 	assertDefaultParityState(t)
 	z := NewChainPanelZone(ChainCallbacks{})
@@ -845,9 +815,7 @@ func TestChainSwatchHandlersToggleVisibility(t *testing.T) {
 	}
 }
 
-// TestChainZoomHandlerStubMethods covers the empty OnDrag/OnRelease bodies
-// on chainZoomHandler that aren't reached by the existing wheel tests, plus
-// the steps==0 early-return in OnWheel.
+// Plus the steps == 0 early return.
 func TestChainZoomHandlerStubMethods(t *testing.T) {
 	assertDefaultParityState(t)
 	z := NewChainPanelZone(ChainCallbacks{})
@@ -871,9 +839,7 @@ func TestChainZoomHandlerStubMethods(t *testing.T) {
 
 // --- Task A3 tests: vertical stage thumbnails + 3 separate mode pills ---
 
-// TestChainStageThumbnailsVertical verifies the new stage column lays the
-// stage thumbnails out vertically: every Min.X is approximately the same and
-// Y values strictly increase down the column.
+// Same X, increasing Y.
 func TestChainStageThumbnailsVertical(t *testing.T) {
 	assertDefaultParityState(t)
 	z := NewChainPanelZone(ChainCallbacks{})
@@ -903,8 +869,6 @@ func TestChainStageThumbnailsVertical(t *testing.T) {
 	}
 }
 
-// TestChainModeButtonsAreThree verifies the new 3 separate mode pills exist
-// and clicking each sets displayMode directly (no cycle).
 func TestChainModeButtonsAreThree(t *testing.T) {
 	assertDefaultParityState(t)
 	z := NewChainPanelZone(ChainCallbacks{})
@@ -935,14 +899,11 @@ func TestChainModeButtonsAreThree(t *testing.T) {
 	}
 }
 
-// TestChainModeOnlyOneActive verifies the displayMode is exactly chainSplit
-// after clicking splitBtn (i.e. there is no implicit cycle).
+// No implicit cycle.
 func TestChainModeOnlyOneActive(t *testing.T) {
 	assertDefaultParityState(t)
 	z := NewChainPanelZone(ChainCallbacks{})
 
-	// From any starting state, clicking splitBtn must land on chainSplit
-	// — no matter how many times.
 	z.splitBtn.OnClick()
 	if z.displayMode != chainSplit {
 		t.Fatalf("after splitBtn click: displayMode=%d want chainSplit=%d", z.displayMode, chainSplit)
@@ -955,9 +916,7 @@ func TestChainModeOnlyOneActive(t *testing.T) {
 
 // --- Task A4 tests: hover tooltips ---
 
-// TestChainTooltipOpensOnDwell verifies that with the cursor sitting over a
-// stage button for at least 300ms the portal receives an entry with id
-// "chain-tt" carrying the StageDescription.
+// After a 300 ms dwell, "chain-tt" opens with the StageDescription.
 func TestChainTooltipOpensOnDwell(t *testing.T) {
 	assertDefaultParityState(t)
 	z := NewChainPanelZone(ChainCallbacks{})
@@ -1001,8 +960,6 @@ func TestChainTooltipOpensOnDwell(t *testing.T) {
 	}
 }
 
-// TestChainTooltipClosesOnExit verifies that moving the cursor outside the
-// hovered button removes the tooltip portal entry.
 func TestChainTooltipClosesOnExit(t *testing.T) {
 	assertDefaultParityState(t)
 	z := NewChainPanelZone(ChainCallbacks{})

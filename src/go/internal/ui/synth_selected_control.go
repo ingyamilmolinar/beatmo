@@ -6,35 +6,23 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// synthMobileFocusRect is the right column beside the knob grid (empty on
-// desktop) reserved on mobile for "Your sound" + the focus graph (on desktop the
-// side preview pane carries them instead).
+// Empty on desktop, where the side pane carries the graph.
 func (p *synthPanel) synthMobileFocusRect() image.Rectangle {
 	dv := p.dv
 
 	return dv.instEditorMobileFocusRect
 }
 
-// synthSectionsRectForTest returns the post-shrink knob-grid rect that
-// layoutSynthSections actually consumes — i.e. after the desktop preview pane
-// and/or mobile focus band have been carved out. Test-only introspection.
+// After the preview pane and mobile band are carved out.
 func (p *synthPanel) synthSectionsRectForTest() image.Rectangle {
 	dv := p.dv
 
 	return dv.instEditorSectionsRect
 }
 
-// synth_selected_control.go — which knob the focus graph explains.
-//
-// Selection is per-instrument, set on knob press (click-to-select, sticky —
-// never hover, which would thrash the graph as the pointer crosses dials). When
-// the stored knob isn't part of the currently open stage, or nothing is
-// selected yet, the focus graph defaults to the stage's MAIN knob (its first
-// knob), so the graph is never empty.
+// Sticky on press, never hover (that would thrash the graph as the pointer crosses dials); falls back to the
+// stage's main knob so the graph is never empty.
 
-// synthSelectedControlIdx returns the knob index the focus graph should explain for
-// instID within the open section: the stored selection when it belongs to this
-// section, else the section's first (main) knob.
 func (p *synthPanel) synthSelectedControlIdx(instID instrument.ID, sec *synthSection) int {
 	dv := p.dv
 

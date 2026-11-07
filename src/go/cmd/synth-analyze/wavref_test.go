@@ -11,11 +11,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavgen"
 )
 
-// generatedD5Path writes a GENERATED bowed-string-like D5 note into t.TempDir()
-// and returns its path: a 587.33 Hz harmonic tone (1/k partials) with a
-// 5.5 Hz, ±20-cent vibrato and an attack/sustain/release envelope. Tests never
-// read reference recordings -- those are local tuning material only (see
-// internal/wavref); everything here must run identically on any checkout.
+// A GENERATED bowed-string-like D5 (587.33 Hz, 1/k partials, 5.5 Hz ±20-cent vibrato): tests never read reference
+// recordings.
 func generatedD5Path(t *testing.T) string {
 	t.Helper()
 	const (

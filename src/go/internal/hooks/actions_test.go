@@ -45,9 +45,7 @@ func TestRegistryNoDuplicateKinds(t *testing.T) {
 	}
 }
 
-// TestExcludedReasonOnlyOnDocument asserts ExcludedReason is only set on
-// ScopeDocument entries (it means "document state, deliberately not undoable
-// yet" — meaningless on non-document scopes, which are never undoable).
+// "Document state deliberately not undoable" means nothing on scopes that are never undoable.
 func TestExcludedReasonOnlyOnDocument(t *testing.T) {
 	for _, a := range ActionRegistry {
 		if a.ExcludedReason != "" && a.Scope != ScopeDocument {

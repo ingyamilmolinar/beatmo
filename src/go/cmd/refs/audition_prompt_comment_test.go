@@ -11,22 +11,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// audition_prompt_comment_test.go — a verdict may carry a comment, however the
-// listener naturally punctuates it.
-//
-// THE BUG THIS PINS
-// -----------------
-// The prompt advertises "free text after the choice token", but parsed it with
-// strings.SplitN(line, " ", 2) -- so the token had to be followed by a BARE
-// SPACE and nothing else. The most natural way to write the answer,
-//
-//	n, both are way too airy and breathy and soft. They need a crisp tight feel
-//
-// produced the token "n," which matched nothing, and the listener was told
-// `invalid choice "n,"` with their whole comment discarded. Being made to
-// re-type a sentence because of a comma is the kind of friction that stops
-// people writing the comment at all -- and the comment is the most valuable
-// part of the verdict, since it is the only field that says WHY.
+// A comment must survive however the listener punctuates it ("n, both are way too airy..."): it is the only field
+// that says WHY, and re-typing a sentence over a comma stops people writing one.
 
 func multiFamFixture() auditionFamily {
 	return auditionFamily{Key: roster.Clap, Members: []instrument.ID{roster.Clap, roster.ClapTight}}
@@ -142,9 +128,7 @@ func TestPromptVerdict_SingleOptionAcceptsCommentForms(t *testing.T) {
 	}
 }
 
-// A control/navigation token must NOT silently swallow a comment as if it were
-// a recorded judgement -- "s, come back to this" skips, and the prose has
-// nowhere to go, so the listener is told rather than left believing it was kept.
+// "s, come back to this" skips and the prose has nowhere to go: the listener must be told it was not kept.
 func TestPromptVerdict_WarnsWhenACommentIsDiscarded(t *testing.T) {
 	var out bytes.Buffer
 	kind, _, _, _, err := promptVerdict(strings.NewReader("s, come back to this one\n"), &out, multiFamFixture())

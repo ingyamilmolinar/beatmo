@@ -1,14 +1,5 @@
-// scenarios/webaudio_output_capture.js
-//
-// Pure in-browser scenario bodies extracted from
-// src/js/webaudio_output_capture.browser.test.js. The Playwright shell
-// invokes them via page.evaluate(); the in-page test_runner.html invokes
-// them directly. Same assertions, two execution shells.
-//
-// Each scenario assumes window already has the WASM-side exports
-// (playSound, startOutputCapture, etc.) and an unlocked AudioContext.
-// Setup (ctx unlock, ensure synth sample, retries) is the caller's job —
-// the test_runner does that once before running the suite.
+// Same assertions, two shells (page.evaluate and test_runner.html). Assumes the exports and an unlocked context; setup
+// is the caller's.
 
 import { register } from "./registry.js";
 
@@ -30,9 +21,7 @@ function rmsAndPeak(arr) {
 }
 
 async function warmupCapture() {
-  // Mirrors the existing test's warmup loop — without it, the very first
-  // playSound after a fresh AudioContext can land before the capture node
-  // has fully connected, yielding zero samples.
+  // The first play on a fresh context can land before the capture node connects.
   if (typeof window.ensureSynthSample === "function") {
     try { await window.ensureSynthSample("kick"); } catch (_) {}
   }

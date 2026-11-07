@@ -7,17 +7,8 @@ import (
 	"testing"
 )
 
-// TestMobileTransportIconsAreDistinct ensures every visible mobile-transport
-// button carries an icon distinct from every other visible transport
-// button. The constraint matters because two buttons with the same icon
-// in the same toolbar are indistinguishable to the user; the bug shape
-// is silent — the toolbar still lays out, but the user can't tell two
-// adjacent controls apart.
-//
-// Dynamic single-button icons (Play↔Pause, Speaker↔SpeakerOff,
-// Audio↔Rows for the view switch) are exempt: at any point in time,
-// only one variant is shown. Each variant must still be unique versus
-// the rest of the toolbar.
+// Two buttons with one icon in one toolbar cannot be told apart. A button that swaps icons shows one at a
+// time, and each variant must still be unique.
 func TestMobileTransportIconsAreDistinct(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true
@@ -64,15 +55,11 @@ func TestMobileTransportIconsAreDistinct(t *testing.T) {
 
 	assertNoIconCollisions("default state", collectIcons())
 
-	// Flip the play button icon to Pause (simulates running playback) and
-	// re-check. Done by overwriting the field, mirroring the production
-	// site at transport_zone.go:1146 where the icon is selected per state.
+	// Running playback.
 	z.playBtn.Icon = string(IconPause)
 	assertNoIconCollisions("playing state", collectIcons())
 
-	// The view button uses the destination-icon convention. Flip from
-	// IconAudio (Rows mode) to IconRows (EQ mode) and confirm uniqueness
-	// holds in both states.
+	// The view button shows its destination's icon.
 	if z.viewSwitchBtn != nil {
 		z.viewSwitchBtn.Icon = string(IconRows)
 		assertNoIconCollisions("EQ-mode view button", collectIcons())

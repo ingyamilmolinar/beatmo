@@ -6,12 +6,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// stftHops slices w into hop-spaced frames and returns each frame's magnitude
-// spectrum (using cfg.FrameFFTSize), frames-per-second, and the true per-bin
-// frequency resolution (binHz) as returned by wave.MagnitudeSpectrum (which
-// rounds FrameFFTSize up to the next power of two internally). callers must use
-// this binHz rather than recomputing it from cfg.FrameFFTSize to avoid
-// mis-scaled band/chroma indices when FrameFFTSize is not a power of two.
+// Callers must use the returned binHz: MagnitudeSpectrum rounds FrameFFTSize up to a power of two, and recomputing it
+// mis-scales band and chroma indices.
 func stftHops(w wave.Wave, cfg AnalysisConfig) (frames [][]float64, frameHz float64, binHz float64) {
 	sr := w.SampleRate
 	if sr == 0 {
@@ -31,8 +27,6 @@ func stftHops(w wave.Wave, cfg AnalysisConfig) (frames [][]float64, frameHz floa
 	return frames, float64(sr) / float64(hop), binHz
 }
 
-// OnsetEnvelope computes a spectral-flux novelty curve: per hop, the sum of
-// positive magnitude increases over the previous frame.
 func OnsetEnvelope(w wave.Wave, cfg AnalysisConfig) ([]float64, float64) {
 	frames, fhz, _ := stftHops(w, cfg)
 	if len(frames) < 2 {
@@ -77,9 +71,7 @@ func OnsetTimes(env []float64, frameHz float64, cfg AnalysisConfig) []float64 {
 	return times
 }
 
-// DetectTempo autocorrelates the onset envelope and returns the BPM of the
-// strongest lag within [TempoMinBPM,TempoMaxBPM], plus a 0..1 confidence
-// (peak autocorrelation / zero-lag energy).
+// Confidence = peak autocorrelation over zero-lag energy.
 func DetectTempo(env []float64, frameHz float64, cfg AnalysisConfig) (float64, float64) {
 	n := len(env)
 	if n < 4 || frameHz <= 0 {
@@ -116,15 +108,11 @@ func DetectTempo(env []float64, frameHz float64, cfg AnalysisConfig) (float64, f
 		return 0, 0
 	}
 	bpm := 60.0 * frameHz / float64(bestLag)
-	// Octave-correct implausibly slow detections: the onset autocorrelation often
-	// locks onto the bar / harmonic-rhythm period (≈40 BPM on a Baroque keyboard
-	// piece) rather than the tactus. Fold up while below a musical floor.
+	// The autocorrelation often locks onto the bar or harmonic-rhythm period instead of the tactus.
 	for bpm > 0 && bpm < tempoFoldFloorBPM {
 		bpm *= 2
 	}
 	return bpm, bestAC / zero
 }
 
-// tempoFoldFloorBPM is the musical floor below which a detected tempo is treated
-// as an octave error and doubled.
 const tempoFoldFloorBPM = 55.0

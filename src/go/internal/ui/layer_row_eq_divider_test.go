@@ -11,13 +11,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// The production divider between the drum-rows panel and the audio-panel (EQ /
-// tabs) section is draw-only chrome over the already-wired LayoutResizeHandler.
-// It mirrors the main grid↔drum splitter's visuals (drawDivider): a full-width
-// azure horizon line + a centered pill handle, brightening on hover. These
-// tests pin its visibility gating and its draw output. The drag/resize behavior
-// itself is covered by layout_resize_test.go +
-// drumview_layout_resize_handler_test.go.
+// Draw-only chrome over the LayoutResizeHandler, mirroring the grid↔drum splitter.
 
 func TestRowEQDividerLayer_VisibleDesktopHiddenMobile(t *testing.T) {
 	assertDefaultParityState(t)
@@ -95,12 +89,8 @@ func TestRowEQDividerLayer_DrawsFullWidthLineAndPill(t *testing.T) {
 	}
 }
 
-// TestRowEQDivider_AnchoredToPanelTopEdge is the load-bearing positioning
-// guard. In production the audio panel is rendered with a floor-expanded height
-// (PanelHeightAt), so its real top edge (dv.eqRect.Min.Y == Bounds.Max.Y - eqH)
-// sits ABOVE the widget-board row boundary (widgets.rowPos[2]). The divider must
-// sit on the VISIBLE boundary — the panel's top edge — not the widget-board
-// boundary, otherwise it draws inside the panel content (the reported bug).
+// The panel is drawn floor-expanded, so its top edge sits ABOVE the widget-board boundary; the divider belongs on
+// the VISIBLE edge, or it draws inside the panel.
 func TestRowEQDivider_AnchoredToPanelTopEdge(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1280, 720)
@@ -111,8 +101,6 @@ func TestRowEQDivider_AnchoredToPanelTopEdge(t *testing.T) {
 		t.Fatalf("expected an EQ row divider")
 	}
 
-	// Simulate the production condition: a floor-expanded audio panel whose top
-	// edge sits 80px ABOVE the widget-board boundary.
 	widgetBoundaryY := dv.widgets.rowPos[idx+1] + dv.Bounds.Min.Y
 	panelTopY := widgetBoundaryY - 80
 	dv.eqRect = image.Rect(dv.Bounds.Min.X, panelTopY, dv.Bounds.Max.X, dv.Bounds.Max.Y)
@@ -128,8 +116,6 @@ func TestRowEQDivider_AnchoredToPanelTopEdge(t *testing.T) {
 			idx, handleY, panelTopY, widgetBoundaryY)
 	}
 
-	// The drawn line must be at the panel top, NOT inside the panel at the
-	// widget boundary.
 	layer := newRowEQDividerLayer(dv)
 	rec := &drawCallRecorder{}
 	dst := ebiten.NewImage(dv.Bounds.Dx(), dv.Bounds.Dy())
@@ -157,8 +143,6 @@ func TestRowEQDivider_AnchoredToPanelTopEdge(t *testing.T) {
 	}
 }
 
-// TestRowEQDivider_HitAreaAlignsWithVisibleDivider ensures the grab zone moves
-// with the visible line — you can grab the divider where you see it.
 func TestRowEQDivider_HitAreaAlignsWithVisibleDivider(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1280, 720)
@@ -195,13 +179,7 @@ func TestRowEQDivider_HitAreaAlignsWithVisibleDivider(t *testing.T) {
 	}
 }
 
-// TestRowEQDivider_FollowsPanelTopAcrossRelayout asserts the divider tracks the
-// audio panel's top edge as the panel is resized: when dv.eqRect changes (which
-// the production drag path updates via recalcButtons), the visible line and the
-// handle follow it — no stale position left behind.
-// realisticEQPanel sets dv.eqRect to a floor-expanded audio panel whose top
-// edge sits 80px above the widget-board boundary — the production condition the
-// test stub (eqPanelHeight=0) otherwise can't reproduce. Returns the panel top Y.
+// A floor-expanded panel 80 px above the widget-board boundary, which the stub (eqPanelHeight=0) cannot produce.
 func realisticEQPanel(t *testing.T, dv *DrumView) (idx, panelTopY int) {
 	t.Helper()
 	idx = dv.eqDividerRowIdx()
@@ -213,9 +191,7 @@ func realisticEQPanel(t *testing.T, dv *DrumView) (idx, panelTopY int) {
 	return idx, panelTopY
 }
 
-// TestRowEQDivider_HoverReachesPillAtPanelTop drives the PRODUCTION hover path
-// (layoutResizeZone.Update) with the cursor on the visible pill at the panel
-// top edge. The user reports hover never fires there.
+// Through the production hover path, layoutResizeZone.Update.
 func TestRowEQDivider_HoverReachesPillAtPanelTop(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1280, 720)
@@ -240,11 +216,8 @@ func TestRowEQDivider_HoverReachesPillAtPanelTop(t *testing.T) {
 	}
 }
 
-// TestRowEQDivider_GrabAreaMatchesVisiblePill asserts the divider's grab target
-// is the VISIBLE pill plus the standard SpaceSM forgiveness — no more. It must
-// cover everything the user can see (so the affordance is honest) but must NOT
-// balloon into a wide band that bleeds over the sticky-bar controls below the
-// divider (the invasive-hover complaint).
+// The grab is the visible pill plus SpaceSM: it covers all the user sees and never spreads over the sticky-bar
+// controls below.
 func TestRowEQDivider_GrabAreaMatchesVisiblePill(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1280, 720)
@@ -265,8 +238,6 @@ func TestRowEQDivider_GrabAreaMatchesVisiblePill(t *testing.T) {
 	if !(rowArea.Rect.Min.Y <= panelTopY && rowArea.Rect.Max.Y >= panelTopY) {
 		t.Errorf("grab area %v does not straddle panel top y=%d", rowArea.Rect, panelTopY)
 	}
-	// The grab is exactly the visible pill expanded by SpaceSM — it covers the
-	// whole pill (honest affordance) and nothing wider (not invasive).
 	pill := dv.layoutHandler.rowHandleRect(idx)
 	if pill.Empty() {
 		t.Fatalf("EQ boundary pill is empty")
@@ -281,10 +252,8 @@ func TestRowEQDivider_GrabAreaMatchesVisiblePill(t *testing.T) {
 	}
 }
 
-// TestRowEQDivider_GrabDoesNotStealStickyBarControls lays out the REAL audio
-// panel at the floored top edge and proves the enlarged divider grab (z=200)
-// never wins over the sticky-bar's channel pill or tab pills (lower z) — those
-// controls stay clickable, while the divider still wins at its own handle.
+// The divider grab sits at z=200 over the real panel, yet the sticky bar's channel and tab pills must still win
+// off its handle.
 func TestRowEQDivider_GrabDoesNotStealStickyBarControls(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1280, 720)
@@ -292,8 +261,7 @@ func TestRowEQDivider_GrabDoesNotStealStickyBarControls(t *testing.T) {
 	idx, panelTopY := realisticEQPanel(t, dv)
 	cx := (dv.Bounds.Min.X + dv.Bounds.Max.X) / 2
 
-	// Lay the audio panel out at the floored rect so its sticky-bar tab/channel
-	// hit areas are published at the divider's row.
+	// Laid out at the floored rect so the sticky-bar hit areas sit on the divider's row.
 	dv.eqPanelZone.Layout(dv.eqRect)
 	panelAreas := dv.eqPanelZone.HitAreas()
 	if len(panelAreas) == 0 {
@@ -339,11 +307,7 @@ func TestRowEQDivider_GrabDoesNotStealStickyBarControls(t *testing.T) {
 	_ = idx
 }
 
-// TestRowEQDivider_HoverWorksAcrossHandle drives the production hover path at
-// several points across the visible handle (not just the exact centre), so the
-// divider is forgiving to hover within the pill — while OFF the pill (where the
-// sticky-bar tab controls live) hover must NOT register. The on-pill offsets are
-// kept inside the pill's half-extents so they exercise the whole visible handle.
+// Points across the whole pill hover; off it, where the tab controls live, nothing does.
 func TestRowEQDivider_HoverWorksAcrossHandle(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1280, 720)
@@ -384,8 +348,6 @@ func TestRowEQDivider_HoverWorksAcrossHandle(t *testing.T) {
 		}
 	}
 
-	// Off the pill — well past the SpaceSM forgiveness, where the sticky-bar tab
-	// controls sit — hover must NOT register.
 	offX := pill.Dx()/2 + SpaceSM + 12
 	for _, p := range []pt{{-offX, 0}, {offX, 0}} {
 		if axis, hidx := probe(cx+p.dx, panelTopY+p.dy); axis != "" || hidx != -1 {
@@ -395,9 +357,7 @@ func TestRowEQDivider_HoverWorksAcrossHandle(t *testing.T) {
 	}
 }
 
-// TestRowEQDivider_PressWinsOverPanelAtTop ensures a press on the divider at the
-// panel top edge resolves to the resize handler, not the audio-panel catch-all
-// that occupies the same region.
+// The audio-panel catch-all occupies the same region.
 func TestRowEQDivider_PressWinsOverPanelAtTop(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1280, 720)
@@ -474,8 +434,7 @@ func TestRowEQDividerLayer_HoverBrightensLine(t *testing.T) {
 
 	layer := newRowEQDividerLayer(dv)
 	dst := ebiten.NewImage(dv.Bounds.Dx(), dv.Bounds.Dy())
-	// The hover lift is now animated, so the accent line eases up to its bright
-	// variant over several frames — draw enough to let it settle.
+	// The hover lift eases in over several frames.
 	for i := 0; i < 12; i++ {
 		layer.Draw(dst)
 	}
@@ -495,9 +454,7 @@ func TestRowEQDividerLayer_HoverBrightensLine(t *testing.T) {
 	}
 }
 
-// ── Shared animated SplitterHandle (glow + grow on hover) ──
-// SplitterHandle is reused by BOTH the main grid↔drum splitter and the EQ
-// divider. These pin the eased hover progress and that both consumers drive it.
+// SplitterHandle is shared by the grid↔drum splitter and the EQ divider; both must drive its eased progress.
 
 func TestSplitterHandle_PillGrowsAndBrightensWithHover(t *testing.T) {
 	measure := func(anim float64) (glowArea int, glowAlpha uint8) {

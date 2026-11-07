@@ -1,49 +1,6 @@
-/**
- * Instrument-switch performance bench (WASM).
- *
- * WHY THIS EXISTS
- * ---------------
- * webaudio_render_latency_bench proves that LIVE PARAM EDITS on an already-warm
- * instrument stay on the grid (gen-based stale-while-revalidate). It never
- * exercises the user-reported bug: while the sequencer is playing, the user
- * picks a DIFFERENT synth instrument for a row (instrument popup) and the audio
- * "clicks then goes laggy for a few seconds before stabilizing."
- *
- * Root cause (confirmed by code trace):
- *   - DrumView.SetInstrument does ZERO audio work — no pre-render, no warm.
- *   - The freshly-selected instrument has NO renderCache entry, so the gentle
- *     stale-while-revalidate path (which needs an existing older-gen record)
- *     does not apply. Each note falls into the P1 "true first-render defer"
- *     path (audio.js:659/685): drop the intended `when`, await a ~30-40 ms
- *     worker render, replay.
- *   - For a MELODIC instrument the render cache is keyed PER PITCH, and every
- *     cold render serializes on the SINGLE render worker. A row that fires N
- *     distinct pitches pays N cold renders back-to-back → the "laggy for a few
- *     seconds" that stabilizes once every pitch has been rendered once.
- *
- * WHAT THIS BENCH MEASURES
- * ------------------------
- * The cold-start cost the moment a row is switched to a never-rendered
- * instrument, from the FIRST note (no pre-warm), across a realistic pitch set:
- *   renders / deferredPlays / neighborPlays / stalePlays,
- *   deferMs avg/min/max + deferAbsMsP90, worker render cost, workerQueuePeak,
- *   and event-loop maxGap.
- *
- * SCENARIOS
- *   warm-baseline    organ-church, pitches pre-warmed → the target steady state
- *   cold-melodic     organ-church (render_modular, per-pitch), NO warm → storm
- *   cold-melodic-4x  same under 4x CPU throttle (mobile-class device = user lag)
- *   cold-single      fm-bass (bare-id, single cache key), NO warm → one hiccup
- *   cold-cello       cello (2 s bowed physical model), NO warm → worst per-voice
- *
- * The bug shows as a large (deferredPlays + neighborPlays) and workerQueuePeak
- * on the cold-* scenarios versus ~0 on warm-baseline. Numbers are RECORDED to
- * bench-results/instrument_switch.json (not gated) so we can prove the fix
- * later: after pre-warm-on-switch, cold-* should collapse toward warm-baseline.
- *
- * This bench needs NO wasm rebuild — the render/cache/worker logic lives in
- * audio.js (served as-is). Run with WASM_PREBUILT=1 if play_ui.wasm exists.
- */
+/** The cold-start cost the moment a row switches to a never-rendered instrument during playback ("clicks, then laggy
+ * for seconds"): melodic voices are cached per pitch, so a row firing N pitches pays N cold renders. Scenarios: warm
+ * baseline, cold melodic (also 4×), cold single-key, cold cello. Recorded to bench-results/instrument_switch.json, not gated. */
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";
@@ -67,8 +24,7 @@ const NOTE_INTERVAL_MS = Number(process.env.SWITCH_BENCH_NOTE_MS || 90);
 const DURATION_MS = Number(process.env.SWITCH_BENCH_DURATION_MS || 3000);
 const SCHED_LEAD_SEC = Number(process.env.SWITCH_BENCH_LEAD_SEC || 0.06);
 
-// A musical row fires several distinct pitches — that is what turns one cold
-// render into a per-pitch storm. Two octaves of a minor arpeggio.
+// Several distinct pitches turn one cold render into a per-pitch storm.
 const PITCHES = [-12, -8, -5, 0, 3, 7, 12, 15, 19, 24];
 
 if (!shouldSkipWasmBuild("play_ui.wasm")) {
@@ -127,18 +83,14 @@ if (ctxState !== "running") {
 }
 console.log(`[TEST] AudioContext running; note=${NOTE_INTERVAL_MS}ms lead=${SCHED_LEAD_SEC * 1000}ms dur=${DURATION_MS}ms pitches=${PITCHES.length}`);
 
-// runScenario simulates the row's sequencer output AFTER a switch: it plays the
-// target instrument across the pitch set at a fixed cadence with the real
-// scheduling lead, WITHOUT pre-warming (unless cfg.prewarm), and snapshots the
-// cold-start latency metrics.
+// The row's output after a switch: the target across the pitch set at a fixed cadence with the real lead, not pre-warmed
+// unless cfg.prewarm.
 async function runScenario(cfg) {
   return await page.evaluate(async ({ cfg, NOTE_INTERVAL_MS, DURATION_MS, SCHED_LEAD_SEC, PITCHES }) => {
     const ctx = window.__audioCtx;
     const id = cfg.id;
 
-    // Fully evict this instrument so every run starts genuinely cold (the
-    // user's row was never this instrument before). Reuse the test hooks the
-    // other benches use; fall back to a play at silence if unavailable.
+    // Fully evicted so every run starts genuinely cold.
     window.__audioMetrics = { renders: {}, cacheHits: {} };
     try { resetInstrumentParams(id); } catch (_) {}
     if (window.__evictRenderCacheForTest) {

@@ -15,10 +15,7 @@ const (
 	stageCount
 )
 
-// StageLabel returns the short human-readable label for a Stage. These are
-// the names shown on stage buttons in the Chain tab; pick short forms so
-// they fit in compact buttons. Long-form pedagogical names live in
-// StageDescription.
+// Short enough for the Chain tab's compact stage buttons; the long form is StageDescription.
 func StageLabel(s Stage) string {
 	switch s {
 	case StageSynth:
@@ -36,9 +33,7 @@ func StageLabel(s Stage) string {
 	}
 }
 
-// StageDescription returns the long-form description for a Stage. Used by
-// tooltips and the kid-friendly Chain tab to explain what each pipeline
-// stage actually does. Empty string for unknown stages.
+// For tooltips and the Chain tab's plain-English explanations; "" for unknown stages.
 func StageDescription(s Stage) string {
 	switch s {
 	case StageSynth:
@@ -85,16 +80,9 @@ type TapData struct {
 	Active  bool
 }
 
-// ActiveSpan returns the [start,end) sample indices that frame the signal
-// energy: the first and last samples whose absolute value reaches
-// thresholdFrac of the buffer's peak, padded outward by padFrac of that
-// span. It is the data behind the Chain tab's "auto-fit" — the scope
-// captures ~500ms but a drum transient is ~2ms, so framing the active span
-// lets the waveform fill the trace instead of leaving ~98% dead width.
-//
-// When the buffer is empty or silent (nothing crosses the threshold) it
-// returns the full range (0, len) so the caller renders exactly what it
-// would have without auto-fit. The walk is single-pass and allocation-free.
+// The span between the first and last samples reaching thresholdFrac of the peak, padded by padFrac: the Chain tab's
+// auto-fit (a drum transient is ~2 ms of a ~500 ms capture). Empty or silent returns (0, len), as without auto-fit.
+// Single pass, allocation-free.
 func ActiveSpan(samples []float64, thresholdFrac, padFrac float64) (start, end int) {
 	n := len(samples)
 	if n == 0 {

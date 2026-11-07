@@ -1,15 +1,6 @@
-// Package musicxml parses MusicXML score-partwise documents into a structured Score.
-// It uses a streaming xml.Decoder so that element order within a measure is preserved,
-// which is required for correct chord/backup/forward handling.
-//
-// Beyond raw pitch and onset the parser carries the notated *expression* a
-// generated circuit needs to sound like the score rather than like a piano roll:
-// dynamics (→ per-hit volume), articulations and agogic directions (→ groove
-// drift), ties (so a held note is one event, not a re-attack) and per-part
-// <transpose> (so a Bb clarinet part reports sounding pitch).
-//
-// Compressed .mxl containers are accepted directly: Parse sniffs the ZIP magic
-// and unwraps the rootfile named by META-INF/container.xml.
+// Package musicxml parses score-partwise documents with a streaming decoder (element order matters for chord / backup /
+// forward), carrying the expression a circuit needs to sound like the score: dynamics, articulations, agogic words,
+// merged ties, <transpose> (sounding pitch). A .mxl container is unwrapped by its ZIP magic.
 package musicxml
 
 import (
@@ -32,15 +23,11 @@ type Articulations struct {
 	Tenuto       bool
 	Fermata      bool
 
-	// BreathMark / Caesura are breaks AFTER this note: the player takes time
-	// before the next onset, so they delay what follows rather than the note
-	// that carries them.
+	// Breaks AFTER this note: they delay the next onset, not the note carrying them.
 	BreathMark bool
 	Caesura    bool
 
-	// Arpeggiate is a rolled chord: +1 rolls upward (lowest note first, the
-	// default and what <arpeggiate/> without a direction means), -1 downward.
-	// 0 = not rolled.
+	// +1 rolls upward (lowest first, what a bare <arpeggiate/> means), -1 downward, 0 not rolled.
 	Arpeggiate int
 }
 
@@ -52,11 +39,8 @@ type Note struct {
 	Voice       int // voice number (defaults to 1)
 	Staff       int // staff number (defaults to 1)
 	Measure     int // 1-based measure number as printed; 0 when unparseable
-	// Movement is 1-based and increments wherever the printed measure number
-	// RESTARTS, which is how a multi-movement work is engraved in one file.
-	// Measure alone therefore does not identify a bar: Mozart K387 prints
-	// measure "1" four times. Selecting a range without also fixing Movement
-	// takes those bars from every movement at once.
+	// 1-based, incremented wherever the printed number RESTARTS: a multi-movement work is one file, so a measure number
+	// alone does not identify a bar, and a range without a Movement takes bars from every movement.
 	Movement int
 	Rest     bool // true when the note element contains a <rest/>
 	Chord    bool // true when the note element contains a <chord/>
@@ -68,17 +52,13 @@ type Note struct {
 
 	Articulations Articulations
 
-	// Unpitched marks a percussion note (<unpitched>). Its Semitone is the
-	// STAFF POSITION (display-step/octave), not a pitch: percussion identity
-	// comes from Instrument / PercKey, never from Semitone.
+	// Its Semitone is the STAFF POSITION, not a pitch: identity comes from Instrument / PercKey.
 	Unpitched bool
 	// Instrument is the <instrument id> naming which kit piece this note is,
 	// resolvable through Part.Instruments. Empty when the note names none.
 	Instrument string
-	// PercKey is the General MIDI percussion key (35 = acoustic bass drum,
-	// 38 = snare …) of an unpitched note, resolved from its instrument's
-	// <midi-unpitched> (which MusicXML numbers 1-128, i.e. key + 1). 0 when
-	// the score does not say.
+	// The General MIDI key (35 kick, 38 snare …) from its instrument's <midi-unpitched>, which MusicXML numbers key + 1.
+	// 0 when the score does not say.
 	PercKey int
 
 	// tieStart/tieStop are consumed by mergeTies and cleared before return.
@@ -121,9 +101,7 @@ type PartInstrument struct {
 	PercKey int // GM percussion key; 0 when <midi-unpitched> is absent
 }
 
-// Measure is one bar of a part: where it starts and the meter in force.
-// Pickup and repeat-ending bars are SHORTER than their meter says, which is
-// why LengthDiv is measured rather than derived from Beats/BeatType.
+// Pickup and repeat-ending bars are SHORTER than their meter, so LengthDiv is measured, never derived.
 type Measure struct {
 	Movement  int
 	Number    int
@@ -141,9 +119,7 @@ type Part struct {
 	Notes      []Note
 	Directions []Direction
 
-	// Measures is the bar timeline, in order. Meters can change mid-score, so
-	// anything bar-relative (agogic spans, swing pairs) must read this rather
-	// than the score's opening time signature.
+	// Meters change mid-score, so anything bar-relative (agogic spans, swing pairs) reads this, not the opening meter.
 	Measures []Measure
 
 	// Instruments maps an <instrument id> to the kit piece it names.
@@ -190,19 +166,14 @@ func (p Part) SwingAt(onsetDiv int) (Direction, bool) {
 	return cur, true
 }
 
-// TempoMark is one tempo marking, located by the measure it appears in and
-// normalised to quarter notes per minute (a <beat-unit> of half at 100 is
-// recorded as 200, so every mark is directly comparable).
+// Normalised to quarters per minute (half = 100 is 200), so every mark compares directly.
 type TempoMark struct {
 	Measure int
 	BPM     float64
 }
 
-// recordTempo appends a marking to the timeline, normalised to quarter notes
-// per minute. The FIRST marking also seeds TempoBPM, so that field means the
-// opening tempo; later markings extend the timeline instead of overwriting it.
-// A repeat of the same measure (the marking is often duplicated across parts)
-// keeps the first value, so a multi-part score does not stack duplicates.
+// The FIRST marking also seeds TempoBPM (the opening tempo); later ones extend the timeline. A duplicate for the same
+// measure (marks repeat across parts) keeps the first.
 func (s *Score) recordTempo(measure int, quarterBPM float64) {
 	if quarterBPM <= 0 {
 		return
@@ -232,13 +203,8 @@ func (s *Score) TempoAt(measure int) float64 {
 	return bpm
 }
 
-// DominantTempo returns the tempo covering the most measures of [from,to] — the
-// single constant that best represents an excerpt, since a Beatmo circuit runs
-// at one BPM. It is deliberately NOT "the tempo at `from`": an excerpt whose
-// first bar is a pickup at a different tempo (Ode to Joy: one bar of 88, then
-// fifteen of 160) would otherwise take the tempo of the bar it least resembles.
-// Ties go to the earlier tempo, so a genuine 50/50 split keeps the one the
-// excerpt opens at.
+// A circuit runs at one BPM: the tempo covering most of the range, NOT the one at from, since a pickup at another tempo
+// would set it from the bar the excerpt least resembles. Ties go to the earlier tempo.
 func (s *Score) DominantTempo(from, to int) float64 {
 	if to < from {
 		to = from
@@ -272,11 +238,8 @@ type Score struct {
 	Divisions int
 	KeyFifths int
 	Mode      string
-	// TempoBPM is the OPENING tempo in quarter notes per minute — the first
-	// marking in the score, NOT the last one parsed. A multi-tempo work has a
-	// tempo TIMELINE (see Tempos); collapsing it to one number is only ever
-	// valid for a single-tempo piece, and silently reporting the final marking
-	// is how the Ode to Joy excerpt came to ship at the coda's 264.
+	// The OPENING tempo, not the last parsed: a multi-tempo work has a timeline (Tempos), and one number is valid only for
+	// a single-tempo piece.
 	TempoBPM float64
 	// Tempos is every tempo marking in the score, in measure order, converted
 	// to quarter notes per minute. Use TempoAt/DominantTempo rather than
@@ -298,9 +261,7 @@ type Score struct {
 	Lyricist string
 }
 
-// dynamicVelocity maps a MusicXML <dynamics> child element name to a 0..1
-// velocity. The curve is the conventional MIDI mapping (pp≈0.28, mf≈0.62,
-// ff≈0.90) compressed into 0..1 so it can multiply an instrument volume
+// The conventional MIDI curve (pp ≈ 0.28, mf ≈ 0.62, ff ≈ 0.90) in 0..1, so it multiplies an instrument volume
 // directly.
 var dynamicVelocity = map[string]float64{
 	"pppp": 0.10, "ppp": 0.16, "pp": 0.28, "p": 0.40,
@@ -310,8 +271,7 @@ var dynamicVelocity = map[string]float64{
 	"rf": 0.82, "rfz": 0.84, "fp": 0.80,
 }
 
-// accentBoost / marcatoBoost scale the velocity of an accented note. Kept
-// modest: an accent is a stress within the prevailing dynamic, not a new one.
+// Modest: an accent is stress within the dynamic, not a new one.
 const (
 	accentBoost  = 1.15
 	marcatoBoost = 1.25
@@ -584,9 +544,7 @@ func parsePartList(dec *xml.Decoder, names map[string]string, insts map[string]m
 					return err
 				}
 				if curID != "" && names[curID] == "" {
-					// Part names may carry embedded newlines when the source
-					// prints a two-line label ("Singstimme\nVoice"); collapse
-					// them so a name is usable as a one-line identifier.
+					// A two-line label ("Singstimme\nVoice") collapses to one line, usable as an identifier.
 					names[curID] = strings.Join(strings.Fields(text), " ")
 				}
 			case "score-instrument":
@@ -611,8 +569,7 @@ func parsePartList(dec *xml.Decoder, names map[string]string, insts map[string]m
 					return err
 				}
 			default:
-				// score-part's other children are skipped, but score-part itself
-				// must be ENTERED (handled above) so its instruments are seen.
+				// score-part itself must be ENTERED so its instruments are seen.
 				if err := dec.Skip(); err != nil {
 					return err
 				}
@@ -665,9 +622,7 @@ func readChildText(dec *xml.Decoder, start xml.StartElement, child string) (stri
 	}
 }
 
-// resolvePercussion attaches each unpitched note's GM key from the kit piece
-// it names. A drum part that declares exactly ONE instrument may omit
-// <instrument> on its notes; they then belong to that instrument.
+// A drum part with exactly ONE instrument may omit <instrument> on its notes.
 func resolvePercussion(part *Part) {
 	sole := ""
 	if len(part.Instruments) == 1 {
@@ -727,22 +682,15 @@ func parsePart(dec *xml.Decoder, start xml.StartElement, sc *Score) (Part, error
 			case "measure":
 				st.measureOrdinal++
 				num, numeric := measureNumber(t, st.measureOrdinal)
-				// A bar printed with a NON-numeric number ("X1") is a fragment
-				// of the bar before it — split by a mid-bar repeat sign or a
-				// system break — not a bar of its own. Giving it its ordinal
-				// collided with a real bar's number: Haydn Op.76's "X1" became
-				// a second bar 3, so an excerpt of bars 1..8 held nine.
+				// A NON-numeric bar ("X1") is a fragment of the bar before it (a mid-bar repeat, a system break); its ordinal would
+				// collide with a real bar's number.
 				continuation := !numeric && st.measureOrdinal > 1
 				if continuation {
 					num = st.measure
 				}
 				st.measure = num
-				// A new movement is a RESTART — the printed number returns to
-				// 0 or 1 after a run — not merely any decrease. Engravers also
-				// number bar fragments out of band ("X1", "X2" in Aloha Oe);
-				// those continue the previous bar's number (above), and when
-				// they took their ordinal instead they read as a decrease and
-				// truncated the excerpt to its first four bars.
+				// A new movement is a RESTART (the number returns to 0 or 1), not any decrease: out-of-band fragments continue the
+				// previous bar and must not read as one.
 				if st.movement == 0 {
 					st.movement = 1
 				} else if st.measure <= 1 && st.prevMeasure > 1 {
@@ -780,9 +728,7 @@ func parsePart(dec *xml.Decoder, start xml.StartElement, sc *Score) (Part, error
 	}
 }
 
-// measureNumber reads the printed measure number. numeric is false when the
-// attribute is absent or not an integer (pickup bars are often "0"; repeat
-// fragments "X1"); the ordinal is then returned as a fallback.
+// numeric is false when absent or not an integer (pickups are often "0", fragments "X1"): the ordinal is the fallback.
 func measureNumber(start xml.StartElement, ordinal int) (int, bool) {
 	for _, a := range start.Attr {
 		if a.Name.Local != "number" {
@@ -982,9 +928,7 @@ func parseKey(dec *xml.Decoder, start xml.StartElement, sc *Score) error {
 	}
 }
 
-// parseTime reads a <time> element. The score keeps the OPENING meter
-// (TimeBeats/TimeBeatType); the part state tracks the meter IN FORCE, which is
-// what each recorded Measure carries.
+// The score keeps the OPENING meter; the part state tracks the meter IN FORCE, which each Measure records.
 func parseTime(dec *xml.Decoder, start xml.StartElement, sc *Score, st *partState) error {
 	beats, beatType := 0, 0
 	for {
@@ -1157,8 +1101,7 @@ done:
 
 	switch {
 	case n.Grace:
-		// Grace notes carry no duration and do not advance the cursor; they
-		// hang off the following note's onset.
+		// Grace notes take no time: they hang off the next note's onset.
 		n.OnsetDiv = st.pos
 	case hasChord:
 		n.OnsetDiv = st.lastNonChordOnset
@@ -1181,18 +1124,15 @@ done:
 	}
 
 	n.Velocity = accentedVelocity(st.velocity, n.Articulations)
-	// <note dynamics="N"> sets THIS note's loudness as a percentage of MIDI 90
-	// — how notation software writes a ghost note or a single accent without
-	// changing the prevailing dynamic.
+	// THIS note's loudness as a percentage of MIDI 90: how notation software writes a ghost note or a single accent without
+	// changing the dynamic.
 	if v, err := strconv.ParseFloat(attr(start, "dynamics"), 64); err == nil && v > 0 {
 		n.Velocity = clamp01(v / 100 * 0.9)
 	}
 	return n, nil
 }
 
-// accentedVelocity applies articulation stress to the prevailing dynamic,
-// clamped to 1. A part with no dynamic marked anywhere keeps velocity 0, which
-// consumers read as "use the instrument default".
+// Clamped to 1. A part with no dynamic anywhere keeps 0, read as "the instrument default".
 func accentedVelocity(base float64, a Articulations) float64 {
 	if base <= 0 {
 		return 0
@@ -1412,14 +1352,8 @@ func parseDuration(dec *xml.Decoder, start xml.StartElement) (int, error) {
 	}
 }
 
-// parseDirection reads a <direction> — or, recursively, the <direction-type>
-// wrapper its payload actually lives in — collecting metronome marks, dynamics
-// and the agogic words (rit./accel./a tempo) that drive groove.
-//
-// closing names the element this call must consume, so the same switch serves
-// both nesting levels. A <direction> may hold several <direction-type>
-// children, and the payload is never a direct child of <direction> except for
-// <sound>.
+// closing names the element to consume, so one switch serves <direction> and its <direction-type> children (the
+// payload lives there, except <sound>).
 func parseDirection(dec *xml.Decoder, closing string, sc *Score, part *Part, st *partState) error {
 	for {
 		tok, err := dec.Token()
@@ -1475,9 +1409,7 @@ func parseDirection(dec *xml.Decoder, closing string, sc *Score, part *Part, st 
 	}
 }
 
-// parseSound reads a <sound> element — directly in a measure or inside a
-// <direction> — for its playback attributes (tempo in quarters per minute,
-// dynamics as a percentage of MIDI 90) and its <swing> child.
+// Tempo in quarters per minute, dynamics as a percentage of MIDI 90, and its <swing>.
 func parseSound(dec *xml.Decoder, start xml.StartElement, sc *Score, part *Part, st *partState) error {
 	for _, a := range start.Attr {
 		switch a.Name.Local {
@@ -1667,16 +1599,8 @@ var beatUnitQuarters = map[string]float64{
 	"eighth": 0.5, "16th": 0.25, "32nd": 0.125, "64th": 0.0625,
 }
 
-// parseMetronome reads a <metronome> element and records the tempo it marks.
-//
-// The marking's number is per BEAT-UNIT, not per quarter: "half = 100" is
-// quarter = 200 and "dotted quarter = 80" (the usual 6/8 marking) is
-// quarter = 120. Reading <per-minute> alone — as this did before 2026-09-12 —
-// therefore mis-timed every score not marked in plain quarters, by a factor of
-// the beat unit. It went unnoticed because most of the corpus also carries a
-// <sound tempo> (already in quarters) in the same <direction>, which landed
-// afterwards and overwrote the wrong value; a score marked only with a
-// <metronome> had no such safety net.
+// The number is per BEAT-UNIT: "half = 100" is quarter = 200, "dotted quarter = 80" quarter = 120. A score marked only
+// with a <metronome> (no <sound tempo>) otherwise plays at the wrong speed.
 func parseMetronome(dec *xml.Decoder, start xml.StartElement, sc *Score, measure int) error {
 	quarters := 1.0 // beat unit, in quarter notes; default quarter
 	dots := 0
@@ -1734,10 +1658,8 @@ func parseMetronome(dec *xml.Decoder, start xml.StartElement, sc *Score, measure
 	}
 }
 
-// mergeTies folds each tied group into the note that starts it, so a note held
-// across a barline is ONE event of the full length rather than a re-attack the
-// score does not contain. Matching is by (voice, staff, semitone) — the same
-// identity MusicXML itself uses for tie resolution.
+// A note held across a barline is ONE event, never a re-attack the score does not contain; matched by (voice, staff,
+// semitone), MusicXML's own tie identity.
 func mergeTies(notes []Note) []Note {
 	type key struct {
 		voice, staff, semi int

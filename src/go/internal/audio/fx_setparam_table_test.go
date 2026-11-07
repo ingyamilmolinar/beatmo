@@ -5,14 +5,8 @@ import (
 	"testing"
 )
 
-// TestEffectSetParamCatalogCoverage walks every registered effect type
-// and exercises SetParam at the min, max, and midpoint of every
-// declared parameter, plus an unknown-name pass to cover the default
-// switch arm. After each SetParam we render a single sample to confirm
-// the effect did not enter a NaN/Inf state.
-//
-// The test self-extends to any new effect added to the catalog: register
-// it with EffectRegistrations and it is automatically covered.
+// Min, max and midpoint of every declared param plus an unknown name, one sample each for NaN/Inf; a new registered
+// effect is covered automatically.
 func TestEffectSetParamCatalogCoverage(t *testing.T) {
 	catalog := InsertEffectCatalog()
 	if len(catalog) == 0 {

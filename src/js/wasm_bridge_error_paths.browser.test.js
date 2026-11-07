@@ -1,29 +1,6 @@
-// wasm_bridge_error_paths.browser.test.js
-//
-// Error-path contract tests for the WASM↔JS bridge: what happens when JS
-// callers hand the bridge garbage. The happy-path surface is owned by
-// wasm_bridge_smoke.browser.test.js (the canonical catalogue); this file owns
-// the failure modes that JS's dynamic typing makes easy to hit and silent to
-// miss:
-//
-//   1. importJSON with malformed / empty / structurally-wrong JSON returns an
-//      error string (the documented contract) and leaves state untouched.
-//   2. Out-of-range positive indices into row/node getters return sane
-//      defaults instead of throwing or crashing.
-//   3. Wrong-typed arguments (string where a number is expected) degrade to
-//      the documented default instead of panicking — a panic inside a
-//      js.FuncOf callback kills the whole Go-WASM runtime, so this class of
-//      bug is fatal, not cosmetic (see jsArgInt in js_exports_scenes.go).
-//
-// After every hostile call the test re-probes the bridge (totalRows) to prove
-// the runtime survived.
-//
-// NOTE: exports that read args via raw args[i].Int() (not jsArgInt) still
-// crash the runtime on string args — e.g. nodeInfo("abc", 0). That is a known
-// gap; this test intentionally exercises only the hardened jsArgInt path for
-// wrong-typed args until the raw call sites grow guards.
-//
-// Usage: GO=/path/to/.tools/go/bin/go node src/js/wasm_bridge_error_paths.browser.test.js
+// Garbage into the bridge: malformed JSON to importJSON returns an error and leaves state alone; out-of-range indices
+// return defaults; wrong-typed args through jsArgInt degrade, since a panic in a js.FuncOf callback kills the whole runtime.
+// The bridge is re-probed after each call. Raw args[i].Int() sites still crash on strings and are not exercised.
 
 import { chromium } from "playwright";
 import http from "http";
@@ -150,8 +127,7 @@ try {
   check("runtime alive after openColorMenu(9999)", await alive());
   await page.evaluate(() => closeColorMenu?.());
 
-  // ── 3. Wrong-typed args through the jsArgInt path ─────────────────────
-  // jsArgInt type-checks and degrades to the default instead of panicking.
+  // jsArgInt degrades to the default instead of panicking.
   await page.evaluate(() => openColorMenu("abc"));
   await page.evaluate(() => forceDraw?.());
   await page.waitForTimeout(200);

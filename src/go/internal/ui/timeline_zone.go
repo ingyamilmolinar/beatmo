@@ -10,18 +10,12 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
-// beatCounterPillPadX/PadY define the pill chrome around the beat-counter
-// readout. Promoted to package constants so layout tests can reproduce
-// the same `pillH = TextHeight() + 2*pillPadY` math drawBeatCounter uses
-// to size the chip — keeping math + render in lockstep.
+// Package constants so layout tests reproduce the exact pill math drawBeatCounter uses.
 const (
 	beatCounterPillPadX = 8
 	beatCounterPillPadY = 3
 )
 
-// TimelineCallbacks contains callbacks for TimelineZone to communicate with
-// DrumView. Read-only accessors return current state; action callbacks push
-// changes back to the owner.
 type TimelineCallbacks struct {
 	// Read-only accessors
 	Rows                 func() []*DrumRow
@@ -59,21 +53,17 @@ type TimelineCallbacks struct {
 	OnRowScrollWheel func(steps int) bool
 	OnRowScrollDrag  func(targetRowOffset int)
 
-	// Draw delegate: row composite rendering (stripes/layer/direct) stays
-	// on DrumView due to deep coupling with offset caching and geometry.
+	// Stays on DrumView: deeply coupled to its offset caching and geometry.
 	DrawRowComposite func(dst *ebiten.Image)
 }
 
-// TimelineZone implements the Zone interface for the grid drag/scrub area.
-// It handles horizontal drag-to-scroll in the steps grid and click-to-scrub
-// in the timeline progress bar. It also owns per-row sprite cache state.
 type TimelineZone struct {
 	rect       image.Rectangle
 	needLayout bool
 	// layouts counts Layout calls (recalcButtons' layout gate is judged by it).
-	layouts int
-	callbacks  TimelineCallbacks
-	portal     *OverlayPortal
+	layouts   int
+	callbacks TimelineCallbacks
+	portal    *OverlayPortal
 
 	// Computed sub-rects (set during Layout)
 	stepsRect       image.Rectangle // grid area for drag scrolling
@@ -87,25 +77,19 @@ type TimelineZone struct {
 	// Scrub state (timeline bar seek)
 	scrubbing      bool
 	scrubGhostBeat int // beat under the pointer during a scrub drag
-	// gotoGhost marks the navigation menu's PENDING go-to position (a preview;
-	// no seek until Go). gotoGhostStep is an absolute subdivision step.
+	// A preview only: nothing seeks until Go. Absolute subdivision step.
 	gotoGhost      bool
 	gotoGhostStep  int
 	scrubPressBeat int // beat committed on press (so a tap re-seeks at most once)
 
 	// Timeline bar height (set by DrumView before Layout)
 	timelineBarH int
-	// Explicit timeline-bar rect set by DrumView before Layout. When
-	// non-empty, Layout uses this rect for the bar instead of placing
-	// the bar at `rect.Min.Y`. This decouples the bar's vertical
-	// position from the zone's clip-rect top, so the clip can extend
-	// upward (to cover the beat-counter chrome above the bar) without
-	// shifting the bar itself.
+	// Decouples the bar's position from the clip top, so the clip can grow upward over the counter
+	// chrome without moving the bar.
 	explicitBarRect image.Rectangle
 	cellGridRect    image.Rectangle // X anchor for row step cells (see SetCellGridRect)
 
-	// Buttons positioned in the timeline area by DrumView.calcLayout().
-	// TimelineZone registers them as hit areas; DrumView owns the buttons.
+	// DrumView owns these buttons; the zone only registers their hit areas.
 	trackBtn  *Button
 	lenDecBtn *Button
 	lenIncBtn *Button
@@ -172,23 +156,10 @@ func NewTimelineZone(cb TimelineCallbacks) *TimelineZone {
 // SetPortal sets the overlay portal reference (for consistency with other zones).
 func (z *TimelineZone) SetPortal(p *OverlayPortal) { z.portal = p }
 
-// timelineBarHMax caps the ribbon's height. Task 6 reshapes the ribbon into
-// a slim whole-song progress bar (it no longer carries the pattern-window
-// "view rect" affordance, so it doesn't need the extra height that used to
-// make that inner highlight legible). This is a clamp fallback, NOT a design
-// token change: DESIGN.md's `densities.timelineBarH` (10/12/14 px for
-// compact/comfortable/spacious, see design_density.gen.go) still drives the
-// unclamped value passed in here — changing that YAML + regenerating via
-// `make gen-design-tokens` is a 3-file ratcheted change (DESIGN.md ↔
-// theme.go ↔ design_md_drift_test.go's want-map) that's out of scope for
-// this task. Follow-up: fold this cap into the density token directly once
-// the ribbon's new visual weight has been eyeballed against real UI.
+// Keeps the ribbon a slim whole-song bar; a clamp over the density token, not a token change.
 const timelineBarHMax = 8
 
-// SetTimelineBarHeight sets the height of the timeline progress bar, clamped
-// to timelineBarHMax so the ribbon reads as a slim progress strip rather than
-// the taller bar the pattern-window view-rect used to need.
-// Must be called before Layout so the bar rect is computed correctly.
+// Call before Layout.
 func (z *TimelineZone) SetTimelineBarHeight(h int) {
 	if h > timelineBarHMax {
 		h = timelineBarHMax
@@ -196,22 +167,14 @@ func (z *TimelineZone) SetTimelineBarHeight(h int) {
 	z.timelineBarH = h
 }
 
-// SetTimelineBarRect provides the bar's screen-space rect explicitly so
-// Layout doesn't have to derive it from `rect.Min.Y`. Required when the
-// zone's clip rect extends above the bar (to cover the beat-counter
-// chrome). Pass `image.Rectangle{}` to fall back to the legacy "bar at
-// top of zone" behavior.
+// Needed when the clip extends above the bar; the zero rect puts the bar at the top of the zone.
 func (z *TimelineZone) SetTimelineBarRect(r image.Rectangle) { z.explicitBarRect = r }
 
-// SetCellGridRect supplies the X span row step cells are drawn into. It is a
-// separate rect from the ribbon bar: the bar reserves room for header-only
-// chrome and maps the whole song, while cells map the current window and fill
-// the full width dedicated to the grid. See DrumView.cellGridRect.
+// Separate from the bar: the bar reserves header chrome and maps the whole song, the cells map the
+// window and fill the full grid width.
 func (z *TimelineZone) SetCellGridRect(r image.Rectangle) { z.cellGridRect = r }
 
-// cellGridAnchor returns the X span to align cell-indexed overlays
-// (highlights, mute dimming) to. Falls back to the bar rect when DrumView has
-// not supplied a grid rect (legacy/standalone zone construction in tests).
+// Falls back to the bar rect when no grid rect was supplied (standalone tests).
 func (z *TimelineZone) cellGridAnchor() image.Rectangle {
 	if z.cellGridRect.Empty() {
 		return z.timelineBarRect
@@ -240,9 +203,7 @@ func (z *TimelineZone) Layout(rect image.Rectangle) {
 	}
 
 	if !z.explicitBarRect.Empty() {
-		// DrumView passed the bar's screen-space rect — use it verbatim
-		// so the zone's clip rect can extend above/around the bar
-		// without shifting the bar itself.
+		// Verbatim, so the clip can extend around the bar without shifting it.
 		z.timelineBarRect = z.explicitBarRect
 	} else {
 		// Legacy: bar lives at the TOP of the zone rect.
@@ -262,10 +223,6 @@ func (z *TimelineZone) Layout(rect image.Rectangle) {
 }
 
 func (z *TimelineZone) Update() {
-	// Drag/scrub are handled entirely via hit handlers (timelineScrubHitAdapter,
-	// gridDragHitAdapter); the zone has no other per-frame state to drive here.
-	// (Task 6 removed the beat-counter's inline position editor — tapping the
-	// counter now opens the navigation menu via OnOpenNavigation instead.)
 }
 
 // SetDrawParams sets per-frame draw data before Draw() is called.
@@ -300,10 +257,7 @@ func (z *TimelineZone) Draw(screen *ebiten.Image) {
 		z.lenDecBtn.Draw(screen)
 	}
 
-	// --- Track button ---
-	// Visibility is rect-driven: drumview_layout.go sets the rect on desktop
-	// and leaves it empty on mobile (mobile surfaces the toggle via the
-	// overflow menu instead). One predicate, one source of truth.
+	// Rect-driven: empty on mobile, where the toggle lives in the overflow menu.
 	if z.trackBtn != nil && !z.trackBtn.Rect().Empty() {
 		z.trackBtn.Draw(screen)
 	}
@@ -325,8 +279,7 @@ func (z *TimelineZone) Draw(screen *ebiten.Image) {
 	}
 }
 
-// computeTimelineBeats ensures the timeline is long enough for the graph,
-// the current playhead, and the visible window.
+// Long enough for the graph, the playhead and the visible window.
 func (z *TimelineZone) computeTimelineBeats(elapsedBeats float64) {
 	isPlaying := z.callbacks.IsPlaying != nil && z.callbacks.IsPlaying()
 	timelineBeats := z.callbacks.TimelineBeats()
@@ -343,10 +296,7 @@ func (z *TimelineZone) computeTimelineBeats(elapsedBeats float64) {
 	}
 	units := float64(unitsPerBeat)
 	lengthBeats := float64(length) / units
-	// elapsedBeats is already in beats (it's g.displayBeat()); previous
-	// code divided by `units` here, silently shrinking needBeats1 by the
-	// subdivisions-per-beat factor and letting TimelineBeats lag the
-	// actual playhead until the offset-derived needBeats2 caught up.
+	// elapsedBeats is already in beats.
 	needBeats1 := int(math.Ceil(elapsedBeats + lengthBeats))
 	offsetBeats := float64(offset) / units
 	needBeats2 := int(math.Ceil(offsetBeats + lengthBeats))
@@ -361,15 +311,8 @@ func (z *TimelineZone) computeTimelineBeats(elapsedBeats float64) {
 	}
 }
 
-// drawTimelineBar renders the timeline as a slim whole-song progress bar:
-// hierarchical tick background (major every 16 beats, medium every 4, minor
-// every 1) spans the full `[0, totalBeats]` range — decoupled from the
-// drum-grid pattern window (dv.Offset/dv.Length) — with the playback cursor
-// at `elapsedBeats / totalBeats` of the bar width. Task 6 removed the old
-// fixed-beats-per-pixel sliding window (`ribbonWindowBeats`) and the
-// pattern-window "view rect" highlight; the ribbon is now drag-only (see
-// timelineScrubHitAdapter) so there is no click-to-seek affordance to imply
-// visually beyond the cursor itself.
+// Ticks span the whole song [0, totalBeats], independent of the drum window, with the cursor at
+// elapsed/total; the ribbon is drag-only, so nothing implies click-to-seek.
 func (z *TimelineZone) drawTimelineBar(dst *ebiten.Image, elapsedBeats float64, totalBeats int) {
 	barRect := z.timelineBarRect
 	if barRect.Empty() {
@@ -378,23 +321,13 @@ func (z *TimelineZone) drawTimelineBar(dst *ebiten.Image, elapsedBeats float64, 
 	beats := max1(totalBeats)
 	pxPerBeat := float64(barRect.Dx()) / float64(beats)
 
-	// Build or reuse the hierarchical-tick background cache. Cache key is
-	// (barRect.Dx, Dy, totalBeats) — the whole-song span only grows (see
-	// computeTimelineBeats' high-water mark), so this rebuilds far less
-	// often than the old per-frame sliding window did.
+	// The whole-song span only grows, so this rarely rebuilds.
 	cacheKeyW := barRect.Dx()
 	cacheKeyH := barRect.Dy()
-	// Split the cache invalidation into two paths: a dimension-change path
-	// that must allocate a fresh atlas image, and a content-change path
-	// that reuses the same image and only redraws pixels. See history: the
-	// old code allocated a fresh *ebiten.Image on every window-slide
-	// transition and dropped the previous one with no Deallocate(); on
-	// WASM the orphaned atlas slots accumulated in Ebiten's BSP packing
-	// tree until the heap exhausted (reported OOM at ~41 min playback,
-	// atlas depth >125). See: ebiten/v2/internal/packing/packing.go alloc().
+	// A size change allocates; a content change reuses the image. Dropping images without Deallocate
+	// filled WASM's atlas packing tree until the heap ran out.
 	dimChanged := z.TlCache == nil || z.TlCacheW != cacheKeyW || z.TlCacheH != cacheKeyH
-	// The ribbon bakes colTimelineTotal / timeline-view / tick colors, so a
-	// runtime theme change is a content change too.
+	// The ribbon bakes theme colors, so a theme change is a content change.
 	contentChanged := dimChanged || z.TlCacheBeats != beats || z.TlCacheThemeGen != ThemeGeneration()
 	if dimChanged {
 		if z.TlCache != nil {
@@ -410,9 +343,7 @@ func (z *TimelineZone) drawTimelineBar(dst *ebiten.Image, elapsedBeats float64, 
 			z.TlCache.Clear()
 		}
 		drawRect(z.TlCache, image.Rect(0, 0, z.TlCacheW, z.TlCacheH), colTimelineTotal, true)
-		// Faint amber track fill so the bar reads as a recessed warm
-		// "sunset" track rather than floating in the near-black total-bg.
-		// Baked into the cache (alloc-free per frame).
+		// Baked into the cache, alloc-free per frame.
 		drawRect(z.TlCache, image.Rect(0, 0, z.TlCacheW, z.TlCacheH), WithAlpha(genColorTimelineView, AlphaFaint), true)
 		z.drawRibbonTicks(z.TlCache, 0, pxPerBeat)
 	}
@@ -420,8 +351,7 @@ func (z *TimelineZone) drawTimelineBar(dst *ebiten.Image, elapsedBeats float64, 
 	op.GeoM.Translate(float64(barRect.Min.X), float64(barRect.Min.Y))
 	dst.DrawImage(z.TlCache, &op)
 
-	// Playback cursor — whole-song fraction of elapsed beats over the total
-	// song length, clamped to the bar bounds.
+	// Clamped to the bar.
 	frac := elapsedBeats / float64(beats)
 	if frac < 0 {
 		frac = 0
@@ -443,8 +373,6 @@ func (z *TimelineZone) drawTimelineBar(dst *ebiten.Image, elapsedBeats float64, 
 
 	drawRect(dst, barRect, colButtonBorder, false)
 
-	// Ghost preview of the pending seek position while dragging the ribbon,
-	// or of the navigation menu's pending go-to position.
 	if z.scrubbing {
 		z.drawScrubGhost(dst, z.scrubGhostBeat)
 	} else if z.gotoGhost {
@@ -452,8 +380,7 @@ func (z *TimelineZone) drawTimelineBar(dst *ebiten.Image, elapsedBeats float64, 
 	}
 }
 
-// SetGotoGhost shows (on) or clears the ghost marking the navigation menu's
-// pending go-to step. A preview only: nothing seeks.
+// A preview only: nothing seeks.
 func (z *TimelineZone) SetGotoGhost(step int, on bool) {
 	z.gotoGhost = on
 	z.gotoGhostStep = step
@@ -462,10 +389,7 @@ func (z *TimelineZone) SetGotoGhost(step int, on bool) {
 // GotoGhost reports the pending go-to ghost (step, shown).
 func (z *TimelineZone) GotoGhost() (int, bool) { return z.gotoGhostStep, z.gotoGhost }
 
-// drawScrubGhost renders the pending seek position (a vertical line + beat
-// chip) while the user drags the ribbon. The ghost tracks z.scrubGhostBeat,
-// which OnDrag updates without dispatching a seek — the seek commits only
-// on OnRelease, and only if the drag moved to a different beat.
+// OnDrag moves the ghost without seeking; the seek commits on release, only if the beat changed.
 func (z *TimelineZone) drawScrubGhost(dst *ebiten.Image, step int) {
 	bar := z.timelineBarRect
 	if bar.Empty() {
@@ -492,15 +416,11 @@ func (z *TimelineZone) drawScrubGhost(dst *ebiten.Image, step int) {
 		gx = bar.Max.X - 1
 	}
 	drawRect(dst, image.Rect(gx, bar.Min.Y, gx+1, bar.Max.Y), colAccentBright, true)
-	// Beat chip near the top of the bar: 1-based, the number the beat counter
-	// shows for that beat.
+	// 1-based, like the beat counter.
 	DrawTextAt(dst, strconv.Itoa(ghostBeat+1), gx+3, bar.Min.Y+2)
 }
 
-// drawRibbonTicks paints hierarchical beat ticks for the visible window
-// onto the cache image. Major ticks (full height) land every 16 beats;
-// medium ticks (2/3 height) every 4 beats; minor ticks (1/3 height) every
-// 1 beat. Each tier auto-skips when its spacing would fall below 3 px.
+// Major every 16 beats, medium every 4, minor every 1; a tier spaced under 3 px is skipped.
 func (z *TimelineZone) drawRibbonTicks(dst *ebiten.Image, winStart, pxPerBeat float64) {
 	const minTierPx = 3.0
 	startBeat := int(math.Floor(winStart))
@@ -535,8 +455,7 @@ func (z *TimelineZone) drawRibbonTicks(dst *ebiten.Image, winStart, pxPerBeat fl
 	}
 }
 
-// timelineInfoCached returns a cached timeline info string, only re-rendering
-// when milliseconds change.
+// Re-rendered only when the milliseconds change.
 func (z *TimelineZone) timelineInfoCached(elapsedBeats float64) string {
 	unitsPerBeat := max1(z.callbacks.TimelineUnitsPerBeat())
 	length := z.callbacks.Length()
@@ -561,31 +480,21 @@ func (z *TimelineZone) timelineInfoCached(elapsedBeats float64) string {
 	}
 	z.LastInfoCurMS = curMS
 	z.LastInfoTotMS = totMS
-	// Beat/second pair resolved by playheadPosAt — the same derivation the
-	// navigation menu's position title reads, so the two never disagree.
+	// Through playheadPosAt, like the navigation menu's title, so they never disagree.
 	p := playheadPosAt(elapsedBeats, secPerBeat, unitsPerBeat)
 	z.LastInfoText = formatBeatReadout(p.DisplayBeat, p.Seconds)
 	return z.LastInfoText
 }
 
-// beatCounterContentWidth is the pixel width the beat-counter keycap needs to
-// render `readout` without clipping: the leading target icon (square == text
-// cap height) + icon→text gap + the readout text + the cap's horizontal
-// padding on both sides. Single source of truth shared by drawBeatCounter (cap
-// sizing), beatCounterSlotWidth (upper bound), and drumview_layout.go (the live
-// slot width) so layout and render never disagree — the cause of the counter
-// crop was the layout omitting the icon+gap allowance this helper includes.
+// Icon, gap, text and padding: the single width source for the cap, the slot ceiling and layout, so
+// the counter never crops.
 func beatCounterContentWidth(readout string) int {
 	iconSz := TextHeight()
 	iconGap := beatCounterPillPadX
 	return iconSz + iconGap + TextWidth(readout) + 2*beatCounterPillPadX
 }
 
-// beatCounterSlotWidth returns a stable left-anchored slot width ceiling for the
-// beat-counter keycap, sized to a generous upper-bound readout so the counter
-// doesn't reflow as the live text changes width frame to frame. Mobile uses the
-// compact position-only bound ("888 · 8:88") to match formatBeatReadout — the
-// desktop "Beat 888 · 88:88" bound would exceed the narrow mobile band.
+// A stable ceiling so the counter does not reflow as the text changes; mobile uses its compact bound.
 func beatCounterSlotWidth() int {
 	if Profile().IsMobile() {
 		return beatCounterContentWidth("888 · 8:88")
@@ -593,11 +502,7 @@ func beatCounterSlotWidth() int {
 	return beatCounterContentWidth("Beat 888 · 88:88")
 }
 
-// drawBeatCounter renders the beat/time counter above the timeline bar as a
-// raised keycap (colSurface2 fill, square corners) with a leading IconTarget,
-// so it reads as a pressable control — tapping it opens the navigation menu to
-// change beat/time. Left-anchored in the allotted rect, with a hover-brightened
-// border when the pointer is over it.
+// A keycap like every Button, so it reads as pressable; a tap opens the navigation menu.
 func (z *TimelineZone) drawBeatCounter(dst *ebiten.Image, elapsedBeats float64) {
 	beatCounterRect := image.Rectangle{}
 	if z.callbacks.BeatCounterRect != nil {
@@ -608,11 +513,6 @@ func (z *TimelineZone) drawBeatCounter(dst *ebiten.Image, elapsedBeats float64) 
 	}
 	info := z.timelineInfoCached(elapsedBeats)
 	th := TextHeight()
-	// Render as a matte keycap identical to every other Button (DESIGN.md
-	// "Keycap elevation") so it reads as a pressable control — tapping it opens
-	// the navigation menu to change beat/time. Uses the same secondary fill/
-	// border as the neighbouring track/lock keycap, plus a leading IconTarget
-	// affordance and the readout text on the cap face.
 	iconSz := th // square target icon, aligned to the text cap height
 	iconGap := beatCounterPillPadX
 	contentW := beatCounterContentWidth(info)
@@ -625,14 +525,10 @@ func (z *TimelineZone) drawBeatCounter(dst *ebiten.Image, elapsedBeats float64) 
 	if pillH > beatCounterRect.Dy() {
 		pillH = beatCounterRect.Dy()
 	}
-	// Left-anchored: the counter lives in a left slot next to the track/lock
-	// keycap, with the notification area to its right.
 	pillX := beatCounterRect.Min.X
 	pillY := beatCounterRect.Min.Y + (beatCounterRect.Dy()-pillH)/2
 	pillR := image.Rect(pillX, pillY, pillX+pillW, pillY+pillH)
-	// Hover: read the live cursor so the chip lifts (drawFlatPanelButton
-	// brightens the fill) when the pointer is over it. Press is momentary
-	// (the tap opens the menu immediately), so only hover is reflected.
+	// Hover only: the press opens the menu at once.
 	cx, cy := cursorPosition()
 	hovered := image.Pt(cx, cy).In(pillR)
 	cap := drawFlatPanelButton(dst, pillR, TransportMiscStyle.Fill, hovered)
@@ -645,8 +541,6 @@ func (z *TimelineZone) drawBeatCounter(dst *ebiten.Image, elapsedBeats float64) 
 	DrawTextAt(dst, info, cap.Min.X+beatCounterPillPadX+iconSz+iconGap, infoY)
 }
 
-// rowsTopY returns the Y coordinate where rows start. Uses the RowsTopY
-// callback when available; falls back to stepsRect.Min.Y.
 func (z *TimelineZone) rowsTopY() int {
 	if z.callbacks.RowsTopY != nil {
 		return z.callbacks.RowsTopY()
@@ -654,11 +548,7 @@ func (z *TimelineZone) rowsTopY() int {
 	return z.stepsRect.Min.Y
 }
 
-// drawGapFill fills the gap below visible rows with the rack bed, so the
-// empty area under the last row reads as ONE surface across the rack column
-// and the timeline. It used to take the cell-off (surface-2) tone — a control
-// tone that made the empty area read as one giant raised cell, lighter than
-// the rack beside it.
+// The rack bed, so the area under the last row reads as one surface with the rack.
 func (z *TimelineZone) drawGapFill(dst *ebiten.Image) {
 	rows := z.callbacks.Rows()
 	vis := z.callbacks.VisibleRows()
@@ -679,8 +569,6 @@ func (z *TimelineZone) drawGapFill(dst *ebiten.Image) {
 	}
 }
 
-// ensureHighlightSprites builds 1px-wide highlight sprites for the current
-// row height, caching them for reuse.
 func (z *TimelineZone) ensureHighlightSprites() {
 	h := z.callbacks.RowHeight()
 	if h <= 0 {
@@ -700,15 +588,12 @@ func (z *TimelineZone) ensureHighlightSprites() {
 	z.hlSpriteH = h
 }
 
-// isNonAudibleCellType returns true for node types that don't produce sound.
-// These get a subdued grey highlight instead of the bright white flash.
+// They get a subdued highlight instead of the bright flash.
 func isNonAudibleCellType(t model.NodeType) bool {
 	return !t.Fires()
 }
 
-// drawHighlights renders per-row highlight overlays for active beats.
-// Uses 1px-wide cached sprites scaled to cell width for all paths
-// (1 DrawImage per highlight instead of 6 via DrumCellUI.Draw).
+// One scaled 1-px sprite per highlight.
 func (z *TimelineZone) drawHighlights(dst *ebiten.Image, simpleDraw bool) {
 	rows := z.callbacks.Rows()
 	vis := z.callbacks.VisibleRows()
@@ -717,11 +602,7 @@ func (z *TimelineZone) drawHighlights(dst *ebiten.Image, simpleDraw bool) {
 	offset := z.callbacks.Offset()
 	length := z.callbacks.Length()
 	rowsTop := z.rowsTopY()
-	// Cell-X anchor: row step cells are drawn at dv.cellGridRect bounds
-	// (see drumview_cache_rows_layer.go), NOT at the ribbon bar's bounds.
-	// The bar is narrowed by header-only chrome (track/lock chip, len ±
-	// buttons) and maps the whole song; the grid maps the current window and
-	// fills the full dedicated width. Highlights must follow the grid.
+	// Highlights follow the cell grid, never the ribbon, which header chrome narrows.
 	anchor := z.cellGridAnchor()
 	startX := anchor.Min.X
 	totalW := anchor.Dx()
@@ -753,8 +634,7 @@ func (z *TimelineZone) drawHighlights(dst *ebiten.Image, simpleDraw bool) {
 					x1 = x0 + 1
 				}
 
-				// Tests intercept drawRect to assert highlight draws,
-				// so fall back to the drawRect path under test.
+				// Tests intercept drawRect to assert highlights.
 				if runningUnderGoTest() && !simpleDraw {
 					rect := image.Rect(x0, y, x1, y+rh)
 					if isMuteHighlight(val) || isNonAudibleCellType(r.CellTypes[j]) {
@@ -764,8 +644,6 @@ func (z *TimelineZone) drawHighlights(dst *ebiten.Image, simpleDraw bool) {
 						DrumCellUI.Draw(dst, rect, r.Steps[j], true, r.Color)
 					}
 				} else {
-					// Sprite-based path: 1 DrawImage per highlight
-					// instead of 6 via DrumCellUI.Draw.
 					var spr *ebiten.Image
 					if isMuteHighlight(val) || isNonAudibleCellType(r.CellTypes[j]) {
 						spr = z.hlSpriteMute
@@ -805,8 +683,7 @@ func (z *TimelineZone) drawMuteSoloDimming(dst *ebiten.Image) {
 	rowOffset := z.callbacks.RowOffset()
 	rh := z.callbacks.RowHeight()
 	rowsTop := z.rowsTopY()
-	// Dim the cell strip only, not the chrome column to its left. Anchored to
-	// the cell grid, not the ribbon bar — see drawHighlights for the rationale.
+	// The cell strip only, anchored to the grid.
 	anchor := z.cellGridAnchor()
 	for i := rowOffset; i < rowOffset+vis && i < len(rows); i++ {
 		shouldDim := rows[i].Muted || (anySolo && !rows[i].Solo)
@@ -842,8 +719,7 @@ func (z *TimelineZone) TimelineBarRect() image.Rectangle { return z.timelineBarR
 
 // --- Cache management public API ---
 
-// EnsureRowCache ensures cache slices match the current row count.
-// Returns true if slices were reallocated (caller should re-alias).
+// true when reallocated: the caller must re-alias.
 func (z *TimelineZone) EnsureRowCache() bool {
 	rows := z.callbacks.Rows()
 	n := len(rows)
@@ -989,8 +865,7 @@ func (z *TimelineZone) MarkAllRowsDirty() {
 	}
 }
 
-// MarkRowCellsDirty marks a row as needing rebuild but allows the cheap
-// cell-patch path (does NOT set RowFullDirty).
+// Leaves RowFullDirty alone, so the cheap patch path still applies.
 func (z *TimelineZone) MarkRowCellsDirty(i int) {
 	z.EnsureRowCache()
 	if i >= 0 && i < len(z.RowDirty) {
@@ -1015,8 +890,6 @@ func (z *TimelineZone) MarkRowShiftDirty(i int) {
 	}
 }
 
-// MarkRowsShiftDirty invalidates all rows for offset shifts while
-// allowing incremental reuse.
 func (z *TimelineZone) MarkRowsShiftDirty() {
 	z.EnsureRowCache()
 	for i := range z.RowDirty {
@@ -1090,8 +963,7 @@ func (z *TimelineZone) SetButtons(track, lenDec, lenInc *Button) {
 	z.lenIncBtn = lenInc
 }
 
-// RefreshButtonHitAreas rebuilds hit areas including buttons.
-// Called by DrumView after calcLayout() repositions the buttons.
+// After calcLayout repositions the buttons.
 func (z *TimelineZone) RefreshButtonHitAreas() {
 	z.rebuildHitAreas()
 }
@@ -1111,23 +983,8 @@ func (z *TimelineZone) rebuildHitAreas() {
 		})
 	}
 
-	// Timeline bar scrub area (higher z-index than grid).
-	//
-	// Mobile touch-target: previously the rect was physically enlarged
-	// downward by `(TouchMinTarget - barH)` to meet the 44 px touch
-	// floor. That ENLARGED rect leaked into the steps region below
-	// and was the spatial root of the "drag a synth knob also scrubs
-	// the timeline" leak: a drag started in the enlarged strip
-	// captured input via OnPress, and the tree then routed every
-	// subsequent OnDrag to the captured handler without re-testing
-	// hit areas — so the scrub kept firing even after the cursor
-	// drifted into a different zone's region.
-	//
-	// Fix: publish the *visible* bar rect and let HitIndex.At expand
-	// the touch radius via `HitArea.Touch + ClipRect`. The skirt
-	// (4 px inset) is generous enough for fat-finger tolerance but
-	// strictly bounded — the expansion can never reach the audio
-	// panel below.
+	// The VISIBLE bar rect, expanded by Touch + ClipRect: physically enlarging it leaked into the steps
+	// below, and a captured scrub kept firing in another zone. The 4 px skirt can never reach the panel.
 	scrubRect := z.timelineBarRect
 	if !scrubRect.Empty() {
 		clip := scrubRect.Inset(-4)
@@ -1182,22 +1039,12 @@ func (z *TimelineZone) rebuildHitAreas() {
 			Handler: &repeatButtonHitAdapter{btn: sb.btn},
 			Tag:     sb.tag,
 			Touch:   true,
-			// No ClipRect: buttons are positioned outside the shrunk zone
-			// rect by recalcButtons(), so clipping prevents mobile touch hits.
+			// No ClipRect: recalcButtons places these outside the zone rect, and a clip would block touch hits.
 		})
 	}
 
-	// Beat counter: a visible opaque chip with no action of its own. It sits
-	// in the band between the track chip (left) and the notification area
-	// (right), both of which register Touch-expanded hit areas (44 px on every
-	// side, clipped only to the whole zone). Without its own hit area, those
-	// expansions reach over the counter and a tap on it opened the track menu
-	// or the notification history. Register a non-Touch catch-all on its exact
-	// rect: HitIndex.At sorts exact-rect hits ahead of touch-expanded-only
-	// hits, so this wins for any tap inside the counter, and it consumes the
-	// press (the counter has no action) so nothing falls through. This is the
-	// opaque-to-z contract applied to the counter. Regression test:
-	// beat_counter_input_isolation_test.go.
+	// An exact-rect, non-Touch catch-all: the band-mates' touch-expanded areas reach over the counter,
+	// and exact hits sort first, so a tap here can never open their menus.
 	if z.callbacks.BeatCounterRect != nil {
 		if bc := z.callbacks.BeatCounterRect(); !bc.Empty() {
 			z.hitAreas = append(z.hitAreas, HitArea{
@@ -1211,13 +1058,7 @@ func (z *TimelineZone) rebuildHitAreas() {
 	}
 }
 
-// beatCounterHitAdapter absorbs presses on the beat-counter chip so a
-// band-mate's touch-expanded hit area can never steal a tap meant for the
-// counter, and opens the navigation menu (Task 6 repoint — the counter
-// previously opened an inline tap-to-seek position editor; that surface is
-// now reached via OnOpenNavigation → dv.OpenNavigation, matching the
-// transport bar's nav button). The catch-all-and-consume contract is
-// unchanged (see beat_counter_input_isolation_test.go).
+// Absorbs presses so a band-mate's expanded hit area cannot steal them; opens the navigation menu.
 type beatCounterHitAdapter struct{ zone *TimelineZone }
 
 func (h *beatCounterHitAdapter) OnPress(x, y int) InputResult {
@@ -1276,8 +1117,7 @@ func (h *gridDragHitAdapter) OnDrag(x, y int) {
 		h.vertical = dy > dx
 	}
 	if h.vertical {
-		// Compute target row offset from total drag delta.
-		// Dragging up (negative dy) = scroll down (increase offset).
+		// Dragging up scrolls down.
 		rowH := z.callbacks.RowHeight()
 		if rowH > 0 && z.callbacks.OnRowScrollDrag != nil {
 			targetOff := h.startRowOff + (h.dragStartY-y)/rowH
@@ -1308,15 +1148,8 @@ func (h *gridDragHitAdapter) OnRelease(x, y int) {
 
 func (h *gridDragHitAdapter) OnWheel(x, y, steps int) InputResult {
 	z := h.zone
-	// Dominant-axis routing over the drum cell grid. A two-finger trackpad
-	// scroll arrives as a wheel event with both axes; route the dominant one
-	// and ONLY that one — a mostly-horizontal scroll moves the timeline view,
-	// a mostly-vertical scroll scrolls the rows. They are mutually exclusive:
-	// a diagonal gesture never moves both at once. (The vertical wheel path
-	// reaching only OnRowScrollWheel was the bug — horizontal intent was
-	// dropped and its incidental vertical component scrolled the rows.)
-	// Detents, not raw platform units — see input_dynamics.go. Reading the raw
-	// wheel here is what let one browser notch fly the timeline across the song.
+	// Route only the dominant axis of a two-finger scroll, so a diagonal gesture never moves both the
+	// timeline and the rows. Detents, never raw units.
 	wx, wy := wheelNotches()
 	ax, ay := wx, wy
 	if ax < 0 {
@@ -1330,8 +1163,7 @@ func (h *gridDragHitAdapter) OnWheel(x, y, steps int) InputResult {
 		if sx == 0 || z.callbacks.OnOffsetChange == nil || z.callbacks.Offset == nil {
 			return InputIgnored
 		}
-		// Scroll right (positive dx) advances the timeline; clamp at 0 to match
-		// the single-finger horizontal grid drag.
+		// Clamped at 0 like the horizontal grid drag.
 		newOffset := z.callbacks.Offset() + sx
 		if newOffset < 0 {
 			newOffset = 0
@@ -1349,8 +1181,6 @@ func (h *gridDragHitAdapter) OnWheel(x, y, steps int) InputResult {
 	return InputIgnored
 }
 
-// ribbonStepAt maps pointer X on the timeline bar to the nearest whole-beat
-// absolute subdivision step.
 func (z *TimelineZone) ribbonStepAt(x int) int {
 	bar := z.timelineBarRect
 	if bar.Dx() <= 0 {
@@ -1381,14 +1211,8 @@ func (z *TimelineZone) ribbonStepAt(x int) int {
 	return beat * div
 }
 
-// --- Timeline scrub hit handler ---
-//
-// Task 6: the ribbon is drag-only, not a click-to-seek surface. Press only
-// arms scrubbing (records the press beat + ghost); drag updates the ghost
-// preview (z.scrubGhostBeat) with no seek dispatched; release commits a
-// seek ONLY if the gesture ended on a different beat than the press beat —
-// a pure tap (press+release at the same beat) commits nothing at all, and
-// a real drag emits exactly one EventSeek on release.
+// Drag-only: press arms, drag moves the ghost without seeking, release commits one seek only if
+// the beat changed. A pure tap commits nothing.
 type timelineScrubHitAdapter struct {
 	zone *TimelineZone
 }
@@ -1399,8 +1223,7 @@ func (h *timelineScrubHitAdapter) OnPress(x, y int) InputResult {
 	}
 	z := h.zone
 	z.scrubbing = true
-	// Engagement cue for the enlarged mobile scrub hit area (Task 3.1):
-	// fires after the multi-touch gate so suppressed presses don't buzz.
+	// After the multi-touch gate, so suppressed presses do not buzz.
 	hapticEmit(8)
 	z.scrubGhostBeat = z.ribbonStepAt(x)
 	z.scrubPressBeat = z.scrubGhostBeat // remember where the gesture started; no seek on press
@@ -1412,13 +1235,8 @@ func (h *timelineScrubHitAdapter) OnDrag(x, y int) {
 	if !z.scrubbing {
 		return
 	}
-	// Self-policing: the tree's drag dispatch routes every move to the
-	// captured handler without re-testing hit areas, so a captured
-	// scrub would otherwise stay attached forever even when the
-	// cursor drifts into a sibling zone. Release capture when the
-	// pointer leaves the bar's vertical lane (with the same skirt
-	// HitArea.Touch + ClipRect uses on the press path). Prevents the
-	// "drag into the audio panel still scrubs the timeline" leak.
+	// Captured drags skip hit re-testing, so release capture when the pointer leaves the bar's lane,
+	// or a drag into the audio panel keeps scrubbing.
 	skirt := z.timelineBarRect.Inset(-4)
 	if y < skirt.Min.Y || y >= skirt.Max.Y {
 		z.scrubbing = false
@@ -1431,10 +1249,7 @@ func (h *timelineScrubHitAdapter) OnRelease(x, y int) {
 	z := h.zone
 	if z.scrubbing && z.callbacks.OnSeekToStep != nil {
 		final := z.ribbonStepAt(x)
-		// Commit a seek on release ONLY if the drag moved to a different
-		// beat than where the gesture started. Press no longer seeks
-		// (drag-only ribbon), so a pure tap (final == press beat) emits NO
-		// seek; a drag emits exactly one EventSeek, on release.
+		// Only if the beat changed: a tap emits no seek, a drag exactly one.
 		if final != z.scrubPressBeat {
 			z.callbacks.OnSeekToStep(final, hooks.SeekRibbon)
 		}

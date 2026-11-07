@@ -1,16 +1,7 @@
 //go:build !test && !js
 
-// export_audio is a tool that renders desktop audio samples and exports them
-// to JSON for cross-platform comparison with WASM output.
-//
-// Usage (the xplat browser tests run the first form themselves on every run via
-// loadDesktopAudioReference — the output is a reference rendered from the
-// current tree, never a snapshot to commit):
-//
-//	cd src/go && go run ./cmd/export_audio
-//	cd src/go && go run ./cmd/export_audio --mixed > ../js/desktop_mixed_audio.json
-//	cd src/go && go run ./cmd/export_audio --voices 48000
-//	cd src/go && go run ./cmd/export_audio --stages   (xplat_audio_stages)
+// export_audio renders desktop references for the cross-platform browser tests, which run it on every run: the output is
+// rendered from the current tree, never a snapshot to commit. Forms: (none) | --mixed | --voices 48000 | --stages
 package main
 
 import (
@@ -43,12 +34,8 @@ type InstrumentSample struct {
 	Block []float64 `json:"block"`
 }
 
-// ParamCaseSample is one parameterized instrument render: the desktop
-// reference for an (instrument, field edits) pair, captured RAW from the C
-// render of the edited document's flattened block — no normalization or
-// amplitude scaling — so the browser can render the same block (Params, every
-// ABI field) and compare sample-by-sample. Covers knob edits, per-stage enable
-// toggles, family knobs, and every modular generator type.
+// ParamCaseSample is the RAW C render (no normalisation or amplitude) of an instrument's document with field edits
+// applied, plus its complete block, so the browser renders the same block and compares sample by sample.
 type ParamCaseSample struct {
 	Name       string             `json:"name"`
 	Instrument instrument.ID      `json:"instrument"`
@@ -102,28 +89,17 @@ func exportAudioSamples() {
 		Description: "Desktop Go audio samples for cross-platform comparison",
 	}
 
-	// Define instruments to export. We don't specify duration here: the
-	// voice is its document's render.seconds long on both platforms.
-	// EVERY legacy family migrated to the modular engine: kick (Phase-3), tom
-	// (Phase-4), snare/clap (Phase-5), cymbal (Phase-6), bass (Phase-2), and FM
-	// (Phase-7, the LAST) — no bespoke C renderer remains for the raw-render
-	// harness. Their parity is covered by the kick-* / tom-* / snare-* / hihat-* /
-	// fm-* … paramCases (paramBlock:'modular'). Only the unified modular voice's
-	// base preset renders raw here.
+	// No duration: a voice is its document's render.seconds on both platforms. Every family is the modular engine, so only
+	// the bare modular voice renders raw here; the families are covered by the paramCases.
 	instruments := []instrument.ID{
-		// Unified modular voice (base preset). Its no-edit render is the
-		// identity block through render_modular_p on both platforms, compared
-		// identity-vs-identity in xplat_audio_compare. (The pad preset
-		// renders through a param block; its parity is covered end-to-end by
-		// modular_synth_audible.browser.test.js, not this raw-render harness.)
+		// Bare modular voice: its no-edit block, through render_modular_p on both platforms.
 		roster.Modular,
 	}
 
 	const sampleRate = 48000 // Match the new desktop sample rate
 
 	for _, instID := range instruments {
-		// Get a voice for this instrument which includes full processing pipeline
-		// (C rendering + normalization + amplitude scaling)
+		// The full pipeline: C render + normalisation + amplitude scaling.
 		voice := audio.ExportVoice(instID, sampleRate)
 		if voice == nil {
 			fmt.Fprintf(os.Stderr, "Warning: could not get voice for %s\n", instID)
@@ -173,19 +149,9 @@ func exportAudioSamples() {
 	}
 }
 
-// renderParamCases renders the parameterized cross-platform reference set.
-//
-// Semantics mirror the production path exactly: each case's fields are set
-// through the instrument's document (instrument.SetField — what a Synth-tab
-// edit does) and the flattened block is rendered RAW through the C engine. The
-// browser side (xplat_audio_compare.browser.test.js) rebuilds the same block
-// from the emitted Params and renders it through render_modular_p, so a stale
-// ABI, a dropped field or a differing C build fails the comparison.
-//
-// ORDER MATTERS for the bespoke drum cases: the C drum renderers share
-// advancing ma_noise state, so the browser must replay the full render
-// sequence (instruments above, then these cases, in JSON order) on a single
-// module instance to stay aligned.
+// renderParamCases sets each case's fields through the document (instrument.SetField, as a Synth-tab edit does) and
+// renders the flattened block RAW. Replay order is part of the contract: the browser renders the cases in JSON order on
+// one module instance, so new cases are APPENDED.
 func renderParamCases() []ParamCaseSample {
 	const sampleRate = 48000
 	const frames = sampleRate / 2 // fixed 0.5s — BPM-independent
@@ -220,11 +186,7 @@ func renderParamCases() []ParamCaseSample {
 		{"modular-combo-env-off-drive-on", roster.Modular, map[string]float64{
 			"osc_type": 1, "env_enabled": 0, "drive": 0.6, "filter_cutoff": 1200,
 		}},
-		// Generator-slot family knobs (gen1_<family>_*): every shipped instrument
-		// is a config-first modular recipe, so these sweep the same family
-		// voices the legacy recipes used to, through the modular block only.
-		// APPENDED after the existing cases — replay order is part of the
-		// cross-platform contract (see ORDER MATTERS above).
+		// Generator-slot family knobs (gen1_<family>_*), through the modular block only. Appended (replay order).
 		{"fm-bass-identity", roster.FmBass, map[string]float64{}},
 		{"fm-bass-op2-depth", roster.FmBass, map[string]float64{"gen1_fm_d2": 5}},
 		{"fm-bass-base-freq", roster.FmBass, map[string]float64{"gen1_fm_base": 110}},
@@ -266,10 +228,7 @@ func renderParamCases() []ParamCaseSample {
 		{"subbass-wave-triangle", roster.SubBass, map[string]float64{"gen1_wave": 3}},
 		{"fm-bass-wave-saw", roster.FmBass, map[string]float64{"gen1_wave": 1}},
 		{"fm-bell-wave-square", roster.FmBell, map[string]float64{"gen1_wave": 2}},
-		// Modular FM operator routing: algorithms 1 (parallel carriers) and
-		// 2 (3-op chain) were desktop-covered (modular_fm_algorithms_native_
-		// test.go) but had no cross-platform case — only the default stack
-		// (0) and the 4-op stack (3) above. APPENDED (order contract).
+		// FM operator routing: algorithms 1 (parallel carriers) and 2 (3-op chain). Appended (replay order).
 		{"modular-fm-parallel", roster.Modular, map[string]float64{
 			"osc_type": 4, "fm_algorithm": 1,
 			"fm_op1_level": 1, "fm_op2_level": 0.6, "fm_op3_level": 0.5, "fm_op4_level": 0.4,
@@ -288,13 +247,8 @@ func renderParamCases() []ParamCaseSample {
 		}},
 	}
 
-	// Append the SHARED cross-platform parity matrix (audio.ParityMatrix): one
-	// flip per modular synth stage + a combined case. This is the same matrix
-	// the Go export/import byte-parity suite uses, so both suites exercise
-	// identical edits. APPENDED after the existing cases — replay order is part
-	// of the cross-platform contract (see ORDER MATTERS above). Notably this is
-	// the only cross-platform coverage of the Phase-8C stages (PITCH_ENV / LFO /
-	// BURST), which the hand-written cases above never exercised.
+	// The shared parity matrix (audio.ParityMatrix: one flip per stage + a combined case), the same edits the Go
+	// export/import identity suite uses. Appended (replay order).
 	for _, pc := range audio.ParityMatrix() {
 		params := make(map[string]float64, len(pc.Tweak))
 		for k, v := range pc.Tweak {
@@ -361,9 +315,7 @@ type docCase struct {
 	doc  instrument.Doc
 }
 
-// docCases are documents built here because their TABLE rows have no field
-// path: the WAV-clone MODAL (ratio rows, a stretch and tune), STRIKE (contact,
-// hardness, click — seeded noise) and NOISEBAND (two rows, seeded noise)
+// docCases are built as documents because table rows have no field path: the WAV-clone MODAL, STRIKE and NOISEBAND
 // stages on the bare modular voice.
 func docCases() []docCase {
 	reg := audio.BuiltinModuleRegistry()
@@ -474,11 +426,8 @@ func sqrt(x float64) float64 {
 	return z
 }
 
-// PlayedVoice is one shipped instrument's voice exactly as a trigger at pitch
-// 0 plays it on desktop (audio.RenderAsShipped: C render, voice FX, gate tail,
-// normalise × amplitude, end fade), with the document's flattened block and
-// render settings — what voice_tempo_independence.browser.test.js renders in
-// the browser and compares against it.
+// PlayedVoice is one shipped voice as a trigger at pitch 0 plays it on desktop (audio.RenderAsShipped), with its block
+// and render settings, for voice_tempo_independence.browser.test.js.
 type PlayedVoice struct {
 	ID       instrument.ID    `json:"id"`
 	Block    []float64        `json:"block"`

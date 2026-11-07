@@ -6,9 +6,7 @@ import (
 	"testing"
 )
 
-// TestIconStrokeWidthAt24px asserts the proportional stroke calc returns
-// the spec-defined logical-unit weight at the canonical 24-px size.
-// 1.75 logical units * (24 px / 24 grid) = 1.75 px.
+// 1.75 logical units on a 24-unit grid.
 func TestIconStrokeWidthAt24px(t *testing.T) {
 	got := iconStrokeWidth(image.Rect(0, 0, 24, 24))
 	want := float32(1.75)
@@ -17,8 +15,6 @@ func TestIconStrokeWidthAt24px(t *testing.T) {
 	}
 }
 
-// TestIconStrokeWidthAt48px confirms stroke scales linearly with rect size:
-// 1.75 * (48/24) = 3.50.
 func TestIconStrokeWidthAt48px(t *testing.T) {
 	got := iconStrokeWidth(image.Rect(0, 0, 48, 48))
 	want := float32(3.5)
@@ -27,8 +23,7 @@ func TestIconStrokeWidthAt48px(t *testing.T) {
 	}
 }
 
-// TestIconStrokeWidthMinFloor pins the 1-px floor: at 8x8 the proportional
-// calc gives 0.583, but stroke must clamp to ≥1 to remain visible.
+// The proportional weight at 8x8 is 0.583; the floor keeps it visible.
 func TestIconStrokeWidthMinFloor(t *testing.T) {
 	got := iconStrokeWidth(image.Rect(0, 0, 8, 8))
 	if got < 1.0 {
@@ -36,9 +31,7 @@ func TestIconStrokeWidthMinFloor(t *testing.T) {
 	}
 }
 
-// TestIconStrokeWidthNonSquare uses the smaller dimension. A 24x16 rect
-// must compute stroke from 16 (not 24) so the stroke fits within the
-// shorter axis.
+// Stroke comes from the shorter axis so it fits within it.
 func TestIconStrokeWidthNonSquare(t *testing.T) {
 	got := iconStrokeWidth(image.Rect(0, 0, 24, 16))
 	want := float32(1.75) * 16 / 24 // 1.166...
@@ -48,8 +41,6 @@ func TestIconStrokeWidthNonSquare(t *testing.T) {
 	}
 }
 
-// TestIconCanvasMappingCenter confirms logical (12, 12) maps to the rect's
-// pixel center for a 24-px square.
 func TestIconCanvasMappingCenter(t *testing.T) {
 	c := newIconCanvas(image.Rect(10, 20, 34, 44)) // 24x24, top-left (10,20)
 	gotX, gotY := c.px(12, 12)
@@ -59,8 +50,6 @@ func TestIconCanvasMappingCenter(t *testing.T) {
 	}
 }
 
-// TestIconCanvasMappingScale: at 48x48 the scale should be 2 px / logical
-// unit, and a logical (1,1) offset from origin should be 2 px from origin.
 func TestIconCanvasMappingScale(t *testing.T) {
 	c := newIconCanvas(image.Rect(0, 0, 48, 48))
 	x, y := c.px(0, 0)
@@ -73,8 +62,6 @@ func TestIconCanvasMappingScale(t *testing.T) {
 	}
 }
 
-// TestIconCanvasNonSquareCentered: a 32x24 rect should center the 24x24
-// canvas horizontally — 4-px margin on each side.
 func TestIconCanvasNonSquareCentered(t *testing.T) {
 	c := newIconCanvas(image.Rect(0, 0, 32, 24))
 	// Logical (0, 0) should land at pixel (4, 0) — 4-px left margin.

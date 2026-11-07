@@ -7,9 +7,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Live edits (add/remove nodes) must not alter the past part of the visible
-// window in the DrumView. Only the future portion updates, and other rows stay
-// unchanged. Sprite caches must rebuild only for affected rows.
+// Live edits change only the future of the visible window and only their own row; caches rebuild for affected rows
+// only.
 func TestLiveEdit_AddRemove_NoPastChange(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -52,8 +51,7 @@ func TestLiveEdit_AddRemove_NoPastChange(t *testing.T) {
 	if len(g.drum.rowCache) < 2 || g.drum.rowCache[0] == nil || g.drum.rowCache[1] == nil {
 		t.Fatalf("expected two row caches built")
 	}
-	// Keep a copy of row 1 steps (snapshot just before the edit) to assert it
-	// remains unchanged by row 0 edits
+	// Row 1 must be unchanged by row 0's edits.
 
 	// Start playback and freeze some past
 	g.drum.SetBPM(120)

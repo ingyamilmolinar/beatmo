@@ -11,11 +11,8 @@ type Range struct {
 // dial 100 (To). To < From means the param falls as the dial rises.
 type Span struct{ From, To float64 }
 
-// SpanFor resolves a term's span against its param's range on one
-// instrument: an omitted end defaults to the range's (magnitude: 0 → the
-// larger edge), and a declared end beyond the range clips to it — ranges
-// differ per instrument family (a bass's decay rate tops out at 12, a
-// conga's does not), and a dial reads against the knob the user sees.
+// An omitted end is the range's (magnitude: 0 → the larger edge); a declared end beyond the range clips, since ranges
+// differ per family and a dial reads against the knob the user sees.
 func SpanFor(t Term, r Range) Span {
 	lo, hi := r.Min, r.Max
 	if t.space() == SpaceMagnitude {
@@ -31,10 +28,8 @@ func SpanFor(t Term, r Range) Span {
 	return s
 }
 
-// axis maps a value onto the term's space. In log space a value at or below
-// zero (an instant attack, a decay rate of 0 = no decay, off) has no log: it
-// floors to the span's lower end. A positive value below the span stays
-// outside it like any other out-of-span value.
+// A value at or below zero (instant, off, no decay) has no log and floors to the span's lower end; a positive value
+// below the span stays out of span like any other.
 func (t LiveTerm) axis(v float64) float64 {
 	switch t.space() {
 	case SpaceLog:

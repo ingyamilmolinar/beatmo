@@ -74,9 +74,7 @@ func TestEigHermitianKnownSpectrum(t *testing.T) {
 	}
 }
 
-// TestEigHermitianMatchesJacobi cross-checks the tridiagonal-QL solver
-// against the Jacobi oracle on random and on rank-deficient (ESPRIT-like)
-// matrices.
+// Random and rank-deficient (ESPRIT-like) matrices.
 func TestEigHermitianMatchesJacobi(t *testing.T) {
 	for _, n := range []int{3, 17, 64} {
 		a := randHermitian(n, int64(100+n))

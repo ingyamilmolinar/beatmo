@@ -69,8 +69,6 @@ func PrepareFile(path string, opt PrepareOptions) (Prepared, error) {
 	return Prepare(x, rate, opt)
 }
 
-// Prepare measures the onset, noise floor, level and decay window of a mono
-// recording and decides its nominal pitch (spec §2a).
 func Prepare(samples []float64, rate int, opt PrepareOptions) (Prepared, error) {
 	p := Prepared{Label: opt.Label, Samples: samples, Rate: rate}
 	clipped := 0
@@ -91,11 +89,8 @@ func Prepare(samples []float64, rate int, opt PrepareOptions) (Prepared, error) 
 	if p.Peak == 0 || p.Peak <= 10*p.FloorRMS {
 		return p, refuse(RefuseNoOnset, "nothing rises 20 dB above the noise floor")
 	}
-	// floor + 20 dB and at least −40 dB re the peak (a struck attack crosses
-	// that within ~1 ms; a lower bar lets pre-roll noise fire it — VCSL's
-	// cowbell has a digitally silent tail, floor 0, and the onset landed on
-	// the first noise sample 10 ms early, inflating every fast mode's
-	// back-extrapolated amplitude), but never above −20 dB re the peak.
+	// Floor + 20 dB and at least −40 dB re the peak (a lower bar lets pre-roll noise fire it early, inflating every fast
+	// mode's back-extrapolation), never above −20 dB.
 	thr := math.Min(math.Max(10*p.FloorRMS, 0.01*p.Peak), 0.1*p.Peak)
 	onset, ok := refineOnset(samples, fluxFrame, thr)
 	if !ok {
@@ -104,11 +99,8 @@ func Prepare(samples []float64, rate int, opt PrepareOptions) (Prepared, error) 
 	p.Onset = onset
 	p.RMS400DB = dB(rms(samples[onset:min(len(samples), onset+int(0.4*float64(rate)))]))
 
-	// Window start: past the strike transient — 5 ms after the 2 ms-RMS
-	// envelope first comes within 3 dB of its maximum over the first 50 ms.
-	// (Not after the maximum itself: a vibraphone's beating keeps creeping
-	// up for 70 ms and pushed the window to 49 ms, where its fast high modes
-	// had already fallen 50 dB.)
+	// 5 ms after the 2 ms-RMS envelope first comes within 3 dB of its 50 ms maximum, not after the maximum: beating can
+	// keep creeping up long after the fast modes have decayed.
 	f2 := int(0.002 * float64(rate))
 	var env []float64
 	for k := 0; k < 25; k++ {
@@ -130,8 +122,7 @@ func Prepare(samples []float64, rate int, opt PrepareOptions) (Prepared, error) 
 		}
 	}
 	p.WindowStart = onset + (settle+1)*f2 + int(0.005*float64(rate))
-	// Window end: the last 10 ms frame still 6 dB above the floor (or the
-	// clip end when it still rings — VCSL clips clamp mid-ring).
+	// Or the clip end when it still rings: some clips clamp mid-ring.
 	f10 := int(0.010 * float64(rate))
 	p.WindowEnd = p.WindowStart
 	for a := p.WindowStart; a+f10 <= len(samples); a += f10 {
@@ -165,14 +156,9 @@ func decidePitch(seg []float64, rate int, opt PrepareOptions) PitchInfo {
 	return pi
 }
 
-// noiseFloor is the recording's noise: the median 10 ms-frame RMS of the
-// pre-roll before preEnd when there are ≥ 20 ms of it (the only stretch that
-// is certainly noise), else the quietest NON-ZERO 2 ms frame. The fallback is
-// biased low on purpose: a floor read too high (the quietest 10 % of a clip
-// that rings to its end is the ring — VCSL's vibraphone decays 6 dB in 1.5 s
-// behind an 8 ms pre-roll) refuses the clip and cuts its window short, while
-// one read too low only lengthens the window. Digital zeros (trimmed or
-// padded audio) are never the noise.
+// The median 10 ms RMS of ≥ 20 ms of pre-roll, else the quietest NON-ZERO 2 ms frame. Biased low on purpose: too
+// high refuses the clip and cuts its window (the quietest stretch of a ring is still the ring), too low only
+// lengthens it. Digital zeros are never the noise.
 func noiseFloor(x []float64, rate, preEnd int) float64 {
 	if f := int(0.010 * float64(rate)); preEnd >= 2*f {
 		var pre []float64
@@ -199,13 +185,8 @@ func noiseFloor(x []float64, rate, preEnd int) float64 {
 	return floor
 }
 
-// spectralFloor estimates white-noise RMS from the last 4096 samples without
-// needing a quiet stretch: noise is broadband and a ring is a handful of
-// tones, so the MEDIAN Hann-windowed bin power is noise even mid-ring. For
-// white noise of variance σ², |X_k|² is exponential with mean σ²·Σw², whose
-// median is ln 2 times the mean. VCSL's tubular bells ring to the clip end
-// with no pre-roll; the quietest 2 ms frame there is a trough of the ring
-// (−34 dB against a −3.5 dB peak), which cut the window and skipped bands.
+// Noise is broadband and a ring a handful of tones, so the MEDIAN windowed bin power is noise even mid-ring: for
+// white noise of variance σ², |X_k|² is exponential with mean σ²·Σw² and median ln 2 times that.
 func spectralFloor(x []float64, rate int) float64 {
 	const n = 4096
 	if len(x) < n {
@@ -224,8 +205,7 @@ func spectralFloor(x []float64, rate int) float64 {
 
 const onsetFrame, onsetHop = 512, 128
 
-// fluxPeakFrame is the frame (512-sample Hann, hop 128) of maximum spectral
-// flux — independent of any level threshold.
+// Independent of any level threshold.
 func fluxPeakFrame(x []float64, rate int) int {
 	var prev []float64
 	bestFlux, bestFrame := -1.0, 0
@@ -250,8 +230,7 @@ func fluxPeakFrame(x []float64, rate int) int {
 	return bestFrame
 }
 
-// refineOnset is the first sample above thr from four hops before the flux
-// peak frame to its end.
+// Searched from four hops before the flux peak frame to its end.
 func refineOnset(x []float64, frame int, thr float64) (int, bool) {
 	lo := max(0, (frame-4)*onsetHop)
 	hi := min(len(x), frame*onsetHop+onsetFrame)

@@ -13,10 +13,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// newKickMacroGame builds a single-row game on the shipped modular 808-kick
-// instrument (schemaUsesKickStage) with the beginner macro layer on. Uses the
-// real "kick-808" id — already bound to synth-modular-kick-808 — so it rebinds
-// nothing and can't leak a binding into sibling tests.
+// kick-808 is already bound to its recipe, so nothing is rebound to leak into other tests.
 func newKickMacroGame(t *testing.T) *Game {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -33,8 +30,7 @@ func newKickMacroGame(t *testing.T) *Game {
 	return g
 }
 
-// A kick row now activates the macro layer with the PERCUSSION concept set,
-// instead of falling through to the legacy stage UI.
+// The percussion concept set.
 func TestSynthMacro_KickPopulatesMacroLayer(t *testing.T) {
 	g := newKickMacroGame(t)
 	g.drum.eqPanelZone.SetActiveTab(TabSynth)
@@ -53,9 +49,7 @@ func TestSynthMacro_KickPopulatesMacroLayer(t *testing.T) {
 	}
 }
 
-// newViolinMacroGame builds a single-row game on the shipped melodic "violin"
-// instrument with the macro layer on and a TALL panel (headroom for a grown
-// armed card, mirroring growSynthPanelForTest).
+// A tall panel, with room for a grown armed card.
 func newViolinMacroGame(t *testing.T) *Game {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -88,9 +82,7 @@ func drillMacro(t *testing.T, g *Game, concept string) (inst string, kIdx int) {
 	return inst, idxs[0]
 }
 
-// Arming a drilled control must grow its card in place (to host the two barrel
-// lanes), exactly like the stage detail pane. Today the macro path early-returns
-// before growArmedCard, so the card never grows and the click looks dead.
+// The card grows in place to host the barrel lanes, as in the stage pane.
 func TestSynthMacro_DrilledControlArmsAndGrows(t *testing.T) {
 	g := newViolinMacroGame(t)
 	dv := g.drum
@@ -107,8 +99,7 @@ func TestSynthMacro_DrilledControlArmsAndGrows(t *testing.T) {
 	}
 }
 
-// settleArmGrow advances the grow/shrink animation to its settled state, relaying
-// out the panel each frame (mirrors how synthTabUpdate drives it in the app).
+// Relaid out each frame, as synthTabUpdate drives it.
 func settleArmGrow(dv *DrumView) {
 	for i := 0; i < 50 && dv.advanceArmGrow(); i++ {
 		dv.eqPanelZone.Layout(dv.eqPanelZone.PanelRect())
@@ -116,8 +107,7 @@ func settleArmGrow(dv *DrumView) {
 	dv.eqPanelZone.Layout(dv.eqPanelZone.PanelRect())
 }
 
-// Drawing the drilled+armed macro view must lay out the barrel lanes (via
-// drawArmedControlCard → SetCardRect), or the control shows no editable barrels.
+// Or the control shows no editable barrels.
 func TestSynthMacro_DrilledArmedDrawsBarrels(t *testing.T) {
 	g := newViolinMacroGame(t)
 	dv := g.drum
@@ -134,11 +124,8 @@ func TestSynthMacro_DrilledArmedDrawsBarrels(t *testing.T) {
 	}
 }
 
-// End-to-end "click": a stationary tap on a drilled control (via the SAME hit
-// adapter production publishes, keyed by synthTabActiveInstrument) must arm it
-// AND the next layout must grow its card. This is the exact path the reported
-// "clicking the control does nothing" bug lived on — it guards the instID key
-// used by the adapter matching the one layout/draw consult.
+// A still tap through the production adapter arms the control and the next layout grows it; the adapter's instID key
+// must match the one layout and draw consult.
 func TestSynthMacro_DrilledControlClickArmsAndGrows(t *testing.T) {
 	g := newViolinMacroGame(t)
 	dv := g.drum

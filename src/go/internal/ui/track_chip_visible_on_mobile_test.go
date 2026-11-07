@@ -9,10 +9,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestTrackChip_VisibleOnMobile verifies the Free/Track follow toggle is
-// reachable inline on the timeline ruler header on mobile (Theme 2 of the
-// mobile UI consistency pass). Before this change the toggle was only
-// reachable through the overflow kebab.
+// Reachable inline on the timeline header, not through the overflow kebab.
 func TestTrackChip_VisibleOnMobile(t *testing.T) {
 	assertDefaultParityState(t)
 	setupMobileTest(t, true)
@@ -32,15 +29,10 @@ func TestTrackChip_VisibleOnMobile(t *testing.T) {
 	if r.Empty() {
 		t.Fatalf("track chip rect empty on mobile; want non-empty inside the timeline ruler header")
 	}
-	// The chip's finger target (Touch-expanded hit area) must hit the floor;
-	// the visible keycap itself is compact.
 	if tr := trackTouchRect(t, dv); tr.Dx() < TouchMinTarget() || tr.Dy() < TouchMinTarget() {
 		t.Errorf("track chip touch target %v below touch target %d", tr, TouchMinTarget())
 	}
-	// Unified layout: the track/lock chip is the LEFT anchor of the band, so
-	// it sits to the LEFT of the beat counter (which itself sits left of the
-	// notification area). Previously the chip was on the right edge of the
-	// beat counter; the notification redesign moved it left on both platforms.
+	// The lock is the band's LEFT anchor, left of the beat counter, on both platforms.
 	bc := dv.beatCounterRect
 	if r.Max.X > bc.Min.X+2 {
 		t.Errorf("track chip %v should sit left of the beat counter rect %v", r, bc)
@@ -50,8 +42,6 @@ func TestTrackChip_VisibleOnMobile(t *testing.T) {
 	}
 }
 
-// TestTrackChip_TogglesFollowState verifies tapping the chip flips
-// FollowPlayback() and the icon swaps IconTrack <-> IconTrackOff.
 func TestTrackChip_TogglesFollowState(t *testing.T) {
 	assertDefaultParityState(t)
 	setupMobileTest(t, true)
@@ -70,8 +60,7 @@ func TestTrackChip_TogglesFollowState(t *testing.T) {
 		t.Errorf("initial Track icon = %q, want %q", got, string(IconTrack))
 	}
 
-	// Fire the click handler directly — geometry is covered by the
-	// Visible test above; this exercises the toggle behavior.
+	// The handler directly: geometry is covered above.
 	if cb := dv.trackBtn().OnClick; cb != nil {
 		cb()
 	}
@@ -85,9 +74,7 @@ func TestTrackChip_TogglesFollowState(t *testing.T) {
 	}
 }
 
-// TestTrackEntry_RemovedFromOverflowMenu verifies the duplicate Track
-// entry no longer appears in the overflow kebab now that the chip is
-// inline (single source of truth for the toggle).
+// The inline chip is the one place the toggle lives.
 func TestTrackEntry_RemovedFromOverflowMenu(t *testing.T) {
 	assertDefaultParityState(t)
 	setupMobileTest(t, true)

@@ -13,12 +13,9 @@ import (
 	"testing"
 )
 
-// defaultModularParams returns a musically-usable default voice: a sine
-// oscillator at the engine's base pitch with a short percussive amp envelope.
-// Mirrors the shipped ModularSynthParamDefs defaults.
+// A sine at the engine's base pitch with a short percussive envelope.
 func defaultModularParams() modularBlock {
-	// Every field not listed is 0, exactly as the zero-valued Go struct this
-	// helper used to build.
+	// Every field not listed is 0.
 	p := zeroModularBlock()
 	p.set("osc_type", 0)
 	p.set("osc_detune", 0)
@@ -192,13 +189,8 @@ func TestRenderModularP_ExtremeParamsStayFinite(t *testing.T) {
 	assertFinite(t, buf)
 }
 
-// TestRenderModularP_EveryParamMutatesInContext is the modular analogue of
-// TestRecipeRender_EveryWiredParamMutatesOutput: every exposed ParamDef must
-// audibly change the output when set away from its value IN A CONTEXT WHERE THE
-// STAGE IS ACTIVE. FM-stage params are tested in an active 4-op-stack context
-// (osc_type=FM, all operators routed with non-zero depth + level); all other
-// params are tested from the default sine voice. This guards against a declared
-// param that the C engine silently ignores.
+// Every exposed ParamDef must audibly change the output IN A CONTEXT WHERE ITS STAGE IS ACTIVE: a declared param the
+// C engine silently ignores fails here.
 func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 	const sr = 48000
 	n := sr / 8
@@ -224,8 +216,7 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 		}
 		return rp
 	}
-	// Active 4-op-stack FM context: every operator is routed (depth>0) and
-	// audible (level>0) so each FM knob has authority.
+	// Every operator routed and audible, so each FM knob has authority.
 	fmBase := func() RecipeParams {
 		rp := sineBase()
 		rp["osc_type"] = 4
@@ -248,9 +239,7 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 		"fm_op1_level": 0.2, "fm_op2_level": 0.2, "fm_op3_level": 0.2, "fm_op4_level": 0.2,
 	}
 
-	// drive_enabled only matters when there is drive to bypass; noise_seed only
-	// matters for a noise generator. Give those two a context where the stage
-	// they gate is actually active.
+	// drive_enabled matters only with drive to bypass, noise_seed only for a noise generator.
 	driveBase := func() RecipeParams {
 		rp := sineBase()
 		rp["drive"] = 0.8
@@ -261,8 +250,7 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 		rp["osc_type"] = 5 // white noise
 		return rp
 	}
-	// postBase: an audible sine with every post op away from its identity, so
-	// each post_* param (and out_clamp) has authority. The post ops always run.
+	// Every post op off its identity; the post ops always run.
 	postBase := func() RecipeParams {
 		rp := sineBase()
 		rp["post_decay_rate"] = 6
@@ -286,14 +274,8 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 	}
 	isPost := func(name string) bool { return strings.HasPrefix(name, "post_") }
 
-	// ── Phase-8C modulator stages (PITCH ENV / LFO / BURST): their NUMERICS
-	// only have authority when the stage is ENABLED (the stages default OFF —
-	// that off-state being an exact bypass is pinned by
-	// TestPitchEnvDisabledIsExactBypass et al). Give each numeric a base with
-	// its stage on; burst4_off additionally needs an audible 4th burst
-	// (burst4_amp defaults 0, so the onset knob has no authority without it).
-	// The TOGGLES need no context: flipping 0→1 over the audible knob defaults
-	// changes output through the default branch. ──
+	// The modulator numerics have authority only with their stage on (off is an exact bypass); burst4_off also needs an
+	// audible 4th burst. The toggles need no context.
 	modulatorTarget := map[string]float64{
 		"pitchenv_amt": -24, "pitchenv_decay": 2,
 		"lfo_rate": 40, "lfo_depth": 0, "lfo_target": 1, "lfo_delay": 3,
@@ -306,41 +288,22 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 		"body_model": 0, "body_mix": 1.3, "bow_dynamics": 0.8,
 		// Phase-8E unison: detune/mix only have authority when voices>=2.
 		"unison_detune": 30, "unison_mix": 0,
-		// Phase-8F drift: both params only have effect when voices>=2 and the
-		// complementary param is >0 (seeded in modulatorBase below).
+		// Drift needs voices ≥ 2 and the complementary param > 0.
 		"unison_drift_rate": 6, "unison_drift_depth": 15,
-		// Phase-13 physical-model OSC (osc_type 11 = render_sax): targets off the
-		// shipped defaults, within the ParamDef ranges. modulatorBase sets
-		// osc_type=11 so render_sax is the active voice.
+		// Off the shipped values, inside the ParamDef ranges; the context selects the sax.
 		"osc_sax_blow": 0.4, "osc_sax_reed_off": 0.4, "osc_sax_reed_slope": 0.55,
 		"osc_sax_reflect": -0.7, "osc_sax_breath": 0.4, "osc_sax_loss": 0.9,
-		// Phase-14 bowed-string (osc_type 7 = render_bowed_string): targets off the
-		// shipped defaults, within the ParamDef ranges. modulatorBase sets osc_type=7.
+		// The context selects the bowed string.
 		"osc_bow_pos": 0.2, "osc_bow_slope": 4.5, "osc_bow_vel": 0.4, "osc_bow_loss": 0.75,
-		// Phase-15 FORMANT stage: the numerics only have authority when the
-		// stage is enabled with mix>0 (modulatorBase seeds enabled=1, mix=0.6
-		// over a saw). The toggle itself is tested by flipping the ACTIVE stage
-		// OFF (base enabled=1 → target 0 = exact bypass), because its numerics
-		// identity-default to 0 so a bare 0→1 flip is inert. morph_rate/morph_to
-		// are interdependent (the morph LFO only retunes when BOTH are set) —
-		// each seeds the complementary param in modulatorBase.
+		// The FORMANT numerics need the stage on with mix > 0; its toggle is tested by switching the ACTIVE stage off, since a
+		// bare 0→1 flip over identity numerics is inert. morph_rate/morph_to need each other.
 		"formant_enabled": 0, "formant_vowel": 4, "formant_voice_type": 3,
 		"formant_mix": 1, "formant_shift": 2, "formant_breath": 1,
 		"formant_sing": 1, "formant_morph_rate": 4, "formant_morph_to": 4,
-		// Phase-15 ENSEMBLE humanization: scatter/vibrato only have authority
-		// when unison is active with mix>0 (modulatorBase seeds voices=3,
-		// mix=0.7 over a saw). Vibrato rate/depth are interdependent (both
-		// need to be >0 for ens_vib_on) — modulatorBase seeds the
-		// complementary param, same pattern as unison_drift_*. humanize only
-		// has authority once vibrato is already on, so modulatorBase seeds
-		// both rate and depth for that param.
+		// Scatter and vibrato need active unison with mix > 0; vibrato rate and depth need each other, and humanize needs
+		// vibrato on.
 		"ens_scatter": 10, "ens_vib_rate": 5.5, "ens_vib_depth": 8, "ens_humanize": 0.8,
-		// Phase-16 voice-realism: ens_jitter reuses the "ens_" prefix context
-		// below (unison active, voices=3, mix=0.7) — jitter reaches the output
-		// only through the (side- and center-voice) unison path. formant_dry
-		// reuses the "formant_" prefix context (formant_enabled=1, mix=0.6) —
-		// target 0 fully removes the dry blend, contrasting with the identity
-		// default 1.
+		// Jitter reaches the output only through the unison path; formant_dry 0 removes the dry blend entirely.
 		"ens_jitter": 0.6, "formant_dry": 0,
 	}
 	isModulatorNumeric := func(name string) bool { _, ok := modulatorTarget[name]; return ok }
@@ -357,8 +320,7 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 				rp["burst4_amp"] = 1
 			}
 		case strings.HasPrefix(name, "filtenv_"):
-			// Activate the filter envelope stage with a saw + low LP cutoff so
-			// the cutoff modulation is audible, then enable filtenv.
+			// A saw under a low cutoff, so the cutoff modulation is audible.
 			rp["osc_type"] = 1         // saw (rich harmonics)
 			rp["env_enabled"] = 0      // steady output for clean comparison
 			rp["filter_enabled"] = 1   // filter on
@@ -370,27 +332,20 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 			rp["osc_type"] = 1 // saw (energy for the bow modulator to shape)
 			rp["env_enabled"] = 0
 		case strings.HasPrefix(name, "osc_sax_"):
-			// Sax physical model (osc_type 11 = render_sax): the osc_sax_* args
-			// only have authority when the sax OSC is active. Enable it + steady
-			// output so mutating a sax knob audibly changes the raw tone.
+			// The sax args have authority only while the sax oscillator plays.
 			rp["osc_type"] = 11
 			rp["env_enabled"] = 0
 		case strings.HasPrefix(name, "osc_bow_"):
-			// Bowed-string physical model (osc_type 7 = render_bowed_string): the
-			// osc_bow_* args only have authority when the bowed OSC is active.
+			// The bow args have authority only while the bowed oscillator plays.
 			rp["osc_type"] = 7
 			rp["env_enabled"] = 0
 		case strings.HasPrefix(name, "formant_"):
-			// Phase-15 FORMANT stage: active vowel bank over a harmonically rich
-			// saw so retuning the bank is audible. mix 0.6 (not 1) so mutating
-			// mix itself to 1 also registers.
+			// A rich saw so retuning the bank is audible; mix 0.6 so moving mix to 1 registers too.
 			rp["osc_type"] = 1    // saw (harmonics for the formants to shape)
 			rp["env_enabled"] = 0 // steady output for clean comparison
 			rp["formant_enabled"] = 1
 			rp["formant_mix"] = 0.6
-			// The morph LFO retunes the bank only when rate>0 AND morph_to
-			// differs from vowel (0). Seed the complementary param so the one
-			// under test has authority (same pattern as unison_drift_*).
+			// The morph LFO retunes only when rate > 0 AND morph_to differs from the vowel.
 			if name == "formant_morph_rate" {
 				rp["formant_morph_to"] = 4
 			}
@@ -398,22 +353,18 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 				rp["formant_morph_rate"] = 4
 			}
 		case strings.HasPrefix(name, "body_"):
-			// Body-resonator bank: body_model and body_mix are interdependent
-			// (the bank runs only when model>=1 AND mix>0). Activate both with a
-			// saw so toggling/mixing the bank audibly changes the filtered output.
+			// The bank runs only when model ≥ 1 AND mix > 0.
 			rp["osc_type"] = 1    // saw (rich harmonics for the modes to shape)
 			rp["env_enabled"] = 0 // steady output for clean comparison
 			rp["body_model"] = 1  // violin bank on
 			rp["body_mix"] = 0.6  // baseline wet
 		case strings.HasPrefix(name, "unison_"):
-			// Unison params only have authority when voices>=2. Activate with a
-			// saw (harmonically rich) so detuning and mix changes are audible.
+			// Unison has authority only with voices ≥ 2.
 			rp["osc_type"] = 1       // saw
 			rp["unison_voices"] = 3  // enable unison path
 			rp["unison_detune"] = 15 // seed detune so mix changes are audible
 			rp["unison_mix"] = 0.7   // seed mix so detune changes are audible
-			// Drift params require BOTH rate>0 AND depth>0 for effect. Seed the
-			// complementary param so that mutating the one under test has effect.
+			// Drift needs both rate > 0 and depth > 0.
 			if name == "unison_drift_rate" {
 				rp["unison_drift_depth"] = 10 // seed depth so rate mutation registers
 			}
@@ -421,10 +372,7 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 				rp["unison_drift_rate"] = 2 // seed rate so depth mutation registers
 			}
 		case strings.HasPrefix(name, "ens_"):
-			// Phase-15 ENSEMBLE humanization: scatter is SIDE-voice-only, so it
-			// only reaches the output when unison is active with mix>0 (blending
-			// side voices in). Vibrato applies to the center voice too, but keep
-			// the same active-ensemble context for consistency.
+			// Scatter is side-voice-only, so it needs unison with mix > 0.
 			rp["osc_type"] = 1      // saw (harmonically rich; side-voice detuning audible)
 			rp["unison_voices"] = 3 // enable unison path (>=2 side voices)
 			rp["unison_mix"] = 0.7  // blend the ensemble in so side-voice changes are audible
@@ -442,36 +390,28 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 		return rp
 	}
 
-	// ── Gen-bank contexts (Phase-1 modular unification). A gen param only has
-	// authority when its slot is active; build a base that activates the right
-	// slot (osc for tone/env/filter/phase fields, noise-tap with draws>1 for
-	// noise fields) so each field's mutation moves the output. The bus globals
-	// (noise_draws/noise_prelude) only matter when a noise tap is reading. ──
+	// A gen param has authority only while its slot is active (an osc for tone/env/filter/phase, a multi-draw noise tap for
+	// noise fields); the bus globals matter only while a tap reads.
 	oscGenFields := map[string]bool{
 		"wave": true, "freq_mode": true, "freq": true, "gain": true,
 		"env_fast_rate": true, "env_tail_rate": true, "env_fast_mix": true, "env_tail_mix": true,
 		"filt_type": true, "filt_alpha": true, "filt_freq": true, "filt_q": true,
 		"phase_mode": true, "phase": true,
 	}
-	// activateSlotOsc turns slot k (1-based) into an audible saw osc with a
-	// non-trivial env so env/filter mutations register.
+	// A saw with a non-trivial envelope, so env and filter mutations register.
 	activateSlotOsc := func(rp RecipeParams, k int) {
 		p := func(f string) string { return "gen" + strconv.Itoa(k) + "_" + f }
 		rp[p("source")] = 1 // osc
 		rp[p("wave")] = 1   // saw (harmonically rich → filter has authority)
 		rp[p("freq")] = 1
 		rp[p("gain")] = 1
-		// Give BOTH envelope terms a non-trivial rate + weight so every env
-		// field (fast/tail rate + mix) has authority on its own mutation.
+		// Both envelope terms non-trivial, so each env field has authority on its own.
 		rp[p("env_fast_rate")] = 8
 		rp[p("env_tail_rate")] = 2
 		rp[p("env_fast_mix")] = 0.7
 		rp[p("env_tail_mix")] = 0.3
 	}
-	// activateSlotAnalytic turns slot k into an audible Phase-2 analytic dual-osc
-	// voice (source==4) with an absolute fundamental + base envelope, so the
-	// per-slot analytic fields (pitch env, harm mix, attack, sat, out scale) each
-	// have authority on their own mutation.
+	// The analytic dual-osc voice (source 4) at an absolute fundamental.
 	activateSlotAnalytic := func(rp RecipeParams, k int) {
 		p := func(f string) string { return "gen" + strconv.Itoa(k) + "_" + f }
 		rp[p("source")] = 4 // analytic dual-osc voice
@@ -482,10 +422,7 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 		rp[p("out_scale")] = 0.95
 		rp["voice_freq_hz"] = 0
 	}
-	// activateSlotKS turns slot k into an audible Phase-2 Karplus-Strong string
-	// voice (source==3) with an absolute fundamental, so the per-slot KS fields
-	// (sustain, pluck — plus the reused attack/env/out-scale fields) each have
-	// authority on their own mutation.
+	// The Karplus-Strong voice (source 3) at an absolute fundamental.
 	activateSlotKS := func(rp RecipeParams, k int) {
 		p := func(f string) string { return "gen" + strconv.Itoa(k) + "_" + f }
 		rp[p("source")] = 3 // Karplus-Strong string voice
@@ -497,11 +434,7 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 		rp[p("out_scale")] = 0.85
 		rp["voice_freq_hz"] = 0
 	}
-	// activateSlotKick turns slot k into an audible Phase-3 harmonic-bank kick
-	// voice (source==5, variant 0 = base — the only variant that reads all nine
-	// curated knobs, incl. h4/noise/click), so every kick field has authority on
-	// its own mutation. The curated knobs are seeded to the base-kick literals so
-	// a mutation off them registers.
+	// Variant 0 is the only kick that reads all nine curated knobs; they are seeded to the base-kick values.
 	activateSlotKick := func(rp RecipeParams, k int) {
 		p := func(f string) string { return "gen" + strconv.Itoa(k) + "_" + f }
 		rp[p("source")] = 5 // harmonic-bank kick voice
@@ -517,19 +450,14 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 		rp[p("kick_pe_rate")] = 30
 		rp[p("kick_click")] = 0.35
 		rp[p("kick_noise")] = 0.18
-		// Phase-9 structural extras seeded to the base-kick values (a 0
-		// gen_kick_sat would silence the voice: the engine reads every value as
-		// given).
+		// A 0 kick_sat would silence the voice: the engine reads every value as given.
 		rp[p("kick_attack")] = 0.3
 		rp[p("kick_fade")] = 4.0
 		rp[p("kick_sat")] = 0.55
 		rp["kick_enabled"] = 1 // gate the source==5 voice on
 		rp["voice_freq_hz"] = 0
 	}
-	// activateSlotTom turns slot k into an audible Phase-4 808-style tom voice
-	// (source==6, variant 0 = base tom), so every tom curated knob has authority
-	// on its own mutation. The curated knobs are seeded to the base-tom literals
-	// so a mutation off them registers.
+	// Seeded to the base-tom values so a mutation off them registers.
 	activateSlotTom := func(rp RecipeParams, k int) {
 		p := func(f string) string { return "gen" + strconv.Itoa(k) + "_" + f }
 		rp[p("source")] = 6 // 808-style tom voice
@@ -544,11 +472,7 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 		rp[p("tom_room")] = 0.08
 		rp["voice_freq_hz"] = 0
 	}
-	// activateSlotSnare turns slot k into an audible Phase-5 snare voice
-	// (source==7, variant 0 = base snare — the only variant that reads all the
-	// curated knobs incl. tail_d/wire_m), so every snare curated knob has
-	// authority on its own mutation. The curated knobs are seeded to the
-	// base-snare literals so a mutation off them registers.
+	// Variant 0 is the only snare that reads every curated knob.
 	activateSlotSnare := func(rp RecipeParams, k int) {
 		p := func(f string) string { return "gen" + strconv.Itoa(k) + "_" + f }
 		rp[p("source")] = 7 // snare-ish voice
@@ -567,11 +491,7 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 		rp["snare_enabled"] = 1 // gate the source==7 voice on
 		rp["voice_freq_hz"] = 0
 	}
-	// activateSlotCymbal turns slot k into an audible Phase-6 metallic cymbal voice
-	// (source==9, variant 0 = hihat — the variant that reads all six curated knobs
-	// incl. cym_noise_d, plus cym_wave), so every cymbal curated knob has authority
-	// on its own mutation. The curated knobs are seeded to the hihat literals so a
-	// mutation off them registers.
+	// Variant 0 (hihat) reads all six curated knobs plus cym_wave.
 	activateSlotCymbal := func(rp RecipeParams, k int) {
 		p := func(f string) string { return "gen" + strconv.Itoa(k) + "_" + f }
 		rp[p("source")] = 9 // metallic cymbal voice
@@ -583,9 +503,7 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 		rp[p("cym_tone_m")] = 0.85
 		rp[p("cym_noise_m")] = 0.45
 		rp[p("cym_noise_d")] = 100.0
-		// Variant 0 is always the modal plate. The engine has no defaults of its
-		// own, so the plate's geometry is spelled out (the values C used to
-		// substitute for 0 before Phase C).
+		// The engine has no defaults of its own, so the plate's geometry is spelled out.
 		for f, v := range map[string]float64{"cym_modes": 64, "cym_mode_lo": 300, "cym_mode_hi": 18000,
 			"cym_hf_corner": 10000, "cym_tone_f": 3000, "cym_tone_w": 0.6, "cym_body_f": 1500,
 			"cym_body_w": 0.15, "cym_spark_f": 11000, "cym_spark_w": 0.3, "cym_attack": 0.0005,
@@ -596,15 +514,8 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 		}
 		rp["voice_freq_hz"] = 0
 	}
-	// activateSlotFM turns slot k into an audible Phase-7 FM-family voice
-	// (source==10, variant 2 = lead — the 3-op preset that reads op1/op2/op3
-	// ratio/depth/decay, plus base_freq, pitch-env amount/decay, wave), so every FM
-	// curated knob that any shipped preset uses has authority on its own mutation.
-	// The op4 fields (r4/d4/dec4) are structurally inert — no shipped preset has a
-	// 4th operator (max num_ops == 3) — so the genContext case seeds base==target
-	// for them and the harness skips them ("no distinct target in context"). The
-	// curated knobs are seeded to the lead literals so a mutation off them
-	// registers.
+	// Variant 2 (lead) is the 3-op preset. No shipped preset has a 4th operator, so op4's fields seed base == target and
+	// the harness skips them.
 	activateSlotFM := func(rp RecipeParams, k int) {
 		p := func(f string) string { return "gen" + strconv.Itoa(k) + "_" + f }
 		rp[p("source")] = 10    // 4-op FM preset voice
@@ -622,8 +533,7 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 		rp[p("fm_dec2")] = 0.12
 		rp[p("fm_dec3")] = 0.08
 	}
-	// activateSlotNoiseTap turns slot k into a noise tap with a multi-draw bus
-	// so noise_draws / noise_prelude / noise_offset all have authority.
+	// A multi-draw bus so noise_draws / noise_prelude / noise_offset have authority.
 	activateSlotNoiseTap := func(rp RecipeParams, k int) {
 		p := func(f string) string { return "gen" + strconv.Itoa(k) + "_" + f }
 		rp[p("source")] = 2 // noise tap
@@ -633,8 +543,6 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 		rp["noise_prelude"] = 4
 	}
 
-	// genContext returns (base, target) for a gen-bank param name, or ok=false
-	// if name is not a gen-bank param.
 	genContext := func(d ParamDef) (RecipeParams, float64, bool) {
 		name := d.Name
 		if name == "noise_draws" || name == "noise_prelude" {
@@ -650,15 +558,13 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 			return rp, target, true
 		}
 		if name == "kick_enabled" {
-			// Global KICK-stage enable: only has authority with the source==5
-			// voice active. Base = on (audible kick), target = off (silence).
+			// Base on, target off (silence).
 			rp := sineBase()
 			activateSlotKick(rp, 1)
 			return rp, 0, true
 		}
 		if name == "snare_enabled" {
-			// Global SNARE-stage enable: mirror of kick_enabled — only has
-			// authority with the source==7 voice active.
+			// Base on, target off (silence).
 			rp := sineBase()
 			activateSlotSnare(rp, 1)
 			return rp, 0, true
@@ -688,23 +594,19 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 			rp[name] = 0
 			return rp, 1, true // read a different per-sample draw
 		case "phase":
-			// phase only has authority when phase_mode selects it. Use mode 1
-			// (fixed radians); phase 0 vs a non-zero start phase shifts the osc.
+			// phase has authority only when phase_mode 1 (fixed radians) selects it.
 			activateSlotOsc(rp, k)
 			rp["gen"+strconv.Itoa(k)+"_phase_mode"] = 1
 			rp[name] = 0
 			return rp, 3.0, true // ~half-cycle radians
 		case "phase_mode":
-			// phase_mode only matters when phase is non-zero: with a fixed
-			// start phase set, switching mode 0 (ignored) → 1 (apply radians)
-			// shifts the oscillator start.
+			// phase_mode matters only with a non-zero start phase.
 			activateSlotOsc(rp, k)
 			rp["gen"+strconv.Itoa(k)+"_phase"] = 3 // ~half-cycle radians
 			rp[name] = 0
 			return rp, 1, true // 0 (zero start) -> 1 (fixed radians)
 		case "filt_freq", "filt_q":
-			// RBJ filter coefficients only matter when an RBJ filter type is
-			// selected (filt_type 3=LP 4=HP 5=BP). Activate an RBJ LP slot.
+			// RBJ coefficients matter only for filt_type 3/4/5.
 			activateSlotOsc(rp, k)
 			rp["gen"+strconv.Itoa(k)+"_filt_type"] = 3 // RBJ LP
 			rp["gen"+strconv.Itoa(k)+"_filt_freq"] = 1000
@@ -721,9 +623,6 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 			return rp, 0.5, true
 		case "pitch_env_amt", "pitch_env_rate", "harm_mix",
 			"atk_amt", "atk_rate", "sat_k", "out_scale":
-			// Phase-2 analytic dual-osc voice fields: only have authority when
-			// the slot's source is 4. Build an audible analytic slot, then pick a
-			// per-field target that moves the output.
 			activateSlotAnalytic(rp, k)
 			switch field {
 			case "pitch_env_amt":
@@ -751,9 +650,6 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 				return rp, 0.5, true // trim the output
 			}
 		case "ks_sustain", "ks_pluck", "ks_blow":
-			// Phase-2 Karplus-Strong voice fields: only have authority when the
-			// slot's source is 3. Build an audible KS slot, then pick a per-field
-			// target that moves the output.
 			activateSlotKS(rp, k)
 			switch field {
 			case "ks_sustain":
@@ -769,9 +665,6 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 		case "kick_variant", "kick_h2", "kick_h3", "kick_h4", "kick_env0",
 			"kick_env1", "kick_pe_amt", "kick_pe_rate", "kick_click", "kick_noise",
 			"kick_attack", "kick_fade", "kick_sat":
-			// Phase-3 harmonic-bank kick voice fields: only have authority when the
-			// slot's source is 5. Build an audible base-kick slot (variant 0 reads
-			// every curated knob), then pick a per-field target that moves output.
 			activateSlotKick(rp, k)
 			switch field {
 			case "kick_variant":
@@ -815,10 +708,7 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 				return rp, 1.4, true // more saturation drive
 			}
 		case "kick_mode_detune", "kick_mode_gain", "kick_mode_decay":
-			// Phase-11 modal-kick fields: only read by the source==5 variant-6
-			// (modal) voice, and only when the resonant mode is audible
-			// (mode_gain > 0). Build a variant-6 kick slot with the resonant mode
-			// active, then move each field to a value that changes output.
+			// Read only by variant 6, and only while its resonant mode is audible.
 			activateSlotKick(rp, k)
 			gp := func(f string) string { return "gen" + strconv.Itoa(k) + "_" + f }
 			rp[gp("kick_variant")] = 6
@@ -837,15 +727,13 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 				return rp, 40, true // resonant mode rings far shorter
 			}
 		case "kick_reverb":
-			// Phase-12 reverb: only read by the source==5 variant-7 (acoustic)
-			// voice. Build a variant-7 kick slot, then turn the reverb tail up.
+			// Read only by variant 7.
 			activateSlotKick(rp, k)
 			rp["gen"+strconv.Itoa(k)+"_kick_variant"] = 7
 			rp[name] = 0.0
 			return rp, 0.8, true // dry → a strong room tail
 		case "kick_hold", "kick_hiss":
-			// Phase-19 physical-kick knobs: only read by the source==5 variant-8
-			// (physical) voice. Build a variant-8 kick slot, then turn each on.
+			// Read only by variant 8.
 			activateSlotKick(rp, k)
 			rp["gen"+strconv.Itoa(k)+"_kick_variant"] = 8
 			rp[name] = 0.0
@@ -855,9 +743,6 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 			return rp, 0.8, true // a broadband air floor under the hit
 		case "tom_variant", "tom_sweep", "tom_ring", "tom_o1", "tom_o2",
 			"tom_stick", "tom_room":
-			// Phase-4 808-style tom voice fields: only have authority when the
-			// slot's source is 6. Build an audible base-tom slot (variant 0), then
-			// pick a per-field target that moves output.
 			activateSlotTom(rp, k)
 			switch field {
 			case "tom_variant":
@@ -885,9 +770,6 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 		case "snare_variant", "snare_tone2", "snare_tune", "snare_tone_d",
 			"snare_noise_d", "snare_tail_d", "snare_tone_m", "snare_noise_m",
 			"snare_wire_m", "snare_attack":
-			// Phase-5 snare-ish voice fields: only have authority when the slot's
-			// source is 7. Build an audible base-snare slot (variant 0 reads every
-			// curated knob), then pick a per-field target that moves output.
 			activateSlotSnare(rp, k)
 			switch field {
 			case "snare_variant":
@@ -923,9 +805,6 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 			}
 		case "cym_variant", "cym_tune", "cym_env_fast", "cym_env_tail",
 			"cym_tone_m", "cym_noise_m", "cym_noise_d":
-			// Phase-6 metallic cymbal voice fields: only have authority when the
-			// slot's source is 9. Build an audible hihat slot (variant 0 reads every
-			// curated knob), then pick a per-field target that moves output.
 			activateSlotCymbal(rp, k)
 			switch field {
 			case "cym_variant":
@@ -954,10 +833,7 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 			"cym_beat", "cym_tone_f", "cym_tone_w", "cym_body_f", "cym_body_w", "cym_body",
 			"cym_spark_f", "cym_spark_w", "cym_spark", "cym_wash", "cym_attack",
 			"cym_rattle", "cym_rattle_rate", "cym_rattle_decay", "cym_drive_delay", "cym_rattle_hold":
-			// Phase-18 modal-plate fields: only have authority once cym_modes > 0
-			// switches the slot to the modal voice. Build an audible modal slot
-			// with every hump present (so each width/centre has energy to move)
-			// and a nonzero HF corner term, then move one field.
+			// Only once cym_modes > 0 selects the modal voice; every hump present so each width/centre has energy to move.
 			activateSlotCymbal(rp, k)
 			p := func(f string) string { return "gen" + strconv.Itoa(k) + "_" + f }
 			modal := map[string]float64{
@@ -972,8 +848,7 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 			}
 			rp[p("cym_variant")] = 4 // a plate variant (ride)
 			if strings.HasPrefix(field, "cym_rattle") || field == "cym_drive_delay" {
-				// The rattle only exists on the hi-hat variants (a ride has no
-				// second cymbal to rattle against).
+				// Only the hi-hats rattle: a ride has no second cymbal.
 				rp[p("cym_variant")] = 0
 				rp[p("cym_rattle")] = 1.0
 				rp[p("cym_rattle_rate")] = 2000
@@ -999,12 +874,7 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 			"fm_r1", "fm_r2", "fm_r3", "fm_r4",
 			"fm_d1", "fm_d2", "fm_d3", "fm_d4",
 			"fm_dec1", "fm_dec2", "fm_dec3", "fm_dec4":
-			// Phase-7 FM-family voice fields: only have authority when the slot's
-			// source is 10. Build an audible lead slot (variant 2 = 3-op preset that
-			// reads op1/op2/op3 ratio/depth/decay), then pick a per-field target that
-			// moves output. The op4 columns (r4/d4/dec4) and fm_d1 (op0 has no
-			// outgoing edge) are structurally inert in every shipped preset, so they
-			// seed base==target → the harness skips them ("no distinct target").
+			// The op4 columns and fm_d1 (op0 has no outgoing edge) are inert in every shipped preset, so they seed base == target.
 			activateSlotFM(rp, k)
 			switch field {
 			case "fm_variant":
@@ -1044,8 +914,6 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 				rp[name] = 0.08
 				return rp, 0.4, true // much slower op3 decay
 			case "fm_r4", "fm_d1", "fm_d4", "fm_dec4":
-				// Structurally inert in every shipped preset (no 4th operator; op0
-				// has no outgoing edge). Seed base==target so the harness skips.
 				return rp, rp[name], true
 			}
 		default:
@@ -1057,10 +925,8 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 		return rp, pickNonDefaultValue(d), true
 	}
 
-	// ── WAV-clone stages (MODAL / STRIKE / NOISEBAND): their knobs only have
-	// authority over table rows, so the context seeds three modal rows (ratio
-	// mode over the 220 Hz voice), an active strike and one noise band. The
-	// toggles are tested by flipping the ACTIVE stage off. ──
+	// Their knobs act on table rows, so the context seeds three modal rows, a strike and a noise band; toggles are tested by
+	// switching the ACTIVE stage off.
 	isCloneStage := func(name string) bool {
 		return strings.HasPrefix(name, "modal_") || strings.HasPrefix(name, "strike_") || strings.HasPrefix(name, "noiseband_")
 	}
@@ -1119,14 +985,11 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 				base = modulatorBase(d.Name)
 				target = modulatorTarget[d.Name]
 			case d.Name == "amp_release":
-				// The release fills at most half the voice (125 ms here): any
-				// release past 62.5 ms ramps over that half, so the mutation
-				// that must show is one INSIDE it (base 0.2 s is capped).
+				// A release fills at most half the voice (125 ms here), so the mutation must land inside 62.5 ms.
 				base = sineBase()
 				target = 0.01
 			case d.Name == "out_clamp":
-				// The output limit only acts on a signal above it: a sine
-				// driven to ~4x, clamped at 0.5 instead of the 1.5 identity.
+				// The limit acts only on a signal above it: a sine driven to ~4×.
 				base = sineBase()
 				base["gain"] = 4
 				target = 0.5
@@ -1162,9 +1025,7 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 func TestRenderModularP_FilterCutoffChangesTone(t *testing.T) {
 	const sr = 48000
 	n := sr / 8
-	// A saw is harmonically rich; a low LP cutoff should reduce high-freq
-	// energy vs a wide-open cutoff. We compare total high-frequency content
-	// via a crude first-difference energy measure.
+	// A crude first-difference energy as the high-frequency measure.
 	hfEnergy := func(cutoff float64) float64 {
 		p := defaultModularParams()
 		p.set("osc_type", 1) // saw
@@ -1186,11 +1047,7 @@ func TestRenderModularP_FilterCutoffChangesTone(t *testing.T) {
 	}
 }
 
-// TestModularPadRendersDistinctFromBase — the two shipped modular presets
-// must produce different audio through the recipe (edit) path. Rendering
-// each recipe with its own shipped defaults proves the pad Seed reaches the
-// engine, so an edited modular-pad stays coherent (it does not snap to the
-// base preset's tone).
+// Each rendered with its own shipped values, so an edited pad does not snap to the base preset's tone.
 func TestModularPadRendersDistinctFromBase(t *testing.T) {
 	const sr = 48000
 	n := sr / 4
@@ -1276,10 +1133,7 @@ func TestModBiquadCoeffOnly_FilterStaysFinite(t *testing.T) {
 func TestLfoTarget_CutoffSweepChangesFilteredOutput(t *testing.T) {
 	const sr, n = 48000, 48000
 
-	// mkSweep builds a saw through an enabled LP filter with the cutoff-sweep
-	// LFO (lfo_target=2). Only lfo_depth varies between calls so amplitude
-	// behaviour is identical across all renders (amp-tremolo is gated to
-	// target==0 and is OFF here for every depth value).
+	// Only lfo_depth varies, and amp tremolo (target 0) is off, so amplitude behaves identically across renders.
 	mkSweep := func(depth float64) []float32 {
 		p := defaultModularParams()
 		p.set("osc_type", 1)    // saw — harmonically rich so cutoff changes are audible
@@ -1309,10 +1163,7 @@ func TestLfoTarget_CutoffSweepChangesFilteredOutput(t *testing.T) {
 		t.Fatal("cutoff sweep at depth 0.6 produced no change vs depth 0 (lfo_target=2 both)")
 	}
 
-	// Assertion (b): depth-0 with lfo_target=2 must be byte-identical to a
-	// no-LFO static-filter baseline (same params, lfo_enabled=0). This proves
-	// depth-0 is a true no-op and that the sweep — not an amplitude side-effect
-	// — is what assertion (a) measures.
+	// Depth 0 must equal a static filter with no LFO: the sweep, not an amplitude side effect, is what (a) measures.
 	noLFO := defaultModularParams()
 	noLFO.set("osc_type", 1)
 	noLFO.set("env_enabled", 0)
@@ -1403,8 +1254,6 @@ func renderSawWithUnison(voices int, detune, mix float64) []float32 {
 	return buf
 }
 
-// TestUnisonVoices1ByteIdentical verifies that unison_voices=1 produces
-// byte-identical output to the baseline (no unison field set at all).
 func TestUnisonVoices1ByteIdentical(t *testing.T) {
 	const sr, n = 48000, 24000
 	mp := defaultModularParams()
@@ -1426,8 +1275,6 @@ func TestUnisonVoices1ByteIdentical(t *testing.T) {
 	}
 }
 
-// TestUnisonVoices5Differs verifies that voices=5 with detune=20 produces
-// output that differs from voices=1 and remains finite and bounded.
 func TestUnisonVoices5Differs(t *testing.T) {
 	voices1 := renderSawWithUnison(1, 20, 0.5)
 	voices5 := renderSawWithUnison(5, 20, 0.5)
@@ -1457,8 +1304,7 @@ func TestUnisonVoices5Differs(t *testing.T) {
 	}
 }
 
-// TestUnisonDetune0Sanity verifies voices=3,detune=0,mix=1 stays bounded and
-// is non-silent (when detune=0 voices sum in-phase → louder but not unbounded).
+// Detune 0 sums in phase: louder, but bounded.
 func TestUnisonDetune0Sanity(t *testing.T) {
 	voices3det0 := renderSawWithUnison(3, 0, 1)
 	assertFinite(t, voices3det0)
@@ -1472,8 +1318,7 @@ func TestUnisonDetune0Sanity(t *testing.T) {
 	}
 }
 
-// TestUnisonGenBankSource1Differs verifies unison also works for gen-bank
-// source==1 (wt_osc slots), producing different output when voices>1.
+// Gen-bank source 1 (wavetable slots).
 func TestUnisonGenBankSource1Differs(t *testing.T) {
 	const sr, n = 48000, 24000
 
@@ -1523,20 +1368,13 @@ func TestUnisonGenBankSource1Differs(t *testing.T) {
 
 // ── Unison drift / voices=2 bug tests (Phase-8F) ───────────────────────────
 
-// TestUnison_TwoVoicesDetune verifies that voices=2 with detune>0 actually
-// detunes the side voice (the bug: ns==1 gave spread=0 → side voice at exact
-// center pitch, not detuned). We verify by comparing voices=2,detune=25 against
-// voices=2,detune=0: detuned should differ (frequency difference) while with
-// the bug both land at center pitch so the only difference is phase (and
-// phase-only 2-voice is the SAME as 2-voice detune=0).
+// With two voices the side voice must actually detune; a zero spread would put it at the centre pitch, where only phase
+// differs.
 func TestUnison_TwoVoicesDetune(t *testing.T) {
 	v2det25 := renderSawWithUnison(2, 25, 1.0) // mix=1 = full ensemble
 	v2det0 := renderSawWithUnison(2, 0, 1.0)   // mix=1, no detune
 	assertFinite(t, v2det25)
 	assertFinite(t, v2det0)
-	// With proper spread math, detune=25 should differ from detune=0 because
-	// the side voice frequency actually changes. With the bug (spread=0 always
-	// for ns==1), both produce center+phase_offset, so output is identical.
 	same := true
 	for i, s := range v2det25 {
 		if s != v2det0[i] {
@@ -1549,9 +1387,7 @@ func TestUnison_TwoVoicesDetune(t *testing.T) {
 	}
 }
 
-// TestUnison_DriftIdentityAndEffect verifies:
-// (a) drift_depth=0 is byte-identical to no drift fields set (identity).
-// (b) drift_rate>0 && drift_depth>0 produces different output (drift has effect).
+// depth 0 is the identity; rate and depth both > 0 changes the output.
 func TestUnison_DriftIdentityAndEffect(t *testing.T) {
 	const sr, n = 48000, 24000
 
@@ -1665,10 +1501,7 @@ func TestLfoDelay_IdentityAndRampsIn(t *testing.T) {
 		t.Fatalf("lfo_delay=0.5: early window identical to no-delay (earlyDiff=%v), delay ramp not applied", earlyDiff)
 	}
 
-	// (c) Late-window convergence: use amp tremolo (target=0) which is stateless
-	// (per-sample multiply, no oscillator phase accumulation), so once ramp=1.0
-	// the output is sample-identical to the no-delay render.
-	// Render the same params with amp LFO (target=0).
+	// Amp tremolo is stateless, so once the ramp reaches 1 it is sample-identical to the no-delay render.
 	baseAmp := defaultModularParams()
 	baseAmp.set("osc_type", 1) // saw
 	baseAmp.set("lfo_enabled", 1)
@@ -1698,10 +1531,7 @@ func TestLfoDelay_IdentityAndRampsIn(t *testing.T) {
 	}
 }
 
-// TestVibrato_ReachesGenSlots verifies that pitch vibrato (lfo_target==1) reaches
-// gen-bank wavetable-osc slots when the legacy OSC stage is disabled (osc_enabled:0).
-// Additive instruments like violin/cello carry all their tone in gen-bank slots and
-// had no vibrato before the fix. This test must FAIL before the C fix and PASS after.
+// Additive instruments (violin, cello) carry all their tone in gen-bank slots with the osc stage off.
 func TestVibrato_ReachesGenSlots(t *testing.T) {
 	const sr, n = 48000, 48000
 
@@ -1760,9 +1590,6 @@ func TestVibrato_ReachesGenSlots(t *testing.T) {
 	}
 }
 
-// TestVibrato_GenSlotIdentityWhenOff verifies byte-identity when vibrato is
-// completely disabled (lfo_enabled=0) for a gen-slot-only voice. This must pass
-// both before and after the C fix (no regression on the inactive path).
 func TestVibrato_GenSlotIdentityWhenOff(t *testing.T) {
 	const sr, n = 48000, 48000
 
@@ -1796,8 +1623,7 @@ func TestVibrato_GenSlotIdentityWhenOff(t *testing.T) {
 	}
 
 	lfoOff := mkGenNoLFO(0) // lfo_enabled=0 → no vibrato
-	// lfo_enabled=0 with all LFO fields set should be byte-identical to a render
-	// where LFO fields are all zero (the gate must short-circuit before any per-sample work).
+	// The gate must short-circuit before any per-sample work.
 	mpZeroLFO := zeroModularBlock()
 	mpZeroLFO.set("osc_enabled", 0)
 	mpZeroLFO.set("env_enabled", 1)

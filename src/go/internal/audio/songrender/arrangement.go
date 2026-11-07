@@ -29,8 +29,7 @@ type Arrangement struct {
 	TotalSamples                  int
 }
 
-// beatInfoAt returns the BeatInfo at absolute step abs for a row path, honoring
-// the row's loop (mirrors the predictor's own index folding).
+// Mirrors the predictor's own index folding.
 func beatInfoAt(path []model.BeatInfo, isLoop bool, loopStart, abs int) (model.BeatInfo, bool) {
 	if len(path) == 0 {
 		return model.BeatInfo{}, false
@@ -49,17 +48,12 @@ func beatInfoAt(path []model.BeatInfo, isLoop bool, loopStart, abs int) (model.B
 	return path[idx], true
 }
 
-// StepSeconds is the duration of one path step: a template's subdiv is grid
-// units per BEAT (the engine's MaxDiv), and the sequencer advances one unit per
-// step. This read "units per bar" until 2026-10-02 (60/BPM * 4/Subdiv), which
-// rendered every template at a quarter of its tempo.
+// Subdiv is grid units per BEAT and the sequencer advances one unit per step.
 func StepSeconds(bpm, subdiv int) float64 {
 	return 60.0 / float64(bpm) / float64(subdiv)
 }
 
-// NOTE: the engine predictor caps its sliding window at ~4096 steps; renders where
-// bars*4*Subdiv exceeds that would silently drop the earliest notes. All current
-// uses (2-8 bars) are far under the cap.
+// The predictor window caps at ~4096 steps: a longer render would silently drop its earliest notes.
 func BuildArrangement(pt ParsedTemplate, bars, sampleRate int) (Arrangement, error) {
 	rp, err := BuildGraph(pt)
 	if err != nil {

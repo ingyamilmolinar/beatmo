@@ -28,10 +28,7 @@ type laneOp struct {
 	t    float64
 }
 
-// outboxSink is the production audioSink: the lane (ticking under seqMu)
-// only RECORDS ops, in order; audioLoop applies them through flushLaneOps.
-// So the engine calls run on the audio dispatch goroutine, never under seqMu
-// — a cold desktop voice render must not block Update.
+// The lane only RECORDS ops under seqMu; audioLoop applies them, so a cold voice render never blocks Update.
 type outboxSink struct {
 	mu   sync.Mutex
 	ops  []laneOp
@@ -70,16 +67,12 @@ func (o *outboxSink) take() []laneOp {
 	return ops
 }
 
-// flushLaneOps applies queued lane ops in order (audioLoop goroutine).
-// Consecutive schedules are batched into one audio.PlayBatch — one Go→JS
-// crossing on WASM.
+// Consecutive schedules share one PlayBatch: one Go→JS crossing.
 func (g *Game) flushLaneOps() {
 	if g.laneSink == nil {
 		return
 	}
-	// One flusher at a time: audioLoop and Close both flush, and two
-	// interleaved flushes would share laneBatchScratch and could apply a taken
-	// Schedule batch after Close's cancel-all.
+	// One flusher at a time: interleaved flushes share scratch and could apply a batch after Close's cancel-all.
 	g.laneFlushMu.Lock()
 	defer g.laneFlushMu.Unlock()
 	ops := g.laneSink.take()
@@ -95,9 +88,7 @@ func (g *Game) flushLaneOps() {
 		}
 	}
 	add := func(vid uint64, n laneNote) {
-		// Stage C on the lane: lead = when − now at commit (≈ the horizon
-		// in steady state; negative = committed late). One observation and
-		// one timing trace per CELL, however many voices it sounds.
+		// One observation per CELL however many voices it sounds; negative lead = committed late.
 		if audioNow > 0 && !g.parityInGrace() {
 			g.schedMetrics.Observe(audioNow, n.Time)
 		}
@@ -117,11 +108,8 @@ func (g *Game) flushLaneOps() {
 		case laneOpSchedule:
 			add(op.vid, op.note)
 		case laneOpReplace:
-			// A run of replacements: cancel every old voice in ONE engine call
-			// (one bridge crossing on WASM), THEN schedule the replacements
-			// whose old voices the engine actually removed. A chord is
-			// replaced all-or-nothing: if ANY of its old voices had started,
-			// none of the new ones play (never the old and new chord together).
+			// Cancel every old voice in ONE call, then schedule only replacements whose old voices were removed.
+			// A chord is all-or-nothing: never the old and new chord together.
 			j := i
 			olds := g.laneOldScratch[:0]
 			for ; j < len(ops) && ops[j].kind == laneOpReplace; j++ {

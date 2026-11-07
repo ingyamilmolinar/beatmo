@@ -10,17 +10,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestTimelineScrub_MobileHitAreaSpansFullTimelineRect verifies the
-// mobile scrub hit surface meets TouchMinTarget once HitIndex.At
-// applies its touch expansion. Pre-input-isolation pass: the area's
-// Rect was physically enlarged downward into the steps region to
-// meet the target — which leaked into sibling zones (the canonical
-// "knob drag scrubs the timeline" bug). Now: the Rect equals the
-// visible bar, Touch=true, and the ClipRect bounds the expansion.
-// HitIndex.At expands the touch radius up to TouchMinTarget at
-// query time but never past ClipRect. This test exercises the new
-// contract: a point well outside the bar but inside the touch
-// skirt still hits the scrub area; a point far below does not.
+// The Rect is the visible bar, Touch is set and ClipRect bounds the expansion: a point in the skirt hits, one
+// far below does not. A physically enlarged rect leaked into sibling zones.
 func TestTimelineScrub_MobileHitAreaSpansFullTimelineRect(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -42,9 +33,7 @@ func TestTimelineScrub_MobileHitAreaSpansFullTimelineRect(t *testing.T) {
 	if scrubArea.ClipRect.Empty() {
 		t.Errorf("mobile scrub ClipRect empty; expected a bounded skirt to prevent leakage")
 	}
-	// The visible bar may be thin, but touch expansion via HitIndex.At
-	// must still land within the bar's vertical skirt. Confirm a point
-	// just below the bar (within ClipRect) hits scrub.
+	// Just below the bar, inside ClipRect.
 	idx := &HitIndex{}
 	idx.Update("timeline", z.HitAreas())
 	barMid := scrubArea.Rect.Min.X + scrubArea.Rect.Dx()/2
@@ -65,14 +54,7 @@ func TestTimelineScrub_MobileHitAreaSpansFullTimelineRect(t *testing.T) {
 	}
 }
 
-// TestTimelineScrub_HitAreaIsBarOnly verifies the scrub Rect equals
-// the visible bar exactly — no downward growth into the steps region.
-// Pre-input-isolation pass the rect grew downward and overlapped
-// the len ±/track buttons, requiring a per-button exclusion clamp.
-// Post-fix the rect IS the bar, so no exclusion is needed and there
-// is no leakage risk into a sibling zone. The button rects in this
-// test are placed in the steps region (below the bar); the scrub
-// rect must NOT overlap them since the bar is above them.
+// Exactly the visible bar, with no downward growth, so it never overlaps the length/track buttons below.
 func TestTimelineScrub_HitAreaIsBarOnly(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -92,19 +74,13 @@ func TestTimelineScrub_HitAreaIsBarOnly(t *testing.T) {
 		t.Errorf("scrub Rect=%v, want timelineBarRect=%v (no enlargement)",
 			scrubArea.Rect, z.timelineBarRect)
 	}
-	// The bar sits at the top of the zone; the steps region (rows) is
-	// strictly below. So the bar must not overlap the rows region.
 	if !scrubArea.Rect.Intersect(z.stepsRect).Empty() {
 		t.Errorf("scrub Rect %v overlaps stepsRect %v — bar leaked into rows region",
 			scrubArea.Rect, z.stepsRect)
 	}
 }
 
-// TestTimelineScrub_PinchDoesNotStartScrub verifies that during the
-// multi-touch cooldown (set by the global TouchState after a pinch
-// gesture ends) a scrub press is suppressed. Without this gate the
-// enlarged mobile scrub area (Task 3.1) would let stray fingertips
-// from a pinch gesture fire false scrubs.
+// During the post-pinch multi-touch cooldown, so stray pinch fingertips never start a scrub.
 func TestTimelineScrub_PinchDoesNotStartScrub(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -116,9 +92,7 @@ func TestTimelineScrub_PinchDoesNotStartScrub(t *testing.T) {
 	if z == nil {
 		t.Fatalf("timelineZone nil")
 	}
-	// Simulate a recent multi-touch by pinning the global cooldown
-	// counter directly. RecentMultiTouch() will return true until the
-	// cooldown ticks down to zero.
+	// RecentMultiTouch() stays true until the cooldown ticks to zero.
 	prevCooldown := globalTouchState.multiTouchCooldown
 	globalTouchState.multiTouchCooldown = multiTouchCooldownFrames
 	t.Cleanup(func() { globalTouchState.multiTouchCooldown = prevCooldown })
@@ -127,9 +101,7 @@ func TestTimelineScrub_PinchDoesNotStartScrub(t *testing.T) {
 	scrubMid := image.Pt(z.timelineBarRect.Min.X+z.timelineBarRect.Dx()/2,
 		z.timelineBarRect.Min.Y+z.timelineBarRect.Dy()/2)
 
-	// Install the haptic spy BEFORE OnPress so the no-buzz assertion
-	// below is meaningful — installing it after the call would make
-	// len(*captured)==0 vacuously true.
+	// Before OnPress, or the no-buzz check is vacuous.
 	captured := withCapturedHaptics(t)
 	res := adapter.OnPress(scrubMid.X, scrubMid.Y)
 
@@ -144,11 +116,8 @@ func TestTimelineScrub_PinchDoesNotStartScrub(t *testing.T) {
 	}
 }
 
-// TestTimelineScrub_OnPressFiresHaptic verifies an 8ms vibration
-// fires when scrub begins on mobile. The cue is critical for users to
-// know they've engaged the scrub gesture (the new enlarged hit area
-// from Task 3.1 makes the boundary less obvious without it). Fires
-// after the multi-touch gate so suppressed presses don't buzz.
+// 8 ms on mobile so the user knows the scrub engaged; after the multi-touch gate, so a suppressed press is
+// silent.
 func TestTimelineScrub_OnPressFiresHaptic(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -172,20 +141,7 @@ func TestTimelineScrub_OnPressFiresHaptic(t *testing.T) {
 	}
 }
 
-// TestTimelineSwipeScrub_DragDispatchesPositions exercises the full
-// press → drag → release pipeline through the timelineScrubHitAdapter.
-//
-// Task 10 redesigned the ribbon from a view-offset scrub (re-seeking on
-// every drag frame) into a click-to-seek surface: press commits an
-// immediate seek to the nearest beat, drag ONLY updates the ghost preview
-// (z.scrubGhostBeat, no dispatch), and release commits a second seek only
-// if the final beat differs from the press beat. This test (previously
-// asserting the old offset-scrub callback fired monotonically as the
-// touch dragged) now asserts: (1) OnSeekToStep fires exactly once on
-// press and at most once more on release — never per intermediate drag
-// frame; (2) the ghost beat itself still tracks the drag monotonically,
-// preserving the original "drag advances position" guarantee at the
-// preview layer.
+// At most one seek per gesture, never one per drag frame, while the ghost beat tracks the drag monotonically.
 func TestTimelineSwipeScrub_DragDispatchesPositions(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -198,8 +154,7 @@ func TestTimelineSwipeScrub_DragDispatchesPositions(t *testing.T) {
 		t.Fatalf("timelineZone nil")
 	}
 
-	// Wrap the existing OnSeekToStep callback so we can capture each
-	// dispatched step value while preserving production behavior.
+	// Wrapped, so production behaviour is kept.
 	var seeks []int
 	prev := z.callbacks.OnSeekToStep
 	z.callbacks.OnSeekToStep = func(step int, origin hooks.SeekOrigin) {
@@ -230,9 +185,7 @@ func TestTimelineSwipeScrub_DragDispatchesPositions(t *testing.T) {
 
 	adapter.OnRelease(endX, y)
 
-	// Task 6: press no longer seeks (drag-only ribbon) — exactly ONE seek
-	// commits, on release, since the gesture travels the full bar width
-	// (final beat != press beat). NEVER one per intermediate drag frame.
+	// The press seeks nothing; the full-width drag commits exactly one, on release.
 	if len(seeks) != 1 {
 		t.Fatalf("expected exactly 1 OnSeekToStep call (release only), got %d: %v", len(seeks), seeks)
 	}
@@ -240,9 +193,7 @@ func TestTimelineSwipeScrub_DragDispatchesPositions(t *testing.T) {
 		t.Fatalf("expected release seek near the right edge (left edge -> right edge drag); saw %v", seeks)
 	}
 
-	// The ghost preview must still advance monotonically across the drag
-	// — that's the "drag advances position" contract, now living at the
-	// preview layer instead of the dispatch layer.
+	// Drag advances the position at the preview layer.
 	if ghostAfterMidDrag <= ghostAfterPress {
 		t.Fatalf("expected ghost to advance past press position at mid-drag; press=%d mid=%d", ghostAfterPress, ghostAfterMidDrag)
 	}

@@ -10,10 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestChainPanelZoneHasNoInstrumentButton enforces that the Scope tab does
-// not own its own instrument selector — the Wave Analyzer panel must expose a
-// single shared instrument pill (eqChannelBtn) for every tab. The duplicate
-// "Kick" button and "scope-inst-btn" hit area must not exist.
+// One shared channel pill for every tab; no scope-owned selector or hit area.
 func TestChainPanelZoneHasNoInstrumentButton(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -26,15 +23,8 @@ func TestChainPanelZoneHasNoInstrumentButton(t *testing.T) {
 	}
 }
 
-// TestEQChannelChangeUpdatesScopeInstrument verifies that selecting an
-// instrument from the shared eqChannelBtn dropdown propagates to the Scope
-// zone's instrumentID (the WASM fallback path the Scope zone reads when no
-// audio.ScopeService is available, which is the case under -tags test).
-//
-// The production wiring lives in drumview_ctor.go's OnChannelChange callback;
-// today that callback only updates setEQActiveChannel + AnalyzerService, so
-// switching channel from the EQ pill leaves the scope viewing the wrong
-// instrument. After the fix the same callback also forwards to scope.
+// A channel picked on the shared pill reaches the scope's instrument (its fallback when there is no
+// ScopeService, as under -tags test).
 func TestEQChannelChangeUpdatesScopeInstrument(t *testing.T) {
 	assertDefaultParityState(t)
 

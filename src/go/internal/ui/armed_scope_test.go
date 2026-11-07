@@ -8,11 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestArmGrowSubjectIsScoped pins that the grow animation's single subject is
-// keyed by SCOPE as well as instrument id. Without the scope, a synth arm on
-// instrument X would drive the sampler's reflow for the same X (and vice
-// versa) because both tabs edit the same instrument with different index
-// spaces.
+// Keyed by scope too: synth and sampler edit the same instrument with different index spaces.
 func TestArmGrowSubjectIsScoped(t *testing.T) {
 	g := newSamplerTabGame(t)
 	dv := g.drum
@@ -35,9 +31,7 @@ func TestArmGrowSubjectIsScoped(t *testing.T) {
 	}
 }
 
-// TestArmGrowScopeSwitchRestartsProgress pins that changing scope restarts the
-// eased progress from rest, exactly as changing instrument or index does — a
-// retained progress value would make the new subject snap in half-grown.
+// A new scope restarts from rest, or the new subject snaps in half-grown.
 func TestArmGrowScopeSwitchRestartsProgress(t *testing.T) {
 	g := newSamplerTabGame(t)
 	dv := g.drum

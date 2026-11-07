@@ -9,25 +9,16 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// insertFXPushes counts what insert-chain edits sent to the platform audio
-// graph (see InsertFXPushCounts).
 var insertFXPushes struct{ structural, params atomic.Int64 }
 
-// InsertFXPushCounts reports how many insert-chain edits reached the platform
-// audio graph since process start: structural = whole-chain rebuilds (on WASM
-// every one builds fresh WebAudio nodes for EVERY effect on the channel and
-// rewires it, resetting delay lines and LFO phases), params = in-place
-// updates of one live effect. A param gesture must move only params, and
-// only when a value changed. Perf guards and benches read it.
+// structural = whole-chain pushes (on WASM each rebuilds and rewires every effect on the channel), params = in-place
+// updates of one live effect. A param gesture must move only params, and only on a value change.
 func InsertFXPushCounts() (structural, params int64) {
 	return insertFXPushes.structural.Load(), insertFXPushes.params.Load()
 }
 
-// effectChainEntry holds the insert effect chain for one instrument. uids[i]
-// names slot i's processor INSTANCE: a structural edit (add, remove, move,
-// toggle) keeps every surviving instance and its state on desktop, and the
-// browser's worklet reuses its C instance by the same uid, so an edit never
-// resets a neighbour's delay line or LFO on one platform only.
+// uids[i] names slot i's processor INSTANCE: a structural edit keeps every surviving instance and its state on
+// desktop and the worklet reuses its C instance by uid, so no edit resets a neighbour on one platform only.
 type effectChainEntry struct {
 	slots      []EffectSlot
 	processors []InsertEffect
@@ -37,8 +28,7 @@ type effectChainEntry struct {
 // insertFXUIDs mints effect instance uids (never reused in a session).
 var insertFXUIDs atomic.Uint64
 
-// effectChainManager stores per-instrument insert effect chains.
-// Thread-safe for concurrent reads (audio thread) and writes (UI thread).
+// Read by the audio thread, written by the UI thread.
 type effectChainManager struct {
 	mu     sync.RWMutex
 	chains map[channel.ID]*effectChainEntry
@@ -47,9 +37,7 @@ type effectChainManager struct {
 
 var insertChainMgr = &effectChainManager{
 	chains: make(map[channel.ID]*effectChainEntry),
-	// The engine rate before the device opens (InitInsertChains then sets the
-	// rate it really runs at): an offline render with no device used to build
-	// every effect for 44.1 kHz inside a 48 kHz mixer.
+	// The engine rate until InitInsertChains sets the device's, so an offline render builds effects at the mixer's rate.
 	sr: EngineSampleRate,
 }
 
@@ -152,15 +140,13 @@ func SetInsertEffectParam(inst instrument.ID, slotIndex int, param string, value
 	}
 	e.slots[slotIndex].Params[param] = value
 	e.processors[slotIndex].SetParam(param, value)
-	// No need to rebuild channel processors — param changes are real-time via
-	// SetParam. The platform graph gets the same in-place edit: on WASM a
-	// whole-chain push would rebuild every effect on the channel.
+	// Real-time through SetParam; the platform gets the same in-place edit, since a whole-chain push would rebuild every
+	// effect on WASM.
 	insertFXPushes.params.Add(1)
 	platformInsertEffectParamChanged(ch, e.uids[slotIndex], param, value)
 }
 
-// notifyInsertChainRebuilt pushes a channel's whole slot list to the platform
-// (WASM: the worklet reconciles its C instances by uid) and counts it.
+// The worklet reconciles its C instances by uid.
 func notifyInsertChainRebuilt(ch channel.ID, e *effectChainEntry) {
 	insertFXPushes.structural.Add(1)
 	if e == nil {
@@ -170,10 +156,7 @@ func notifyInsertChainRebuilt(ch channel.ID, e *effectChainEntry) {
 	platformInsertEffectsChanged(ch, insertChainPush(e))
 }
 
-// InsertEffectInstance is one slot as the platform builds it: the instance
-// uid, the type, whether it runs, and its COMPLETE parameter set (defaults
-// filled — the browser applies exactly these values, never a default of its
-// own).
+// COMPLETE params, defaults filled: the browser applies exactly these, never a default of its own.
 type InsertEffectInstance struct {
 	UID     uint64             `json:"uid"`
 	Type    EffectType         `json:"type"`
@@ -189,8 +172,6 @@ func insertChainPush(e *effectChainEntry) []InsertEffectInstance {
 	return out
 }
 
-// InsertChainForPlatform is the channel's insert chain exactly as it is pushed
-// to the browser (cmd/export_audio's cross-platform cases use it).
 func InsertChainForPlatform(inst instrument.ID) []InsertEffectInstance {
 	m := insertChainMgr
 	m.mu.RLock()
@@ -240,8 +221,7 @@ func GetInsertEffects(inst instrument.ID) []EffectSlot {
 	return out
 }
 
-// ActiveInsertEffectCount is how many of an instrument's insert effects are
-// on (the row rack's FX chip; read every frame, so it allocates nothing).
+// Read every frame by the FX chip, so it allocates nothing.
 func ActiveInsertEffectCount(inst instrument.ID) int {
 	m := insertChainMgr
 	m.mu.RLock()
@@ -257,11 +237,8 @@ func ActiveInsertEffectCount(inst instrument.ID) int {
 	return n
 }
 
-// SetInsertEffects replaces the entire insert chain for an instrument.
-// Used during import to restore saved state. This is the project-import
-// boundary, so each slot's params are sanitized against the effect registry
-// (sanitizeEffectParams) — a hand-edited or corrupted beatmo.json must not
-// feed out-of-range or non-finite values into the C effect processors.
+// The project-import boundary, so params are sanitised: a hand-edited file must not feed out-of-range or non-finite
+// values into the C effects.
 func SetInsertEffects(inst instrument.ID, slots []EffectSlot) {
 	ch := channel.Of(inst)
 	m := insertChainMgr
@@ -285,12 +262,8 @@ func SetInsertEffects(inst instrument.ID, slots []EffectSlot) {
 	rebuildChannelProcessors(ch)
 }
 
-// sanitizeEffectParams returns a fresh copy of params with every key that
-// the effect's registry entry declares clamped to its [Min,Max]; non-finite
-// values fall back to the declared Default. Keys the registry doesn't
-// declare are kept as-is when finite (forward-compat with newer builds) and
-// dropped when non-finite. Unknown effect types (no registration) copy
-// through untouched — they already render as passthrough processors.
+// Declared keys clamp to [Min,Max], non-finite ones fall back to Default; undeclared keys are kept when finite
+// (newer builds) and dropped otherwise. Unknown types copy through: they render as passthrough.
 func sanitizeEffectParams(t EffectType, params map[string]float64) map[string]float64 {
 	if params == nil {
 		return nil
@@ -327,8 +300,7 @@ func sanitizeEffectParams(t EffectType, params map[string]float64) map[string]fl
 	return out
 }
 
-// ResetAllInsertEffects clears state (delay buffers, filter state) on all
-// insert effect processors. Called on playback stop.
+// Called on playback stop.
 func ResetAllInsertEffects() {
 	m := insertChainMgr
 	m.mu.RLock()
@@ -349,14 +321,8 @@ func ClearAllInsertEffects() {
 	m.chains = make(map[channel.ID]*effectChainEntry)
 }
 
-// ClearAllInsertEffectsAndNotify removes all insert chains AND rebuilds the
-// processor chain for every formerly-affected instrument, notifying the
-// platform layer (WASM → JS WebAudio) per id. Used by project import: a
-// project that carries no effects for an instrument must silence whatever
-// chain the previous project installed — both in the Go mixer and in the
-// browser's worklet graph. Plain ClearAllInsertEffects drops the manager
-// state but leaves the already-built channel processors (and the JS chain)
-// running stale.
+// Also rebuilds every affected channel and notifies the platform: plain ClearAllInsertEffects leaves the built
+// processors and the JS chain running stale.
 func ClearAllInsertEffectsAndNotify() {
 	m := insertChainMgr
 	m.mu.Lock()
@@ -367,30 +333,19 @@ func ClearAllInsertEffectsAndNotify() {
 	}
 	m.chains = make(map[channel.ID]*effectChainEntry)
 	for _, id := range ids {
-		// chains[id] is now gone → rebuild installs EQ-only processors and
-		// fires platformInsertEffectsChanged(id, nil).
+		// No chain left: installs EQ-only processors and notifies with nil.
 		rebuildChannelProcessors(id)
 	}
 }
 
-// platformInsertEffectsChanged is called after any insert chain mutation
-// to propagate the change to the platform audio system. On WASM this pushes
-// the chain to the beatmo-dsp worklet; on desktop it's a no-op (the Go
-// processor list already is the chain).
+// A no-op on desktop, where the Go processor list is the chain.
 var platformInsertEffectsChanged = func(id channel.ID, chain []InsertEffectInstance) {}
 
-// platformInsertEffectParamChanged is called after a param edit on ONE slot.
-// On WASM the worklet retunes that live C instance (ifx_set, state kept); on
-// desktop it's a no-op — the slot's processor already took the value through
+// On WASM the worklet retunes that live C instance (state kept); on desktop the processor already took it via
 // SetParam.
 var platformInsertEffectParamChanged = func(id channel.ID, uid uint64, param string, value float64) {}
 
-// rebuildChannelProcessors merges insert effects + EQ into the channel's
-// processor chain. Must be called with insertChainMgr.mu held.
-//
-// The chain order is: [enabled inserts...] → [EQ processor]. The insert and
-// EQ lists are passed separately to Channel.replaceProcessors so the mixer
-// can tap the boundary as scope.StageInsertFX.
+// Must hold insertChainMgr.mu. Inserts and EQ go separately to replaceProcessors so the mixer can tap between them.
 func rebuildChannelProcessors(ch channel.ID) {
 	var inserts []Processor
 	var eqProcs []Processor
@@ -407,11 +362,7 @@ func rebuildChannelProcessors(ch channel.ID) {
 		}
 	}
 
-	// Preserve the existing EQ for THIS channel. Pre-Phase-5 this used the
-	// process-wide lastSetEQ and gated on ID matching, which silently lost
-	// EQ on any instrument the user wasn't currently editing. Now each
-	// channel keeps its own EQ record so insert-chain changes never wipe
-	// another channel's EQ.
+	// Each channel keeps its own EQ record, so an insert-chain change never wipes another channel's EQ.
 	if eq := lookupChannelEQ(ch); len(eq.Bands) > 0 {
 		proc := eq.proc
 		if proc == nil {
@@ -428,9 +379,7 @@ func rebuildChannelProcessors(ch channel.ID) {
 	notifyInsertChainRebuilt(ch, insertChainMgr.chains[ch])
 }
 
-// RebuildChannelWithEQ is called when EQ changes to ensure insert effects
-// are preserved in the processor chain. This replaces SetChannelProcessors
-// for channels that may have insert effects.
+// Preserves the insert effects when the EQ changes.
 func RebuildChannelWithEQ(id channel.ID, eqProc Processor) {
 	m := insertChainMgr
 	m.mu.RLock()

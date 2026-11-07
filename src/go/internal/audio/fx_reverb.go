@@ -4,9 +4,7 @@ package audio
 
 import "math"
 
-// reverb implements a Schroeder reverb: 4 parallel comb filters feeding
-// 2 series allpass filters, with damping and room size control.
-// All user-facing parameters are smoothed to prevent clicks on change.
+// Schroeder: 4 parallel combs into 2 series allpasses. Every param smoothed.
 type reverb struct {
 	room    smoothParam // 0-1: scales comb feedback
 	damping smoothParam // 0-1: LP damping in combs

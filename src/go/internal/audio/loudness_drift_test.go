@@ -14,45 +14,16 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// loudness_drift_test.go — every shipped document's render.amplitude must match
-// what the instrument actually measures.
-//
-// WHY THIS WAS MISSING AND WHY IT MATTERS
-// ---------------------------------------
-// instrument_loudness_gen.go normalises every instrument to a common perceived
-// loudness so no sound is conspicuously louder than its neighbours in a mix. It
-// is MEASURED from the rendered audio, which means it goes stale the moment an
-// instrument is retuned -- and unlike every other generated artifact in the
-// tree (modular_instruments.gen.js, synth_param_abi.gen.js, chain_spec.gen.js,
-// design_*.gen.go), nothing checked it. The existing loudness tests assert the
-// table is WIRED, not that it is CURRENT.
-//
-// It had drifted, and the worst case was invisible in every tool: tubular-bells
-// was pinned at 0.4122 against a measured 0.8608 -- it played 6.4 dB below every
-// other instrument in the game. The A/B and diagnose paths level-match, so they
-// cannot see it; only the game does. Six other instruments were 0.2-0.9 dB off,
-// all of them ones whose sound had been changed at some point without
-// re-measuring.
-//
-// The measurement is deterministic (verified: repeated runs are byte-identical),
-// so this can be a tight comparison rather than a fuzzy one.
+// render.amplitude is MEASURED from the audio, so a retune makes it stale, and only the game sees it: A/B and
+// diagnose level-match. The measurement is deterministic, so the comparison can be tight.
 
-// loudnessDriftTol is the fractional tolerance on each amplitude.
-//
-// 0.5%: comfortably above the 4-decimal rounding in the generated file and any
-// plausible floating-point variation between hosts, and far below the smallest
-// real drift observed (2.1%, bassoon).
+// Above the 4-decimal rounding and host floating-point variation, far below any real drift.
 const loudnessDriftTol = 0.005
 
 var loudnessRowRe = regexp.MustCompile(`^(\S+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+([\d.]+)\s+([\d.]+)`)
 
-// measuredLoudnessAmps runs the generator in report mode and parses the
-// newAmp column.
-//
-// Shelling out to the real command rather than duplicating its maths is
-// deliberate: a reimplementation here could drift from the generator and the
-// test would then be checking itself. Reusing the command means the test fails
-// exactly when `make measure-loudness` would produce a different file.
+// Shells out to the real command so the test fails exactly when `make measure-loudness` would write a different
+// file; a reimplementation here could drift and check itself.
 func measuredLoudnessAmps(t *testing.T) map[string]float64 {
 	t.Helper()
 	cmd := exec.Command("go", "run", "./cmd/measure-loudness")
@@ -79,9 +50,6 @@ func measuredLoudnessAmps(t *testing.T) map[string]float64 {
 	return amps
 }
 
-// TestDocumentAmplitudesAreNotStale: every shipped instrument document's
-// render.amplitude (the effective, loudness-normalised playback amplitude) must
-// match what the instrument measures today.
 func TestDocumentAmplitudesAreNotStale(t *testing.T) {
 	measured := measuredLoudnessAmps(t)
 	if len(measured) == 0 {

@@ -9,10 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
-// Diagnostic (not an assertion of desired behavior): after real follow-mode
-// playback, report for every visible PAST cell whether it is backed by an
-// immutable Playback/Import commit. Cells that are NOT are the ones that will
-// follow the live predictor and mutate on a circuit edit.
+// A diagnostic, not a requirement: which visible past cells after follow playback lack an immutable commit, and
+// would follow the predictor on an edit.
 func TestDiag_PastCommitCoverageUnderFollow(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)

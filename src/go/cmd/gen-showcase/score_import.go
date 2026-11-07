@@ -11,77 +11,44 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/scoreref"
 )
 
-// This file turns committed reference scores into a Beatmo circuit. It is the
-// ONLY path by which a template acquires notes: there is no hand-authored note
-// anywhere in gen-showcase, which is what lets the fidelity tests treat the
-// scores as oracles rather than as documentation.
-//
-// A template has a MELODY layer (the spec's own score) and an optional GROOVE
-// layer (a percussion score looped to the melody's length). Each layer runs
-// the same pipeline:
-//
-//	parse → trim to a measure range → split pitched parts into lanes and drum
-//	      parts into one row per kit instrument → place every note on its
-//	      WRITTEN step → derive its performed time from the notation → the
-//	      difference becomes the node's delay/rush
-//
-// Ties are merged upstream by internal/musicxml, so a note held across a
-// barline arrives here as one long event rather than a re-attack the score
-// does not contain.
+// The ONLY path by which a template acquires notes, which is what lets the fidelity tests treat the scores as oracles.
+// Each layer (the melody; an optional groove looped to its length): parse → trim → lanes / kit rows → every note on its
+// WRITTEN step, its performed time from the notation, the difference as delay/rush. Ties arrive merged.
 
-// defaultScoreInstVolume is the playback gain assigned to a row whose PartMap
-// does not set one. Scores carry no mixing levels, so we pick a sane audible
-// default in line with the hand-authored templates (0.4–0.85).
+// Scores carry no mixing levels.
 const defaultScoreInstVolume = 0.8
 
-// Performed-time offsets are defined in BEATS (quarter notes) — musical time —
-// and converted to steps per template, so their audible size does not depend
-// on the grid. The values are the ones the generator used when they were
-// fractions of a 1/16-beat window, so the classical templates keep the timing
-// they shipped with.
+// In BEATS, converted to steps per template, so their audible size does not depend on the grid.
 const (
 	// graceLeadBeats is how far ahead of its principal a grace note sounds.
 	graceLeadBeats = 0.55 / 16
 	// fermataDragBeats holds a fermata behind the beat.
 	fermataDragBeats = 0.60 / 16
-	// agogicMinBeats / agogicMaxBeats bound the ramp applied across a
-	// rit./accel. span: the effect starts small at the marking and reaches its
-	// maximum at the end of the span, which is how the instruction is played.
+	// The ramp across a rit./accel. span: small at the marking, full at its end, as the instruction is played.
 	agogicMinBeats = 0.15 / 16
 	agogicMaxBeats = 0.50 / 16
-	// agogicSpanMeasures bounds a rit./accel. that is never closed by an
-	// "a tempo". Such a marking is a phrase-ending gesture, not a standing
-	// instruction: left unbounded it grooved every remaining note in the
-	// range, which is both wrong and unlistenable.
+	// Bounds a rit./accel. never closed by "a tempo": a phrase-ending gesture, not a standing instruction.
 	agogicSpanMeasures = 2
 	// tenutoDragBeats is the slight lean a tenuto puts on a note.
 	tenutoDragBeats = 0.12 / 16
 	// arpRollBeats separates successive notes of a rolled chord.
 	arpRollBeats = 1.0 / 16
-	// breathBeats / caesuraBeats are the time a breath mark or a caesura
-	// takes before the NEXT onset. They are sized to stay inside the groove
-	// window (one step) even at 32 steps per bar with a rit. or a roll
-	// stacked on the same note: an eighth of a beat for a breath reached two
-	// steps there and was clamped, in Ave Maria and in Gonzaga.
+	// Before the NEXT onset; sized to stay inside the one-step window even at 32 steps per bar with a rit. or a roll
+	// stacked on the same note.
 	breathBeats  = 1.0 / 16
 	caesuraBeats = 1.0 / 8
 )
 
-// maxOffsetSteps is the engine's groove window: a node's delay/rush is a
-// fraction of ONE grid subdivision, and the generator lays one subdivision per
-// step. A larger offset is clamped and counted (scoreStats.GrooveClamped).
+// The engine's groove window: one grid subdivision = one step. A larger offset is clamped and counted.
 const maxOffsetSteps = 1.0
 
-// grooveKind values accepted by build(). Kept as constants so a typo is a
-// compile error rather than a generation-time panic.
+// Constants so a typo is a compile error, not a generation-time panic.
 const (
 	grooveDelay = "delay"
 	grooveRush  = "rush"
 )
 
-// scoreStats records what the conversion had to discard or bend. Nothing here
-// is silent: every count is asserted against a declared budget, so a spec
-// change that starts losing notes fails.
+// Every count is asserted against a declared budget, so a spec change that starts losing notes fails.
 type scoreStats struct {
 	// ChordTonesDropped counts notes below a part's MaxVoices cap (and grace
 	// notes whose principal was such a note).
@@ -125,15 +92,8 @@ func layerMovement(l layerSpec) int {
 // specMovement is layerMovement for a template's melody layer.
 func specMovement(spec TemplateSpec) int { return layerMovement(spec.melodyLayer()) }
 
-// inRange reports whether a note falls in the spec's selected bars.
-//
-// The Movement test is not optional. A published multi-movement work is ONE
-// MusicXML file whose measure numbering RESTARTS each movement — Mozart K387
-// prints measure "1" four times — so matching on the printed number alone
-// selects those bars from every movement at once. That is exactly what happened
-// to the five four-movement chamber works in the corpus: an 8-10 bar excerpt
-// came out as a 336-668 BAR circuit carrying material from all four movements.
-// Guard: TestExcerptStaysInOneMovement.
+// The Movement test is not optional: a multi-movement file RESTARTS its measure numbering (K387 prints measure "1"
+// four times), so the printed number alone selects bars from every movement.
 func inRange(n musicxml.Note, spec TemplateSpec) bool { return inLayer(n, spec.melodyLayer()) }
 
 func inLayer(n musicxml.Note, l layerSpec) bool {
@@ -198,22 +158,8 @@ func uniformDivisions(sc musicxml.Score, stem string, l layerSpec) (int, error) 
 	return want, nil
 }
 
-// excerptSpan locates the selected measures: the onset of the loop's first
-// downbeat and the loop's notated length, read from the measure timeline of
-// the first mapped part.
-//
-// The loop starts on a DOWNBEAT, not on the first sounding note. The two
-// differ whenever a passage opens off the beat (Maple Leaf Rag's right hand
-// enters a sixteenth late), and anchoring on the note shifted every bar line
-// of the circuit off the score's — invisible while a template was one layer,
-// fatal once a groove has to land on the same downbeats.
-//
-// An excerpt that opens with a PICKUP bar (shorter than its meter, like
-// Brandenburg 3's two-sixteenth upbeat) loops the way a player repeats such a
-// passage: from the first full bar's downbeat, for whole bars, with the
-// pickup wrapped to the end of the loop where it leads back into bar one.
-// Counting the pickup as extra length instead made every repeat land half a
-// beat later than the last.
+// The loop starts on a DOWNBEAT, not the first sounding note, or every bar line slides off the score's and a groove
+// cannot land on them. A leading PICKUP bar wraps to the end of the loop, leading back into bar one, as a player repeats it.
 func excerptSpan(sc musicxml.Score, stem string, l layerSpec) (origin, length int, err error) {
 	part := sc.Parts[l.Parts[0].Index]
 	mv := layerMovement(l)
@@ -297,10 +243,7 @@ func buildFromScore(spec TemplateSpec) (Showcase, scoreStats, error) {
 	}
 	spq := spec.Subdiv / 4
 	if spq != 4 && spq != 8 {
-		// The exported grid subdivision is steps per beat, and the engine
-		// accepts 4, 8, 16 or 32; the generator lays one subdivision per step
-		// so the groove window is one step. 16 and 32 per beat would be finer
-		// than any score here needs.
+		// The engine accepts 4, 8, 16 or 32 steps per beat; no score here needs finer than 8.
 		return Showcase{}, stats, fmt.Errorf("template %q: subdiv %d gives %d steps per beat; want 4 or 8", spec.Stem, spec.Subdiv, spq)
 	}
 
@@ -366,12 +309,8 @@ func buildFromScore(spec TemplateSpec) (Showcase, scoreStats, error) {
 		return Showcase{}, stats, fmt.Errorf("template %q: produced no rows", spec.Stem)
 	}
 
-	// The circuit runs at ONE tempo, so take the tempo that covers the most of
-	// the selected measures rather than the score's opening or closing mark.
-	// Ode to Joy (measures 92-107, marked quarter=160) once shipped at 264 —
-	// the Prestissimo coda's tempo, 900 measures later. A groove template sets
-	// BPM explicitly: the genre decides the tempo, not the melody's edition.
-	// Guard: TestTemplateTempoComesFromScore.
+	// The circuit runs at ONE tempo: the one covering most of the selected measures, not the opening or closing mark. A
+	// groove template sets BPM: the genre decides the tempo.
 	bpm := spec.BPM
 	if bpm == 0 {
 		bpm = int(math.Round(mel.sc.DominantTempo(spec.From, spec.To)))
@@ -481,12 +420,8 @@ func swingFor(part musicxml.Part, onsetDiv int, tm timing) (musicxml.Direction, 
 	return tm.swing, tm.haveSwing
 }
 
-// swingShiftQuarters is how much later swing plays a note written at
-// posInBar quarters into its bar. Swing is a piecewise-linear warp of each
-// pair of swung units: the pair's first half stretches to ratio/(ratio+1) of
-// the pair and the second half compresses into the rest, so the written
-// offbeat lands at the swung position and anything between (a sixteenth inside
-// swung eighths) moves proportionally.
+// A piecewise-linear warp of each pair of swung units: the first half stretches to ratio/(ratio+1) of the pair and the
+// second compresses, so the offbeat lands swung and anything between moves proportionally.
 func swingShiftQuarters(posInBar float64, sw musicxml.Direction) float64 {
 	unit := sw.SwingUnit
 	if unit <= 0 || sw.SwingRatio <= 0 {
@@ -521,10 +456,7 @@ func swingSteps(part musicxml.Part, n musicxml.Note, l loadedLayer, tm timing) f
 	return swingShiftQuarters(posInBar, sw) * float64(tm.stepsPerQuarter)
 }
 
-// articulationBeats derives a note's notated drift from its own marks and the
-// agogic span covering it. Precedence is by specificity: a mark attached to
-// THIS note (fermata) beats a span instruction (rit./accel.), which beats the
-// gentle lean of a tenuto.
+// Precedence by specificity: a mark on THIS note (fermata) beats a span (rit./accel.), which beats a tenuto's lean.
 func articulationBeats(part musicxml.Part, n musicxml.Note, l loadedLayer) float64 {
 	if n.Articulations.Fermata {
 		return fermataDragBeats
@@ -538,13 +470,8 @@ func articulationBeats(part musicxml.Part, n musicxml.Note, l loadedLayer) float
 	return 0
 }
 
-// agogicBeats reports the drift implied by a rit./accel. span covering n.
-//
-// A span runs from its marking to the next "a tempo" (or, unclosed, for
-// agogicSpanMeasures bars of the meter in force at the marking). The drift
-// ramps from agogicMinBeats at the marking to agogicMaxBeats at the end of the
-// span: a ritardando that arrived at full strength on its first note would be
-// a tempo change, not a ritardando.
+// A span runs to the next "a tempo" (unclosed: agogicSpanMeasures bars) and ramps from min to max: at full strength
+// on its first note it would be a tempo change, not a ritardando.
 func agogicBeats(part musicxml.Part, n musicxml.Note, l loadedLayer) (float64, bool) {
 	var active musicxml.Direction
 	var haveActive bool
@@ -590,10 +517,7 @@ func agogicBeats(part musicxml.Part, n musicxml.Note, l loadedLayer) (float64, b
 	return b, true
 }
 
-// measureLenAt is the length in divisions of a bar of the meter in force at
-// onsetDiv — the unit an unclosed agogic span is bounded in. It reads the
-// measure timeline, so a meter change mid-score sizes the span correctly;
-// a part with no timeline falls back to a 4/4 bar.
+// From the measure timeline, so a meter change sizes the span correctly; no timeline = a 4/4 bar.
 func measureLenAt(part musicxml.Part, onsetDiv, div int) int {
 	if m, ok := part.MeasureAt(onsetDiv); ok && m.Beats > 0 && m.BeatType > 0 {
 		if v := div * 4 * m.Beats / m.BeatType; v > 0 {
@@ -638,21 +562,9 @@ func breathDelays(notes []musicxml.Note) map[int]float64 {
 	return out
 }
 
-// emitPitched converts one pitched part into monophonic lanes.
-//
-// Beatmo's model is one node per step per row, so a chord cannot live in a
-// single row. Notes are grouped by ONSET — across voices, not within one — and
-// each group is ranked by pitch: lane 0 takes the highest note at every onset
-// (the line a listener follows), or the LOWEST for a bass part. Notes past the
-// MaxVoices cap are dropped and counted. Grouping across voices is what keeps a
-// keyboard part to MaxVoices rows: a piano staff routinely carries four or more
-// MusicXML voices, and laning each voice separately produced thirteen rows for
-// a single Lied.
-//
-// Grace notes are NOT chord tones: they are placed on the steps before their
-// principal, in its lane. Grouped with it (as they were before), a grace note
-// outranked its principal whenever it was higher, and the principal — the
-// written note — was the one dropped.
+// One node per step per row, so chords split into lanes: notes grouped by ONSET across voices (a piano staff carries
+// four or more MusicXML voices), lane 0 the highest (LOWEST for a bass part), the rest past MaxVoices dropped and
+// counted. Grace notes go before their principal in its lane, or a higher grace would outrank the written note.
 func emitPitched(spec TemplateSpec, li, pi int, pm PartMap, part musicxml.Part, l loadedLayer, notes []musicxml.Note, loops int, tm timing, asm *assembler, stats *scoreStats) {
 	maxVoices := pm.MaxVoices
 	if maxVoices <= 0 {
@@ -735,9 +647,7 @@ func emitPitched(spec TemplateSpec, li, pi int, pm PartMap, part musicxml.Part, 
 			}
 			r := 0.0
 			if roll != 0 {
-				// A big chord's roll is compressed so the whole roll fits the
-				// one-step window: six tones a sixteenth of a beat apart would
-				// put the top note more than a step late.
+				// Compressed so the whole roll fits the one-step window.
 				spacing := arpRollBeats
 				if k := len(asc); k > 1 {
 					spacing = math.Min(spacing, maxOffsetSteps/float64(tm.stepsPerQuarter)/float64(k-1))
@@ -806,16 +716,10 @@ func emitGraces(pm PartMap, l loadedLayer, graces []musicxml.Note, laneOf map[[3
 		}
 		pWritten := base + stepsOf(l, k[0], tm)
 		pStep := math.Round(pWritten)
-		// The grace nearest the principal sounds graceLeadBeats ahead of it,
-		// from the step before. A RUN of graces (a slide, a turn) cannot be
-		// packed that tightly on a one-node-per-step row: each earlier grace
-		// takes the step before, at the same point within its step. Packing
-		// them at the lead's spacing instead would need more than a step of
-		// delay — beyond the engine's groove window.
+		// The nearest grace sounds graceLeadBeats ahead, from the step before; each earlier grace of a run takes the step
+		// before that, at the same point in its step (packing at the lead's spacing would exceed the groove window).
 		lastOffset := (pWritten - graceLeadBeats*float64(tm.stepsPerQuarter)) - (pStep - 1)
-		// An off-grid principal (a sextuplet note rounded down onto its step)
-		// can put the grace's ideal time inside the principal's own step; the
-		// grace then sounds AT that step — still ahead of the late principal.
+		// An off-grid principal can put the grace's ideal time inside the principal's own step; it then sounds AT that step.
 		lastOffset = math.Min(lastOffset, maxOffsetSteps)
 		for i, g := range gs {
 			back := float64(len(gs) - i)
@@ -835,15 +739,8 @@ func emitGraces(pm PartMap, l loadedLayer, graces []musicxml.Note, laneOf map[[3
 	}
 }
 
-// noteDuration is the node duration a note of `quarters` length gets on inst.
-//
-// A node's duration is a multiplier of the instrument's own note length. A
-// pitch-aware (melodic) voice honours it by sounding shorter; every other
-// voice — drums, FM, pads outside the melodic set — is sized by resampling,
-// which transposes it by -12·log2(duration) semitones. Those get none (0 =
-// the instrument default), or a timpani half note on a drum voice and every
-// pad of the jungle template played an octave or two low.
-// Guard: TestNodeDurationNeverChangesPitch.
+// Only a melodic voice honours a duration by sounding shorter; every other voice is sized by resampling, which
+// transposes it by -12·log2(duration), so it gets none (0 = the instrument default).
 func noteDuration(inst instrument.ID, quarters float64) float64 {
 	if !audio.IsMelodicInstrument(inst) {
 		return 0
@@ -855,12 +752,8 @@ func loopStepsOf(l loadedLayer, tm timing) float64 {
 	return float64(l.lengthDiv) / float64(l.div) * float64(tm.stepsPerQuarter)
 }
 
-// emitKit converts one percussion part into one row per Beatmo instrument.
-//
-// Kit pieces that map to the same instrument share its row — two tom heights
-// are two pitches on one tom row — because a row is one instrument. When two
-// such hits land on one step the second spills into a second row of the same
-// instrument rather than being dropped; a further collision is counted.
+// Kit pieces on one instrument share its row (tom heights are pitches on one tom row); a second hit on one step spills
+// into a second row of that instrument, and a further collision is counted.
 func emitKit(spec TemplateSpec, li, pi int, pm PartMap, part musicxml.Part, l loadedLayer, notes []musicxml.Note, loops int, tm timing, asm *assembler, stats *scoreStats) error {
 	// Assign rows in a stable order: by instrument, in the order of the kit's
 	// GM keys, so a kick row always precedes the snare.
@@ -954,10 +847,7 @@ func emitKit(spec TemplateSpec, li, pi int, pm PartMap, part musicxml.Part, l lo
 
 func instSpec(pm PartMap, inst instrument.ID, name string, vol float64) InstSpec {
 	if vol <= 0 {
-		// Volume must be > 0: the exporter writes instrument volume with
-		// json:"volume" (no omitempty) and import.go copies it straight to
-		// row.Volume without a 0→default fallback, so a 0 here silences the
-		// row on load.
+		// Must be > 0: export writes volume without omitempty and import copies it with no 0→default fallback.
 		vol = defaultScoreInstVolume
 	}
 	return InstSpec{ID: inst, Name: name, Volume: vol}
@@ -966,27 +856,9 @@ func instSpec(pm PartMap, inst instrument.ID, name string, vol float64) InstSpec
 // a3MIDI is the MIDI key the score model calls Semitone 0.
 const a3MIDI = 57
 
-// instrumentPitchShift returns the whole-semitone transposition an instrument
-// applies to every node it plays, so the importer can cancel it and make the
-// circuit sound at the score's WRITTEN pitch.
-//
-// A node at semitone p sounds at 220·2^((p+offset)/12), where offset is
-// InstrumentPitchInfo's answer — and thirteen shipped instruments carry a
-// non-zero one baked into their seed (cello and the basses an octave down,
-// voice-soprano an octave up). Emitting the score's semitone directly
-// therefore put those parts an octave off. This used to be a hand-maintained
-// per-row Octave and it drifted exactly as hand-maintained knowledge does;
-// asking the engine removes the whole class of error.
-//
-// Only the WHOLE-semitone part is cancelled. A fractional offset is a
-// deliberate chorus detune, not a transposition: piano-grand's osc_detune of
-// 1.5 cents is there to make the instrument sound warm.
-//
-// The gate is IsMelodicInstrument (render.melodic) and deliberately NOT InstrumentPitchInfo's
-// `pitched` return: since note display went universal, `pitched` is true of
-// the kick (A1) and the snare (F#3) too, and on a drum a node's semitone is a
-// tuning choice. Reading `pitched` here would transpose every percussion part
-// in every generated template down two octaves.
+// instrumentPitchShift is the whole-semitone transposition an instrument applies to every node (InstrumentPitchInfo),
+// cancelled so the circuit sounds the WRITTEN pitch; a fractional part is a deliberate detune. Gated on render.melodic,
+// NOT InstrumentPitchInfo's pitched (true of drums too): that would transpose every percussion part.
 func instrumentPitchShift(instID instrument.ID) float64 {
 	if !audio.IsMelodicInstrument(instID) {
 		return 0
@@ -998,11 +870,8 @@ func instrumentPitchShift(instID instrument.ID) float64 {
 	return math.Round(offset)
 }
 
-// soundingPitchShift cancels the FULL measured offset of a pitched,
-// non-melodic instrument, so a node sounds the written pitch exactly. It is
-// how a timpani part plays on a drum voice: the tom's own tuning (A3-9.35
-// semitones) is not a whole-semitone transposition, and rounding it would
-// leave every kettle a third of a semitone out.
+// soundingPitchShift cancels the FULL measured offset, so a timpani part on a drum voice sounds the written pitch:
+// the tom's tuning is not a whole number of semitones.
 func soundingPitchShift(instID instrument.ID) float64 {
 	offset, pitched := audio.InstrumentPitchInfo(instID)
 	if !pitched {

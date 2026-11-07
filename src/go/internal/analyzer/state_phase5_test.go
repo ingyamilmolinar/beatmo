@@ -4,9 +4,7 @@ import (
 	"testing"
 )
 
-// TestPhase5_StereoFieldsDefaultEmpty — fresh ChannelMetrics has zero
-// values for stereo fields, meaning renderers can use the existing mono
-// fields as a fallback. Phase 5 schema lands first; data wiring follows.
+// Unset stereo fields fall back to the mono ones.
 func TestPhase5_StereoFieldsDefaultEmpty(t *testing.T) {
 	var ch ChannelMetrics
 	if ch.HasStereo() {
@@ -48,10 +46,7 @@ func TestPhase5_HasStereoWhenAnyFieldSet(t *testing.T) {
 	}
 }
 
-// TestPhase5_FallbackHelpersReturnMonoWhenNoStereo — when no stereo
-// data is set, PeakL/PeakR/RMS L/R fall back to the mono PeakDB/RMSDB
-// fields. Renderers can call PeakL/PeakR unconditionally and get a
-// reasonable value either way.
+// PeakL/PeakR/RMSL/RMSR return the mono values when no stereo data is set.
 func TestPhase5_FallbackHelpersReturnMonoWhenNoStereo(t *testing.T) {
 	ch := ChannelMetrics{PeakDB: -3, RMSDB: -10}
 	if got := ch.PeakL(); got != -3 {

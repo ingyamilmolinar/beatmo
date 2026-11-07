@@ -6,20 +6,8 @@ import (
 	"sync"
 )
 
-// gcMetrics accumulates garbage-collector statistics over a measurement window
-// that is INDEPENDENT of perfCounters.reset() (which the PERF_LOG path fires
-// every 2 s). GC pause percentiles and cycle counts therefore span the whole
-// bench run, not just the last 2 s window — the whole point of GC tuning is the
-// worst-case pause across the run, which a 2 s window would clip.
-//
-// All pause data is read via runtime/metrics, which does NOT stop the world —
-// unlike runtime.ReadMemStats. This matters: the instrument must not create the
-// very pauses it measures. Heap high-water is likewise sampled through
-// runtime/metrics.
-//
-// The zero value is usable. The first sample()/snapshot() lazily captures a
-// baseline, so perfStats() outside bench mode reports GC-since-first-frame.
-// reset() re-baselines (called at bench start and from resetPerfStats()).
+// Its window is independent of the 2 s perf reset, so pause percentiles span the whole bench (GC tuning is about the
+// worst pause). Read via runtime/metrics, which never stops the world: the probe must not cause the pauses it measures.
 type gcMetrics struct {
 	mu         sync.Mutex
 	started    bool
@@ -71,8 +59,7 @@ func readGCUint(name string) (uint64, bool) {
 	return s[0].Value.Uint64(), true
 }
 
-// reset re-baselines the window: subsequent snapshots report GC activity since
-// this call. Non-STW.
+// Non-STW.
 func (m *gcMetrics) reset() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -92,8 +79,7 @@ func (m *gcMetrics) resetLocked() {
 	m.started = true
 }
 
-// sample updates the heap high-water mark. Cheap and non-STW; call from the
-// per-frame heap probe (throttled).
+// Non-STW; called from the throttled per-frame heap probe.
 func (m *gcMetrics) sample() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -139,11 +125,7 @@ func (m *gcMetrics) snapshot() gcSnapshot {
 	return snap
 }
 
-// histAggregate returns the count and approximate p50/p99/max (in the
-// histogram's native unit — seconds here) from bucket counts + bounds.
-// Percentiles use the "value at or below" convention: the representative for a
-// bucket is its upper edge; a +Inf top edge is clamped to the bucket's lower
-// edge (a conservative floor on the true max).
+// A bucket's representative is its upper edge; a +Inf top edge clamps to its lower edge, a conservative max.
 func histAggregate(counts []uint64, buckets []float64) (n int64, p50, p99, max float64) {
 	var total uint64
 	for _, c := range counts {

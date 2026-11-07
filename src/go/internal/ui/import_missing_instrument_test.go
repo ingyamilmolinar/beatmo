@@ -38,8 +38,6 @@ func TestImportMissingInstrumentMarksRedAndSilent(t *testing.T) {
 	}
 	// Row label style should be MissingInstStyle
 	btn := g.drum.rowLabels()[0]
-	// The style is an interface; we check by drawing semantics via comparing the struct fields.
-	// We rely on our style variable identity (ButtonStyle) for a quick type assertion.
 	if _, ok := btn.Style.(ButtonStyle); !ok {
 		t.Fatalf("label style is not a ButtonStyle")
 	}

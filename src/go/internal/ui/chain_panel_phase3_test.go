@@ -10,9 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
-// TestChainPhase3_PerStageMeterLitForActiveStage — when StagePeak
-// returns a hot reading for a stage, the Chain panel must paint a
-// meterColor()-tinted vertical bar beside that stage's button.
+// A hot reading lights a meter-coloured bar beside that stage.
 func TestChainPhase3_PerStageMeterLitForActiveStage(t *testing.T) {
 	cb := ChainCallbacks{
 		ScopeState: func() *scope.State { return nil },
@@ -28,24 +26,15 @@ func TestChainPhase3_PerStageMeterLitForActiveStage(t *testing.T) {
 	dst := ebiten.NewImage(600, 200)
 	rects := collectFilledRects(t, func() { z.Draw(dst) })
 
-	// meterColor(-0.5) = meterHigh (since -0.5 > meterRedDB=-1).
-	// Look for at least one meterHigh rect inside the stage column area
-	// (left chainStageColW pixels of the panel).
+	// -0.5 is above meterRedDB (-1), so meterHigh.
 	col := image.Rect(0, 0, chainStageColW+16, 200)
 	if got := rectsWithColorInside(rects, col, meterHigh); got == 0 {
 		t.Fatalf("expected ≥1 meterHigh rect (per-stage meter) in stage column %v, got 0", col)
 	}
 }
 
-// TestChainPhase3_PerStageMeterDarkForSilentStage — silent stages must
-// NOT light up. The whole point of the per-stage display is "this
-// stage is active right now" vs "this stage is silent right now".
-//
-// Note: meterLow (#FFB30A, sunset-gold-300) is now the same hex as the
-// primary accent, so it legitimately appears in chain-panel chrome (buttons,
-// borders, etc.) even in a silent state — we do NOT check meterLow here.
-// meterMid (#FF7A3D, tangerine-300) and meterHigh (#E84A1F, tangerine-500)
-// are distinct from all other UI chrome, so they must be absent in silence.
+// Silent stages stay dark. meterLow shares the accent gold and appears in chrome; meterMid and meterHigh are
+// distinct, so only they are checked.
 func TestChainPhase3_PerStageMeterDarkForSilentStage(t *testing.T) {
 	cb := ChainCallbacks{
 		ScopeState: func() *scope.State { return nil },
@@ -68,8 +57,6 @@ func TestChainPhase3_PerStageMeterDarkForSilentStage(t *testing.T) {
 	}
 }
 
-// TestChainPhase3_NilCallbackTolerated — when StagePeak is nil
-// (legacy embed contexts), the renderer must not panic.
 func TestChainPhase3_NilCallbackTolerated(t *testing.T) {
 	cb := ChainCallbacks{
 		ScopeState: func() *scope.State { return nil },

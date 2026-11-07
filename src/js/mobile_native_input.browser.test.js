@@ -7,10 +7,7 @@ import { fileURLToPath } from "url";
 import { resolveGoBinary, assertSimpleDrawMode, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
 import { cdpTap } from "./touch_cdp_helpers.js";
 
-// The mobile native <input> is exercised on the instrument-menu SEARCH field
-// (TextField id "inst-search"). It used to be the BPM box, but BPM no longer
-// takes typed input — its readout opens the BPM value wheel — so the native
-// keyboard path is now only for text fields (TextField, textfield.go).
+// The instrument-menu search field: BPM is a value wheel, so text fields are the only native-keyboard path.
 const TARGET_ID = "inst-search";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -57,14 +54,8 @@ function assert(cond, msg) {
 async function setupMobilePage() {
   const context = await browser.newContext({ ...iPhone });
   const page = await context.newPage();
-  // Force the page to be treated as focused. In the 4-job parallel batch this
-  // context is usually NOT the OS-foreground window, so a freshly-created native
-  // <input>'s .focus() does not stick — a spurious `blur` fires within ~1 frame,
-  // our blur handler commits + tears the <input> down, and the detection poll
-  // (even at 50 ms) never sees it. createCount==blurCount on every retry proved
-  // the input is created then instantly blurred. setFocusEmulationEnabled makes
-  // document.hasFocus()==true so focus() holds and the spurious blur never fires.
-  // (Pure test-harness fix — production runs in a real focused tab.)
+  // In the parallel batch this context is not the OS-foreground window, so a fresh input's focus() did not stick and a
+  // spurious blur tore it down within a frame; focus emulation makes hasFocus() true. A harness-only fix.
   const focusCdp = await context.newCDPSession(page);
   await focusCdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
   await page.goto(`http://localhost:${port}/`);
@@ -83,8 +74,7 @@ async function setupMobilePage() {
   return { context, page };
 }
 
-// openSearchTarget opens the instrument menu on row 0 and waits until its
-// search field is laid out (the field the native <input> overlays).
+// Until its search field is laid out.
 async function openSearchTarget(page) {
   await page.evaluate(() => openInstMenu(0));
   await page.waitForFunction(() => { const r = instMenuSearchRect(); return r && r.w > 0; },
@@ -96,8 +86,7 @@ async function targetRect(page) {
   return await page.evaluate(() => instMenuSearchRect?.());
 }
 
-// nativeInputPresent reports whether the mobile native <input> (z-index:10000)
-// is currently in the DOM.
+// z-index:10000.
 async function nativeInputPresent(page) {
   return await page.evaluate(() => {
     const inputs = document.querySelectorAll('input[style*="z-index"]');
@@ -108,9 +97,7 @@ async function nativeInputPresent(page) {
   });
 }
 
-// nativeInputPoll is the page-function shared by every "did the mobile native
-// <input> (z-index:10000) appear?" poll. Kept as a single function so the
-// detection condition can't drift between the helper and the inline loops.
+// One function, so the detection condition cannot drift between the helper and the inline loops.
 function nativeInputPoll() {
   const inputs = document.querySelectorAll('input[style*="z-index"]');
   for (const inp of inputs) {
@@ -119,29 +106,9 @@ function nativeInputPoll() {
   return false;
 }
 
-// tapAwaitInput taps the search field and waits for the native input to appear,
-// re-tapping a few times if needed. A live TextField's rect is (re)registered
-// every Update() frame (syncNativeGestures) and stays registered, so a tap that
-// lands creates the input synchronously inside the touchend gesture.
-//
-// The headless flake is a DETECTION race, not a creation race: under the 4-job
-// parallel batch software-GL throttles the rAF-driven game loop, and
-// page.waitForFunction defaults to `polling: 'raf'` — so that same throttled rAF
-// starves the detection poll, and the input can appear yet the poll never
-// evaluates within the timeout (the later, more-degraded sub-tests 7/9/10 lost
-// this race while the early ones won it). We poll on a fixed 50 ms interval
-// instead, which fires independently of the page's rAF, and allow a few extra
-// re-tap attempts for margin. We deliberately do NOT force manual Update ticks
-// (forceGameTick), which can stall the WASM run loop. Returns true if the input
-// appeared. Mirrors the retry discipline used for other headless tap tests.
-//
-// Per-attempt budget = DETECT_TIMEOUT_MS. The detection poll itself is timer-
-// driven (immune to rAF starvation), but input *creation* runs on the WASM game
-// loop: under the 4-job parallel batch the loop is throttled hard enough that
-// the touchend->gesture->mobileInputRegister pipeline can take >600 ms to emit
-// the DOM <input>. 600 ms left no margin for that creation latency on the later,
-// most-degraded sub-tests, so we widen the per-attempt window to 1500 ms while
-// keeping the 12 re-tap attempts (cost is paid only on the failing path).
+// The flake is DETECTION: throttled rAF starves a rAF-polled waitForFunction, so it polls every 50 ms instead. Creation
+// runs on the throttled WASM loop and can take > 600 ms in the batch, hence 1500 ms per attempt; no forceGameTick,
+// which can stall the run loop.
 const DETECT_TIMEOUT_MS = 1500;
 async function tapAwaitInput(page, rect) {
   const cx = rect.x + rect.w / 2;
@@ -218,9 +185,7 @@ console.log("Test 3: Type into native input → search query updated");
     await page.keyboard.press("Control+a");
     await page.keyboard.type("kick");
 
-    // The search field mirrors the native value on Go's next Update
-    // (TextInput.NativeLiveValue / mobileInputGetValue). Poll on a fixed
-    // interval (not rAF, which the throttled game loop starves).
+    // A fixed interval, not rAF, which the throttled loop starves.
     await page.waitForFunction(() => instMenuSearchState?.()?.text === "kick", null,
       { timeout: 4000, polling: 50 });
 
@@ -447,16 +412,8 @@ console.log("Test 9: Go-side mobileInputActive JS export");
   }
 }
 
-// Test 10: Realistic finger-jitter tap still creates the native input.
-//
-// Regression: real iOS Safari taps carry a few px of jitter between touchstart
-// and touchend. Go's tap detector (gesture.go) accepts a tap when BOTH axes move
-// <= tapMaxMovePx (10px) — a *square* envelope (~14px diagonally). The JS native-
-// input gesture handler rejected the gesture with a *circular* Euclidean test
-// (dx*dx+dy*dy > 100, i.e. distance > 10px). A (8,8) jitter (distance ~11.3px)
-// therefore registered a tap in Go but created NO native input
-// (JS: "drag") → the soft keyboard never appeared. Playwright/CDP taps have zero
-// movement, so this gap was invisible until now. The two detectors must agree.
+// Go accepts a tap in a SQUARE envelope (each axis ≤ 10 px), so the JS gesture handler must too: an (8,8) jitter is a
+// tap in Go, and a circular test turned it into "drag" with no keyboard. CDP taps have zero movement.
 console.log("Test 10: Finger-jitter tap (within Go's tap envelope) still creates native input");
 {
   const { context, page } = await setupMobilePage();
@@ -471,27 +428,8 @@ console.log("Test 10: Finger-jitter tap (within Go's tap envelope) still creates
     const jy = cy + 8;
 
     const cdp = await page.context().newCDPSession(page);
-    // Retry like tapAwaitInput, with the same fixed-interval detection poll so a
-    // throttled rAF can't starve it. The search field's rect is (re)registered
-    // every Update frame and stays registered; re-dispatching the jitter tap covers the case
-    // where the first attempt raced an Update that had not yet run.
-    //
-    // The jitter MUST be delivered with the same clean CDP touch shape that
-    // cdpTap (which powers the 8 passing gesture tests) uses, or this test alone
-    // becomes flaky under the 4-job parallel software-GL batch. Two requirements:
-    //   1. Carry a touch `id` and RELEASE with an EMPTY touchEnd. Ending a touch
-    //      with a non-empty, moved touchpoint leaves a dangling active point in
-    //      Chromium's input pipeline; that stray point later cancels and steals
-    //      focus from the freshly-focused <input>, blurring it away within ~1
-    //      frame (before the detection poll catches it). The canonical
-    //      touchStart(id) -> touchMove(jitter,id) -> touchEnd([]) sequence
-    //      releases cleanly, so no dangling point can blur the input.
-    //   2. Deliver the (8,8) jitter via a touchMove (not by moving the touchEnd
-    //      point). The page's touchend handler reports the released touch at its
-    //      last known position (the jitter point), so touchStartPos->end delta is
-    //      still (8,8) — both axes <= 10, the square envelope Go treats as a tap.
-    //   3. Hold ~150ms like cdpTap so the throttled WASM loop reliably has the
-    //      search rect registered when the gesture lands.
+    // The clean CDP touch shape cdpTap uses: an id and an EMPTY touchEnd (a moved endpoint leaves a dangling point that
+    // later steals focus), the (8,8) jitter delivered by touchMove, and a ~150 ms hold for the throttled loop.
     let inputExists = false;
     for (let attempt = 0; attempt < 12 && !inputExists; attempt++) {
       const touchId = 200 + attempt;

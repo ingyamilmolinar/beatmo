@@ -8,8 +8,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Probability logic should control whether the mute clears audio, without applying
-// a sustained gate to future beats.
 func TestMuteNodeProbabilityStopsAudioWithoutGate(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

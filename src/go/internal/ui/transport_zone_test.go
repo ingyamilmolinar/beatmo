@@ -334,17 +334,12 @@ func TestTransportZoneResponsiveLayout(t *testing.T) {
 	desktopAreas := make([]HitArea, len(z.HitAreas()))
 	copy(desktopAreas, z.HitAreas())
 
-	// Desktop now routes File ops through the overflow "..." menu, so the
-	// Desktop routes file ops through the grid folder button's file menu, so
-	// the inline upload button is NOT registered as a hit area.
+	// File ops live behind the grid folder button, so no inline upload hit area.
 	if uploadArea := findHitAreaByTagPrefix(desktopAreas, "transport-upload"); uploadArea != nil {
 		t.Error("desktop layout should NOT register 'transport-upload' (file ops moved behind file menu)")
 	}
 
-	// Mobile layout: vol-icon / view-switch live in the bottom action bar.
-	// The transport zone alone does NOT register hit areas for them on mobile —
-	// DrumView places them after zone Layout completes and re-runs hit-area
-	// registration. Asserting the new contract here.
+	// On mobile DrumView places vol/view after the zone's Layout and re-registers their hit areas.
 	forceSmallScreenForTest = true
 	defer func() { forceSmallScreenForTest = false }()
 
@@ -774,8 +769,6 @@ func TestTransport_ViewSwitchButtonMobile(t *testing.T) {
 	}
 }
 
-// TestTransport_SubdivButtonCallback verifies that clicking the subdiv button
-// fires the OnSubdivClick callback.
 func TestTransport_SubdivButtonCallback(t *testing.T) {
 	var mx, my int
 	var pressed bool
@@ -809,9 +802,7 @@ func TestTransport_SubdivButtonCallback(t *testing.T) {
 	}
 }
 
-// TestBPMReadoutRectMatchesGroupOutline pins the geometry invariant: the BPM
-// readout keeps the exact rect bpmBox had, so the ± group outline still encloses
-// it after the editor unification (the editor pops over this rect on tap).
+// The readout keeps bpmBox's exact rect, so the ± outline still encloses it.
 func TestBPMReadoutRectMatchesGroupOutline(t *testing.T) {
 	z, _ := newTestTransportZone()
 	tree := registerTransportZone(z, image.Rect(10, 10, 500, 90))
@@ -825,10 +816,7 @@ func TestBPMReadoutRectMatchesGroupOutline(t *testing.T) {
 	}
 }
 
-// TestTransport_InputBlockedBPMTapOpensNothing: while a popup/overlay is open
-// (inputBlocked), a tap on the BPM readout must not open the BPM value wheel
-// beneath it — and the press is still consumed so it cannot leak to a
-// touch-expanded sibling control.
+// With input blocked a BPM tap opens nothing but is still consumed, so it cannot reach a touch-expanded sibling.
 func TestTransport_InputBlockedBPMTapOpensNothing(t *testing.T) {
 	restore := noInputForTest()
 	defer restore()

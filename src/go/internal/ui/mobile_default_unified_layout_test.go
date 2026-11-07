@@ -8,18 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestMobileDefault_NoEQPeekStripBelowRack asserts the unified-layout
-// invariant: on the default mobile boot (mobile_default scene) there
-// must NOT be a redundant EQ peek strip between the row rack and the
-// bottom segmented control.
-//
-// Background (2026-05-10 screenshot review): the 24-px EQ peek sparkline
-// renders as a solid black band on default boot because every band sits
-// at 0 dB (flat curve = invisible polyline). The bottom segmented
-// control already exposes an "EQ" tab providing the same expand-EQ
-// affordance, making the peek a dead, useless surface that the user
-// flagged as a "weird black section". Unifying the bottom-of-pane
-// stack to {rack → bottom action bar} removes the wasted band.
+// No EQ peek strip between rack and bottom bar: at a flat 0 dB it read as a dead black band, and the "EQ" tab
+// already offers the same thing.
 func TestMobileDefault_NoEQPeekStripBelowRack(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -41,12 +31,7 @@ func TestMobileDefault_NoEQPeekStripBelowRack(t *testing.T) {
 	}
 }
 
-// TestMobileDefault_RackBottomAbutsActionBar asserts that the row-rack
-// area extends all the way down to the bottom action bar with no
-// intervening surface (peek strip, gap, or anything else). This is the
-// load-bearing invariant for the unified bottom-of-pane layout: the
-// addRow button anchors flush with the bottom action bar so there is
-// no orphan surface between them.
+// The rack runs down to the bottom bar with nothing between them.
 func TestMobileDefault_RackBottomAbutsActionBar(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -63,14 +48,8 @@ func TestMobileDefault_RackBottomAbutsActionBar(t *testing.T) {
 	}
 }
 
-// fillMobileRackToScreenshotScenario brings the layout into the same
-// state as the mobile_default browser scene used in the 2026-05-10
-// screenshot review: 4 data rows AND a drum-pane height auto-sized to
-// fit those rows + the addRow + the bar tightly. The browser scene
-// loads 4 rows from the WASM default circuit before its first Layout;
-// the Go-side test harness boots with 1 row, so we add 3 then re-run
-// `g.Layout` so `adaptiveMobilePortraitSplitY` recomputes the split Y
-// for the new row count.
+// The mobile_default scene's state: the browser loads its rows before the first Layout while this harness
+// boots with one, so add them and lay out again to recompute the split.
 func fillMobileRackToScreenshotScenario(t *testing.T, g *Game) {
 	t.Helper()
 	relayout := func() {
@@ -80,11 +59,8 @@ func fillMobileRackToScreenshotScenario(t *testing.T, g *Game) {
 		g.drum.calcLayout()
 	}
 	relayout()
-	// Add rows until the rack is saturated: keep going until the visible-row
-	// count stops growing (rows now overflow the rack) plus a couple extra so
-	// the snap-flush precondition (slack < rowHeight) holds regardless of the
-	// exact row-height / rack geometry. A fixed count (was 4) under-fills once
-	// the mobile row height grows, leaving the snap-flush branch dormant.
+	// Until the visible count stops growing, plus a couple more, so the snap-flush precondition (slack < rowHeight)
+	// holds whatever the row height; a fixed count under-fills as rows grow.
 	prevVis := -1
 	for i := 0; i < 64; i++ {
 		vis := g.drum.rackVisibleRows()
@@ -97,18 +73,8 @@ func fillMobileRackToScreenshotScenario(t *testing.T, g *Game) {
 	}
 }
 
-// TestMobileDefault_AddRowBtnFlushBelowLastRow asserts that the addRow
-// button sits immediately below the last visible drum row when the
-// rack is near-saturated (< 1 row of slack remaining) — no orphan
-// rack-background gap parked between the rows and the addRow band.
-//
-// Background (2026-05-10 screenshot review): the rack is taller than
-// the content (4 rows × rh + 1 addRow × rh ≈ 220 px) by the rack-height
-// modulo, leaving ~40 px of slack. The historical "addRow always
-// pinned to rack bottom" anchor parked that slack above the addRow,
-// producing a visible black band between the last drum row and the
-// "+" button. Tight-layout fix: snap addRow flush below the last row
-// when the slack-to-rack-bottom is < rh.
+// Near saturation (< 1 row of slack) the addRow button sits flush below the last row, with no rack gap above
+// it.
 func TestMobileDefault_AddRowBtnFlushBelowLastRow(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -140,9 +106,7 @@ func TestMobileDefault_AddRowBtnFlushBelowLastRow(t *testing.T) {
 	rh := g.drum.rowHeight()
 	lastRowBottom := rackRect.Min.Y + vis*rh
 
-	// Sanity: this scenario must be near-saturated so the snap-flush
-	// branch fires. If this fails, the helper above isn't filling the
-	// rack enough — fix the helper, not the assertion.
+	// If this fails the helper is not filling the rack: fix the helper, not the assertion.
 	rackBottom := g.drum.rowsBottom()
 	bottomAnchor := rackBottom - rh
 	slackToBottom := bottomAnchor - lastRowBottom
@@ -161,21 +125,8 @@ func TestMobileDefault_AddRowBtnFlushBelowLastRow(t *testing.T) {
 	}
 }
 
-// TestMobileDefault_NoGapBelowAddRowBtn asserts the addRow button's
-// bottom edge sits within one inset (SpaceXS) of the bottom action bar
-// — no orphan rack-background band between the button and the bar.
-//
-// Background (2026-05-10 follow-up to the snap-flush fix): when
-// `positionAddRowBtn` snaps addRow flush below the last row, any
-// rack-height modulo slack moves from above the button to below it.
-// On iPhone-class portraits the slack is ~42 px, which renders as a
-// solid rack-color strip between the addRow buttons and the bar — the
-// same visual problem the snap-flush was meant to solve, just relocated.
-//
-// Eliminating this requires a *structural* fix: the rack height must
-// equal `rendered_rows*rh + addRow*rh` exactly. Either rh expands to
-// fill the rack, the rack contracts to fit the content, or the bar
-// extends upward — but slack must not live as visible surface.
+// Within SpaceXS of the bottom bar. Snapping addRow flush only moves the slack below it, so the rack height
+// must equal the content exactly: slack must never live as visible surface.
 func TestMobileDefault_NoGapBelowAddRowBtn(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -205,12 +156,8 @@ func TestMobileDefault_NoGapBelowAddRowBtn(t *testing.T) {
 	}
 }
 
-// TestMobileDefault_RowZoomChipsAnchoredToTimeline asserts the row-zoom
-// +/− chips are anchored to the timeline header band (NOT inline with
-// the addRow button) so they sit next to the timeline ruler they affect.
-// The chip strip's Y band must overlap the timeline ruler bar and sit
-// strictly above the addRow button — even with the rack full and
-// addRow snapped flush below the last row.
+// In the timeline header, next to the ruler they affect: overlapping the ruler band and strictly above
+// addRow, even with the rack full.
 func TestMobileDefault_RowZoomChipsAnchoredToTimeline(t *testing.T) {
 	setupMobileTest(t, true)
 

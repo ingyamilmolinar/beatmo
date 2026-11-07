@@ -6,8 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Regression for live circuit edits during playback: past commits should
-// survive updateBeatInfos so the DrumView timeline does not drop history.
+// Past commits survive updateBeatInfos.
 func TestTimelineHistorySurvivesPathEdit(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -75,8 +74,7 @@ func TestTimelineHistorySurvivesPathEdit(t *testing.T) {
 	}
 }
 
-// Mirrors live_edit_sync.browser.test.js: during playback, editing the circuit
-// must not drop committed past timeline entries.
+// Editing during playback never drops committed past entries.
 func TestTimelineHistoryLiveEditPlayback(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)

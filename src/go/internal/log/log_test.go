@@ -9,9 +9,6 @@ import (
 	"testing"
 )
 
-// These tests override the package-level inTests flag to simulate runtime
-// environments and ensure logger wiring behaves as expected.
-
 // fixedTimestamp pins timestampFunc to a deterministic value for tests that
 // need to assert the prefix exactly.
 func fixedTimestamp(t *testing.T, ts string) {
@@ -212,9 +209,7 @@ func TestSetLevel(t *testing.T) {
 	}
 }
 
-// TestWarnHasOwnThreshold verifies that Warnf has its own LevelWarn threshold,
-// distinct from LevelInfo. Previously Warnf shared the LevelInfo gate, so
-// callers couldn't silence warnings without also silencing info.
+// Silencing warnings must not require silencing info.
 func TestWarnHasOwnThreshold(t *testing.T) {
 	assertDefaultTestState(t)
 	withInTestsFalse(t)

@@ -1,24 +1,7 @@
 package ui
 
-// synth_dials.go is the Synth tab's MACRO DIAL logic: up to three dials on
-// each root category card, each a vector over existing synth params
-// (internal/synthdial, data in internal/assets/synth_dials.json).
-//
-// A dial is a LENS. Turning it writes the same instrument document a raw knob
-// writes (all of a detent's params in one audio.SetInstrumentParamsLive), so
-// the sound persists through the instrument document like any knob edit — and
-// nothing about the dial itself (position, definition) ever reaches a
-// project, bundle, prefs or library file.
-//
-// ABSOLUTE: a dial's position is a pure function of the document
-// (synthdial.Resolved.Reading over each term's absolute span), so the same
-// sound always shows the same knob — after a restart, an import, undo/redo or
-// a raw knob edit. The only state is a GESTURE: a drag or an open value wheel
-// captures the values it started from (synthDialGesture), every detent is
-// Turn(start, target), and the capture is dropped when the gesture ends.
-//
-// Specs: docs/superpowers/specs/2026-10-09-synth-macro-dials-design.md,
-// docs/superpowers/specs/2026-10-13-absolute-synth-dials-design.md.
+// A dial is a LENS: turning it writes the instrument document like a raw knob, and nothing about the dial reaches
+// any file. Its reading is a pure function of the document; the only state is the gesture's captured start values.
 
 import (
 	"math"
@@ -30,23 +13,16 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/synthdial"
 )
 
-// synthDialTuningParams are the params a dial must never drive: they set the
-// note an instrument sounds (note names are derived from them), not its
-// timbre. Enum and stepped params are excluded by their ParamDef.
+// They set the note (note names derive from them), not the timbre.
 var synthDialTuningParams = map[string]bool{
 	"pitch": true, "osc_detune": true, "osc_octave": true, "post_pitch": true,
 	"voice_freq_hz": true,
 }
 
-// synthDialConditions are the engine conditions a dial term can name in its
-// `when` field. Each MIRRORS the C source dispatch (modular.c,
-// render_modular_p's oscillator stage) — the one place the UI restates
-// engine routing, so a dial never shows when the engine would ignore it.
+// Each MIRRORS the C dispatch in modular.c - the one place the UI restates engine routing - so a dial never shows
+// where the engine would ignore it.
 var synthDialConditions = map[string]func(synthDialEnv) bool{
-	// The unison/ensemble path (modular_source_unison) runs only for a
-	// wavetable oscillator with ≥ 2 voices, and only when neither an active
-	// pitch envelope nor LFO vibrato routes the voice through the modulated
-	// single-oscillator path first.
+	// Unison runs only for a wavetable oscillator with ≥ 2 voices and no pitch envelope or vibrato routing it first.
 	"ensemble": func(e synthDialEnv) bool {
 		m := e.p
 		if m["osc_enabled"] < 0.5 || !synthWavetableOsc(m["osc_type"]) || m["unison_voices"] < 1.5 {
@@ -56,36 +32,26 @@ var synthDialConditions = map[string]func(synthDialEnv) bool{
 		vibOn := m["lfo_enabled"] >= 0.5 && int(m["lfo_target"]+0.5) == 1 && m["lfo_depth"] > 0 && m["lfo_rate"] > 0
 		return !peActive && !vibOn
 	},
-	// The amp release only sounds when the envelope is still up at note-off:
-	// a held sustain, or a decay long enough to outlast a short note (a conga
-	// whose 50 ms decay is silent long before note-off has no audible tail).
+	// Release sounds only if the envelope is still up at note-off (a 50 ms conga decay has no audible tail).
 	"release": func(e synthDialEnv) bool {
 		return e.p["amp_sustain"] > 0 || e.p["amp_decay"] >= 0.25
 	},
-	// The amp envelope reaches its sustain INSIDE the played voice (a voice is
-	// render.seconds long — a 2.5 s guitar decay in a 0.75 s voice never gets
-	// there): only then does the sustain level (Hold) sound, and only then
-	// does a longer decay (Length) change anything. Unknown voice length (0)
-	// counts as settling.
+	// Sustain (Hold) and a longer decay (Length) matter only if the envelope settles INSIDE the voice's
+	// render.seconds; an unknown length (0) counts as settling.
 	"settles": func(e synthDialEnv) bool {
 		return e.voiceSecs <= 0 || e.p["amp_decay"] < e.voiceSecs
 	},
-	// The filter envelope reaches the cutoff only on the filter's envelope path:
-	// with the filter off there is no cutoff, and an LFO sweeping the cutoff
-	// (lfo_target 2) takes the filter's LFO path, which ignores the envelope
-	// entirely (modular.c, the filter stage).
+	// The LFO cutoff path (lfo_target 2) ignores the filter envelope, and with the filter off there is no cutoff.
 	"filtenv": func(e synthDialEnv) bool {
 		m := e.p
 		lfoSweep := m["lfo_enabled"] >= 0.5 && int(m["lfo_target"]+0.5) == 2 && m["lfo_depth"] > 0 && m["lfo_rate"] > 0
 		return m["filter_enabled"] >= 0.5 && !lfoSweep
 	},
-	// The formant morph LFO sweeps toward morph_to: toward the vowel it is
-	// already singing it moves nothing (formant.c, the morph path).
+	// Morphing toward the vowel already sung moves nothing.
 	"morphs": func(e synthDialEnv) bool {
 		return int(e.p["formant_morph_to"]+0.5) != int(e.p["formant_vowel"]+0.5)
 	},
-	// The modular pitch envelope reaches the wavetable and FM oscillators;
-	// the noise and physical-model sources never read it.
+	// The noise and physical-model sources never read the pitch envelope.
 	"pitchenv": func(e synthDialEnv) bool {
 		m := e.p
 		if m["osc_enabled"] < 0.5 {
@@ -96,9 +62,7 @@ var synthDialConditions = map[string]func(synthDialEnv) bool{
 	},
 }
 
-// synthDialConditionReads names the params each condition reads, so the
-// discipline test can prove no term is gated by its own dial (a turn would
-// then hide the term mid-gesture and the reading would jump).
+// Lets the discipline test prove no term is gated by its own dial, which would hide it mid-gesture.
 var synthDialConditionReads = map[string][]string{
 	"ensemble": {"osc_enabled", "osc_type", "unison_voices", "pitchenv_enabled", "pitchenv_amt", "pitchenv_decay", "lfo_enabled", "lfo_target", "lfo_depth", "lfo_rate"},
 	"release":  {"amp_sustain", "amp_decay"},
@@ -108,15 +72,12 @@ var synthDialConditionReads = map[string][]string{
 	"filtenv":  {"filter_enabled", "lfo_enabled", "lfo_target", "lfo_depth", "lfo_rate"},
 }
 
-// synthDialEnv is what a dial condition may read: the instrument's current
-// values and the length of the voice a trigger plays (seconds; 0 = unknown).
+// Voice length in seconds, 0 = unknown.
 type synthDialEnv struct {
 	p         audio.RecipeParams
 	voiceSecs float64
 }
 
-// synthWavetableOsc reports whether an osc_type is a wavetable oscillator
-// (sine, saw, square, triangle, glottal — modular_table_for).
 func synthWavetableOsc(t float64) bool {
 	switch int(t + 0.5) {
 	case 0, 1, 2, 3, 12:
@@ -131,9 +92,7 @@ var (
 	synthDialsErr  error
 )
 
-// loadSynthDials returns the embedded dial document, decoded once. An invalid
-// document yields an empty file (no dials anywhere — the cards behave exactly
-// as before) plus the error, which the Synth tab logs once.
+// An invalid document yields no dials anywhere plus the error, which the Synth tab logs once.
 func loadSynthDials() (synthdial.File, error) {
 	synthDialsOnce.Do(func() {
 		synthDialsFile, synthDialsErr = synthdial.Load(assets.SynthDialsJSON)
@@ -144,17 +103,12 @@ func loadSynthDials() (synthdial.File, error) {
 	return synthDialsFile, synthDialsErr
 }
 
-// synthDialDrivable reports whether a dial may drive def: a continuous,
-// non-tuning param.
 func synthDialDrivable(def audio.ParamDef) bool {
 	return len(def.Enum) == 0 && def.Step == 0 && !synthDialTuningParams[def.Name] && def.Max > def.Min
 }
 
-// synthStageGates maps each pipeline stage to its enable param, read from the
-// instrument's schema. A stage with no bypass, or with SEVERAL enable params
-// (VOICE carries one per gen-slot family — kick, snare, tom, … — and only the
-// active family's matters), is not gated here: a family's knobs are already
-// hidden unless that family is the voice.
+// Stages with several enable params (VOICE has one per family) are not gated here: a family's knobs are already
+// hidden unless it is the voice.
 func synthStageGates(schema []audio.ParamDef) map[synthSectionID]string {
 	gates := map[synthSectionID]string{}
 	ambiguous := map[synthSectionID]bool{}
@@ -174,12 +128,8 @@ func synthStageGates(schema []audio.ParamDef) map[synthSectionID]string {
 	return gates
 }
 
-// resolveCardDials returns the dials live on one card for one instrument. A
-// term is live when the card claims its param on this instrument (claimed =
-// the card's visible params), the param is drivable, its pipeline stage is
-// ON, and its Requires param (a model selector) is on. A dial whose every term
-// sits in a bypassed stage therefore does not show at all — it would do
-// nothing audible — and reappears when the user switches the stage on.
+// A dial whose every term sits in a bypassed stage does not show (it would do nothing) and reappears when the
+// stage is switched on.
 func resolveCardDials(card string, claimed []string, present map[string]audio.ParamDef, merged audio.RecipeParams, gates map[synthSectionID]string, voiceSecs float64) []synthdial.Resolved {
 	f, _ := loadSynthDials()
 	if len(f.Dials) == 0 || len(claimed) == 0 {
@@ -209,8 +159,7 @@ func resolveCardDials(card string, claimed []string, present map[string]audio.Pa
 	})
 }
 
-// synthVoiceSecs is how long a trigger of inst sounds: its document's
-// render.seconds — the same at every tempo (0 when unknown).
+// The same at every tempo; 0 when unknown.
 func (dv *DrumView) synthVoiceSecs(inst instrument.ID) float64 {
 	d, ok := audio.InstrumentDoc(inst)
 	if !ok {
@@ -219,8 +168,6 @@ func (dv *DrumView) synthVoiceSecs(inst instrument.ID) float64 {
 	return d.Render.Seconds
 }
 
-// synthDialReading is a dial's position on inst as the user reads it: 0…100,
-// a pure function of the instrument's current values.
 func (dv *DrumView) synthDialReading(inst instrument.ID, d synthdial.Resolved) int {
 	return synthDialPercent(d.Reading(audio.MergedInstrumentParamsRO(inst)))
 }
@@ -228,10 +175,8 @@ func (dv *DrumView) synthDialReading(inst instrument.ID, d synthdial.Resolved) i
 // synthDialPercent rounds a reading (0..1) to the integer the dial shows.
 func synthDialPercent(r float64) int { return int(math.Round(100 * r)) }
 
-// synthDialGesture is the ONLY dial state: one drag or one open value wheel.
-// It holds the values the gesture started from, so every detent is a pure
-// Turn(start, target) — dragging back to where it started writes start back
-// bit for bit — and Esc restores them verbatim. Dropped when the gesture ends.
+// The ONLY dial state: dragging back to the start writes the start values back bit for bit, and Esc restores
+// them verbatim.
 type synthDialGesture struct {
 	inst         instrument.ID
 	card, dial   string
@@ -241,10 +186,8 @@ type synthDialGesture struct {
 	last         int
 }
 
-// beginSynthDialGesture captures a dial gesture on inst's card/dial. While it
-// is live the Synth root keeps its dial set (synthDialActive freezes the macro
-// cache): a turn may flip another dial's liveness and the row must not
-// reshuffle under the finger.
+// The dial set freezes while live: a turn may flip another dial's liveness and the row must not reshuffle
+// under the finger.
 func (dv *DrumView) beginSynthDialGesture(inst instrument.ID, card, dial string) (*synthDialGesture, bool) {
 	d, ok := dv.synthDialByID(card, dial)
 	if !ok || inst == "" || len(d.Terms) == 0 {
@@ -267,11 +210,8 @@ func newSynthDialGesture(inst instrument.ID, card string, d synthdial.Resolved) 
 	return &synthDialGesture{inst: inst, card: card, dial: d.Dial.ID, d: d, start: start, startReading: r, last: r}
 }
 
-// turnSynthDial moves the gesture's dial to target (0…100) and applies it
-// LIVE: one document write for the whole detent (the engine and the voice
-// prewarmer never see a half-turned dial — guard
-// TestSynthDialDetentPublishesOnlyItsFinalDocument). Nothing auditions and
-// nothing commits; the gesture's end commits once.
+// One document write per detent, so the engine and prewarmer never see a half-turned dial. Nothing
+// auditions or commits here.
 func (dv *DrumView) turnSynthDial(g *synthDialGesture, target int) {
 	target = max(0, min(100, target))
 	if target == g.last {
@@ -285,9 +225,7 @@ func (dv *DrumView) turnSynthDial(g *synthDialGesture, target int) {
 	audio.SetInstrumentParamsLive(g.inst, vals)
 }
 
-// endSynthDialGesture closes a gesture: commit = ONE commitInstrumentParams
-// (one undo step, one log line) when the values moved; otherwise the start
-// values go back verbatim. A gesture that moved nothing records nothing.
+// A gesture that moved nothing records nothing.
 func (dv *DrumView) endSynthDialGesture(g *synthDialGesture, commit bool) {
 	if g == nil {
 		return
@@ -313,10 +251,7 @@ func (dv *DrumView) endSynthDialGesture(g *synthDialGesture, commit bool) {
 	audio.SetInstrumentParamsLive(g.inst, g.start)
 }
 
-// healSynthDialGesture cancels a drag gesture whose input capture is gone
-// without a release — Esc, a mobile view switch, anything that clears the
-// tree's capture never reaches OnRelease. Cancel = Esc semantics: the start
-// values go back, nothing commits, and the dial row unfreezes. One check here
+// Anything that clears the tree's capture (Esc, a view switch) never reaches OnRelease; one check here
 // instead of a hook at every ClearCapture site.
 func (dv *DrumView) healSynthDialGesture() {
 	g := dv.synthDialActive
@@ -326,9 +261,7 @@ func (dv *DrumView) healSynthDialGesture() {
 	dv.endSynthDialGesture(g, false)
 }
 
-// setSynthDialReading puts dial d on inst at target (0…100) through the same
-// Turn a gesture uses, live, without committing — for scenes and tests that
-// need a dial in a given position.
+// For scenes and tests.
 func (dv *DrumView) setSynthDialReading(inst instrument.ID, d synthdial.Resolved, target int) {
 	if inst == "" || len(d.Terms) == 0 {
 		return

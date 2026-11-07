@@ -2,16 +2,7 @@
 
 package ui
 
-// Breadth coverage for the export → import master-mix contract.
-//
-// export_import_master_audio_identity_test.go proves the contract on ONE
-// hand-built circuit that exercises every subsystem at once. These two go wide
-// instead: every shipped template (real projects, real instrument
-// combinations), and every builtin instrument in the roster (so a family whose
-// recipe serializes badly cannot hide behind the four instruments the headline
-// test happens to use).
-//
-// Real build only — the `-tags test` synth and EQ are stubs.
+// Wide coverage of the master-mix contract: every shipped template and every roster instrument. Real build only.
 
 import (
 	"sort"
@@ -24,18 +15,11 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// templateRenderSeconds is shorter than the headline test's window: these
-// sweeps trade depth for breadth, and every template loops well inside 2s.
+// Breadth over depth; every template loops well inside 2 s.
 const templateRenderSeconds = 2.0
 
-// TestEveryBuiltinTemplateRoundTripsByteIdentical is the LOAD → EDIT → EXPORT →
-// IMPORT cycle a user actually performs: open a shipped circuit, change its
-// sound, save it, reopen it.
-//
-// Each template is loaded through the real Import path, edited through the same
-// engine entry points the Synth/FX/EQ panels use, rendered, exported, and then
-// re-imported after every global audio store has been wiped. The second render
-// must match the first byte for byte.
+// Load → edit → export → import, as a user does: edited through the panels' entry points, re-imported after every
+// global store is wiped, byte-identical.
 func TestEveryBuiltinTemplateRoundTripsByteIdentical(t *testing.T) {
 	tps := assets.Templates()
 	if len(tps) == 0 {
@@ -54,8 +38,7 @@ func TestEveryBuiltinTemplateRoundTripsByteIdentical(t *testing.T) {
 				t.Skip("template has no rows")
 			}
 
-			// Edit the loaded circuit the way a user would: a few synth knobs,
-			// an insert chain and an EQ curve on the first row.
+			// Knobs, an insert chain and an EQ curve.
 			editFirstRow(t, g)
 
 			before := renderLiveMasterMix(t, g, templateRenderSeconds)
@@ -78,15 +61,8 @@ func TestEveryBuiltinTemplateRoundTripsByteIdentical(t *testing.T) {
 	}
 }
 
-// TestEveryBuiltinInstrumentMasterMixRoundTrips sweeps the whole instrument
-// roster (roster.All, not the catalogue — see CLAUDE.md on why
-// those differ) so an instrument whose document serializes badly is caught even
-// when no template or headline test uses it.
-//
-// The overlay applied here is SPARSE, which is the shape the Synth tab writes:
-// the exporter turns it into a delta against shipped defaults and the importer
-// pins shipped ⊕ delta, a much larger map. Those two must resolve to the same
-// sound, and that equivalence is the whole reason the pinning trick is safe.
+// The whole roster, so an instrument no template uses cannot hide a bad serialisation; sparse knob edits in, and
+// the exported document must sound the same.
 func TestEveryBuiltinInstrumentMasterMixRoundTrips(t *testing.T) {
 	if testing.Short() {
 		t.Skip("roster sweep: -short")
@@ -145,8 +121,6 @@ func rowInstrumentIDs(g *Game) []instrument.ID {
 	return out
 }
 
-// editFirstRow applies a representative user edit — synth knobs, an insert
-// chain and an EQ curve — to row 0.
 func editFirstRow(t *testing.T, g *Game) {
 	t.Helper()
 	if len(g.drum.Rows) == 0 {
@@ -170,12 +144,7 @@ func editFirstRow(t *testing.T, g *Game) {
 	g.updateBeatInfos()
 }
 
-// applySparseKnobEdits moves up to `n` of the instrument's declared params off
-// their current value, one call to SetInstrumentParam at a time — the
-// sparse-overlay shape the Synth tab produces. Declared fields are walked in
-// sorted order with a fixed stride so the selection is deterministic across
-// runs and across machines (an undeclared field is not a knob and would be
-// rejected).
+// Sorted declared fields at a fixed stride, deterministic everywhere; an undeclared field would be rejected.
 func applySparseKnobEdits(id string, n int) {
 	cur := audio.MergedInstrumentParamsRO(instrument.ID(id))
 	keys := make([]string, 0, len(cur))

@@ -14,10 +14,7 @@ func TestNotificationOnImportSuccess(t *testing.T) {
 	assertDefaultParityState(t)
 	g := game_log.New(nil, game_log.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, g)
-	// The real onImport (wired by Game) queues data and returns nil; the actual
-	// import and notification happen in Game.Update(). For this standalone test,
-	// we simulate the notification that Game.Update() would show after a
-	// successful import.
+	// The real onImport only queues; Game.Update imports and notifies, so this standalone test notifies itself.
 	dv.onImport = func(_ []byte, _ string) error {
 		dv.notifyInfo("Imported project JSON")
 		return nil

@@ -2,16 +2,8 @@ package ui
 
 import "github.com/hajimehoshi/ebiten/v2"
 
-// Layer is a draw-only participant in the DrumView component tree. Every
-// pixel emitted inside the drum pane MUST originate from a Layer or a Zone
-// registered with the DrumViewTree. The render-pipeline discipline test
-// (render_pipeline_discipline_test.go) enforces this at compile time by
-// forbidding draw primitives in drumview_draw.go and drumview_toolbar.go.
-//
-// A Layer is a Zone-without-input — no Layout/Update/HitAreas/HandleKey.
-// Layers are used for decorative chrome (background fills, halos,
-// notifications, debug overlays) where input handling lives elsewhere
-// (or doesn't exist).
+// Every pixel in the drum pane comes from a Layer or a Zone registered with the tree (enforced by the
+// render-pipeline discipline test). A Layer is a Zone without input.
 type Layer interface {
 	ID() string
 	ZIndex() int
@@ -19,11 +11,7 @@ type Layer interface {
 	Draw(dst *ebiten.Image)
 }
 
-// zoneAsLayer adapts a Zone to the Layer interface so the tree can store
-// both kinds in one ordered slice. The zone's own Draw method is invoked.
-// An optional visibility callback gates the entire zone draw — useful for
-// flags that historically gated calls in DrumView.Draw (simpleDraw,
-// perfDrawLite). When visible is nil the zone is always drawn.
+// A nil visible means always drawn.
 type zoneAsLayer struct {
 	zone    Zone
 	zIndex  int

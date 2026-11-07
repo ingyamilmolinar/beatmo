@@ -11,27 +11,13 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// colWaveTraceFill is the soft synthwave "outrun" wash painted from the
-// waveform trace down to the centerline at AlphaSubtle. Package-level so the
-// color is served from pixelCache (no per-column color alloc); drawWaveTrace
-// emits one fill rect per column above/below the midline, the trace line on
-// top.
+// Package-level so pixelCache serves it without a per-column alloc. Derived in rebuildThemeAliases.
 var colWaveTraceFill color.NRGBA // derived in rebuildThemeAliases (theme.go)
 
-// drawAnalyzerWaveform renders a waveform from the given channel metrics into
-// the rectangle. It picks frozen capture data when available, otherwise
-// falls back to the channel's rolling waveform.
-//
-// beatGrid is an optional slice of fractional X positions (in [0,1)) where
-// vertical beat markers should be drawn; nil disables the overlay. Fed by
-// dv.beatGridFractions() via EQCallbacks.BeatGridFrac.
-//
-// The channel name is no longer drawn inside the waveform — the sticky bar
-// above the panel owns channel identity (see audio_sticky_bar.go). Restating
-// it here was redundant chrome.
+// beatGrid holds beat-marker X fractions in [0,1); nil disables them. No channel name here: the sticky
+// bar owns channel identity.
 func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.ChannelMetrics, capture *analyzer.CaptureBuffer, beatGrid []float64, gain float64, autoOn bool, tabFrozen bool) {
-	// Choose waveform source (nil-safe: an idle panel still renders its
-	// axis chrome below instead of a dead black rect).
+	// Nil-safe: an idle panel still draws its axis chrome.
 	var wave []float64
 	frozen := capture != nil && capture.Frozen
 	switch {
@@ -42,15 +28,10 @@ func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.
 	}
 	idle := len(wave) == 0
 
-	// Reserve left margin for amplitude labels + bottom strip for the ms
-	// axis (tick marks + labels), matching the Chain tab's convention so
-	// time-correlation reads the same way across both signal views. The
-	// strip height holds one full caption text row so label baselines are
-	// never clipped by the panel's bottom edge.
+	// The same margins as the Chain tab so time reads alike in both; the axis strip holds a full caption row
+	// so its baselines are never clipped.
 	waveRect := image.Rect(rect.Min.X+Profile().DensityValues().AudioLabelMarginW, rect.Min.Y, rect.Max.X, rect.Max.Y-waveTimeAxisHeight())
 
-	// Axis labels render at the styled micro role (smooth Inter, true 10px)
-	// — never the scaled bitmap font.
 	lh := StyledTextHeight(RoleMicro)
 
 	if gain <= 0 {
@@ -58,10 +39,7 @@ func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.
 	}
 	edge := waveEdgeAmplitude(gain)
 
-	// Draw amplitude labels in the left margin (SpaceXS inset from the
-	// panel's left edge so they never render flush at x=0).
-	// Edge labels reflect the TRUE amplitude the panel edges represent at the
-	// current Y-gain (adaptive auto-scale): top/bottom = +/- 1/gain, center 0.
+	// The edge labels show the TRUE amplitude at the current gain: ±1/gain.
 	DrawTextStyled(dst, fmt.Sprintf("+%.2g", edge), rect.Min.X+SpaceXS, waveRect.Min.Y+2, RoleMicro, colTextSecondary)
 	DrawTextStyled(dst, "0", rect.Min.X+SpaceXS, waveRect.Min.Y+waveRect.Dy()/2-lh/2, RoleMicro, colTextSecondary)
 	DrawTextStyled(dst, fmt.Sprintf("-%.2g", edge), rect.Min.X+SpaceXS, waveRect.Max.Y-lh-2, RoleMicro, colTextSecondary)
@@ -92,17 +70,14 @@ func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.
 	}
 
 	if idle {
-		// Idle state: the axis chrome above is already painted; add a quiet
-		// centered caption so the panel reads as "waiting for sound", never
-		// as a dead black rect.
+		// A quiet caption so the idle panel reads as "waiting for sound", never as dead.
 		hint := i18n.T(i18n.KeyAnalyzerIdle)
 		hx := waveRect.Min.X + (waveRect.Dx()-StyledTextWidth(hint, RoleCaption))/2
 		DrawTextStyled(dst, hint, hx, midY+SpaceMD, RoleCaption, colTextSecondary)
 		return
 	}
 
-	// Beat-grid overlay: 1-px vertical ticks at fractional positions (AlphaSubtle).
-	// Drawn before the trace so the wave stays visually on top.
+	// Before the trace so the wave stays on top.
 	if len(beatGrid) > 0 {
 		beatCol := WithAlpha(genColorBorder, AlphaSubtle)
 		for _, frac := range beatGrid {
@@ -114,9 +89,7 @@ func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.
 		}
 	}
 
-	// Phase 5: when stereo data is present, paint L in the top half and
-	// R in the bottom half so the user sees per-channel content. Mono
-	// signals continue to render as a single trace down the centerline.
+	// Stereo: L in the top half, R in the bottom.
 	if ch != nil && ch.HasStereo() && len(ch.WaveformL) > 0 && len(ch.WaveformR) > 0 {
 		topRect := image.Rect(waveRect.Min.X, waveRect.Min.Y, waveRect.Max.X, midY)
 		botRect := image.Rect(waveRect.Min.X, midY, waveRect.Max.X, waveRect.Max.Y)
@@ -124,18 +97,13 @@ func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.
 		botMid := botRect.Min.Y + botRect.Dy()/2
 		drawWaveTrace(dst, ch.WaveformL, topRect, topMid, width, colWaveTrace, gain, colWaveTraceFill)
 		drawWaveTrace(dst, ch.WaveformR, botRect, botMid, width, colWaveTrace, gain, colWaveTraceFill)
-		// Small L / R labels along the left margin so the split reads
-		// clearly without relying on context.
 		DrawTextStyled(dst, "L", rect.Min.X+2, topRect.Min.Y+2, RoleCaption, colTextSecondary)
 		DrawTextStyled(dst, "R", rect.Min.X+2, botRect.Min.Y+2, RoleCaption, colTextSecondary)
 		overdrawWaveClips(dst, ch.WaveformL, topRect, width, meterClip)
 		overdrawWaveClips(dst, ch.WaveformR, botRect, width, meterClip)
 	} else {
 		drawWaveTrace(dst, wave, waveRect, midY, width, colWaveTrace, gain, colWaveTraceFill)
-		// Clip flash: overdraw any column whose samples saturate (|v| > 1.0)
-		// with meterClip, full waveRect height. Gives instant DAW-style
-		// headroom warning that's impossible to miss against the steady
-		// trace color.
+		// Saturated columns flash full height in the clip color: a headroom warning that cannot be missed.
 		overdrawWaveClips(dst, wave, waveRect, width, meterClip)
 	}
 
@@ -143,9 +111,7 @@ func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.
 	axisRect := image.Rect(waveRect.Min.X, waveRect.Max.Y, waveRect.Max.X, waveRect.Max.Y+waveTimeAxisHeight())
 	drawWaveTimeAxis(dst, axisRect, waveWindowMs(len(wave), audio.SampleRate()))
 
-	// Top-right status slot: FROZEN takes priority (global freeze reachable
-	// from other tabs); otherwise show the live Y-scale badge so the user
-	// always knows the current vertical scale.
+	// FROZEN wins (it can be global from another tab); otherwise the Y-scale badge, so the scale is always known.
 	if frozen || tabFrozen {
 		frozenW := StyledTextWidth(i18n.T(i18n.KeyCapFrozen), RoleCaption)
 		DrawTextStyled(dst, i18n.T(i18n.KeyCapFrozen), waveRect.Max.X-frozenW-4, waveRect.Min.Y+2, RoleCaption, colAccentBright)
@@ -156,16 +122,10 @@ func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.
 	}
 }
 
-// waveClipThreshold is the |v| level at which a waveform sample counts
-// as clipped for the DAW-style red overlay. Aligns with the audio
-// engine's hard-clip point at ±1.0; samples that reach this magnitude
-// have already saturated the int16 output stage.
+// The engine's hard-clip point: a sample this large has already saturated the output stage.
 const waveClipThreshold = 1.0
 
-// overdrawWaveClips paints columns whose source samples saturate
-// (|v| ≥ waveClipThreshold) in clipCol, full rect height. Same
-// min/max-per-pixel column math as drawWaveTrace so the painted column
-// lines up exactly with the offending trace span.
+// The same per-column min/max math as drawWaveTrace, so the flash lines up with the offending span.
 func overdrawWaveClips(dst *ebiten.Image, wave []float64, rect image.Rectangle, width int, clipCol color.Color) {
 	if width <= 0 || len(wave) == 0 || clipCol == nil {
 		return
@@ -198,16 +158,11 @@ func overdrawWaveClips(dst *ebiten.Image, wave []float64, rect image.Rectangle, 
 	}
 }
 
-// waveTimeAxisHeight is the reserved bottom strip (in px) for the Wave tab's
-// ms-axis tick marks + labels: one micro text row plus padding, so label
-// baselines are never clipped by the panel's bottom edge.
 func waveTimeAxisHeight() int {
 	return StyledTextHeight(RoleMicro) + SpaceSM
 }
 
-// drawWaveTimeAxis paints tick marks + ms labels across the bottom
-// strip of the wave panel. Mirrors the Chain tab's bottom-axis style
-// so time correlation reads identically across both signal surfaces.
+// The Chain tab's axis style, so time reads alike on both.
 func drawWaveTimeAxis(dst *ebiten.Image, axisRect image.Rectangle, windowMs float64) {
 	if axisRect.Empty() || windowMs <= 0 {
 		return
@@ -219,13 +174,9 @@ func drawWaveTimeAxis(dst *ebiten.Image, axisRect image.Rectangle, windowMs floa
 		if x >= axisRect.Max.X {
 			x = axisRect.Max.X - 1
 		}
-		// 1px wide × 3px tall tick mark anchored to the BOTTOM of the axis
-		// strip so it always lands in the panel's bottom band (where the
-		// time-base is read), regardless of how tall the reserved strip is.
+		// Anchored to the strip bottom, where the time base is read, however tall the strip is.
 		drawRect(dst, image.Rect(x, axisRect.Max.Y-3, x+1, axisRect.Max.Y), colTextSecondary, true)
-		// Label sits ABOVE the tick, fully inside the strip, so its baseline
-		// is never clipped by the panel's bottom edge (the original bug).
-		// Anchor first label to the left edge; centre the rest under their tick.
+		// Above the tick and inside the strip so its baseline is never clipped; the first label anchors left.
 		lw := StyledTextWidth(lbl.Text, RoleMicro)
 		lx := x - lw/2
 		if lbl.Frac == 0 {
@@ -245,11 +196,7 @@ func drawWaveTimeAxis(dst *ebiten.Image, axisRect image.Rectangle, windowMs floa
 	}
 }
 
-// drawWaveTrace draws a single waveform trace using the min/max-per-pixel-column
-// technique. For each pixel column it finds the minimum and maximum sample values
-// that map to that column and draws a vertical line spanning the range.
-// yGain scales the amplitude display (1.0 = normal, >1 = zoomed in).
-// fillCol, if non-nil, draws a semi-transparent fill from the trace to the centerline.
+// Min/max per pixel column. yGain > 1 zooms in; a non-nil fillCol washes from the trace to the centerline.
 func drawWaveTrace(dst *ebiten.Image, wave []float64, rect image.Rectangle, midY, width int, col color.Color, yGain float64, fillCol color.Color) {
 	halfHeight := float64(rect.Dy()) * 0.48 * yGain
 	step := float64(len(wave)) / float64(width)
@@ -293,18 +240,8 @@ func drawWaveTrace(dst *ebiten.Image, wave []float64, rect image.Rectangle, midY
 			y1 = y0 + 1
 		}
 
-		// Synthwave "outrun" fill from the trace down to the centerline:
-		// a single soft wash at the caller's fillCol. The wash always spans
-		// one contiguous vertical run from the far trace edge to the
-		// centerline, i.e. [min(y0,midY) .. max(y1,midY)] — drawing it as ONE
-		// rect per column instead of a top half + bottom half is
-		// pixel-identical (same span, same fillCol) but halves the per-column
-		// blit count on the audio panel's hottest renderer. That blit count
-		// is the dominant Draw cost on the Chain tab (two full-width traces),
-		// and on the single WASM thread an oversized Draw starves the
-		// sequencer goroutine → choppy audio. See profile_chain_tab.mjs.
-		// The fillCol is a fixed package-level color served from pixelCache,
-		// so no per-column color alloc is incurred.
+		// ONE wash rect per column, pixel-identical to two halves but half the blits on the panel's hottest
+		// renderer: on the single WASM thread an oversized Draw starves the sequencer.
 		if fillCol != nil {
 			px := rect.Min.X + x
 			fy0, fy1 := y0, y1
@@ -323,19 +260,10 @@ func drawWaveTrace(dst *ebiten.Image, wave []float64, rect image.Rectangle, midY
 	}
 }
 
-// drawWaveformCursor renders a vertical crosshair at cursorX inside the
-// waveform area, plus an "amplitude · ms-in-window" readout label anchored
-// above. cursorX is in screen pixels; nothing renders if cursorX falls
-// outside the waveform rect.
-//
-// Sample lookup uses the same fractional offset the waveform renderer uses
-// to map pixels → samples, so the readout reflects what the user sees on
-// screen. When the capture buffer is frozen we read from the frozen copy;
-// otherwise we read the rolling channel waveform.
+// cursorX is in screen pixels; the sample lookup uses the renderer's own pixel-to-sample map, so the
+// readout matches what is on screen.
 func drawWaveformCursor(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.ChannelMetrics, capture *analyzer.CaptureBuffer, cursorX int) {
-	// Mirror drawAnalyzerWaveform's waveRect derivation (reserve 12px
-	// bottom strip for the ms axis) so the cursor crosshair stops at
-	// the wave area, not the axis labels below it.
+	// Must match drawAnalyzerWaveform's axis strip so the crosshair stops at the wave area.
 	const waveMSAxisH = 12
 	waveRect := image.Rect(rect.Min.X+Profile().DensityValues().AudioLabelMarginW, rect.Min.Y, rect.Max.X, rect.Max.Y-waveMSAxisH)
 	if cursorX < waveRect.Min.X || cursorX >= waveRect.Max.X {
@@ -345,10 +273,7 @@ func drawWaveformCursor(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.Ch
 		return
 	}
 
-	// Vertical line. Phase 6 audio-panel redesign: density-driven
-	// stroke (Compact 1 / Comfortable 2 / Spacious 3) so the cursor
-	// stays visible on a 360-px portrait phone where a 1-px stroke
-	// disappears against the trace.
+	// Density-driven so a 1 px line does not vanish against the trace on a phone.
 	cursorW := Profile().DensityValues().WaveCursorStroke
 	if cursorW < 1 {
 		cursorW = 1

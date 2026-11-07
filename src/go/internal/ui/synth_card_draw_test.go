@@ -9,11 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// The synth detail pane now renders ONE ParamCard per visible knob on every
-// platform. Cards carry the parameter NAME and VALUE together (unlike the
-// old desktop dial, whose caption band was a separate draw from the dial);
-// the Advanced tier is separated by an always-visible divider row instead of
-// the deleted expander. This test proves both halves of the new contract.
+// One ParamCard per visible knob carrying name and value together, with the Advanced tier behind an always-visible
+// divider row.
 func TestSynthCardDraw_NameValueAndDivider(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
@@ -49,9 +46,7 @@ func TestSynthCardDraw_NameValueAndDivider(t *testing.T) {
 		t.Fatalf("card name %q not drawn; texts:\n%s", wantName, joined)
 	}
 
-	// Scroll so the divider's phantom row is actually in view — the detail
-	// pane is short enough that essentials/divider/advanced can't all be on
-	// screen at once (mirrors TestSynthAdvancedDivider_EssentialsFirstAdvancedAlwaysPlaced).
+	// The pane is too short for essentials, divider and advanced at once.
 	ess, adv := dv.synthSectionTierSplit(sel.knobIdxs)
 	if len(adv) == 0 {
 		t.Fatal("selected stage has no advanced knobs")

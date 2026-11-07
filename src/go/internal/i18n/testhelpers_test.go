@@ -1,10 +1,7 @@
 package i18n
 
-// withTempKey injects a temporary message into both catalogs for the duration
-// of a test, restoring it via t.Cleanup. Test-only: kept in a _test.go file so
-// it never ships in a production binary and the en/es maps stay provably
-// immutable post-init (which is what makes concurrent T/ActiveLocale reads
-// race-free without locking the catalogs).
+// Test-only, so it never ships and the catalogs stay immutable after init: that is what makes concurrent T /
+// ActiveLocale reads race-free without a lock.
 func withTempKey(t interface{ Cleanup(func()) }, k Key, enVal, esVal string) {
 	en[k] = enVal
 	es[k] = esVal

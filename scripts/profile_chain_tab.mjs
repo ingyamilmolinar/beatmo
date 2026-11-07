@@ -1,24 +1,6 @@
-// profile_chain_tab.mjs
-//
-// Focused profiler for the "audio is choppy/laggy while the Chain (Chn) tab is
-// open" report. The experiment isolates a SINGLE variable: which audio-panel
-// tab is active. The circuit, BPM, playback duration, and everything else are
-// held identical across variants, so any difference in per-frame Draw cost and
-// Stage-A sequencer lateness is attributable to the active tab's renderer.
-//
-// On the single cooperatively-scheduled WASM thread, Ebiten Draw and the
-// sequencer goroutine share one thread, so a tab whose Draw is expensive
-// starves the sequencer → late audio → choppy. We therefore compare drawAvg/
-// drawMax AND Stage-A seqFireLate per tab, and capture a CDP main-thread CPU
-// profile while the Chain tab is active to see WHICH draw function dominates.
-//
-// Run:
-//   GO=$(pwd)/.tools/go/bin/go node scripts/profile_chain_tab.mjs
-// Env:
-//   PROFILE_SECS=12   playback window per tab
-//   PROFILE_BPM=160   tempo
-//   TABS=wave,chain   comma list of tabs to compare (default below)
-//   PROFILE_TAB=chain which tab gets the CPU profile (default chain)
+// Which audio-panel tab starves the sequencer? Everything but the active tab is held identical; compares draw cost and
+// Stage-A lateness per tab and CPU-profiles PROFILE_TAB. Env: PROFILE_SECS=12 PROFILE_BPM=160 TABS=wave,chain
+// PROFILE_TAB=chain. Run: GO=$(pwd)/.tools/go/bin/go node scripts/profile_chain_tab.mjs
 
 import { chromium } from "../src/js/node_modules/playwright/index.mjs";
 import path from "node:path";

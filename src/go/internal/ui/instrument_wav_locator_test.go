@@ -14,11 +14,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavgen"
 )
 
-// TestWavFileAndURLLocators exercises the REAL file + URL locators (os.ReadFile
-// and net/http) against GENERATED WAV bytes — no real/copyrighted WAV files. A
-// generated sine is the sample; its canonical WAV bytes are the pinned version;
-// import resolves them from a temp file and from an httptest server, verifying
-// the content hash before binding.
+// The real os.ReadFile and net/http locators against GENERATED WAV bytes: no recording is ever read.
 func TestWavFileAndURLLocators(t *testing.T) {
 	g := newDocsGame(t, roster.Snare)
 	const inst = roster.Snare

@@ -1,13 +1,5 @@
-// Package synthdiag diagnoses WHICH PART of the synthesis chain is responsible
-// for a measured reference-vs-synth mismatch.
-//
-// `refs diagnose` answers "what is wrong" per axis; this package answers "which
-// knob group to reach for". It does so by ABLATION: render the instrument in
-// full, then re-render it once per active stage with that stage held at
-// identity, and measure how far each descriptor moves. The result is a
-// SENSITIVITY matrix, not a decomposition -- stages interact (a filter's effect
-// depends on what the oscillator fed it), so the per-stage numbers do not sum
-// to the whole and must never be presented as shares of one.
+// WHICH stage to reach for, by ablation: re-render with each active stage at identity and measure how far each
+// descriptor moves. A SENSITIVITY matrix, not a decomposition: stages interact, so the numbers never sum to shares.
 package synthdiag
 
 import (
@@ -19,19 +11,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// stages.go — what "this stage at identity" means, per synthesis stage.
-//
-// Several Synth-tab stages are identity BY VALUE, not by a flag: ENSEMBLE is
-// unison_voices=1 with zero detune/drift, RESONATOR is body_mix=0, a gen
-// slot is genN_source=0. A gen slot is deliberately NOT ablated through
-// genN_gain: for the transplanted sources (KS, analytic, kick, tom, snare,
-// clap, cymbal, FM) gain 0 means "unconfigured", so it would not silence
-// them; source 0 does.
+// Some stages are identity BY VALUE. A gen slot is ablated by source 0, not gain 0, which several sources read as
+// "unconfigured" rather than silence.
 
-// Stage is one ablatable synthesis stage: the override set that puts it at
-// identity, plus the predicate that says whether it is doing anything at all
-// in a given merged parameter set (ablating an already-off stage costs a
-// render and yields a guaranteed zero row).
+// Ablating an already-off stage costs a render for a guaranteed zero row.
 type Stage struct {
 	Name      string
 	Overrides map[string]float64
@@ -78,8 +61,6 @@ func Stages() []Stage {
 	return s
 }
 
-// ActiveStages filters Stages() down to the ones actually doing something in
-// merged.
 func ActiveStages(merged map[string]float64) []Stage {
 	var out []Stage
 	for _, s := range Stages() {
@@ -90,18 +71,8 @@ func ActiveStages(merged map[string]float64) []Stage {
 	return out
 }
 
-// noEffectFloor is the Norm a descriptor reports when a measurement is
-// compared with ITSELF -- the reading a stage with literally zero effect
-// produces.
-//
-// It is NOT zero for every Kind. KindSeconds and KindRatio fold their ratio to
-// >=1 before dividing by the mismatch threshold (compare.go's
-// ratioNormAndDisplay), so an identical pair yields 1/mismatch: 0.50 at the
-// default mismatch of 2.0, 0.36 on an axis calibrated to 2.75. The
-// absolute-delta kinds floor at 0. Left unsubtracted, a stage that does
-// nothing reads 0.50 on a seconds axis and 0.00 on a fraction axis, and the
-// matrix stops being comparable across axes -- which is the one thing a
-// sensitivity matrix is for.
+// Not zero for every Kind: Seconds and Ratio fold to ≥ 1 before dividing by the mismatch, so a self-comparison reads
+// 1/mismatch. Unsubtracted, the matrix stops being comparable across axes.
 func noEffectFloor(d fingerprint.Descriptor, full fingerprint.Measurement) float64 {
 	self := d.CompareWith(full, full)
 	if !self.OK {
@@ -110,13 +81,7 @@ func noEffectFloor(d fingerprint.Descriptor, full fingerprint.Measurement) float
 	return self.Norm
 }
 
-// stageSensitivity is how far one ablation moved a descriptor ABOVE its
-// no-effect floor. ok=false means the two renders were not comparable on this
-// axis at all (the caller stores NaN, which TopStages drops rather than ranks
-// as zero leverage).
-//
-// Clamped at 0: below-floor is not a meaningful direction here, it is
-// arithmetic noise around "no effect".
+// ok=false = not comparable (stored NaN, dropped rather than ranked). Clamped at 0: below the floor is noise.
 func stageSensitivity(d fingerprint.Descriptor, full, ablated fingerprint.Measurement) (float64, bool) {
 	delta := d.CompareWith(full, ablated)
 	if !delta.OK {
@@ -129,16 +94,8 @@ func stageSensitivity(d fingerprint.Descriptor, full, ablated fingerprint.Measur
 	return v, true
 }
 
-// Report is one instrument's stage x axis sensitivity matrix.
-//
-// Sens[stage][axis] is the descriptor's Delta.Norm between the FULL render and
-// the render with that stage at identity (RMS-matched first, so a stage that
-// merely changes level is not credited with changing timbre), MINUS that
-// descriptor's no-effect floor (see noEffectFloor) so 0 means "this stage
-// changed nothing" on every axis regardless of Kind. NaN means the axis was
-// not comparable between the two renders. Rows are sensitivities, not
-// contributions: they do not sum, and a stage can score high on an axis it
-// does not "own" simply by changing what a later stage receives.
+// RMS-matched minus the no-effect floor, so 0 means "changed nothing" on every axis; NaN = not comparable. A stage can
+// score on an axis it does not own by changing what a later stage receives.
 type Report struct {
 	Instrument instrument.ID
 	Stages     []string    // ablated stage names, in Stages() order
@@ -153,14 +110,8 @@ type StageSens struct {
 	Norm  float64
 }
 
-// TopStages returns the n stages that move axisID the most, largest first.
-// Axes the ablation could not compare are dropped rather than ranked as zero.
-//
-// The sort is STABLE, so equal sensitivities keep Stages() order rather than
-// permuting between runs. Ties are common and not a corner case -- a stage
-// that shifts a segment boundary moves several segment axes by exactly the
-// same amount -- and an ablation report that reorders its own top-3 on a
-// re-run reads as instability in the measurement rather than in the sort.
+// STABLE: ties are common (a segment boundary shift moves several axes equally), and a report reordering its own top 3
+// reads as measurement instability.
 func (r Report) TopStages(axisID string, n int) []StageSens {
 	col := -1
 	for i, id := range r.Axes {

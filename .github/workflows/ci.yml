@@ -29,15 +29,16 @@ jobs:
         run: cd src/go && CGO_ENABLED=1 go build ./...
       - name: Build Go (WASM)
         run: cd src/go && GOOS=js GOARCH=wasm go build -o /dev/null ./cmd/...
-      # The gograph architecture/refactor-ranking tool (scripts/gograph) is its own
-      # module; CI runs `go test` in src/go only, so without this step an x/tools
-      # or Go upgrade breaks the tool silently (it went unbuildable for months once).
+      # The gograph tool is its own module and CI tests only src/go, so without this step an x/tools or Go upgrade breaks
+      # it silently.
       - name: gograph tool tests
         run: cd scripts/gograph && go test ./...
-      # A typed id or enum handed to syscall/js panics in the browser only;
-      # nothing native can see it (scripts/jsaudit/main.go).
+      # A typed id or enum handed to syscall/js panics in the browser only; nothing native can see it.
       - name: JS bridge audit
         run: cd scripts/jsaudit && go test ./... && go run . "$GITHUB_WORKSPACE/src/go" ./...
+      # CLAUDE.md's comment policy: blocks of at most 3 lines and no history markers.
+      - name: Comment policy
+        run: make test-comment-census && make comment-census ARGS=--check
 
   lint:
     name: Lint
@@ -70,12 +71,8 @@ jobs:
     needs: [build]
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Reference instrument audio is NEVER committed and NO test reads it. It is
-    # fetched OUTSIDE the checkout (runner.temp) only so the explicit
-    # `make refs-check` step can re-derive the corpus calibrations.
-    # BEATMO_WAV_REFS is set on just the steps that use the corpus (fetch /
-    # verify / check) -- never on a `go test` step -- and per step because the
-    # `runner` context is not available in job-level env.
+    # Reference audio is never committed and no test reads it: it is fetched outside the checkout only for the refs steps.
+    # BEATMO_WAV_REFS is set per step, never on a go test step, because the runner context is not available in job-level env.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -92,30 +89,18 @@ jobs:
       - name: Build C library
         run: make build/libdrums.a
       - name: Fetch public-domain reference WAVs
-        # Non-fatal: if upstream is unreachable, `make refs-check` below SKIPS
-        # (loudly) and CI stays green. Reuses the exact target used locally.
+        # Non-fatal: with upstream unreachable, make refs-check below skips loudly and CI stays green.
         env:
           BEATMO_WAV_REFS: ${{ runner.temp }}/wav-refs
         run: make fetch-refs TIER=instrument ONLY_MISSING=1 || echo "::warning::reference WAV fetch failed; refs-check will skip"
       - name: Verify the reference corpus hashes
-        # Fails on a PCM hash mismatch or a decode error -- i.e. reference audio
-        # that changed under us. "Missing" is not an error here: song-tier refs
-        # are never committed.
-        #
-        # The step above is deliberately non-fatal, and that `||` is how a
-        # renamed target went unnoticed for a whole rewrite. The structural
-        # guard against a recurrence is
-        # internal/deploy/ci_make_target_drift_test.go, which asserts every
-        # `make <target>` in this file exists in the Makefile; this step covers
-        # the different question of whether the audio itself is intact.
+        # Fails on a PCM hash mismatch or a decode error (reference audio that changed under us); "missing" is not an error.
         env:
           BEATMO_WAV_REFS: ${{ runner.temp }}/wav-refs
         run: cd src/go && go run ./cmd/refs verify
       - name: Re-derive the corpus calibrations
-        # thresholds.json, organic_range.json, F0ReliableConfidence and the
-        # shipped audition candidates are all derived from the corpus; only a
-        # re-run against it shows one has gone stale. These used to be tests --
-        # tests never read reference audio, so they are a command now.
+        # The corpus calibrations (thresholds, organic range, f0 confidence, audition candidates) go stale only against the
+        # corpus, and tests never read reference audio, so this is a command.
         env:
           BEATMO_WAV_REFS: ${{ runner.temp }}/wav-refs
         run: make refs-check
@@ -127,13 +112,8 @@ jobs:
             -timeout 120s ./... 2>&1 | tee ../../coverage/test-output.txt
       - name: Run Go tests (real Ebiten + xvfb)
         run: cd src/go && BPM_TIMING_TEST=1 xvfb-run -a go test ./...
-      # gcov line coverage of our own C DSP sources (miniaudio excluded) via
-      # the native CGo test run. Also captures coverage/go-native.out — the
-      # bridge files (drums_c.go, insert_fx_c.go, ...) that the -tags test
-      # coverage above never compiles. Floor enforced at the recorded
-      # baseline (see coverage-c-check in the Makefile). Runs after the
-      # other test steps because the script transiently swaps in an
-      # instrumented build/libdrums.a (restored/cleaned via trap on exit).
+      # gcov of our own C sources, plus coverage/go-native.out for the cgo bridge files -tags test never compiles. Runs
+      # last because the script swaps in an instrumented build/libdrums.a for its duration.
       - name: C coverage (gcov, own DSP sources)
         run: COVERAGE_C_XVFB=1 make coverage-c-check
       - name: C coverage summary
@@ -199,12 +179,8 @@ jobs:
             libxi-dev libxxf86vm-dev
       - name: Build C library
         run: make build/libdrums.a
-      # Race detector over the concurrency-relevant packages (the engine run
-      # loop + scheduler, async pools, hooks bus, recording lifecycle, analyzer
-      # SPSC ring, event sinks/loggers, scope-export service). Excludes giant
-      # suites and single-threaded numeric optimizers — see the test-race
-      # target in the Makefile for the exclusion rationale. -race is native
-      # only, so this does not cover the js/wasm build.
+      # Race detector over the concurrency-relevant packages (the exclusions are test-race's). Native only: js/wasm is not
+      # covered.
       - name: Run Go tests with -race
         run: make test-race
 

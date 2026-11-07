@@ -7,8 +7,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestGridLayerCacheReuse ensures the grid layer cache reuses via blit when the
-// camera pans within the pad, and only rebuilds on first draw.
+// Reused by blit while the camera pans within the pad; rebuilt only on the first draw.
 func TestGridLayerCacheReuse(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
@@ -58,8 +57,7 @@ func TestGridLayerCacheReuse(t *testing.T) {
 	if g.gridCache != oldCache {
 		t.Fatalf("expected grid cache reuse, but cache image was rebuilt")
 	}
-	// Find grid-targeting blit for the reuse pass: dx/dy should shift by the pan.
-	// Expected dx,dy = -gridPad + delta (10,6)
+	// The reuse blit shifts by the pan (10,6).
 	wantDX, wantDY := gridPad+10, gridPad+6
 	found = false
 	for _, c := range blits {

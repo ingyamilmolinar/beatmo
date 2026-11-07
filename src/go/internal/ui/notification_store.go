@@ -5,25 +5,19 @@ import "time"
 // notifHistoryCap bounds the in-memory + persisted notification ring.
 const notifHistoryCap = 100
 
-// UseNotificationsHistory gates persistence of the notification history to
-// userprefs. Tests flip it false to exercise the no-persistence path.
+// Tests flip it to exercise the no-persistence path.
 var UseNotificationsHistory = true
 
 // nowUnixMilli is overridable so tests can pin timestamps deterministically.
 var nowUnixMilli = func() int64 { return time.Now().UnixMilli() }
 
-// notificationStore is the single source of truth for user notifications: a
-// bounded oldest..newest ring plus accessors. The in-band area shows Latest()
-// (only once a session entry exists); the history popup shows History()
-// (newest-first). Seeded entries (from persistence) populate the ring for the
-// popup but do NOT count as a session entry, so the live band starts idle.
+// Seeded (persisted) entries fill the history but are not session entries, so the live band starts idle.
 type notificationStore struct {
 	cap        int
 	entries    []notification // oldest..newest
 	sessionGen bool           // true once a real Push happened this session
 	pushSeq    int64          // monotonic push counter (never resets; survives ring eviction)
-	// persist, when set, is invoked with a fresh oldest..newest snapshot after
-	// every Push so DrumView can write through to userprefs. nil in unit tests.
+	// nil in unit tests.
 	persist func([]notification)
 }
 
@@ -34,8 +28,6 @@ func newNotificationStore(capacity int) *notificationStore {
 	return &notificationStore{cap: capacity}
 }
 
-// Push appends a live notification, trims to cap, marks the session as having
-// produced an entry, and writes through the persist sink when present.
 func (s *notificationStore) Push(n notification) {
 	s.entries = append(s.entries, n)
 	if len(s.entries) > s.cap {
@@ -48,15 +40,11 @@ func (s *notificationStore) Push(n notification) {
 	}
 }
 
-// PushSeq returns the monotonic count of Pushes (never resets, unaffected by
-// ring eviction) — a robust change signal for consumers that memoize.
+// Monotonic and eviction-proof: a robust change signal for memoizing consumers.
 func (s *notificationStore) PushSeq() int64 { return s.pushSeq }
 
-// Clear empties the ring and writes an EMPTY snapshot through the persist sink,
-// so a cleared history stays cleared across refreshes (the "Clear history"
-// action). pushSeq is advanced so memoizing consumers (the unread badge)
-// invalidate. sessionGen is left as-is: clearing is not a new notification, and
-// Latest() is nil now, so the live band hides regardless.
+// Writes an EMPTY snapshot so a cleared history stays cleared across refreshes, and advances pushSeq so the badge
+// invalidates. sessionGen stays: clearing is not a notification.
 func (s *notificationStore) Clear() {
 	s.entries = s.entries[:0]
 	s.pushSeq++
@@ -86,12 +74,10 @@ func (s *notificationStore) Latest() *notification {
 // Len reports the number of entries currently held.
 func (s *notificationStore) Len() int { return len(s.entries) }
 
-// HasSessionEntry reports whether a real Push happened this session (vs only
-// seeded history). The live band renders only when this is true.
+// The live band renders only after a real Push.
 func (s *notificationStore) HasSessionEntry() bool { return s.sessionGen }
 
-// seed replaces the ring with persisted entries (oldest..newest), trimming to
-// cap. It does NOT mark a session entry.
+// Not a session entry.
 func (s *notificationStore) seed(entries []notification) {
 	if len(entries) > s.cap {
 		entries = entries[len(entries)-s.cap:]

@@ -199,9 +199,7 @@ try {
   console.log("Scenario 6: Silent audio element paused on stop");
   {
     const page = await setupPage(browser);
-    // Trigger unlockAudio() to create the silent audio element.
-    // Must happen before startPlay() creates the AudioContext, otherwise
-    // unlockAudio's fast path (ctx.state === 'running') skips element creation.
+    // Before startPlay() creates the context, or unlockAudio's fast path skips creating the silent element.
     await page.evaluate(() => document.dispatchEvent(new Event('mousedown', { bubbles: true })));
     await page.waitForTimeout(100);
     await page.evaluate(() => startPlay());

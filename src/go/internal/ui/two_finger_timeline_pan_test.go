@@ -15,9 +15,6 @@ func growRowsForScroll(g *Game) {
 	g.Update()
 }
 
-// twoFingerSwipe drives a two-finger pan through the real Update loop: two
-// fingers land centered at (cx,cy), then translate by (perDX,perDY) each frame
-// for the given number of frames, then both lift.
 func twoFingerSwipe(g *Game, mock *mockTouchState, cx, cy, perDX, perDY, frames int) {
 	x1, x2 := cx-50, cx+50
 	y1, y2 := cy, cy
@@ -36,21 +33,17 @@ func twoFingerSwipe(g *Game, mock *mockTouchState, cx, cy, perDX, perDY, frames 
 	mock.removeTouch(1)
 	mock.removeTouch(2)
 	advanceFrames(g, 3)
-	// Clear the multi-touch cooldown so this gesture never leaks into a later
-	// test's RecentMultiTouch() gate (e.g. the timeline scrub adapter).
+	// So the gesture never leaks into a later test's RecentMultiTouch() gate.
 	globalTouchState.Reset()
 }
 
-// cellGridCenter returns a point near the top of the drum cell grid (steps
-// region), where a single-finger drag already moves the timeline.
+// Where a single-finger drag already moves the timeline.
 func cellGridCenter(g *Game) (int, int) {
 	steps := g.drum.timelineZone.StepsRect()
 	return steps.Min.X + steps.Dx()/2, steps.Min.Y + 20
 }
 
-// TestTwoFingerHorizontalPanMovesTimeline verifies the NEW behavior: a
-// two-finger left/right swipe over the drum cell grid moves the timeline view
-// (dv.Offset), exactly like the single-finger horizontal grid drag.
+// Like the single-finger horizontal grid drag.
 func TestTwoFingerHorizontalPanMovesTimeline(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -84,10 +77,7 @@ func TestTwoFingerHorizontalPanMovesTimeline(t *testing.T) {
 	}
 }
 
-// TestTwoFingerHorizontalPanDoesNotScrollRows is the explicit bug-fix guard:
-// the reported bug was that a left/right two-finger motion ALSO scrolled the
-// instrument rows up/down. With direction lock, a horizontal swipe must leave
-// the row offset untouched even with a scrollable rack.
+// Direction lock: a horizontal two-finger swipe leaves the rows still, even with a scrollable rack.
 func TestTwoFingerHorizontalPanDoesNotScrollRows(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -115,9 +105,7 @@ func TestTwoFingerHorizontalPanDoesNotScrollRows(t *testing.T) {
 	}
 }
 
-// TestTwoFingerVerticalPanScrollsRows verifies the vertical counterpart mirrors
-// the single-finger grid drag: a two-finger up/down swipe scrolls the rows and
-// leaves the timeline offset untouched.
+// Mirrors the single-finger vertical drag.
 func TestTwoFingerVerticalPanScrollsRows(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -149,9 +137,7 @@ func TestTwoFingerVerticalPanScrollsRows(t *testing.T) {
 	}
 }
 
-// TestTwoFingerPanOverGridPaneStillPansCamera is a regression guard: over the
-// node/graph pane (NOT the cell grid) a two-finger pan must still pan the
-// camera as before.
+// Over the graph pane, not the cell grid, two fingers still pan the camera.
 func TestTwoFingerPanOverGridPaneStillPansCamera(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -175,8 +161,6 @@ func TestTwoFingerPanOverGridPaneStillPansCamera(t *testing.T) {
 	}
 }
 
-// TestTwoFingerHorizontalPanMovesTimeline_Mobile verifies the same timeline
-// behavior on the mobile layout.
 func TestTwoFingerHorizontalPanMovesTimeline_Mobile(t *testing.T) {
 	setupMobileTest(t, true)
 	globalTouchState.Reset()

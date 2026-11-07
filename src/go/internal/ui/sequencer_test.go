@@ -7,9 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// validate the scheduler-driven sequencer triggers audio on engine beats,
-// independent of UI rendering or Update calls. We simulate beats via the
-// internal helper to avoid relying on wall-clock scheduler in tests.
+// Beats are driven through the internal helper, not the wall-clock scheduler.
 func TestSequencerSchedulesOnBeatsIndependently(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

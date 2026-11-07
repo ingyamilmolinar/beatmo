@@ -6,9 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// TestFreshInitialRowVolumeIs50 verifies a freshly constructed DrumView's
-// first (seeded) row starts at 50% volume, giving users headroom to grow
-// (see loudness-normalization plan, Task 4).
+// Headroom for the user to grow.
 func TestFreshInitialRowVolumeIs50(t *testing.T) {
 	dv := newTestDrumView(t, 1280, 720)
 	if got := dv.Rows[0].Volume; got != 0.5 {
@@ -29,9 +27,7 @@ func TestAddedRowVolumeIs50(t *testing.T) {
 	}
 }
 
-// TestFreshMasterVolumeIs50 verifies a fresh master channel (as produced by
-// channelManager.reset(), exercised here via the exported audio.Reset())
-// starts at 50% volume.
+// Through audio.Reset(), which resets the channel manager.
 func TestFreshMasterVolumeIs50(t *testing.T) {
 	audio.Reset() // rebuilds channels via channelManager.reset()
 	if got := audio.MainVolume(); got != 0.5 {

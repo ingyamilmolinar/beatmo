@@ -2,8 +2,7 @@ package fingerprint
 
 import "github.com/ingyamilmolinar/beatmo/internal/wave"
 
-// BandEnergies sums magnitude² within each band's [LoHz,HiHz). One value per
-// band, in band order. Bins outside all bands are ignored.
+// Bins outside all bands are ignored.
 func BandEnergies(mag []float64, binHz float64, bands []BandEdge) []float64 {
 	out := make([]float64, len(bands))
 	if binHz <= 0 {
@@ -27,9 +26,7 @@ func BandEnergies(mag []float64, binHz float64, bands []BandEdge) []float64 {
 	return out
 }
 
-// TonalPercussiveRatio estimates tonality as the fraction of spectral energy
-// concentrated in local peaks. A pure tone puts nearly all energy in one peak
-// (→~1); broadband noise spreads energy across bins (→ low). Deterministic.
+// A pure tone puts nearly all energy in one peak (→ ~1), noise spreads it (low).
 func TonalPercussiveRatio(w wave.Wave, cfg AnalysisConfig) float64 {
 	mag, _ := wave.MagnitudeSpectrum(w, cfg.FFTSize, wave.WindowHann)
 	total := 0.0

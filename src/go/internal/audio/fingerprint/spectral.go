@@ -6,10 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// SpectralCentroid is the magnitude-weighted mean frequency (Hz). Exported so
-// the game analyzer can share the exact scalar the matcher optimizes.
-// It sums over bins i>=1 (skipping DC): centroid = Σ(i·binHz·mag[i]) / Σ(mag[i]).
-// Returns 0 for an empty or all-zero magnitude spectrum.
+// Exported so the game analyser shares the exact scalar the matcher optimises. DC skipped; 0 for an empty spectrum.
 func SpectralCentroid(mag []float64, binHz float64) float64 {
 	weightedSum := 0.0
 	totalMag := 0.0
@@ -24,9 +21,7 @@ func SpectralCentroid(mag []float64, binHz float64) float64 {
 	return weightedSum / totalMag
 }
 
-// computeSpectral fills fp's spectral fields from the sustain window of w.
-// Uses fp.F0Hz (already set by the caller) for harmonic tracking.
-// If the sustain window is too short (<4 samples), falls back to the whole wave.
+// fp.F0Hz must already be set; the whole wave when the window is under 4 samples.
 func computeSpectral(w wave.Wave, fp *Fingerprint) {
 	// Sustain window: skip attack, analyze sustained material.
 	seg := sustainWindow(w)
@@ -35,17 +30,12 @@ func computeSpectral(w wave.Wave, fp *Fingerprint) {
 	}
 
 	mag, binHz := wave.MagnitudeSpectrum(seg, 16384, wave.WindowHann)
-	// Store sustain-window magnitude spectrum for Distance comparison.
-	// fftSize=16384 is fixed, so ref and cand always produce equal-length slices.
+	// A fixed 16384 FFT, so ref and cand slices are always equal length.
 	fp.SustainMag = mag
 	half := len(mag)
 	f0 := fp.F0Hz
 
-	// ---- Partials: amplitude near k*F0 (k=1..16) -------------------------
-	// tolHz is the per-unit-harmonic search half-width: scaled with harmonic
-	// number so that vibrato-smeared upper partials are not missed.
-	// At harmonic h = k+1, the search window is max(1.5, h*tolHz) Hz,
-	// which gives roughly ±12 cents at every harmonic for F0~600 Hz.
+	// Scaled with harmonic number so vibrato-smeared upper partials are not missed.
 	const partialTolFrac = 0.013 // fraction of F0 per harmonic
 	if f0 > 0 {
 		for k := 0; k < 16; k++ {
@@ -100,9 +90,7 @@ func computeSpectral(w wave.Wave, fp *Fingerprint) {
 		}
 	}
 
-	// ---- Even/Odd partial ratio -------------------------------------------
-	// partials[0]=F0 (1st=odd), partials[1]=2nd partial (even), ...
-	// partial number = k+1; even if (k+1)%2==0 i.e. k is odd.
+	// partials[k] is partial k+1, so even partials sit at odd k.
 	if f0 > 0 {
 		var evenSum, oddSum float64
 		for k := 1; k < 16; k++ {
@@ -152,10 +140,7 @@ func computeSpectral(w wave.Wave, fp *Fingerprint) {
 			if hi >= half {
 				hi = half - 1
 			}
-			// bestBin defaults to the ideal bin; the loop (bounded by the already
-			// clamped lo/hi) overwrites it with the actual peak. The threshold guard
-			// below blocks use of measuredHz when no real peak is found, so the
-			// default is never read for an empty band (matches the reference).
+			// The threshold below blocks measuredHz when no real peak is found, so the default is never read for an empty band.
 			bestBin := targetBin
 			bestAmp := 0.0
 			for i := lo; i <= hi; i++ {

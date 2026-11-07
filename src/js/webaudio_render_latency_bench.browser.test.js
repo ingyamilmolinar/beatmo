@@ -1,52 +1,6 @@
-/**
- * Render-latency bench: raw WAV vs synth vs synth-under-param-storm (WASM).
- *
- * WHAT THIS BENCH MEASURES (and why it exists)
- * --------------------------------------------
- * webaudio_synth_param_stress.browser.test.js proved the heavy C voice renders
- * run OFF the main thread — but off-thread is not the same as ON TIME. When a
- * trigger misses the render cache, processAudioEvent DROPS the event's
- * musically-intended `when`, awaits the async worker render (~30–40 ms for a
- * 2 s physical-model voice, serialized on ONE worker), and replays the note at
- * a fresh currentTime. The note starts LATE by (worker queue + render +
- * re-flush) — and the existing schedule metrics can't see it, because they
- * observe the REWRITTEN `when` (healthy lead) rather than the intended one.
- * During a live param edit every push evicts the whole per-pitch cache, so
- * EVERY note pays that hidden lateness → the audible "laggy / not real time".
- *
- * This bench captures the hidden number via the renderLatencyMetrics counters
- * in audio.js (getRenderLatencyMetrics):
- *   - deferMs avg/min/max (signed), deferAbsMsP90 — actual start minus
- *     intended `when` for deferred plays. Positive = late (render+queue ate
- *     more than the lead); negative = early (the replay drops the intended
- *     lead and fires at now+minLead). Both are off-grid jitter.
- *   - renderMs avg/p90/max    — per-voice render cost as experienced by the
- *     trigger path (worker round-trip incl. queue wait + main-thread post)
- *   - workerQueuePeak         — render-request pileup on the single worker
- * plus the existing schedule metrics and event-loop gap sampling.
- *
- * SCENARIOS (all through the identical enqueue→processAudioEvent path, with
- * the browser sequencer's real scheduling lead):
- *   raw-wav       — registerSamplePCM buffer (pure sample playback baseline)
- *   drum-storm    — snare + 60 Hz param spam (single cache key, short render)
- *   synth-warm    — cello (2 s bowed-string physical model), pitches
- *                   pre-warmed, no edits → steady-state cache hits
- *   synth-storm   — cello + 60 Hz osc_type spam across 8 pitches (the
- *                   melodic per-pitch re-render storm)
- *   sampler-storm — cello + 60 Hz updateSampleEdit spam (same evict path)
- *
- * OUTPUT: a comparison table on stdout + bench-results/render_latency.json
- * (schema: { scenarios: { name: metrics } }) so regressions are trackable.
- *
- * GATES (structural, machine-independent; latency numbers are recorded, not
- * gated, unless RENDER_BENCH_STRICT=1):
- *   - raw-wav must have zero renders and zero deferred plays
- *   - synth-warm must have zero deferred plays in the measure window
- *   - no page errors
- *   - RENDER_BENCH_STRICT=1 additionally gates deferAbsMsP90 for the storm
- *     scenarios at RENDER_BENCH_DEFER_P90_MAX_MS (default 15) — the
- *     real-time acceptance bar for the param-storm fix.
- */
+/** Off-thread is not on time: a cache miss defers the note past an async render, and the schedule metrics cannot see it.
+ * Captures that hidden lateness (deferMs, renderMs, workerQueuePeak) for raw WAV, drum and synth param storms, and
+ * Sampler edits → bench-results/render_latency.json. Gated structurally; RENDER_BENCH_STRICT=1 also gates deferAbsMsP90. */
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";
@@ -135,9 +89,7 @@ if (ctxState !== "running") {
 }
 console.log(`[TEST] AudioContext running; note=${NOTE_INTERVAL_MS}ms spam=${SPAM_INTERVAL_MS}ms lead=${SCHED_LEAD_SEC * 1000}ms dur=${DURATION_MS}ms strict=${STRICT}`);
 
-// Install the raw-WAV baseline instrument: 0.5 s decaying sine burst PCM,
-// registered exactly like a Sampler-tab save (renderCache entry, no RENDER
-// mapping → playback never renders, never defers).
+// A decaying sine registered like a Sampler save: no RENDER mapping, so it never renders or defers.
 await page.evaluate(() => {
   const sr = 48000;
   const frames = Math.floor(sr * 0.5);
@@ -149,8 +101,7 @@ await page.evaluate(() => {
   window.registerSamplePCM("bench-wav", new Uint8Array(data.buffer), sr);
 });
 
-// runScenario plays notes at a fixed cadence with the sequencer's real lead,
-// optionally spamming a param, and snapshots all latency metrics.
+// The sequencer's real lead, optionally spamming a param.
 async function runScenario(cfg) {
   return await page.evaluate(async ({ cfg, NOTE_INTERVAL_MS, DURATION_MS, SPAM_INTERVAL_MS, SCHED_LEAD_SEC, PITCHES }) => {
     const ctx = window.__audioCtx;
@@ -280,14 +231,10 @@ const SCENARIOS = [
   { name: "drum-storm", id: "snare", pitched: false, spam: "synth", prewarm: true },
   { name: "synth-warm", id: "cello", pitched: true, spam: null, prewarm: true },
   { name: "synth-storm", id: "cello", pitched: true, spam: "synth", prewarm: true },
-  // Dense cadence ≈ chords / several melodic rows on the same grid: render
-  // requests arrive faster than one render completes, so the single worker's
-  // queue builds and deferMs drifts late instead of early.
+  // Requests outpace one render, so the queue builds and deferMs drifts late.
   { name: "synth-storm-dense", id: "cello", pitched: true, spam: "synth", prewarm: true, noteMs: 40 },
   { name: "sampler-storm", id: "cello", pitched: true, spam: "sampler", prewarm: true },
-  // Mobile-class device simulation: 4× CPU throttle pushes the per-voice
-  // render past the scheduling lead, so deferred notes land LATE (the
-  // user-reported real-world lag) instead of early.
+  // 4× throttle pushes a render past the lead, so deferred notes land LATE, the real-world lag.
   { name: "synth-storm-4x", id: "cello", pitched: true, spam: "synth", prewarm: true, cpuThrottle: 4 },
   { name: "stage-toggle-storm", id: "cello", pitched: true, spam: "toggle", prewarm: true, toggleParam: "filter_enabled" },
   { name: "stage-toggle-multi", id: "cello", pitched: true, spam: "toggle-multi", prewarm: true },
@@ -359,8 +306,7 @@ if (pageErrors.length > 0) {
   failures.push(`page emitted ${pageErrors.length} error(s): ${pageErrors.join(" | ")}`);
 }
 
-// New synth-storm scenarios must actually spam params and keep renders
-// off-thread (the project_synth_param_rerender_storm invariant).
+// They must actually spam params and keep renders off-thread.
 for (const name of ["stage-toggle-storm", "stage-toggle-multi", "enabled-ctrl-sweep", "enabled-ctrl-cyclic", "combined-toggle+ctrl"]) {
   const r = results[name];
   if (!r) { failures.push(`${name}: scenario missing from results`); continue; }

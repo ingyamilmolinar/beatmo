@@ -14,13 +14,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// changeDetail is a concrete "param: old → new" description derived by diffing
-// the before/after undo snapshots, so an undo/redo notification can say WHICH
-// parameter changed and from/to what value (instead of a generic "edit synth").
-// param is either a literal label (e.g. "BPM", "Cutoff") or "@<i18n key>" which
-// display() localizes. old/new are locale-neutral formatted strings (universal
-// units: %, st, dB, Hz, x) produced by the shared paramFacet formatters, so the
-// notification reads exactly like the control's on-screen readout.
+// Diffed from the before/after snapshots, so a notification names WHICH parameter changed, formatted by the
+// shared facets to read exactly like the control.
 type changeDetail struct {
 	param string
 	old   string
@@ -33,8 +28,7 @@ func keyDurationLabel() i18n.Key { return i18n.KeyNodeSecDuration }
 
 func volPctStr(v float64) string { return strconv.Itoa(int(math.Round(v*100))) + "%" }
 
-// orDefaultOne maps a value the export omits at its 1.0 default (volume,
-// duration) — which unmarshals to 0.0 when absent — back to 1.0.
+// The export omits volume and duration at 1.0, which then unmarshal as 0.
 func orDefaultOne(v float64) float64 {
 	if v == 0 {
 		return 1
@@ -49,10 +43,7 @@ func b2f(b bool) float64 {
 	return 0
 }
 
-// describeUndoChange diffs two export snapshots and returns the single scalar
-// parameter that changed, formatted via the unified paramFacet registry. ok=false
-// for structural changes (node/instrument added or removed) or when nothing
-// scalar differs — the caller then falls back to the generic action label.
+// !ok for structural changes or no scalar difference; the caller uses the generic label.
 func describeUndoChange(before, after []byte) (changeDetail, bool) {
 	var b, a projectFile
 	if json.Unmarshal(before, &b) != nil || json.Unmarshal(after, &a) != nil {
@@ -67,8 +58,7 @@ func describeUndoChange(before, after []byte) (changeDetail, bool) {
 	if b.Subdiv != a.Subdiv {
 		return changeDetail{"Subdivision", strconv.Itoa(b.Subdiv), strconv.Itoa(a.Subdiv)}, true
 	}
-	// MasterVolume is *float64 (nil = legacy absent field = the historical
-	// 1.0 default) — compare effective values, not pointer identities.
+	// nil means absent, i.e. 1.0: compare values, not pointers.
 	bmv, amv := 1.0, 1.0
 	if b.MasterVolume != nil {
 		bmv = *b.MasterVolume
@@ -149,8 +139,7 @@ func diffInstrument(b, a exportInstrument, bDoc, aDoc instrument.Doc) (changeDet
 	if b.Volume != a.Volume {
 		return keyFacet(keyVolumeLabel(), volPctStr).detail(b.Volume, a.Volume), true
 	}
-	// The instrument documents, compared through their flat field view so the
-	// notification names the knob ("Cutoff: 800 Hz → 1.2 kHz").
+	// Through the flat field view, so the notification names the knob.
 	reg := audio.BuiltinModuleRegistry()
 	if d, ok := diffFloatMap(instrument.OwnedFields(bDoc, reg), instrument.OwnedFields(aDoc, reg), func(k string) (paramFacet, bool) {
 		return synthParamFacet(k), true
@@ -169,11 +158,8 @@ func diffInstrument(b, a exportInstrument, bDoc, aDoc instrument.Doc) (changeDet
 	return changeDetail{}, false
 }
 
-// diffSampleEdit diffs two sample_edit maps after filling each with the sample
-// IDENTITY (end_frac defaults to 1, everything else 0). Without this, a FIRST
-// edit — where one side is absent — would materialise both end_frac=1 AND the
-// changed knob, and the first-differing-key scan would mislabel a gain tweak as
-// an "End" change. Identity-filling means only the genuinely-changed knob differs.
+// Both sides are identity-filled first (end_frac 1, the rest 0): a FIRST edit would otherwise show end_frac
+// changing too and mislabel a gain tweak as "End".
 func diffSampleEdit(b, a map[string]float64) (changeDetail, bool) {
 	if len(b) == 0 && len(a) == 0 {
 		return changeDetail{}, false
@@ -192,9 +178,7 @@ func sampleEditIdentityFilled(m map[string]float64) map[string]float64 {
 	return out
 }
 
-// diffFloatMap returns the first key (in sorted order, for determinism) whose
-// value differs between two param maps, formatted through its facet. A nil/zero
-// side reads as 0 so a newly-set or cleared key still produces a from → to.
+// Sorted keys for determinism; a missing side reads as 0 so set/cleared keys still show from → to.
 func diffFloatMap(b, a map[string]float64, facet func(string) (paramFacet, bool)) (changeDetail, bool) {
 	if len(b) == 0 && len(a) == 0 {
 		return changeDetail{}, false
@@ -227,9 +211,7 @@ func diffFloatMap(b, a map[string]float64, facet func(string) (paramFacet, bool)
 	return changeDetail{}, false
 }
 
-// diffEQ reports the first differing EQ field (band gain, HPF/LPF cutoff or
-// enable, band mute). prefix disambiguates a per-instrument EQ ("Kick EQ …")
-// from the master EQ ("EQ …").
+// prefix separates a per-instrument EQ from the master EQ.
 func diffEQ(b, a *exportEQ, prefix string) (changeDetail, bool) {
 	if b == nil && a == nil {
 		return changeDetail{}, false
@@ -303,8 +285,7 @@ func mutedAt(s []bool, k int) bool {
 	return false
 }
 
-// diffEffects reports the first differing insert-effect param or enable toggle.
-// Effects are matched by chain index; a different chain length is structural.
+// Matched by chain index; a different chain length is structural.
 func diffEffects(b, a []audio.EffectSlot) (changeDetail, bool) {
 	if len(b) != len(a) {
 		return changeDetail{}, false
@@ -331,8 +312,7 @@ func strOrNone(s string) string {
 	return s
 }
 
-// diffTheme reports the first category whose swatch changed between two
-// circuit theme blocks ("accent: orchid-300"), "(default)" when cleared.
+// "(default)" when cleared.
 func diffTheme(b, a *theme.Doc) (changeDetail, bool) {
 	get := func(d *theme.Doc, k string) string {
 		if d == nil {

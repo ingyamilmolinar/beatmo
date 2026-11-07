@@ -12,19 +12,15 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Spec 2026-10-31 §1.2: a channel no row plays stops running only once nothing
-// in it can still sound — and never cuts a tail.
+// And never cuts a tail.
 
 func residencyReset(t *testing.T, held ...instrument.ID) {
 	t.Helper()
-	// An earlier test may have started the live mixer (audio.Play); it runs
-	// the same channels from the device callback. Pause it so only this
-	// test's mixer touches them.
+	// The live mixer runs the same channels from the device callback; pause it so only this test's mixer touches them.
 	if mix != nil && mix.player != nil {
 		mix.player.Pause()
 		t.Cleanup(mix.player.Play)
-		// Pause stops new reads; one in flight still finishes (≤ the player's
-		// 10 ms buffer). Wait until the live mixer's clock stands still.
+		// A read in flight still finishes; wait until the live clock stands still.
 		for last := -1; ; {
 			mix.mu.Lock()
 			pos := mix.pos
@@ -41,8 +37,7 @@ func residencyReset(t *testing.T, held ...instrument.ID) {
 	t.Cleanup(ResetHeldInstruments)
 }
 
-// renderResidency renders notes through a mixer that applies residency (the
-// live mixer's behaviour), returning the master and the mixer.
+// Applies residency, as the live mixer does.
 func renderResidency(notes []StageNote, total int) ([]float64, *mixer) {
 	ResetDSPState()
 	m := newTestMixer()
@@ -113,8 +108,7 @@ func TestRebuiltChannelEqualsFresh(t *testing.T) {
 	total := second + 3*sr
 	got, _ := renderResidency([]StageNote{{Inst: id, At: 100, Vol: 1, Dur: 1}, {Inst: id, At: second, Vol: 1, Dur: 1}}, total)
 	fresh, _ := RenderStagesOffline([]StageNote{{Inst: id, At: second, Vol: 1, Dur: 1}}, nil, total)
-	// Up to where its tail falls below the threshold (it is released again
-	// after that, as the first time).
+	// Released again once its tail drops below the threshold.
 	for i := second; i <= lastAbove(fresh, releaseQuietAmp); i++ {
 		if got[i] != fresh[i] {
 			t.Fatalf("sample %d after re-acquire differs from a fresh channel (%g vs %g)", i, got[i], fresh[i])
@@ -133,9 +127,7 @@ func TestChainMemoryCoversTheLongestEffect(t *testing.T) {
 	}
 }
 
-// TestResetClosesTheLiveMixer: Reset drops the live mixer; its device player
-// must stop with it, or an orphaned mixer keeps running every channel from the
-// device callback behind whatever comes next.
+// An orphaned mixer would keep running every channel from the device callback behind whatever comes next.
 func TestResetClosesTheLiveMixer(t *testing.T) {
 	Play(roster.Snare)
 	old := mix

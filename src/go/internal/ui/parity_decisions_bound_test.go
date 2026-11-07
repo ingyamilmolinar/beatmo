@@ -9,14 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// TestParityDecisionsBounded asserts that g.paritySeqDecisions does not
-// grow without bound during sustained playback. The cap mirrors the
-// existing parityAudioMax = 1024 bound in game_parity_state.go: per-row
-// scheduler decisions should be subject to the same retention discipline.
-//
-// Currently fails: paritySeqDecisions has no hard cap and is the primary
-// suspect for the production OOM seen at ~14s of WASM playback. Flips
-// green once a pruning policy lands.
+// Per-row scheduler decisions keep the same retention bound as the parity audio log.
 func TestParityDecisionsBounded(t *testing.T) {
 	withDefaultAudio(t)
 	withDefaultStart(t, false)

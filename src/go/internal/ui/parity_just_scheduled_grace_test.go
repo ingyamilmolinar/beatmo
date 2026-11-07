@@ -6,12 +6,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Fix D: the just-scheduled-beat grace (scheduled && !slate && idx ==
-// seqNextIdxs[row]-1) is a one-frame pipeline-latency artifact — the sequencer
-// scheduled idx and the DrumView slate will reflect it on the very next
-// refresh. The grace must hold in EVERY mode, including the fatal/panic mode.
-// Previously `fatalNow ||` short-circuited the grace exactly in the mode that
-// panics, turning a benign one-frame lag into a crash.
+// The just-scheduled beat (idx == seqNextIdxs-1) is a one-frame pipeline lag the next refresh shows; its grace
+// holds in every mode, panic mode included.
 func TestParityJustScheduledBeatGracedUnderFatal(t *testing.T) {
 	assertDefaultParityState(t)
 	prevFatal := parityFatalEnabled.Load()
@@ -35,8 +31,6 @@ func TestParityJustScheduledBeatGracedUnderFatal(t *testing.T) {
 	g.drum.Offset = 0
 	g.refreshDrumRow()
 
-	// Slate has NOT yet rendered the just-scheduled beat at idx=4 (still false),
-	// while the scheduler decided it visible. This is the one-frame lag.
 	g.drum.Rows[0].Steps = []bool{true, false, true, false, false, false, false, false}
 
 	// idx=4 is the just-scheduled beat: seqNextIdxs[0]-1 == 4.

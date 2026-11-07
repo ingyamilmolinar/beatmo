@@ -22,9 +22,7 @@ func computeStageMetrics(samples []float64, sampleRate, waveformBins, fftTopN in
 	}
 }
 
-// downsampleMinMax divides samples into bins equal buckets, returning
-// the [min, max] pair for each bucket. This is the standard waveform
-// overview technique used in DAW waveform displays.
+// The [min, max] per bucket, as DAW waveform overviews draw it.
 func downsampleMinMax(samples []float64, bins int) [][2]float64 {
 	n := len(samples)
 	if n == 0 || bins <= 0 {

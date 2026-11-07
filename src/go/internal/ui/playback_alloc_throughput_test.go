@@ -12,47 +12,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// TestPlaybackAllocThroughput is the regression test for the fast WASM OOM
-// reported on add-core-node-types: ~2.1 GB used after ~13 s of play.
-//
-// The OOM root cause was per-frame `screen.SubImage(...)` allocations in
-// (*DrumViewTree).Draw and (*Game).drawGridPane — each call returned a
-// fresh *ebiten.Image wrapper that ebiten internally treated as a new GPU
-// resource. At 60 FPS × ~10 zones, this generated ~600 image-wrapper
-// allocations per second, totaling ~5.7 MB/frame and OOMing WASM in seconds.
-//
-// Fix: cache the SubImage wrapper per zone (drumview_tree.go) and per grid
-// pane (game_struct.go + game_draw_grid_pane.go). The wrapper is reused
-// across frames when the parent screen pointer and clip rectangle are
-// unchanged. Reduced throughput by ~498× (5876 KB/frame → 11.8 KB/frame).
-//
-// If this test fails in the future, look for new per-frame *ebiten.Image
-// allocations or other sustained Go-heap allocators in the Update/Draw path.
-//
-// This test deliberately differs from the existing soak harness in
-// soak_heap_bound_test.go in two critical ways:
-//
-//  1. It calls g.Update() AND g.Draw(screen) every frame. The existing soak
-//     calls Draw only every 30 frames (sc.drawEvery default), which under-
-//     samples Draw-path allocators by 30×.
-//  2. It does NOT force runtime.GC() between samples. The existing soak
-//     samples post-GC, so it measures *retained* leaks. WASM's single-
-//     threaded GC cannot keep up with the production allocation rate, so the
-//     OOM is driven by *throughput* (TotalAlloc/frame) rather than retention.
-//     Forcing GC hides the throughput problem.
-//
-// The bound is per-frame TotalAlloc rate: at 60 FPS, anything above ~80 KB/
-// frame projects to >10× WASM linear memory in 30 s of play. The user's OOM
-// hit ~2.1 GB in 13 s — that's ~2.7 MB/frame, ~33× the ceiling here. So the
-// bound is generous; a real leak overshoots by an order of magnitude.
-//
-// We also bound the per-frame *image* allocation count (via the
-// image_metrics tracker). Steady-state playback should allocate 0 new
-// *ebiten.Image instances per frame; a tracked image alloc rate >0 means
-// some cache is invalidating per frame and is the most likely OOM culprit.
-//
-// On RED, the test logs which tracked image tag has the highest alloc rate
-// — pointing directly at the leaking allocator.
+// WASM's single-threaded GC cannot keep up with sustained allocation, so throughput, not retention, runs it out
+// of memory: Update AND Draw every frame, with no forced GC. Steady playback allocates no *ebiten.Image; a failure
+// logs which tracked image tag allocates most.
 func TestPlaybackAllocThroughput(t *testing.T) {
 	withDefaultAudio(t)
 	withDefaultStart(t, false)
@@ -62,8 +24,7 @@ func TestPlaybackAllocThroughput(t *testing.T) {
 	g.Layout(1280, 720)
 	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 
-	// Default subdivisions/BPM, default circuit (built by the standard test
-	// helper). User repro is "vanilla load → press play".
+	// Vanilla load, then play.
 	if err := g.SetSubdivisions(8); err != nil {
 		t.Fatalf("set subdiv: %v", err)
 	}
@@ -72,8 +33,7 @@ func TestPlaybackAllocThroughput(t *testing.T) {
 
 	screen := ebiten.NewImage(1280, 720)
 
-	// Warm-up: the first ~120 frames legitimately allocate caches (zone
-	// layouts, sprite atlases). Measurement window starts after warm-up.
+	// The first frames legitimately allocate caches.
 	const warmupFrames = 120
 	const measureFrames = 1500
 
@@ -85,15 +45,12 @@ func TestPlaybackAllocThroughput(t *testing.T) {
 		g.Draw(screen)
 	}
 
-	// Reset image metrics so the measurement window only counts allocations
-	// AFTER warm-up.
 	ResetImageMetrics()
 
 	var pre runtime.MemStats
 	runtime.ReadMemStats(&pre)
 
-	// Drive measureFrames at production rate: Update + Draw every frame.
-	// No GC forcing — we want raw allocation throughput.
+	// No GC forcing: raw allocation throughput.
 	for i := 0; i < measureFrames; i++ {
 		_ = g.Update()
 		g.Draw(screen)
@@ -107,13 +64,10 @@ func TestPlaybackAllocThroughput(t *testing.T) {
 	bytesPerFrame := float64(totalAllocDelta) / float64(measureFrames)
 	imagesPerFrame := float64(imageAllocsDelta) / float64(measureFrames)
 
-	// Per-frame TotalAlloc bound. 80 KB/frame = ~5 MB/s @ 60 FPS, well within
-	// what WASM's GC can sustain. The user's OOM rate was ~2.7 MB/frame.
+	// About 5 MB/s at 60 FPS, which WASM's GC sustains.
 	const bytesPerFrameBound = 80 * 1024
 
-	// Per-frame image-alloc bound. Steady-state = 0 new images. We allow a
-	// hard cap of 0.05 (= 1 image per 20 frames) for legitimate occasional
-	// resize handling; the leak under investigation is several per frame.
+	// Steady state allocates no image; the slack is for an occasional resize.
 	const imagesPerFrameBound = 0.05
 
 	failed := false
@@ -142,8 +96,7 @@ func TestPlaybackAllocThroughput(t *testing.T) {
 		bytesPerFrame*60/(1024*1024))
 }
 
-// dumpAllocBreakdown logs the per-tag image-allocation breakdown so the test
-// failure log directly identifies which cache is rebuilding per frame.
+// Names the cache rebuilding per frame.
 func dumpAllocBreakdown(t *testing.T, totalAlloc uint64, imageAllocs int64, frames int) {
 	t.Helper()
 	t.Logf("=== alloc breakdown for %d frames ===", frames)

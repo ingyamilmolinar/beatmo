@@ -46,8 +46,7 @@ func TestTapeWarmthAttenuatesHighFreq(t *testing.T) {
 		out[i] = tp.ProcessSample(x)
 	}
 
-	// With warmth=1 (LP cutoff around 2000 Hz), energy at 10 kHz should be
-	// lower than energy at 500 Hz.
+	// warmth 1 puts the LP near 2 kHz.
 	mag500 := goertzelMagnitude(out, 500, sr)
 	mag10k := goertzelMagnitude(out, 10000, sr)
 
@@ -109,8 +108,7 @@ func TestTapeFlutterModulatesSignal(t *testing.T) {
 }
 
 func TestTapeDryWhenMixZero(t *testing.T) {
-	// Construct with mix=0 so the smoothParam starts at 0;
-	// assertDryWhenMixZero also sets mix=0, so no ramp occurs.
+	// Created at mix 0, so no ramp occurs.
 	tp := newTape(sr, map[string]float64{
 		"drive": 5, "warmth": 0.5, "wow": 0.5, "flutter": 0.5, "mix": 0,
 	})

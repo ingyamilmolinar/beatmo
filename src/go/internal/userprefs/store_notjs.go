@@ -15,20 +15,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/async"
 )
 
-// fileStore is the desktop / native backend. Reads happen synchronously
-// at process start (small file, blocks for a few ms at most). Writes
-// follow a coalescing latest-write-wins pattern so a flurry of toggles
-// collapses into at most one queued worker job. The pool always has
-// queue depth ≤1 — there is no backpressure path under normal load.
-//
-// The pool is lazy-acquired on the first SaveFavorites (or other section
-// save) call. This keeps the 1-worker budget free until the
-// user actually mutates state, so a session that only loads at startup
-// pays no goroutine cost.
-//
-// All Save* methods funnel through queueWriteLocked which dirties a single
-// flag — the worker always snapshots the entire prefs state under the
-// mutex and writes prefs.json atomically.
+// Reads synchronously at start (a small file). Writes coalesce latest-write-wins: every Save* dirties one flag, and the
+// worker snapshots the whole state under the mutex and writes prefs.json atomically, so a flurry of toggles is at most
+// one queued job. The pool is acquired on the first save, so a load-only session pays no goroutine.
 type fileStore struct {
 	path     string
 	poolName string
@@ -36,9 +25,7 @@ type fileStore struct {
 
 	mu        sync.Mutex
 	favorites map[instrument.ID]bool // mirrors disk + most-recent Save
-	// audioPanel mirrors the on-disk Phase-5 audio-panel state.
-	// Zero-value AudioPanelStateDoc when no override is active so
-	// older prefs files don't grow without need.
+	// Zero when no override is active, so older files do not grow.
 	audioPanel AudioPanelStateDoc
 	// sampleEdits mirrors the on-disk non-destructive sample-edit
 	// descriptors (instrument id → field → value).
@@ -63,8 +50,7 @@ type fileStore struct {
 	pool     *async.Pool
 }
 
-// poolName returns the effective async-pool name. Lives here because
-// only the desktop backend uses a pool.
+// Only the desktop backend uses a pool.
 func optsPoolName(o Options) string {
 	if o.PoolName != "" {
 		return o.PoolName
@@ -73,10 +59,7 @@ func optsPoolName(o Options) string {
 }
 
 func newBackingStore(opts Options) Store {
-	// Options.Path semantics:
-	//   - empty: production default — <UserConfigDir>/beatmo/prefs.json.
-	//   - ends in .json: caller picks the exact write target.
-	//   - bare directory: write <dir>/prefs.json.
+	// Empty → <UserConfigDir>/beatmo/prefs.json, *.json → that exact target, a bare dir → <dir>/prefs.json.
 	var path string
 	switch {
 	case opts.Path == "":
@@ -116,18 +99,15 @@ func (s *fileStore) ensurePool() (*async.Pool, error) {
 	return s.pool, s.poolErr
 }
 
-// ensureLoadedLocked loads disk state into the cache exactly once. Caller
-// must hold s.mu. Read errors (other than missing-file) leave the cache
-// empty + return the error to the caller.
+// Read errors other than a missing file leave the cache empty and return the error. Caller holds s.mu.
 func (s *fileStore) ensureLoadedLocked() error {
 	if s.loaded {
 		return nil
 	}
 	data, err := os.ReadFile(s.path)
 	if err == nil {
-		// A rejected schema_version yields empty-but-usable state; the
-		// error is swallowed deliberately (parsePrefs already logged it)
-		// because prefs load at boot and must not fail startup.
+		// A rejected version yields empty state; the error is dropped on purpose (parsePrefs logged it) because prefs load at
+		// boot and must not fail startup.
 		snap, _ := parsePrefs(data, s.logf)
 		s.applySnapshotLocked(snap)
 		return nil
@@ -161,11 +141,8 @@ func (s *fileStore) LoadFavorites() (map[instrument.ID]bool, error) {
 	return cloneFavMap(s.favorites), nil
 }
 
-// SaveFavorites schedules a write to disk. The call returns once the
-// new state is captured; the actual write happens on the userprefs.persist
-// pool. Rapid successive saves coalesce: the worker always snapshots the
-// latest cache state under the mutex, so 100 toggles produce at most one
-// in-flight write + one queued write at any moment.
+// Returns once the state is captured; the write runs on the pool, and since the worker snapshots the latest state, many
+// toggles mean at most one write in flight plus one queued.
 func (s *fileStore) SaveFavorites(favs map[instrument.ID]bool) error {
 	snap := snapshotFavs(favs)
 	s.mu.Lock()
@@ -233,12 +210,8 @@ func (s *fileStore) LoadSampleEdits() (map[instrument.ID]map[string]float64, err
 	return out, nil
 }
 
-// queueWriteLocked is the single write-scheduling chokepoint. Caller must
-// hold s.mu; this method releases the lock before submitting the worker
-// (so Submit's bookkeeping doesn't run under our mutex) and returns
-// without waiting for the write to land. If the pool can't be acquired
-// or Submit fails, we fall back to a synchronous atomic write so the user's
-// state is at least durable for this session.
+// The single write chokepoint. Releases s.mu before Submit and never waits; if the pool or Submit fails, a synchronous
+// atomic write keeps the state durable.
 func (s *fileStore) queueWriteLocked() error {
 	pool, err := s.ensurePool()
 	if err != nil {
@@ -401,9 +374,7 @@ func (s *fileStore) snapshotPrefsLocked() prefsSnapshot {
 	}
 }
 
-// drainPending is the single worker job; it loops until no further write
-// is pending. Each iteration snapshots the latest state, so a write that
-// races with new Save* calls always reflects the freshest state on exit.
+// Loops until nothing is pending, snapshotting each time, so a write racing new saves ends on the freshest state.
 func (s *fileStore) drainPending(_ context.Context) {
 	defer s.flushed.Done()
 	for {
@@ -442,9 +413,7 @@ func cloneFavMap(in map[instrument.ID]bool) map[instrument.ID]bool {
 	return out
 }
 
-// writeAtomic serializes the full snapshot and replaces prefs.json via
-// temp + rename so a crash mid-write leaves either the old or new state,
-// never a truncated half.
+// Temp + rename: a crash mid-write leaves the old or the new state, never a truncated half.
 func (s *fileStore) writeAtomic(snap prefsSnapshot) error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
 		return err

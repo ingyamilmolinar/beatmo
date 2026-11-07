@@ -49,20 +49,8 @@ func TestVoiceCachePutAndGet(t *testing.T) {
 	}
 }
 
-// TestVoiceCacheGetSharesBackingArray pins the post-OOM-fix contract:
-// Get returns the cached backing array directly (no clone). cVoice
-// playback never writes to v.buf (drums_c.go: Sample/SampleBlock only
-// READ and advance v.i), so concurrent voices can share the slice
-// safely. Removing the ~80 KB clone-on-get was a key step in cutting the
-// PlayParams cumulative allocation rate observed in the synth-tab
-// profile.
-//
-// CONTRACT REGRESSION GUARD: if a future change reintroduces a clone in
-// Get, the test fails because &got[0] and &refetched[0] would differ.
-// Equally, if a caller mutates the returned slice (violating the contract
-// the new API documents), every concurrent voice would observe the
-// mutation — this test would still pass, but the synth-tab soak test
-// would surface the corruption as audio glitches.
+// No clone: playback only READS the buffer, so voices can share it. A reintroduced clone fails here (the addresses
+// differ).
 func TestVoiceCacheGetSharesBackingArray(t *testing.T) {
 	vc := newTestCache()
 	key := testKey(roster.Kick)
@@ -86,12 +74,7 @@ func TestVoiceCacheGetSharesBackingArray(t *testing.T) {
 	}
 }
 
-// TestVoiceCachePutSharesBackingArray pins the post-OOM-fix contract:
-// Put stores the caller-provided slice directly (no clone). Callers
-// (tryRecipeVoice and docInstrument → renderDocIntoCache) must not
-// mutate the buffer after calling Put; the cache and any concurrent Get
-// reader share the backing array. Removing the ~80 KB clone-on-put was
-// the second leg of the per-trigger cache allocation reduction.
+// No clone: callers must not mutate the buffer after Put.
 func TestVoiceCachePutSharesBackingArray(t *testing.T) {
 	vc := newTestCache()
 	key := testKey(roster.Hihat)
@@ -112,10 +95,7 @@ func TestVoiceCachePutSharesBackingArray(t *testing.T) {
 	}
 }
 
-// TestVoiceCacheGetPutAllocBudget pins the per-call allocation count for
-// the cache hot path. Pre-fix this was ~2 allocs per Get (the clone +
-// its slice header) and ~2 allocs per Put. After the fix Get is zero-
-// alloc on cache-hit and Put is bounded by map-growth amortized cost.
+// Get is zero-alloc on a hit; Put is bounded by amortized map growth.
 func TestVoiceCacheGetPutAllocBudget(t *testing.T) {
 	vc := newTestCache()
 	key := testKey("budget")
@@ -229,10 +209,7 @@ func TestVoiceCachePutIgnoresExtraVariants(t *testing.T) {
 	}
 }
 
-// TestGlobalVoiceCacheByteBudgetSoak is the OOM guard: warming far more distinct
-// keys than fit under the budget keeps retained bytes <= budget (LRU evicts the
-// rest). Guards against the predictive neighborhood / knob-drag key churn
-// hoarding memory now that live param edits no longer blanket-clear.
+// The OOM guard: predictive and knob-drag key churn cannot hoard memory past the budget.
 func TestGlobalVoiceCacheByteBudgetSoak(t *testing.T) {
 	globalVoiceCache.mu.Lock()
 	prevBudget := globalVoiceCache.budgetBytes
@@ -298,9 +275,7 @@ func TestVoiceCacheMaxEntriesEvictsLRU(t *testing.T) {
 	}
 }
 
-// TestVoiceCacheByteBudgetEvictsLRU verifies the byte ceiling: warming past the
-// budget evicts least-recently-accessed entries, retained bytes stay under
-// budget, and a recently-Get entry survives while a stale one is evicted.
+// A recently-read entry survives while a stale one goes.
 func TestVoiceCacheByteBudgetEvictsLRU(t *testing.T) {
 	restore := nowNS
 	var tick int64

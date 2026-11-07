@@ -22,15 +22,11 @@ type NativeIntent struct {
 	InputMode string // "numeric" | "text"
 	Text      string // native text input initial value
 	MaxLen    int    // native text input max length
-	// InputRect: trigger/input split for NativeTextInput. Zero → the input
-	// appears at the (gated) trigger rect. Non-zero → the trigger rect is what
-	// the user taps, InputRect is where the <input> is placed (rename glue).
+	// Zero places the <input> at the trigger; non-zero separates where the user taps from where the input goes.
 	InputRect image.Rectangle
 }
 
-// NativeRectCandidate is a producer's pre-gating output. Rect is the TRIGGER
-// rect (what the user taps, the thing gated by z-order). Owner is the ownerID
-// TopmostOwnerAt(center) must return for the candidate to survive gating.
+// Survives gating only if TopmostOwnerAt(centre) returns Owner.
 type NativeRectCandidate struct {
 	Owner  string
 	Rect   image.Rectangle
@@ -43,9 +39,7 @@ type NativeRect struct {
 	Intent NativeIntent
 }
 
-// collectNativeRectCandidates returns the native-gesture rects the current UI
-// state wants armed, PRE-gating. Pure function of current state; no JS side
-// effects. Producers are filled in by later tasks.
+// Pre-gating and pure: no JS side effects.
 func (dv *DrumView) collectNativeRectCandidates() []NativeRectCandidate {
 	if dv == nil {
 		return nil
@@ -57,11 +51,8 @@ func (dv *DrumView) collectNativeRectCandidates() []NativeRectCandidate {
 	return out
 }
 
-// syncNativeGestures is the single per-frame native-rect projection: collect
-// candidates, keep only those whose trigger rect resolves (via the composed
-// dispatch precedence) to their own owner, diff against last frame, and sync the
-// delta to the JS registries. Called once from (*DrumView).Update after the
-// RootTree has ticked and dispatched (indexes final).
+// The single per-frame projection: keep each candidate only if its trigger resolves to its own owner, then sync
+// the delta to JS. After the tree has dispatched, so the indexes are final.
 func (dv *DrumView) syncNativeGestures() {
 	if dv == nil || dv.rootTree == nil {
 		return
@@ -95,12 +86,7 @@ func nativeRectsEqual(a, b []NativeRect) bool {
 	return true
 }
 
-// filePickerCandidates returns the Upload/Import file-picker triggers, owner
-// "overflow-menu", ONLY when the overflow menu is open on the File page
-// (overflowPage 0). On the Templates page (or closed) it returns nil, so the
-// tree-owned sync clears the JS registry and no rect can leak under a template
-// row. The close-button crop is kept here (menu-internal; the menu is a single
-// hit area, so it is not derivable from z-order).
+// Only on the File page, so no file-picker rect can leak under a template row.
 func (dv *DrumView) filePickerCandidates() []NativeRectCandidate {
 	if dv == nil || !Profile().IsMobile() || !dv.IsOverflowMenuOpen() || dv.overflowPage != 0 {
 		return nil
@@ -141,9 +127,7 @@ func (dv *DrumView) filePickerCandidates() []NativeRectCandidate {
 	return out
 }
 
-// softKeyboardCandidates returns focusable soft-keyboard rects for DESKTOP
-// browser only (on mobile the native-input channel handles text): every live
-// TextField (textfield.go).
+// Desktop browser only; mobile uses the native-input channel.
 func (dv *DrumView) softKeyboardCandidates() []NativeRectCandidate {
 	if dv == nil || Profile().IsMobile() {
 		return nil
@@ -151,9 +135,7 @@ func (dv *DrumView) softKeyboardCandidates() []NativeRectCandidate {
 	return dv.textFieldSoftKeyboardCandidates()
 }
 
-// nativeInputCandidates returns mobile native <input> triggers: the row
-// context menu's Rename trigger→label glue (a button, not a text box) and every
-// live TextField (textfield.go) — text boxes are never listed here by hand.
+// Text boxes come from the live TextFields, never listed by hand.
 func (dv *DrumView) nativeInputCandidates() []NativeRectCandidate {
 	if dv == nil || !Profile().IsMobile() {
 		return nil

@@ -9,9 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavgen"
 )
 
-// exportActiveInstrument builds a portable bundle for the selected row's
-// instrument and downloads it as a *.beatmo-inst.json file. Runs on the UI
-// goroutine (menu OnSelect), so the synchronous saveJSON is safe.
+// On the UI goroutine, so the synchronous saveJSON is safe.
 func (dv *DrumView) exportActiveInstrument() {
 	b, err := dv.BuildInstrumentBundle(dv.selRow)
 	if err != nil {
@@ -32,10 +30,7 @@ func (dv *DrumView) exportActiveInstrument() {
 	}
 }
 
-// instrumentFileName turns an instrument display name into a safe, timestamped
-// download filename with the portable-instrument extension. The stamp is what
-// keeps a re-export from colliding in the Downloads folder — see
-// download_name.go for why a colliding name renders differently per browser.
+// Stamped so a re-export never collides (browsers spell a collision differently).
 func instrumentFileName(name string) string {
 	var b strings.Builder
 	for _, r := range strings.ToLower(strings.TrimSpace(name)) {
@@ -53,9 +48,7 @@ func instrumentFileName(name string) string {
 	return stampedFileName(base, ".beatmo-inst.json")
 }
 
-// importInstrumentFromFile opens the file picker and queues the picked bytes for
-// application on the UI goroutine (drainInstrumentImport). Mirrors the project
-// import guard so a second tap while the picker is open is ignored.
+// A second tap while the picker is open is ignored, as on project import.
 func (dv *DrumView) importInstrumentFromFile() {
 	if dv.instImporting {
 		return
@@ -66,10 +59,7 @@ func (dv *DrumView) importInstrumentFromFile() {
 	})
 }
 
-// drainInstrumentImport applies a picked instrument bundle. Called every frame
-// from Update while an import is in flight; a no-op otherwise. When the bundle
-// collides with an existing USER instrument it defers the apply to a
-// Replace/Keep-both confirm dialog; otherwise it applies immediately.
+// A collision with a USER instrument defers to the Replace/Keep-both dialog.
 func (dv *DrumView) drainInstrumentImport() {
 	if !dv.instImporting {
 		return
@@ -101,8 +91,6 @@ func (dv *DrumView) drainInstrumentImport() {
 	}
 }
 
-// applyInstrumentBundleWithChoice applies a parsed bundle, resolving every
-// collision with the given choice, binding the result to the selected row.
 func (dv *DrumView) applyInstrumentBundleWithChoice(b *audio.InstrumentBundle, choice CollisionChoice) {
 	resolver := func(ImportCollision) CollisionChoice { return choice }
 	if _, err := dv.ApplyInstrumentBundle(b, resolver, dv.selRow, dv.wavImportLocators()); err != nil {
@@ -110,13 +98,8 @@ func (dv *DrumView) applyInstrumentBundleWithChoice(b *audio.InstrumentBundle, c
 	}
 }
 
-// wavImportLocators supplies the per-kind WAV-byte fetchers used to resolve a
-// referenced WAV on import (bytes, not decoded PCM — the pin is a content hash
-// of the file, verified before decode):
-//   - localstorage: re-encode the sample store's PCM to the canonical WAV bytes
-//     (deterministic; covers same-machine round-trips and cached samples);
-//   - file: read the WAV file from a local path (desktop; no-op in the browser);
-//   - url: fetch the WAV over HTTP (desktop; async fetch on browser is a follow-up).
+// Bytes, not PCM: the pin hashes the file and is checked before decode. localstorage re-encodes the stored PCM;
+// file and url are desktop only.
 func (dv *DrumView) wavImportLocators() map[audio.WavSourceKind]audio.WavLocator {
 	return map[audio.WavSourceKind]audio.WavLocator{
 		audio.WavSourceLocalStorage: func(ref string) ([]byte, bool) {

@@ -5,8 +5,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
-// commitView carries a snapshot of a timeline commit for masking decisions.
-// kind differentiates immutable playback/import history from speculative seeds.
 type commitView struct {
 	val  bool
 	typ  model.NodeType
@@ -14,13 +12,8 @@ type commitView struct {
 	ok   bool
 }
 
-// resolveMaskedStep decides the final step for a frozen cell. Immutable
-// playback/import commits win only for the true past (abs < nextBeatIdxs[row]).
-// All other commit kinds are treated as soft masks and follow the predictor.
-//
-// This function is intentionally pure: it must not mutate timeline state. Any
-// reconciliation (ReplaceCommit/Trim/etc.) belongs in the refresh reconciliation
-// phase so window building stays deterministic and easy to debug.
+// Immutable playback/import commits win only for the true past; every other kind is a soft mask that follows the
+// predictor. Pure: reconciliation belongs in the refresh phase, so window building stays deterministic.
 func resolveMaskedStep(commit commitView, want bool, inPast bool) bool {
 	if !commit.ok {
 		return want

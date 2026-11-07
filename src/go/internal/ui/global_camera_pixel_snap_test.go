@@ -12,9 +12,6 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestGlobalCameraPixelSnap verifies that the actually drawn node center
-// (rounded to the nearest screen pixel) coincides with the grid lattice and
-// with rounded world→screen projections used for edges/pulses.
 func TestGlobalCameraPixelSnap(t *testing.T) {
 	assertDefaultParityState(t)
 	// Use the embedded test fixture demo

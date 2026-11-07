@@ -8,17 +8,12 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// layoutResizeZone wraps LayoutResizeHandler as a Zone so it participates
-// in the DrumViewTree's z-ordered input dispatch. Hit areas are generated
-// from the pill handle rects at ZResize (200).
 type layoutResizeZone struct {
 	handler *LayoutResizeHandler
 	rect    image.Rectangle
 	dirty   bool
 
-	// areas caches HitAreas for the geometry it was built from (areasKey):
-	// recalcButtons republishes them every frame, and recomputing every
-	// divider's segments was the largest per-frame layout cost left on WASM.
+	// Cached by geometry: recomputing every divider each frame was the largest layout cost left on WASM.
 	areas    []HitArea
 	areasKey uint64
 	haveKey  bool
@@ -38,9 +33,7 @@ func (z *layoutResizeZone) Layout(rect image.Rectangle) {
 func (z *layoutResizeZone) NeedsLayout() bool { return z.dirty }
 func (z *layoutResizeZone) Invalidate()       { z.dirty = true }
 
-// Update runs hover detection every frame so the cursor changes when
-// hovering over divider pills. Skipped on WASM where the JS interop
-// cost of cursorPosition() outweighs the visual benefit.
+// Not on WASM, where cursorPosition()'s interop cost outweighs the hover.
 func (z *layoutResizeZone) Update() {
 	if z.handler == nil || z.handler.dragging || RuntimeProf().SkipCursorHover {
 		return
@@ -101,9 +94,7 @@ func (z *layoutResizeZone) HitAreas() []HitArea {
 		})
 	}
 
-	// Row divider pills. The grab target is rowDividerGrabRect — the visible
-	// pill plus SpaceSM forgiveness — so the hover/click/drag footprint never
-	// extends past what the user sees (true for the EQ boundary too).
+	// The visible pill plus SpaceSM, so the footprint never exceeds what the user sees.
 	numRows := len(z.handler.dv.widgets.rowPos)
 	for i := 0; i < numRows-2; i++ {
 		grab := z.handler.rowDividerGrabRect(i)
@@ -122,10 +113,7 @@ func (z *layoutResizeZone) HitAreas() []HitArea {
 	return areas
 }
 
-// geometryKey hashes every input the divider handle rects derive from: the
-// widget board's positions, offset, grid size and placements, the drum view
-// bounds, the audio panel's top (the EQ boundary follows it) and the handle
-// size.
+// Every input the handle rects derive from, including the panel top the EQ boundary follows.
 func (z *layoutResizeZone) geometryKey() uint64 {
 	dv := z.handler.dv
 	wb := dv.widgets
@@ -175,8 +163,6 @@ func (z *layoutResizeZone) HandleChars(chars []rune) InputResult {
 	return InputIgnored
 }
 
-// layoutResizeHitHandler adapts a single divider pill to the HitHandler
-// interface for tree-based input dispatch.
 type layoutResizeHitHandler struct {
 	handler *LayoutResizeHandler
 	axis    string

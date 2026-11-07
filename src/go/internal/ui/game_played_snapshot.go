@@ -6,21 +6,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/ui/preview"
 )
 
-// The played snapshot is the DrumView's immutable past: for every cell the
-// playhead has passed, exactly what the grid showed for it at that moment
-// (timeline.Service's played tier). preview.BuildRowWindow renders a past cell
-// from it and from nothing else, so no later change of live state — a node
-// edit, a solo/mute, a predictor rebuild, a dropped or late highlight — can
-// reach a cell that has already played.
-//
-// freezePlayedThroughPlayhead must therefore run BEFORE anything that changes
-// what a not-yet-frozen cell would show. It is called from:
-//   - setPrimaryStep, the moment the playhead advances;
-//   - the top of refreshDrumRow, before a pending SetPaths;
-//   - the top of updateBeatInfos, before paths are recomputed;
-//   - the structural-mutation hook (solo/mute, row delete, instrument, …).
-// It is idempotent and only ever touches cells not yet frozen, so extra calls
-// cost one PlayedMax read per row.
+// The immutable past: for each passed cell, what the grid showed at that moment, and the only
+// thing a past cell renders from. freezePlayedThroughPlayhead must run BEFORE anything changes an
+// unfrozen cell; it is idempotent.
 
 // predictCellAt is the live prediction a not-yet-played cell renders.
 func (g *Game) predictCellAt(row, abs int, bi model.BeatInfo) bool {
@@ -33,15 +21,11 @@ func (g *Game) predictCellAt(row, abs int, bi model.BeatInfo) bool {
 	return g.engine.Predictor.VisibleAt(row, abs)
 }
 
-// freezePlayedThroughPlayhead freezes every row's cells up to and including
-// the current beat (the builder's past boundary is elapsedBeats+1).
 func (g *Game) freezePlayedThroughPlayhead() {
 	if g == nil || g.drum == nil || len(g.drum.Rows) == 0 {
 		return
 	}
-	// Mid-import the document is half-built (graph cleared, rows being
-	// re-created): nothing it shows is what played. Undo/redo carries the
-	// played history across the re-import instead (undoRestore).
+	// Mid-import the document is half-built, so nothing shown is what played; undo carries history.
 	if g.importing || (g.undoManager != nil && g.undoManager.restoring) {
 		return
 	}
@@ -59,8 +43,7 @@ func (g *Game) freezePlayedThroughPlayhead() {
 	for row := range g.drum.Rows {
 		lo := tl.PlayedMax(row) + 1
 		if lo < winStart {
-			// Below the predictor window nothing can be computed any more;
-			// those cells render from committed history.
+			// Below the predictor window nothing can be computed; those cells render from history.
 			lo = winStart
 		}
 		rowIdx := row
@@ -82,11 +65,7 @@ func (g *Game) playedAtFunc(row int) preview.PlayedAtFunc {
 	return func(abs int) (bool, model.NodeType, bool) { return tl.Played(row, abs) }
 }
 
-// onDrumRowRemoved moves every index-keyed per-row store down with the rows
-// when DrumView.DeleteRow splices row i out. Rows are addressed by index, so a
-// store left unshifted hands row i+1 the deleted row's history, freeze
-// watermark and scheduler cursor — the row below a deleted row then rendered
-// (and re-seeded) its past from its neighbour's.
+// Rows are addressed by index, so an unshifted store hands the next row the deleted row's history.
 func (g *Game) onDrumRowRemoved(i int, origin model.NodeID) {
 	if g == nil {
 		return
@@ -146,11 +125,8 @@ func removeRowKey[V any](m map[int]V, i int) map[int]V {
 	return out
 }
 
-// detachPlayedByOrigin moves every row's played history (and the graveyard of
-// deleted rows) out of the timeline, keyed by the row's origin node. Paired
-// with reattachPlayedByOrigin around a document restore: undo/redo re-imports
-// the document, which rebuilds rows and drops the timeline, but what already
-// played is history, not document, and must come back untouched.
+// Undo/redo re-imports the document and drops the timeline, but what played is history, not
+// document, so it is detached by origin and reattached.
 func (g *Game) detachPlayedByOrigin() map[model.NodeID]*timeline.PlayedHistory {
 	out := make(map[model.NodeID]*timeline.PlayedHistory, len(g.drum.Rows)+len(g.playedGraveyard))
 	for origin, h := range g.playedGraveyard {
@@ -168,9 +144,7 @@ func (g *Game) detachPlayedByOrigin() map[model.NodeID]*timeline.PlayedHistory {
 	return out
 }
 
-// reattachPlayedByOrigin reinstalls detached histories on the rows that carry
-// the same origin node; histories whose row the restore removed go back to the
-// graveyard for a later redo.
+// Histories whose row the restore removed go to the graveyard for a later redo.
 func (g *Game) reattachPlayedByOrigin(held map[model.NodeID]*timeline.PlayedHistory) {
 	tl := g.timelineService()
 	for i, r := range g.drum.Rows {

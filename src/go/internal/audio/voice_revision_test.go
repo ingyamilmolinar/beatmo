@@ -6,10 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// VoiceRevision is part of every audio-lane note's identity: anything that
-// changes the PCM an instrument's next note renders must move it, so the lane
-// replaces that instrument's not-yet-started notes (real-time synth/sampler
-// edits under a long horizon).
+// Anything that changes the next note's PCM must move it, so the lane replaces that instrument's not-yet-started notes.
 func TestVoiceRevisionMovesOnSampleEdit(t *testing.T) {
 	const inst = roster.Kick
 	t.Cleanup(func() { ClearSampleEdit(inst) })

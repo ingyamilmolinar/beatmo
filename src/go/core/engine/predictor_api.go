@@ -39,12 +39,8 @@ func (p *Predictor) Horizon() int {
 	return p.windowEnd
 }
 
-// WindowStart returns the lowest absolute index retained in the sliding window
-// (the inclusive lower bound). Reads below this index have been evicted and
-// AudibleAt/VisibleAt/TriggeredAt return false for them — "not computed", not
-// "no hit". Callers that persist predictor truth as immutable state must guard
-// against this lower edge so a backward seek (whose playhead lands below the
-// retained window before Ensure rewinds it) cannot be frozen as empty past.
+// Reads below it return false ("not computed", not "no hit"): anything persisting predictor truth must guard this edge,
+// or a backward seek landing below the window freezes as empty past.
 func (p *Predictor) WindowStart() int {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -97,11 +93,7 @@ func (p *Predictor) TriggeredAt(row, idx int) bool {
 	return p.triggeredByRow[row][j]
 }
 
-// BufferCapsForTest returns per-row [cap, len] pairs for each of the three
-// prediction buffers (audible, visible, triggered). Soak tests use this to
-// verify Ensure grows geometrically rather than per-step. With per-step
-// regression cap == len for every buffer; with geometric growth cap > len
-// for some buffers once horizon has advanced past the initial doubling.
+// cap == len everywhere is per-step growth; geometric growth shows cap > len once past the first doubling.
 func (p *Predictor) BufferCapsForTest() [][3][2]int {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -115,10 +107,7 @@ func (p *Predictor) BufferCapsForTest() [][3][2]int {
 	return out
 }
 
-// Snapshot returns deep copies of the prediction buffers, for tests. The
-// returned buffers cover [windowStart, windowEnd) — callers that key on absolute
-// indices must offset by Snapshot's third return value's windowStart equivalent
-// or use AudibleAt/VisibleAt for absolute-index lookups.
+// The buffers cover [windowStart, windowEnd); key absolute indices through AudibleAt/VisibleAt instead.
 func (p *Predictor) Snapshot() (aud [][]bool, vis [][]bool, horizon int) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()

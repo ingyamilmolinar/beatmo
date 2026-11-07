@@ -1,13 +1,5 @@
-// synth_config_roundtrip.browser.test.js
-//
-// Verifies that an instrument's synth config (its instrument document) survives
-// export → import in REAL WASM/WebAudio — not just the Go stub. The Go
-// fast-path tests (internal/ui/repro_synth_config_roundtrip_test.go) prove the
-// import/export logic; this proves the WASM bridge applies the imported
-// document to live audio state (SetInstrumentDoc → setInstrumentBlock).
-//
-// COVERED-BY-GO: import/export param logic. JS-owned: the Go↔WebAudio param
-// plumbing across importJSON.
+// An instrument's document must survive export → import into LIVE audio state (SetInstrumentDoc → setInstrumentBlock).
+// COVERED-BY-GO: internal/ui/repro_synth_config_roundtrip_test.go
 
 import { setupFullWasm } from "./real_input_test_helpers.js";
 

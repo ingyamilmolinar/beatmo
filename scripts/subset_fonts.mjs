@@ -1,20 +1,7 @@
 #!/usr/bin/env node
-// Regenerate the subset Inter faces that ship inside main.wasm.
-//
-// Stock Inter carries 2,851 reachable glyphs -- Cyrillic, Greek Extended,
-// Vietnamese, IPA, and ~740 private-use alternates that Beatmo never renders:
-// only EN and ES locales ship, and a future CJK locale swaps the whole face
-// through i18n's FontProvider rather than widening these files. Subsetting to
-// the blocks the UI can actually draw halves both faces (831 KB -> 417 KB raw,
-// 406 KB -> 201 KB gzip) -- the single largest download saving available, and
-// the gzip budget in internal/deploy/asset_size_test.go is the tight one.
-//
-//   npm install subset-font        (or: make gen-fonts, which does it for you)
-//   node scripts/subset_fonts.mjs
-//
-// internal/assets/fonts_coverage_test.go pins the resulting coverage: it fails
-// if a regenerated subset drops a codepoint the UI is known to render, so a
-// narrower KEEP_RANGES cannot silently ship tofu.
+// Subsets Inter to the blocks the UI can draw (only EN and ES ship; a CJK locale would swap the whole face through
+// FontProvider): the largest download saving there is. fonts_coverage_test.go fails if a subset drops a codepoint the UI
+// renders. Run: make gen-fonts (installs subset-font) or node scripts/subset_fonts.mjs
 
 import subsetFont from 'subset-font';
 import fs from 'fs';

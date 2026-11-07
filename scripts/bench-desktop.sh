@@ -1,16 +1,6 @@
 #!/usr/bin/env bash
-#
-# bench-desktop.sh — Self-contained desktop benchmark
-#
-# Runs the startup demo circuit at multiple BPM levels, collects per-BPM
-# metrics (including per-event audio scheduling lead/lag), captures a pprof
-# CPU profile at the highest BPM, and produces an ASCII summary table +
-# machine-readable JSON output.
-#
-# Usage:
-#   ./scripts/bench-desktop.sh
-#   BPM_LEVELS="120 200" DURATION=5 ./scripts/bench-desktop.sh
-#
+# The startup demo at several BPM levels: per-BPM metrics (incl. scheduling lead/lag), a CPU profile at the highest,
+# ASCII + JSON output. Usage: [BPM_LEVELS="120 200"] [DURATION=5] ./scripts/bench-desktop.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -54,9 +44,7 @@ for BPM in "${BPMS[@]}"; do
 
   LOG_FILE="$RESULTS_DIR/desktop_${BPM}.log"
 
-  # Run benchmark under xvfb (Ebiten requires a display server).
-  # Disable parity panics — high BPM benchmarks can trigger race-window
-  # mismatches that are harmless for performance measurement.
+  # Parity panics off: high-BPM race-window mismatches are harmless to a performance measurement.
   if command -v xvfb-run >/dev/null 2>&1; then
     xvfb-run -a bash -c "cd src/go && PARITY_FATAL=0 PERF_LOG=1 CGO_ENABLED=1 $GO run ./cmd \
       -log INFO \
@@ -167,9 +155,7 @@ echo ""
 echo "Results saved to $RESULTS_DIR/desktop.json"
 echo "Per-BPM logs: $RESULTS_DIR/desktop_*.log"
 
-# ── Optional synth param-mutation storm pass ──
-# Gated by BENCH_SYNTH_STORM so the default run's output is unchanged.
-# Usage: BENCH_SYNTH_STORM=combined STORM_BPM=200 DURATION=15 ./scripts/bench-desktop.sh
+# Opt-in so the default run's output is unchanged: BENCH_SYNTH_STORM=combined STORM_BPM=200 DURATION=15
 if [ -n "${BENCH_SYNTH_STORM:-}" ]; then
   echo ""
   echo "== synth storm pass: $BENCH_SYNTH_STORM =="

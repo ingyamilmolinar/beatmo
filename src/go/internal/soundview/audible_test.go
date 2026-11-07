@@ -6,9 +6,7 @@ import (
 	"testing"
 )
 
-// Known answers for the audibility oracle: the single judge of "does this
-// change sound different" for the dial relevance verdicts, the relevance
-// generator and the dial contract tests.
+// Known answers for the oracle that judges dial relevance, its generator and the dial contracts.
 
 func tone(sec, hz, gain float64) []float32 {
 	return gen(sec, func(t float64) float64 {
@@ -60,8 +58,7 @@ func TestAOneBandChangeIsAudible(t *testing.T) {
 }
 
 func TestAPitchShiftIsAudibleOnlyAboveFiveCents(t *testing.T) {
-	// A steady tone, so the band envelope cannot see the shift (a decaying one
-	// moves its band edges' leakage and is caught by the bands first).
+	// Steady, so the band envelope cannot see the shift (a decaying tone's leakage would be caught by the bands first).
 	steady := func(hz float64) []float32 {
 		return gen(1, func(t float64) float64 { return 0.6 * math.Sin(2*math.Pi*hz*t) })
 	}

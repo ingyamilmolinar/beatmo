@@ -8,10 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// loss.go — how far a candidate render is from the reference (spec §4). Four
-// terms, each reported on its own: a loss RANKS candidates; the ear accepts
-// them. Weights start equal; `refs validate -loss` reports which term agrees
-// with the listener within a family.
+// A loss RANKS candidates; the ear accepts them. Each term is reported on its own so `refs validate -loss` can say
+// which agrees with the listener.
 
 // LossWeights weigh the terms in Total.
 type LossWeights struct {
@@ -24,10 +22,8 @@ type LossWeights struct {
 // DefaultLossWeights are equal (spec §4b): nothing has the data to rank them yet.
 var DefaultLossWeights = LossWeights{MRSTFT: 1, Envelope: 1, Descriptors: 1, Prior: 1}
 
-// LossReport is one candidate's score. MRSTFT = mean over the three
-// resolutions of LogMagDB/10 + SC (two numbers of order one); Envelope is a
-// mean |dB|; Descriptors the mean registry Norm (≥ 1 = past mismatch); Prior a
-// mean |dB| of amplitude and decay against the analysis. Total = Σ wₖ·termₖ/scaleₖ.
+// MRSTFT = mean over three resolutions of LogMagDB/10 + SC; Envelope a mean |dB|; Descriptors the mean registry Norm
+// (≥ 1 = mismatch); Prior a mean |dB| against the analysis. Total = Σ wₖ·termₖ/scaleₖ.
 type LossReport struct {
 	MRSTFT      float64            `json:"mrstft"`
 	LogMagDB    float64            `json:"log_mag_db"`
@@ -39,8 +35,7 @@ type LossReport struct {
 	Desc        map[string]float64 `json:"desc,omitempty"`
 }
 
-// TrustedDescriptors are the registry descriptors the docs trust for struck
-// sounds (spec §4b).
+// The descriptors trusted for struck sounds.
 var TrustedDescriptors = []string{fingerprint.IDInharmonicity, fingerprint.IDTristimulus, fingerprint.IDTrackCrestMedian}
 
 var stftSizes = []int{256, 1024, 4096}
@@ -63,22 +58,17 @@ type refSpec struct {
 	energy  float64 // Σ w·|S|²
 }
 
-// LossRef is a reference prepared for scoring; read-only, safe for
-// concurrent Score calls.
+// Read-only, safe for concurrent Score calls.
 type LossRef struct {
 	Rate  int
 	x     []float64 // aligned at the onset, peak-normalised to 1
 	specs []refSpec
 	env   []float64 // dB, clamped at −60 dB re its maximum
 	desc  map[string]fingerprint.Measurement
-	// descZero is each descriptor's Norm of the reference against ITSELF: a
-	// ratio-kind comparator does not read 0 at identity (track.crest.median
-	// reports Norm 0.68 at 1.00×), so the term is the excess over it.
+	// A ratio comparator does not read 0 against itself, so the term is the excess over this.
 	descZero map[string]float64
 }
 
-// alignStart is the first sample at or above −40 dB re the peak, searched
-// from `from`.
 func alignStart(x []float64, from int) int {
 	peak := 0.0
 	for _, v := range x[from:] {
@@ -100,8 +90,7 @@ func peakAbs(x []float64) float64 {
 	return p
 }
 
-// NewLossRef aligns the reference at its onset (the −40 dB rule, searched
-// from 20 ms before Prepare's onset) and keeps at most maxSec of it.
+// The −40 dB rule searched from 20 ms before Prepare's onset.
 func NewLossRef(p Prepared, maxSec float64) *LossRef {
 	from := max(0, p.Onset-int(0.02*float64(p.Rate)))
 	s := alignStart(p.Samples, from)
@@ -187,8 +176,7 @@ func measureTrusted(x []float64, rate int) map[string]fingerprint.Measurement {
 	return out
 }
 
-// alignCandidate aligns cand by the same onset rule, trims / zero-pads it to
-// the reference length and matches its PEAK to the reference's (1).
+// Same onset rule, trimmed or padded to the reference length, peak matched.
 func (r *LossRef) alignCandidate(cand []float64) []float64 {
 	out := make([]float64, len(r.x))
 	if len(cand) == 0 {
@@ -204,9 +192,7 @@ func (r *LossRef) alignCandidate(cand []float64) []float64 {
 	return out
 }
 
-// Score computes every term for one candidate render (at the reference's
-// rate). prior is PriorTerm's value (computed by the caller, which holds the
-// document); scale normalises each term (0 ⇒ 1).
+// prior comes from the caller, which holds the document; a scale of 0 means 1.
 func (r *LossRef) Score(cand []float64, prior float64, w LossWeights, scale LossReport) LossReport {
 	y := r.alignCandidate(cand)
 	var rep LossReport
@@ -287,11 +273,8 @@ func (r *LossRef) Score(cand []float64, prior float64, w LossWeights, scale Loss
 	return rep
 }
 
-// PriorTerm is the energy-weighted mean |dB| of amplitude and of decay rate
-// between the document's modes (at pitch, rate) and the analysis's modes —
-// each analysis mode matched to the nearest document mode within 1 %. It keeps
-// the optimizer from trading modes for noise. Analysis modes the document
-// dropped (the budget) are not counted.
+// Each analysis mode matched to the nearest document mode within 1 %; modes the budget dropped are not counted. It
+// keeps the optimiser from trading modes for noise.
 func PriorTerm(d instrument.Doc, a Analysis, pitch float64, rate int) float64 {
 	dm := DocModes(d, pitch, rate)
 	var sum, wsum float64

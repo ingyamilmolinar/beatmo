@@ -20,8 +20,7 @@ func aggAudibleState() *analyzer.State {
 	}
 }
 
-// With only snare audible, Loudest must be snare (not the louder-but-hidden
-// kick) and the clip total must exclude kick's clips.
+// Loudest and the clip total count only audible rows, not the louder hidden kick.
 func TestLevelsAggregates_FilteredToAudible(t *testing.T) {
 	vis := map[channel.ID]bool{channel.Of(roster.Snare): true}
 	agg := levelsAggregatesValues(aggAudibleState(), nil, vis)

@@ -31,8 +31,7 @@ func TestRowStepsExcludeSilentInvisible(t *testing.T) {
 	g.updateBeatInfos()
 
 	steps := g.drum.Rows[0].Steps
-	// Check first few positions based on constructed path with a seam:
-	// idx0:A=true, idx1:Silent=false, idx2:B=true, idx3:seam invisible=false, idx4:A=true
+	// A, Silent, B, the seam (invisible), A.
 	if !steps[0] || steps[1] || !steps[2] || steps[3] || !steps[4] {
 		t.Fatalf("unexpected early steps: %v", steps[:5])
 	}

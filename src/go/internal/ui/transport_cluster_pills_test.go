@@ -7,29 +7,15 @@ import (
 	"testing"
 )
 
-// TestMobileTransportPillRectsArePopulated asserts the structural
-// preconditions for the cluster pills on mobile:
-//   - the transport-cluster pill rect (play+stop+record) is non-empty
-//     and contains all three of those button rects;
-//   - the BPM pill rect contains the BPM input box and both ± buttons;
-//   - the subdivision button rect (which gets its own surface-2 pill via
-//     drawSubdivPillOffset) is non-empty and lives in the right portion of
-//     the transport row.
-//
-// Pixel-level verification of the surface-2 fill color is left to the
-// regenerated mobile screenshot baseline; ebitenstub does not support
-// reliable GPU pixel reads in the fast-test path.
+// The cluster pill contains play/stop/record, the BPM pill its box and ±, and subdiv sits in the right of the
+// row. The surface fill is left to the screenshot: the stub has no reliable GPU reads.
 func TestMobileTransportPillRectsArePopulated(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false })
 
 	z, _ := newTestTransportZone()
-	// Simulate the standard mobile flow: DrumView allocates the bottom
-	// action bar and tells the zone via SetUseBottomBar(true) so row 1
-	// (vol/view/overflow) is suppressed inside the top toolbar. Without
-	// this, the zone correctly falls back to a two-row layout (used on
-	// ultra-short viewports where the bar collapses).
+	// As DrumView does when it allocates the bottom bar; without it the zone falls back to the two-row layout.
 	z.SetUseBottomBar(true)
 	z.Layout(image.Rect(0, 0, 390, 96))
 
@@ -68,13 +54,8 @@ func TestMobileTransportPillRectsArePopulated(t *testing.T) {
 		t.Errorf("subdiv button %v should start to the right of BPM pill %v", subdiv, z.bpmGroupRect)
 	}
 
-	// 4. Theme 4: the mobile top toolbar hosts vol icon + overflow now
-	//    (the bottom action bar is reserved for the 6-segment view
-	//    switcher, placed by DrumView). Assert vol + overflow are
-	//    NON-empty here — the contract flipped from "empty" (B3 era) to
-	//    "non-empty" (Theme 4). The legacy binary view-switch button is
-	//    suppressed everywhere on mobile in favor of the segmented
-	//    control, so its rect must remain empty.
+	// The top toolbar hosts volume and overflow; the binary view switch stays hidden in favour of the segmented
+	// control.
 	if z.mainVolIconRect.Empty() {
 		t.Errorf("mainVolIconRect should be non-empty after zone.Layout on mobile (Theme 4 places it in top toolbar)")
 	}

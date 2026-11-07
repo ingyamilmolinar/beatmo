@@ -7,9 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Test that releasing a link drag over an empty intersection (no regular node)
-// does not create an edge. In particular, releasing over an invisible pass-through
-// node should not create an edge either.
+// An invisible pass-through node is not a target either.
 func TestLinkDragIgnoresEmptyAndInvisibleTargets(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

@@ -51,9 +51,7 @@ func TestVoiceCategoryClassification(t *testing.T) {
 			t.Fatalf("CategoryOf(%q) = %q, want %q", id, got, CatVoice)
 		}
 	}
-	// choir-ahh/choir-ooh/voice-bass/voice-pad were ear-tested 2026-07-08 and
-	// ruled synths, not voices: renamed to ensemble-lead/ensemble-lead-dark/
-	// ghost-bass/viola-pad and re-categorized out of CatVoice.
+	// These names are synths, not voices, and must stay out of CatVoice.
 	synthCases := map[instrument.ID]Category{
 		roster.EnsembleLead:     CatLead,
 		roster.EnsembleLeadDark: CatLead,
@@ -71,9 +69,7 @@ func TestVoiceCategoryClassification(t *testing.T) {
 	}
 }
 
-// TestCategoryHasOneSpellingAndALabel: every category has a stable spelling
-// (what code and logs say) and a display label (what the menu shows), and the
-// zero value is no category at all.
+// The spelling is what code and logs say, the label what the menu shows.
 func TestCategoryHasOneSpellingAndALabel(t *testing.T) {
 	seen := map[string]bool{}
 	for _, c := range Categories() {

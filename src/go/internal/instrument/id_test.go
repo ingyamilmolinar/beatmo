@@ -5,10 +5,8 @@ import (
 	"testing"
 )
 
-// TestBase covers the suffix range and, more importantly, the ids that must
-// NOT be read as instances. Chord-lane splitting in gen-showcase produces a
-// third and fourth row on one instrument, so the strip has to reach past
-// "--2" without swallowing a real id like "bass-808".
+// gen-showcase's chord lanes put a third and fourth row on one instrument, so the strip must reach past "--2" without
+// swallowing "bass-808".
 func TestBase(t *testing.T) {
 	cases := map[ID]ID{
 		"organ--2":        "organ",

@@ -109,9 +109,7 @@ func TestEngineSubscribe(t *testing.T) {
 	e.Start()
 	defer e.Stop()
 
-	// Wait for at least one event on the subscription channel. The engine's
-	// run loop ticks every 16ms and at 120 BPM a beat fires every 500ms, so
-	// the first tick-on-start fires immediately.
+	// At 120 BPM the tick on start fires immediately.
 	select {
 	case evt := <-sub:
 		// Step should be a non-negative value.
@@ -282,8 +280,7 @@ func TestEngineCloseStopsRunLoop(t *testing.T) {
 	}()
 	<-done
 
-	// A few events may have been in-flight before the goroutine noticed the
-	// context cancellation, but we should not see a sustained stream.
+	// A few in-flight events are fine; a sustained stream is not.
 	if c := atomic.LoadInt64(&count); c > 3 {
 		t.Fatalf("expected very few events after Close, got %d", c)
 	}

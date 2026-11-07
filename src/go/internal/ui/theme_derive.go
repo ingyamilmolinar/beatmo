@@ -10,12 +10,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/theme"
 )
 
-// theme_derive.go — turns a theme.Doc into the full token map.
-//
-// Every category has a default ANCHOR swatch equal to today's design. Each
-// member token is stored implicitly as its HSL offset from that anchor;
-// picking a new swatch re-applies the offsets, so the anchor pick is the
-// exact identity and the default palette stays byte-identical to DESIGN.md.
+// Each token is its HSL offset from its category's anchor, so picking the anchor is the exact identity and the
+// default palette stays byte-identical to DESIGN.md.
 
 // rgbToHSL converts to hue [0,360), saturation [0,1], lightness [0,1].
 func rgbToHSL(c color.RGBA) (h, s, l float64) {
@@ -81,8 +77,7 @@ func hueDistance(a, b float64) float64 {
 	return math.Abs(math.Mod(a-b+540, 360) - 180)
 }
 
-// achromaticSat is the saturation below which a token is treated as grey /
-// white / black and left exactly as designed (a hue is meaningless there).
+// Below it a hue is meaningless (grey/white/black), so the token stays as designed.
 const achromaticSat = 0.02
 
 // swatchRGBA looks a curated swatch up by name.
@@ -95,10 +90,7 @@ func swatchRGBA(name string) (color.RGBA, bool) {
 	return color.RGBA{}, false
 }
 
-// swatchShadeStrength maps the shade column (-100..-500) of a swatch name to
-// a tint-strength multiplier for KeepLightness categories. The anchor of the
-// dark categories is a -500 swatch and the text/dividers anchor a -100 one;
-// the ratio against the anchor's own strength keeps the identity either way.
+// The ratio against the anchor's own strength keeps the identity for dark (-500) and text (-100) anchors alike.
 func swatchShadeStrength(name string) float64 {
 	i := strings.LastIndex(name, "-")
 	if i < 0 {
@@ -122,14 +114,8 @@ func swatchShadeStrength(name string) float64 {
 	}
 }
 
-// deriveCategory writes the category's member tokens into out, derived from
-// pick. Every member keeps its HSL OFFSET from the category anchor; the
-// anchor pick is therefore the identity (short-circuited exactly).
-//
-//   - chromatic, non-KeepLightness: h = h(pick)+Δh, s = s(pick)+Δs, l = l(pick)+Δl
-//   - chromatic, KeepLightness:     h = h(pick)+Δh, l = l(default),
-//     s = s(default) · (s(pick)·strength(pick)) / (s(anchor)·strength(anchor))
-//   - achromatic (s(default) < achromaticSat): unchanged.
+// Chromatic: pick + Δ in h, s, l (KeepLightness keeps l and scales s by the pick's tint strength); achromatic:
+// unchanged. The anchor pick short-circuits to the identity.
 func deriveCategory(cat ThemeCategory, pick color.RGBA, pickName string, out map[string]color.RGBA) {
 	anchor, ok := swatchRGBA(cat.Anchor)
 	if !ok {
@@ -175,10 +161,8 @@ func parseHexRGB6(s string) (color.RGBA, bool) {
 	return color.RGBA{uint8(v >> 16), uint8(v >> 8), uint8(v), 255}, true
 }
 
-// resolveThemeTokens turns a document into the full token map: defaults,
-// then category derivation, then explicit tokens. Entries that cannot be
-// applied are skipped and reported in warnings (never fatal — a theme comes
-// from a user file).
+// Defaults, then categories, then explicit tokens. Bad entries are skipped with a warning, never fatal: a theme
+// comes from a user file.
 func resolveThemeTokens(doc theme.Doc) (map[string]color.RGBA, []string) {
 	out := make(map[string]color.RGBA, len(genColorDefaultByName))
 	for k, v := range genColorDefaultByName {

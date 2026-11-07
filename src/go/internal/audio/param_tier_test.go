@@ -7,11 +7,7 @@ import (
 	"testing"
 )
 
-// TestP4_TierClassification pins the Essential/Advanced split that the tiered
-// Synth-tab exposure renders: each stage shows its 3-5 character (Essential)
-// knobs, and the fine-tuning (Advanced) knobs collapse under the stage's
-// Advanced expander. Essential is the default (Tier==""); only the listed
-// fine-tuning knobs are Advanced.
+// Essential is the default (Tier ""); only the listed fine-tuning knobs collapse under the stage's More.
 func TestP4_TierClassification(t *testing.T) {
 	defs := ModularSynthParamDefs()
 	byName := map[string]ParamDef{}
@@ -40,13 +36,8 @@ func TestP4_TierClassification(t *testing.T) {
 		}
 	}
 
-	// Sanity: the Advanced set is small (a beginner still sees mostly Essential).
-	// Contextual physical-model knobs (osc_sax_*/osc_bow_*) are excluded from the
-	// cap: they are hidden unless the matching oscillator is selected
-	// (synthOscModelParamHidden), so they never crowd the default view. The
-	// cymbal modal-plate knobs are contextual the same way (shown only while the
-	// plate runs — synthCymbalModalParamHidden in the ui package), and so are
-	// the table-gated WAV-clone stages.
+	// The Advanced set stays small. Contextual knobs (physical-model oscillators, the modal plate, table-gated stages) are
+	// excluded from the cap: hidden until their context is selected, they never crowd the default view.
 	adv := 0
 	for _, d := range defs {
 		if d.Tier != TierAdvanced {

@@ -6,15 +6,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// These tests exercise logic that now lives on *playbackSlate, extracted from
-// the Game God-object in the Phase-1 PlaybackSlate refactor. They document that
-// the relocated scheduling/beat-path helpers are directly testable as a unit.
-//
-// The slate deliberately keeps a *Game back-reference (the Rung-2 end state — a
-// narrow SlateHost interface was assessed and rejected: the real coupling surface
-// is ~75 Game members, so an interface would be ceremony, not decoupling). Pure
-// helpers need no Game at all; helpers that read promoted state are driven through
-// a minimal Game literal with the back-ref set (mirroring New()).
+// The slate keeps a *Game back-reference by design: the coupling surface is too wide for an interface to decouple
+// anything. Pure helpers need no Game; the rest run on a minimal Game literal with the back-ref set, as New() does.
 
 func TestPlaybackSlate_DeterministicRoll(t *testing.T) {
 	s := &playbackSlate{} // pure hash: no *Game needed

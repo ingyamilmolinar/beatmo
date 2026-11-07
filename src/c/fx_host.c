@@ -10,9 +10,8 @@
 #define EXPORT
 #endif
 
-/* One row per effect type. buf_len returns the float buffer the effect's init
- * takes (0 = none); the sizes are the ones desktop's cgo wrappers always
- * allocated, so an effect behaves exactly as it did. */
+/* buf_len is the float buffer the effect's init takes (0 = none), the sizes desktop always allocated, so an effect
+ * behaves exactly as before. */
 typedef struct {
     const char *type;
     const char *params;
@@ -103,8 +102,7 @@ static const fx_kind fx_kinds[] = {
 
 #define FX_KIND_COUNT ((int)(sizeof(fx_kinds) / sizeof(fx_kinds[0])))
 
-/* Header of every instance; the effect state follows it (aligned), then the
- * buffer. */
+/* The effect state follows it (aligned), then the buffer. */
 typedef struct {
     const fx_kind *k;
     void *state;

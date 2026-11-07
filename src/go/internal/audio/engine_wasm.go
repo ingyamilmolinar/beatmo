@@ -37,8 +37,7 @@ func Register(id instrument.ID, inst Instrument) {
 	bumpInstrumentsVersion()
 }
 
-// Unregister removes a runtime-registered instrument id from the playable set
-// (the inverse of Register). No-op if absent.
+// No-op if absent.
 func Unregister(id instrument.ID) {
 	instrumentsMu.Lock()
 	found := false
@@ -62,10 +61,7 @@ func Play(id instrument.ID, when ...float64) {
 	if !fn.Truthy() {
 		return
 	}
-	// Stamp the trigger clock so the UI's time-since-trigger reads (synth-tab
-	// pulse glow, sampler preview playhead) work in the browser, mirroring the
-	// desktop Play path. Without this, audio.SinceLastTrigger never advances on
-	// WASM and those signals stay invisible.
+	// Stamped as on desktop, or time-since-trigger UI never advances in the browser.
 	RecordVoiceTrigger(id)
 	if len(when) > 0 {
 		fn.Invoke(string(id), 1.0, when[0])
@@ -74,11 +70,8 @@ func Play(id instrument.ID, when ...float64) {
 	fn.Invoke(string(id), 1.0)
 }
 
-// PlayVol plays an instrument at the given volume. Volume is forwarded
-// to the WebAudio bridge which applies a GainNode before the destination.
 func PlayVol(id instrument.ID, vol float64, when ...float64) {
-	// Pass id and volume to JS. Optionally pass the first 'when' timestamp
-	// if provided (seconds in AudioContext time). The JS side may ignore it.
+	// when, if given, is in AudioContext seconds; JS may ignore it.
 	fn := js.Global().Get("playSound")
 	if !fn.Truthy() {
 		return
@@ -91,13 +84,11 @@ func PlayVol(id instrument.ID, vol float64, when ...float64) {
 	fn.Invoke(string(id), vol)
 }
 
-// PlayParams forwards volume, pitch (semitones) and duration multiplier to the
-// WebAudio bridge. The JS side applies playbackRate = 2^(pitch/12)/dur.
+// Forwarded to the WebAudio bridge, which builds the same played voice as desktop.
 func PlayParams(id instrument.ID, vol, pitch, dur float64, when ...float64) {
 	fn := js.Global().Get("playSoundParams")
 	if !fn.Truthy() {
-		// Fallback to volume-only if extended bridge is not present
-		// (PlayVol stamps the trigger clock itself).
+		// Volume only when the extended bridge is absent; PlayVol stamps the trigger.
 		PlayVol(id, vol, when...)
 		return
 	}
@@ -118,9 +109,7 @@ func PlayParamsAt(id instrument.ID, vol, pitch, dur, when float64) {
 	}
 }
 
-// SampleSeconds returns the base sample duration in seconds for an instrument ID.
-// For synthesized instruments, this reads from the JS audio bridge; for WAVs,
-// it reflects the decoded buffer duration. Returns 0 if unknown.
+// Synths read from the JS bridge, WAVs from the decoded buffer; 0 if unknown.
 func SampleSeconds(id instrument.ID) float64 {
 	fn := js.Global().Get("sampleDurationSec")
 	if !fn.Truthy() {
@@ -149,25 +138,17 @@ func ResetInstruments() {
 	ClearAllInsertEffects()
 	resetInstrumentChannels()
 	clearInstrumentDisplayNames()
-	// Phase 5: wire each shipped instrument id to its SynthRecipe so the
-	// browser audio pipeline can pick up user-edited params at render time
-	// (mirrors the desktop + stub build paths).
 }
 
-// Now returns the current WebAudio time in seconds as reported by
-// AudioContext.currentTime via the JS bridge. Falls back to 0 when unavailable.
+// 0 when the bridge is unavailable.
 func Now() float64 {
-	// Guard against missing bridge function to avoid panics when the
-	// page hasn't loaded audio.js yet. Returning 0 signals callers to
-	// schedule immediately using the current AudioContext time.
+	// audio.js may not be loaded yet; 0 tells callers to schedule immediately.
 	fn := js.Global().Get("audioNow")
 	if !fn.Truthy() {
 		return 0
 	}
 	v := fn.Invoke()
-	// Use Type() check instead of Truthy() because Truthy() returns false
-	// for 0.0, which is a valid AudioContext.currentTime when the context
-	// is newly created or suspended.
+	// Type(), not Truthy(): 0.0 is a valid currentTime for a new or suspended context.
 	if v.Type() == js.TypeNumber {
 		return v.Float()
 	}
@@ -188,8 +169,7 @@ func Resume() {
 
 func SetBPM(b int) {}
 
-// SampleRate returns the WebAudio context sample rate.
-// Returns 48000 as fallback (common browser default).
+// 48000 as fallback.
 func SampleRate() int {
 	sr := js.Global().Get("__audioCtxSR")
 	if sr.Truthy() {
@@ -205,18 +185,13 @@ func Instruments() []instrument.ID {
 	return ids
 }
 
-// EmitReport identifies a voice's first-emitted block. Exported so the UI
-// package can drain into a []audio.EmitReport. WASM has no Go-owned mixer
-// loop (playback happens in WebAudio/JS), so this type exists only to keep
-// the signature uniform across build tags; browser Stage-D emission comes
-// from JS in Phase 4, not this ring.
+// Only for a uniform signature across build tags: WASM has no Go-owned mixer, and browser emission timing comes from JS.
 type EmitReport struct {
 	Row, Abs int
 	DevPos   int64
 }
 
-// DeviceClockSnapshot is unavailable on WASM: there is no Go-owned mixer
-// device clock (WebAudio owns timing). Always reports unavailable.
+// WebAudio owns timing; always unavailable.
 func DeviceClockSnapshot() (int64, float64, bool) { return 0, 0, false }
 
 // DrainEmitReports is unavailable on WASM: no Go-owned emission ring. Always empty.
@@ -234,18 +209,14 @@ var (
 	wasmExportStop chan struct{}
 )
 
-// ExportService returns the WASM flight-recorder service once it has been
-// started via EnableScopeExport; otherwise nil (matching the desktop contract).
+// nil until EnableScopeExport, as on desktop.
 func ExportService() *scopeexport.Service {
 	wasmExportMu.Lock()
 	defer wasmExportMu.Unlock()
 	return wasmExportSvc
 }
 
-// EnableScopeExport starts the WASM flight recorder. It periodically polls the
-// JS AudioWorklet analyzers (pre-EQ and post-EQ snapshots), pushes their rolling
-// waveforms into scopeexport.Service ring buffers, and invokes BufferSnapshot
-// so downloadScopeExport() can flush the accumulated JSONL. Idempotent.
+// Polls the JS analysers into the ring buffers and snapshots them so downloadScopeExport() can flush JSONL. Idempotent.
 func EnableScopeExport() {
 	wasmExportMu.Lock()
 	if wasmExportSvc != nil {
@@ -270,9 +241,7 @@ func EnableScopeExport() {
 	svc := wasmExportSvc
 	wasmExportMu.Unlock()
 
-	// Poll the analyzers ~10x per second to keep the ring buffers fed with
-	// rolling-window samples, and take a full snapshot every 2s to mirror the
-	// desktop cadence. A single goroutine owns both timers.
+	// One goroutine owns both timers: ~10 polls/s and a snapshot every 2 s, desktop's cadence.
 	go func() {
 		pollTicker := time.NewTicker(100 * time.Millisecond)
 		defer pollTicker.Stop()
@@ -291,15 +260,8 @@ func EnableScopeExport() {
 	}()
 }
 
-// pollExportSamples pushes the current JS analyzer snapshots for every
-// instrument into the export service ring buffers. Shared by the background
-// goroutine ticker and ForceScopeExportSnapshot.
-//
-// All five pipeline stages are bridged via the matching JS analyser nodes:
-//   - StageSynth / StageAntiPop  → channel-ingress (pre-FX) analyser
-//   - StageInsertFX              → pre-EQ analyser (post-inserts, pre-EQ)
-//   - StageEQ                    → channel analyser (post-EQ)
-//   - StageMaster                → main-channel analyser
+// Every stage maps to a JS analyser: Synth / AntiPop → channel ingress, InsertFX → pre-EQ, EQ → channel (post-EQ),
+// Master → main channel.
 func pollExportSamples(svc *scopeexport.Service) {
 	for _, id := range Instruments() {
 		synth := SynthAnalyzerSnapshot(channel.Of(id))
@@ -323,11 +285,7 @@ func pollExportSamples(svc *scopeexport.Service) {
 	}
 }
 
-// ForceScopeExportSnapshot immediately polls all instrument analyzers, pushes
-// the samples into the ring buffers, and buffers one snapshot. Used by the
-// browser test harness to produce a snapshot without waiting for the
-// background goroutine's 100ms poll cycle. Returns false if the export
-// service is not running.
+// For the browser test harness, without waiting for the poll cycle; false when the service is not running.
 func ForceScopeExportSnapshot() bool {
 	wasmExportMu.Lock()
 	svc := wasmExportSvc

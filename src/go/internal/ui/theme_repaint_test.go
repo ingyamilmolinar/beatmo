@@ -12,8 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/theme"
 )
 
-// collectAllFills records every filled drawRect AND drawRoundedRect call
-// made while fn runs (button keycaps are rounded rects).
+// Rounded rects too: button keycaps are drawn as them.
 func collectAllFills(t *testing.T, fn func()) []drawnRect {
 	t.Helper()
 	var rects []drawnRect
@@ -35,10 +34,8 @@ func collectAllFills(t *testing.T, fn func()) []drawnRect {
 	return rects
 }
 
-// TestThemeApplyRepaintsEverySurface proves a theme change reaches the
-// screen on the very next frame through every cache: the OLD accent and
-// OLD background must vanish from the frame's fills and the DERIVED ones
-// must appear (transport buttons, grid tile, drum cells, panels).
+// The old accent and background vanish from the very next frame's fills and the derived ones appear, through every
+// cache.
 func TestThemeApplyRepaintsEverySurface(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(testLogOutput(), game_log.LevelError)

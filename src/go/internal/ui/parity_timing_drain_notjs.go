@@ -4,10 +4,8 @@ package ui
 
 import "github.com/ingyamilmolinar/beatmo/internal/audio"
 
-// drainEmissionReports pulls the mixer's lock-free emission reports, maps each
-// device sample-pos to wall-seconds via the device-clock anchor, and closes the
-// matching timing trace (feeding Stage-D drift). Under -tags test the audio
-// stub returns 0, so UI tests drive Stage-D via closeTimingTrace directly.
+// Device sample-pos → wall seconds via the clock anchor. The -tags test stub returns 0, so UI tests call
+// closeTimingTrace directly.
 func (g *Game) drainEmissionReports() {
 	n := audio.DrainEmitReports(g.emissionReportBuf)
 	if n == 0 {

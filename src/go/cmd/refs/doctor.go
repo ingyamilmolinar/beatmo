@@ -137,20 +137,9 @@ func templateStems() ([]string, error) {
 	return out, nil
 }
 
-// runPitchDoctor reports, for every locally-resolvable instrument reference,
-// how much the pitch detector trusts its own answer.
-//
-// This is a CORPUS-QUALITY report, not an instrument report. F0Hz is always
-// populated -- the octave guard returns a number for a cymbal -- so a low
-// confidence means the harmonic-assuming descriptors (noise fraction, the
-// partial.* family) will report an honest "not measurable" for that reference.
-// For genuine percussion that is correct and expected. For a nominally pitched
-// instrument it is a finding about the RECORDING: the clip needs replacing or
-// trimming, and no amount of synth tuning will make those axes work against it.
-//
-// Split out behind -pitch rather than folded into runDoctor because it decodes
-// and analyses every clip in the corpus, which the coverage report does not
-// need to do and whose golden should not churn on a detector change.
+// A CORPUS-QUALITY report: F0Hz is always populated (the octave guard returns a number for a cymbal), so a low confidence
+// on a pitched instrument means the RECORDING needs replacing. Behind -pitch because it decodes every clip, and the
+// coverage golden must not churn on a detector change.
 func runPitchDoctor(w io.Writer) error {
 	c, err := loadCatalogue()
 	if err != nil {

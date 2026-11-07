@@ -1,13 +1,6 @@
-// Package timeline manages per-row drum timeline history with immutable past.
-//
-// Once a beat is played, its rendered state is FROZEN:
-//   - CommitKindPlayback / CommitKindImport represent true past and are immutable.
-//   - Past cells never change; edits only affect future predictions.
-//   - preview.BuildRowWindow follows a single precedence table to merge past,
-//     present, and future into the final display.
-//
-// The Service uses a commit ring per row for bounded memory, with an immutables
-// sidecar map to preserve playback/import entries even after ring trimming.
+// Package timeline keeps per-row drum history with an immutable past: Playback / Import commits never change and edits
+// reach only the future; preview.BuildRowWindow merges past, present and future by one precedence table. A bounded
+// commit ring per row, with an immutables sidecar keeping playback/import entries the ring trims.
 package timeline
 
 import (
@@ -16,9 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// SegmentsView exposes live timeline slices while the caller-provided callback
-// is executing. The slices must be treated as read-only and are only valid
-// during the callback.
+// Read-only, and valid only during the callback.
 type SegmentsView struct {
 	Offset    int
 	Past      []bool
@@ -28,18 +19,9 @@ type SegmentsView struct {
 	Future    []bool
 }
 
-// CommitKind tracks the provenance of a timeline commit so masking policy can
-// distinguish immutable playback history from speculative seeds or gap pads.
-//
-// Kind semantics:
-//   - Playback: written from real sequencer/audio events; must remain immutable.
-//   - Import:   loaded from persisted session state; treated as immutable.
-//   - Seeded:   opportunistic history seeds (e.g., path-change padding); may be
-//     replaced by live predictor if they conflict.
-//   - GapPad:   automatically padded invisible gaps between commits; always
-//     overridable.
-//   - Released: a previously seeded entry that was reconciled to predictor; it
-//     serves as bookkeeping for debugging but behaves like Playback.
+// Provenance, so masking tells immutable history from speculation. Playback (real sequencer events) and Import (loaded
+// state) are immutable; Seeded (path-change padding) yields to the live predictor on conflict; GapPad is always
+// overridable; Released is a seed reconciled to the predictor, bookkeeping that behaves like Playback.
 type CommitKind int
 
 const (
@@ -70,17 +52,10 @@ type Service struct {
 	// immutables keeps a copy of playback/import commits keyed by row+abs so
 	// they remain available even if the ring buffer is trimmed or resized.
 	immutables map[int]map[int]commitEntry
-	// archives holds per-row cold-store entries that pruneImmutablesRow has
-	// migrated out of the live sidecar. Reads tier through immutables → ring
-	// → archive in valueLocked, so historical scroll-back resolves to the
-	// archive after entries age past immutablesPerRowMax.
+	// Reads tier immutables → ring → archive (valueLocked), so scroll-back resolves past immutablesPerRowMax.
 	archives map[int]*rowArchive
-	// superseded retains the passes a backward seek abandoned (RewindTo):
-	// commits at/after the seek point that are about to be replayed, possibly
-	// under an edited circuit. Kept (full-history rule) but NEVER consulted by
-	// valueLocked — answering live lookups from them made the abandoned pass
-	// read as immutable history for cells not yet played in this pass (the
-	// row window, the played-snapshot freeze and parity all read through it).
+	// Passes a backward seek abandoned (RewindTo), kept under the full-history rule but NEVER read by valueLocked: answering
+	// live lookups from them made an abandoned pass read as history for cells not yet played again.
 	superseded map[int]*rowArchive
 	// archiveMaxEntries bounds each row's archive size. <= 0 means unbounded.
 	archiveMaxEntries int

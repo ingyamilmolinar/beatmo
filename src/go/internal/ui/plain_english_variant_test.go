@@ -7,9 +7,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// "Variant" is the label of EVERY gen-slot family's variant knob (kick, snare,
-// tom, cymbal, FM) and the gloss is keyed by label, so it must not name one
-// family: the snare's Variant used to read "which flavor of kick".
+// Every gen-slot family labels its variant knob "Variant" and glosses are keyed by label, so the gloss must not
+// name one family.
 func TestVariantGlossDoesNotNameOneFamily(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	for _, loc := range []i18n.Locale{i18n.LocaleEN, i18n.LocaleES} {

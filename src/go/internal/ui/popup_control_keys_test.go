@@ -2,13 +2,7 @@
 
 package ui
 
-// popup_control_keys_test.go — the PARTIAL keyboard-claim contract
-// (keyboard_key_claim.go): a value control that pops up over a tab owns the
-// keys it handles and NOTHING else.
-//
-// Regression: opening the Sampler tab's Pitch control and pressing an arrow key
-// panned the grid camera instead of moving the value — the popup handled no
-// arrow keys AND declared no claim, so gridShortcut's arrow-pan ran unopposed.
+// A value control popped up over a tab owns the keys it handles and nothing else.
 
 import (
 	"image"
@@ -19,9 +13,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// pressKeyThroughShortcuts drives ONE key press edge through the real
-// Game.handleGlobalShortcuts path — the same entry point Game.Update uses — so
-// claimant dispatch, key suppression and the gated router all run in order.
+// The real handleGlobalShortcuts path, so claimant dispatch, suppression and the gated router run in order.
 func pressKeyThroughShortcuts(g *Game, k ebiten.Key) {
 	withStubbedKeys(nil, []ebiten.Key{k}, func() { g.handleGlobalShortcuts() })
 }
@@ -29,9 +21,7 @@ func pressKeyThroughShortcuts(g *Game, k ebiten.Key) {
 // camOffsets snapshots the grid camera pan so a test can assert it did NOT move.
 func camOffsets(g *Game) (float64, float64) { return g.cam.OffsetX, g.cam.OffsetY }
 
-// TestSamplerWheelPopupArrowsEditValueNotCamera is the reported bug: with the
-// Sampler Pitch wheel open, Up/Down must move the VALUE and Left/Right the step
-// RESOLUTION, and neither may pan the grid.
+// Up/Down move the value, Left/Right the resolution, and neither pans the grid.
 func TestSamplerWheelPopupArrowsEditValueNotCamera(t *testing.T) {
 	g, _ := newMobileSamplerWheelGame(t)
 	dv := g.drum
@@ -76,9 +66,7 @@ func TestSamplerWheelPopupArrowsEditValueNotCamera(t *testing.T) {
 	}
 }
 
-// TestSamplerWheelPopupLetsUnclaimedKeysThrough is the other half of the
-// contract: the popup owns the arrows ONLY. Zoom / reset / transport keys must
-// still reach their own shortcut nodes while it is open.
+// Zoom, reset and transport keys still reach their own nodes.
 func TestSamplerWheelPopupLetsUnclaimedKeysThrough(t *testing.T) {
 	g, _ := newMobileSamplerWheelGame(t)
 	dv := g.drum
@@ -90,8 +78,7 @@ func TestSamplerWheelPopupLetsUnclaimedKeysThrough(t *testing.T) {
 		t.Error("] must still zoom while a value popup is open (only the arrows are claimed)")
 	}
 
-	// TriggerPlayPause raises a one-frame pulse that Game.Update consumes; the
-	// pulse itself is the proof that the transport node saw the key.
+	// The one-frame pulse proves the transport node saw the key.
 	dv.playPressed = false
 	pressKeyThroughShortcuts(g, ebiten.KeySpace)
 	if !dv.playPressed {
@@ -100,9 +87,7 @@ func TestSamplerWheelPopupLetsUnclaimedKeysThrough(t *testing.T) {
 	dv.playPressed = false
 }
 
-// TestClosedWheelPopupReleasesTheArrows: once the popup closes, the arrows must
-// go back to panning the grid — a claim that outlives its control would silently
-// kill arrow-pan for the rest of the session.
+// A claim that outlived its control would kill arrow-pan for the session.
 func TestClosedWheelPopupReleasesTheArrows(t *testing.T) {
 	g, _ := newMobileSamplerWheelGame(t)
 	dv := g.drum
@@ -118,9 +103,7 @@ func TestClosedWheelPopupReleasesTheArrows(t *testing.T) {
 	}
 }
 
-// TestEQWheelPopupArrowsEditValueNotCamera pins the same contract for the EQ
-// tab's precision wheel — the second MobileWheelPopup instance, reached by a
-// different opener, so a fix applied to only one site is caught here.
+// A second MobileWheelPopup reached by another opener, so a one-site fix is caught.
 func TestEQWheelPopupArrowsEditValueNotCamera(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(game_log.New(nil, game_log.LevelError))
@@ -146,8 +129,6 @@ func TestEQWheelPopupArrowsEditValueNotCamera(t *testing.T) {
 	}
 }
 
-// TestVolumePopupArrowsAdjustVolumeNotCamera pins the contract for the slider
-// popups (row volume / master volume), the third popup family.
 func TestVolumePopupArrowsAdjustVolumeNotCamera(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(game_log.New(nil, game_log.LevelError))

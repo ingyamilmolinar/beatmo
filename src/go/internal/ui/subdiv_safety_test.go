@@ -26,8 +26,7 @@ func buildTestGame(t *testing.T) *Game {
 	return g
 }
 
-// Ensure lowering from 32->4 is denied when any explicit node does not align
-// to the coarser grid (e.g. 1/8 at 32-subdiv is 4 steps, not multiple of 8).
+// 1/8 at 32-subdiv is 4 steps, not a multiple of 8.
 func TestSetSubdivDisallowUnalignedDownscale(t *testing.T) {
 	g := buildTestGame(t)
 	if err := g.SetSubdivisions(32); err != nil {
@@ -59,8 +58,6 @@ func TestSetSubdivDisallowUnalignedDownscale(t *testing.T) {
 	}
 }
 
-// Lowering from 32->4 is allowed when all explicit nodes are aligned
-// to multiples of 8 (factor=32/4).
 func TestSetSubdivAllowAlignedDownscale(t *testing.T) {
 	g := buildTestGame(t)
 	if err := g.SetSubdivisions(32); err != nil {

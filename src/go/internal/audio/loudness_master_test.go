@@ -7,11 +7,7 @@ import (
 	"time"
 )
 
-// resetMasterLUFSForTest fully clears the process-global integrator,
-// matching what ResetLoudnessForTest does but also nilling the
-// integrator pointer so the "before any Ensure" path of
-// MasterLUFSShortTerm is reachable. Tests use this for the
-// "no-Ensure" path; otherwise they use ResetLoudnessForTest.
+// Also nils the integrator so MasterLUFSShortTerm's "before any Ensure" path is reachable.
 func resetMasterLUFSForTest(t *testing.T) {
 	t.Helper()
 	masterLUFSMu.Lock()
@@ -20,9 +16,7 @@ func resetMasterLUFSForTest(t *testing.T) {
 	masterLUFSMu.Unlock()
 }
 
-// sineBlock returns `n` samples of a sine at freq Hz, sample rate sr,
-// amplitude amp. Phase-continuous within a single call (each call
-// restarts at zero phase — fine for steady-state tests).
+// Each call restarts at zero phase: fine for steady-state tests.
 func sineBlock(freq, sr, amp float64, n int) []float64 {
 	buf := make([]float64, n)
 	step := 2 * math.Pi * freq / sr

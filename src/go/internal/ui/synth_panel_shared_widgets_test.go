@@ -6,12 +6,7 @@ import (
 	"testing"
 )
 
-// TestSynthPanel_FooterUsesSharedButtonChrome guards the discipline: every
-// footer button (Reset / Save / Save As) must render via Button.Draw through
-// either Style or SpecID. Bespoke drawRoundedRect chrome is not allowed.
-//
-// See feedback_shared_widget_reuse memory: clickables must reuse *Button so
-// visuals + press/hover + spec-driven theming stay consistent across the app.
+// Through Button.Draw (Style or SpecID), never bespoke chrome, so visuals, press/hover and theming stay shared.
 func TestSynthPanel_FooterUsesSharedButtonChrome(t *testing.T) {
 	env := setupSynthFooterEnv(t, 1280, 800, false)
 	btns := env.g.drum.SynthTabButtons()
@@ -29,11 +24,7 @@ func TestSynthPanel_FooterUsesSharedButtonChrome(t *testing.T) {
 	}
 }
 
-// TestSynthPanel_HeaderHasNoExtraButtons guards the explicit user
-// direction to remove the "Preview on play" retrigger pill and the
-// "vol N.NN" readout from the synth header. The row rack owns the
-// per-row volume slider and the transport bar owns Play, so duplicating
-// those affordances on the synth panel is forbidden.
+// No retrigger pill or volume readout: the row rack and transport own those.
 func TestSynthPanel_HeaderHasNoExtraButtons(t *testing.T) {
 	env := setupSynthFooterEnv(t, 1280, 800, false)
 	hdr := env.g.drum.SynthTabHeaderButtons()

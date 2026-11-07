@@ -4,8 +4,7 @@ package ui
 
 import "testing"
 
-// The phone's bottom nav in the production UI has no Chain segment, and every
-// remaining segment still maps to the view it names (devtools.go).
+// Every remaining segment still maps to the view it names.
 func TestProductionMobileNavHasNoChainSegment(t *testing.T) {
 	forceProductionUIForTest(t)
 	g := newMobileGame(t)

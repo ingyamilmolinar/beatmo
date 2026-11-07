@@ -35,8 +35,7 @@ type drawCallRecorder struct {
 	seq   int
 }
 
-// record intercepts drawRect, drawRoundedRect, drawButton, and drawRoundedButton
-// during fn() and records all calls. Original functions are still invoked.
+// The originals still run.
 func (rec *drawCallRecorder) record(t *testing.T, fn func()) {
 	t.Helper()
 	rec.calls = nil
@@ -113,8 +112,6 @@ func (rec *drawCallRecorder) inRegion(r image.Rectangle) []drawCall {
 	return out
 }
 
-// hasRoundedButton returns true if any drawCallRoundedButton call matches r
-// with radius >= minRadius.
 func (rec *drawCallRecorder) hasRoundedButton(r image.Rectangle, minRadius int) bool {
 	for _, c := range rec.calls {
 		if c.Kind == drawCallRoundedButton && c.Rect == r && c.Radius >= minRadius {
@@ -146,10 +143,7 @@ func (rec *drawCallRecorder) assertNoSquareButtons(t *testing.T, r image.Rectang
 
 // ── corner shape analysis ───────────────────────────────────────────────
 
-// cornerFillWidths calls drawRoundedRect with the given params, intercepts the
-// inner drawRect calls, and returns the fill width at each row in the top-left
-// corner region (rows 0..radius-1). Width = how many pixels filled from the
-// left edge inward.
+// Fill width per row of the top-left corner.
 func cornerFillWidths(t *testing.T, radius int) []int {
 	t.Helper()
 	r := image.Rect(0, 0, 4*radius, 4*radius)
@@ -171,8 +165,7 @@ func cornerFillWidths(t *testing.T, radius int) []int {
 	img := ebiten.NewImage(r.Dx(), r.Dy())
 	drawRoundedRect(img, r, c, radius, true)
 
-	// Extract top-left corner fill widths. The corner rects have
-	// y in [0, radius) and x starting at some inset from 0.
+	// Corner rects sit in y ∈ [0, radius).
 	widths := make([]int, radius)
 	for _, dr := range rects {
 		if dr.Color != c {
@@ -190,8 +183,7 @@ func cornerFillWidths(t *testing.T, radius int) []int {
 	return widths
 }
 
-// strokeCornerInsets calls drawRoundedRect (stroked) and returns the inset of
-// the stroke pixel at each row in the top-left corner (distance from left edge).
+// The stroke's distance from the left edge per corner row.
 func strokeCornerInsets(t *testing.T, radius int) []int {
 	t.Helper()
 	r := image.Rect(0, 0, 4*radius, 4*radius)
@@ -232,8 +224,7 @@ func strokeCornerInsets(t *testing.T, radius int) []int {
 	return insets
 }
 
-// assertCornerConvex verifies that corner fill widths increase monotonically
-// from tip (row 0) to base (row radius-1).
+// Widths grow monotonically from the tip to the base.
 func assertCornerConvex(t *testing.T, widths []int) {
 	t.Helper()
 	for i := 1; i < len(widths); i++ {

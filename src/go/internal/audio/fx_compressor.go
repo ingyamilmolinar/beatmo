@@ -4,14 +4,8 @@ package audio
 
 import "math"
 
-// compressorFX implements a per-instrument dynamics compressor as an insert
-// effect. It uses a peak envelope follower with separate attack/release
-// coefficients, hard-knee gain computation, optional makeup gain, and
-// wet/dry mix. All user-facing parameters are smoothed via smoothParam to
-// prevent clicks on change. The envelope follower itself is NOT smoothed —
-// it tracks signal amplitude in real time.
-//
-// This is distinct from the master-bus Compressor type.
+// A peak envelope follower with separate attack/release, hard knee, makeup and mix. User params are smoothed; the
+// envelope is not, since it tracks the signal in real time.
 type compressorFX struct {
 	threshold smoothParam // -60..0 dB
 	ratio     smoothParam // 1..20

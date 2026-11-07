@@ -1,9 +1,7 @@
 package ui
 
-// Tests for the 2026-07-16 hover-coverage pass: every clickable shows a
-// hover cue on desktop, driven by shared mechanisms (portalHoverer for
-// portal overlays, hoverFade for hand-drawn sidebar surfaces, the eased
-// node bloom for grid nodes, glowTarget for tree-registered synth chips).
+// Every clickable shows a hover cue on desktop through a shared mechanism: portalHoverer, hoverFade, the eased node
+// bloom, or glowTarget.
 
 import (
 	"image"
@@ -28,10 +26,7 @@ func hoverTestInput(t *testing.T, x, y int) {
 	t.Cleanup(restore)
 }
 
-// TestPortalHoverLiftsFXPanelButtons pins the portalHoverer seam: plain
-// cursor-over refreshes a portal overlay's button hovered flags each frame
-// (portal input handlers only run on press edges, so without the seam a
-// popup's buttons never hover).
+// Portal input handlers run only on press edges, so without the portalHoverer seam a popup's buttons never hover.
 func TestPortalHoverLiftsFXPanelButtons(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = false
@@ -72,9 +67,7 @@ func TestPortalHoverLiftsFXPanelButtons(t *testing.T) {
 	}
 }
 
-// TestSidebarSectionHeaderHoverLift pins the hoverFade path: hovering an
-// expandable section header eases the shared lift in (headers are not
-// Buttons, so they need the sidebar's own hover resolution).
+// Section headers are not Buttons, so they need the sidebar's own hover resolution.
 func TestSidebarSectionHeaderHoverLift(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = false
@@ -114,9 +107,7 @@ func TestSidebarSectionHeaderHoverLift(t *testing.T) {
 	}
 }
 
-// TestNodeHoverGlowEases pins the grid-node hover halo: the eased progress
-// rises toward 1 while a node is hovered and decays after the cursor leaves,
-// with the halo target retained for the fade-out.
+// The halo target is retained so the glow fades out after the cursor leaves.
 func TestNodeHoverGlowEases(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -151,10 +142,7 @@ func TestNodeHoverGlowEases(t *testing.T) {
 	}
 }
 
-// TestSynthControlCardAdapterIsGlowTarget pins that a Synth-tab param card
-// participates in the tree hover overlay: the whole card is the hover target
-// (a tap anywhere on it opens the value-wheel popup), so glowRect must
-// return the hit rect unchanged.
+// The whole card is the target (a tap anywhere opens the wheel), so glowRect returns the hit rect unchanged.
 func TestSynthControlCardAdapterIsGlowTarget(t *testing.T) {
 	var gt glowTarget = &synthControlHitAdapter{}
 	r := image.Rect(5, 5, 80, 50)
@@ -163,8 +151,6 @@ func TestSynthControlCardAdapterIsGlowTarget(t *testing.T) {
 	}
 }
 
-// TestSamplerKnobCardAdapterIsGlowTarget mirrors
-// TestSynthControlCardAdapterIsGlowTarget for the Sampler-tab param cards.
 func TestSamplerKnobCardAdapterIsGlowTarget(t *testing.T) {
 	var gt glowTarget = &samplerKnobHitAdapter{}
 	r := image.Rect(5, 5, 80, 50)
@@ -173,14 +159,8 @@ func TestSamplerKnobCardAdapterIsGlowTarget(t *testing.T) {
 	}
 }
 
-// TestMobileWheelPopupPortalOverlayIsPortalHoverer pins the seam this popup
-// uses for desktop hover feedback: OverlayPortal.Update() dispatches
-// HoverAt(mx, my) to every stacked overlay implementing portalHoverer once
-// per frame (portal input handlers only run on press/drag/release edges).
-// The portal wrapper must delegate to the popup's own HoverAt so the ladder
-// rung / center grip hover tint (see wheel_ladder_test.go) actually lights up
-// when the popup is open through the real portal stack, not just via a
-// direct unit-level call.
+// The portal wrapper must delegate HoverAt to the popup, or its ladder hover tint never lights through the real
+// portal stack.
 func TestMobileWheelPopupPortalOverlayIsPortalHoverer(t *testing.T) {
 	w, _, _ := mkWheelForLadder(t)
 	o := &mobileWheelPopupPortalOverlay{popup: w, tag: "test-wheel"}

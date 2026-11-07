@@ -14,22 +14,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// pipeline is the lock-free, allocation-free recording pipeline that owns
-// the per-channel encoder workers and streaming WAV writers.
-//
-// Hot path (audio thread):
-//
-//	if p := pipelinePtr.Load(); p != nil {
-//	    p.Tap(slotIDs, activeSlots, instBufs, workBuf, blockLen)
-//	}
-//
-// Tap acquires a pre-allocated capture block from a bounded pool, copies
-// float64 → float32 into it, then non-blocking sends onto a per-channel
-// channel. Workers drain and stream-write to disk via streamWavWriter.
-//
-// On stop, pipelinePtr is cleared first so no new Taps obtain p, then
-// in-flight Taps drain (tracked via inflight counter), then channels are
-// closed and writers flushed/closed.
+// Lock-free and allocation-free on the audio thread: Tap copies into a pooled block and sends without blocking; workers
+// stream to disk. Stop clears pipelinePtr first, then waits out in-flight Taps, then closes channels and writers.
 type pipeline struct {
 	outputDir  string
 	sampleRate int
@@ -41,13 +27,10 @@ type pipeline struct {
 
 	// Shutdown coordination.
 	stopping atomic.Bool
-	// tapWG is incremented at Tap entry and decremented at exit. Detach
-	// uses Wait() for a deterministic, non-polling barrier — replaces the
-	// old time.Sleep loop that blocked the UI thread up to 200 ms.
+	// A deterministic, non-polling barrier for Detach.
 	tapWG sync.WaitGroup
 
-	// Block pool: bounded channel of pre-allocated *captureBlock. Audio
-	// thread acquires non-blocking; workers return after writing.
+	// The audio thread acquires without blocking; workers return blocks after writing.
 	blockPool chan *captureBlock
 
 	// Per-channel state, indexed by instrument ID. Read-only after start.
@@ -65,8 +48,7 @@ type pipeline struct {
 	midiEvents []MIDIEvent
 }
 
-// captureBlock holds one block of float32 samples destined for a single
-// channel. Capacity is fixed at construction; length varies per use.
+// Fixed capacity; length varies per use.
 type captureBlock struct {
 	samples []float32
 }
@@ -95,13 +77,10 @@ type pipelineConfig struct {
 	QueueDepth    int // per-channel queue size (default 256)
 }
 
-// pipelinePtr is the global atomic pointer checked on the hot audio path.
-// nil = not recording. Mirrors the legacy multiCapturePtr pattern.
+// nil = not recording.
 var pipelinePtr atomic.Pointer[pipeline]
 
-// newPipeline opens per-channel WAV writers in cfg.OutputDir and starts
-// an encoder worker for each. The pipeline is not yet attached to the
-// hot path — caller must Activate it.
+// Not yet on the hot path: the caller must Activate it.
 func newPipeline(cfg pipelineConfig) (*pipeline, error) {
 	if cfg.SampleRate <= 0 {
 		return nil, fmt.Errorf("invalid sample rate: %d", cfg.SampleRate)
@@ -127,8 +106,7 @@ func newPipeline(cfg pipelineConfig) (*pipeline, error) {
 		return nil, fmt.Errorf("encoder error: %w", err)
 	}
 	ext := encoder.FileExtension()
-	// Streaming writer is only implemented for WAV today; non-WAV formats
-	// fall back to in-memory encode at stop time (handled by caller).
+	// Only WAV streams; other formats encode in memory at stop.
 	if !isStreamableFormat(cfg.Format) {
 		return nil, fmt.Errorf("format %s is not streamable", cfg.Format)
 	}
@@ -189,8 +167,6 @@ func newPipeline(cfg pipelineConfig) (*pipeline, error) {
 	return p, nil
 }
 
-// shutdownEarly is called when newPipeline fails partway through. It
-// closes anything that was opened.
 func (p *pipeline) shutdownEarly() {
 	if p.masterCh != nil {
 		close(p.masterCh.send)
@@ -201,18 +177,14 @@ func (p *pipeline) shutdownEarly() {
 	p.workerWg.Wait()
 }
 
-// Tap is the hot-path entry. It is called from the audio thread (mixer
-// processBlock) and MUST NOT block, allocate, or take a mutex on the
-// caller's behalf. instBufs[slot] holds float64 samples per active
-// instrument; workBuf holds the final mixed master samples.
+// On the audio thread: MUST NOT block, allocate or take a mutex.
 func (p *pipeline) Tap(slotIDs []channel.ID, activeSlots []int, instBufs [][]float64, workBuf []float64, blockLen int) {
 	if p.stopping.Load() || p.done.Load() {
 		return
 	}
 	p.tapWG.Add(1)
 	defer p.tapWG.Done()
-	// Re-check after Add so we don't race with Detach. The Add/Wait
-	// happens-before relationship guarantees Detach's Wait sees this.
+	// Re-checked after Add so Detach's Wait sees this Tap (Add/Wait happens-before).
 	if p.stopping.Load() {
 		return
 	}
@@ -302,8 +274,6 @@ func (p *pipeline) releaseBlock(b *captureBlock) {
 	}
 }
 
-// runChannelWorker drains a channel's queue and writes samples through
-// the streamWavWriter. Exits when the channel is closed.
 func (p *pipeline) runChannelWorker(ch *channelState) {
 	defer p.workerWg.Done()
 	for blk := range ch.send {
@@ -319,37 +289,18 @@ func (p *pipeline) runChannelWorker(ch *channelState) {
 	}
 }
 
-// Detach is the fast first half of Stop: marks the pipeline as stopping
-// and waits for any in-flight Tap calls to return. Safe to call from
-// the UI thread — completes in microseconds because Tap's body is
-// already lock-free and bounded.
-//
-// Returns nil if successful, or an error if Detach was already called.
-// After Detach returns, Tap is a no-op; the caller may safely call
-// DrainAndClose on a worker goroutine.
+// Safe on the UI thread: microseconds, since Tap is lock-free and bounded. Afterwards Tap is a no-op.
 func (p *pipeline) Detach() error {
 	if p.stopping.Swap(true) {
 		return errors.New("pipeline already stopped")
 	}
-	// WaitGroup-based barrier replaces the old time.Sleep polling loop.
-	// In-flight Taps that observed stopping=false will Done() before
-	// Wait returns; new Taps see stopping=true and bail before Add().
+	// Taps that saw stopping=false finish before Wait returns; new ones bail before Add.
 	p.tapWG.Wait()
 	return nil
 }
 
-// DrainWorkers closes the per-channel queues and waits for encoder
-// workers to finish writing any buffered blocks. After this returns,
-// per-channel `count.Load()` values are final and pipe.Channels()
-// reflects actual recorded data. The WAV writers are still open — call
-// CloseWriters next to finalize the files.
-//
-// In steady state this completes in microseconds (workers keep up with
-// the audio thread; queues are shallow). Worst case: deep queue × N
-// channels × write cost — bounded by the per-channel queue depth so a
-// pathological case is still O(seconds), not O(unbounded).
-//
-// Safe to call from the UI thread: only synchronization, no file I/O.
+// After this, sample counts are final; the writers are still open. Only synchronization, no file I/O, so safe on the
+// UI thread; bounded by the per-channel queue depth.
 func (p *pipeline) DrainWorkers() error {
 	if !p.stopping.Load() {
 		return errors.New("pipeline not detached; call Detach first")
@@ -364,17 +315,10 @@ func (p *pipeline) DrainWorkers() error {
 	return nil
 }
 
-// CloseWriters is the slow tail: bufio.Flush + Seek + Write to patch
-// header sizes + file Close per channel. This is what we want OFF the
-// UI thread on slow disks — 7 channels × ~5 syscalls each can spike.
-//
-// Returns the per-channel ChannelMeta with finalized sample counts and
-// any errors from the close cycle joined together.
+// The slow tail (flush, header patch, Close per channel), kept OFF the UI thread for slow disks.
 func (p *pipeline) CloseWriters() ([]ChannelMeta, error) {
 
-	// Close writers (flushes bufio + patches WAV header sizes). Only emit
-	// metadata for channels that actually received samples — empty writers
-	// remain on disk as silent stubs but are not advertised in the result.
+	// Empty writers stay on disk as silent stubs but are not advertised.
 	var errs []error
 	var metas []ChannelMeta
 	if p.masterCh != nil {
@@ -407,10 +351,7 @@ func (p *pipeline) CloseWriters() ([]ChannelMeta, error) {
 	return metas, errors.Join(errs...)
 }
 
-// Stop is the convenience wrapper: Detach + DrainWorkers + CloseWriters.
-// Retained for callers (and tests) that want the simple synchronous
-// flow. Production code paths should call the three-phase form so
-// CloseWriters runs on a background worker.
+// Synchronous convenience; production runs the three phases so CloseWriters lands on a background worker.
 func (p *pipeline) Stop() ([]ChannelMeta, error) {
 	if err := p.Detach(); err != nil {
 		return nil, err
@@ -426,11 +367,7 @@ func (p *pipeline) Drops() int64 {
 	return p.dropsTotal.Load()
 }
 
-// MetaSnapshot returns ChannelMeta entries for all channels that have
-// received samples, using the current atomic counters. Safe to call any
-// time after DrainWorkers (which guarantees counts are stable). Used to
-// populate result.Metadata.Channels synchronously while the WAV writer
-// Close is still pending on the lifecycle pool.
+// Stable after DrainWorkers, so the result can be filled while Close is still pending.
 func (p *pipeline) MetaSnapshot() []ChannelMeta {
 	out := make([]ChannelMeta, 0, len(p.channels)+1)
 	if p.masterCh != nil {
@@ -456,8 +393,7 @@ func (p *pipeline) MetaSnapshot() []ChannelMeta {
 	return out
 }
 
-// Channels returns the per-channel writer paths and sample counts. Used
-// for building EncodedChannel results without re-reading file contents.
+// Without re-reading file contents.
 func (p *pipeline) Channels() []EncodedChannel {
 	out := make([]EncodedChannel, 0, len(p.channels)+1)
 	if p.masterCh != nil && p.masterCh.count.Load() > 0 {
@@ -482,20 +418,13 @@ func (p *pipeline) Channels() []EncodedChannel {
 	return out
 }
 
-// maxMIDIEventsPerSession bounds the per-session MIDI events buffer. Recording
-// is already 1800 s capped via pipelineConfig.MaxDuration; ~110 ev/s is well
-// above any human-realistic drumming density. The cap exists to guard against
-// runaway accumulation if the session somehow generates events at an
-// unbounded rate.
+// Recording is already capped at 1800 s; ~110 events/s is beyond any drumming, so this only stops runaway accumulation.
 const maxMIDIEventsPerSession = 200_000
 
 // midiDropChunk amortizes the cost of dropping over-cap events.
 const midiDropChunk = 1024
 
-// AppendMIDIEvent records a MIDI event captured during the session. Safe
-// to call from any goroutine. Drops the oldest midiDropChunk events if the
-// hard cap is reached so callers never block and the buffer never grows
-// without bound.
+// Drops the oldest midiDropChunk events at the cap, so callers never block.
 func (p *pipeline) AppendMIDIEvent(evt MIDIEvent) {
 	p.midiMu.Lock()
 	if len(p.midiEvents) >= maxMIDIEventsPerSession {
@@ -536,10 +465,7 @@ type PipelineStats struct {
 	MasterQueued  int
 	BlockPoolFree int
 	Channels      int
-	// BytesUsed is the total encoded payload across all channels. On
-	// desktop this is updated by the streaming WAV writers; on WASM it
-	// is reported by the off-thread encoder Worker. Useful as a hard cap
-	// signal for very long sessions.
+	// The streaming writers on desktop, the encoder Worker on WASM: a hard-cap signal for long sessions.
 	BytesUsed int64
 }
 
@@ -558,8 +484,7 @@ func CurrentPipelineStats() PipelineStats {
 	if p.masterCh != nil {
 		stats.MasterQueued = len(p.masterCh.send)
 	}
-	// Approximate bytes used = samples × bytesPerSample. Cheap to derive
-	// here without adding another atomic counter to the hot path.
+	// Samples × bytes per sample: no extra hot-path counter.
 	for _, ch := range p.channels {
 		bps := 0
 		if ch.writer != nil {
@@ -577,9 +502,7 @@ func CurrentPipelineStats() PipelineStats {
 	return stats
 }
 
-// RecordingDrops returns the cumulative number of capture blocks dropped
-// due to backpressure or pool exhaustion since the current session began.
-// Returns 0 when not recording.
+// Backpressure and pool exhaustion this session; 0 when not recording.
 func RecordingDrops() int64 {
 	p := pipelinePtr.Load()
 	if p == nil {

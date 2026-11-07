@@ -1,31 +1,6 @@
-/**
- * REAL end-to-end Synth-tab audio regression — Phase 5 follow-up.
- *
- * Drives real Playwright mouse events on the actual canvas during real
- * playback (startPlay → sequencer firing notes) to reproduce the user
- * report: "audio stops in WASM after slider interaction". Captures
- * WebAudio output via startOutputCapture and asserts:
- *
- *   1. Baseline playback produces audible non-NaN audio.
- *   2. Real input on each laid-out control (snare's recipe), stage by
- *      stage, changes values and doesn't silence the audio.
- *   3. After the drag, audio continues without BiquadFilterNode warnings
- *      or page errors.
- *
- * Unlike instrument_params_e2e_audio.browser.test.js (which drives
- * setInstrumentParam from JS), this test goes through the actual UI
- * pipeline: synthSliderHitAdapter.OnDrag → propagateSynthSliderValue →
- * audio.SetInstrumentParam → platformInstrumentParamsChanged →
- * window.updateInstrumentParams → renderCache.delete →
- * ensureRenderedSample → render_X_p. If any link in the chain is broken,
- * the assertions catch it.
- *
- * The Synth tab drills into one pipeline STAGE at a time and lays out only
- * that stage's controls; each control is edited the way a user does today —
- * click to ARM it, arrow keys to step the value, Enter to accept (the earlier
- * rotary/horizontal drags were removed). synthControlRects() lists every
- * binding, so the test drills each stage and edits what it actually shows.
- */
+/** Real canvas input during real playback through the whole UI pipeline to the render: baseline audible, every control
+ * each stage lays out edited the way a user does (click to ARM, arrows to step, Enter), and no silence, NaN or Biquad
+ * warning after. */
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";
@@ -138,10 +113,7 @@ try {
     return false;
   };
 
-  // Switch to Synth tab. Force a layout so the slider rects are
-  // populated (forceDraw triggers Update/Draw, which calls Layout).
-  // The Synth view edits ONE instrument and is blocked while the channel is
-  // Master (where the app starts) — select the snare's channel first.
+  // The Synth view edits one instrument and is blocked on Master, so the snare's channel is selected first.
   await page.evaluate(() => {
     setEQChannel("snare");
     setEQTab("synth");
@@ -153,8 +125,7 @@ try {
   let rects = await page.evaluate(() => synthControlRects());
   console.log(`[TEST] synth knobs visible: ${rects.length}`);
   if (rects.length === 0) {
-    // Fall back: tab might not yet be active because the row's
-    // instrument is still loading. Try forcing another draw.
+    // The tab may not be active yet while the row's instrument loads.
     await page.evaluate(() => {
       setEQTab("synth");
       if (typeof forceDraw === "function") forceDraw();
@@ -187,8 +158,7 @@ try {
     throw new Error(`baseline is silent (peak=${basePeak}). Sequencer not playing.`);
   }
 
-  // ─── Real mouse drag on each slider — this is the key reproduction step ───
-  // Get canvas screen position once (it's static during the test).
+  // The canvas position is static during the test.
   const canvasBox = await page.evaluate(() => {
     const canvas = document.querySelector("canvas");
     if (!canvas) return null;
@@ -198,15 +168,8 @@ try {
   if (!canvasBox) throw new Error("no canvas in DOM");
   console.log(`[TEST] canvas: ${canvasBox.width}×${canvasBox.height} at (${canvasBox.x},${canvasBox.y})`);
 
-  // Drag each knob through its full range. We do this DURING active playback so
-  // the audio capture overlaps with the drag. CHIP-STRIP: each knob lives in a
-  // collapsed stage unless its owning stage is selected, so we select the
-  // owning stage, re-fetch synthControlRects(), and pick the laid-out (w>0,h>0)
-  // rect before dragging. The names come from the union of all known params.
-  // Drill into each pipeline STAGE once and edit every control it actually lays
-  // out. (synthControlRects() lists every binding of the recipe — over a
-  // thousand on a modular voice, most of them hidden gen-slot plumbing — so
-  // walking it name by name waited out a timeout on each one that never shows.)
+  // During playback, so the capture overlaps the edits. Stage by stage: synthControlRects() lists every binding (over a
+  // thousand, mostly hidden), so walking it by name timed out on each one never shown.
   const STAGES = ["VOICE", "OSC", "FM", "PITCH", "LFO", "BURST", "ENVELOPE", "FILTER", "POST", "FORMANT", "ENSEMBLE"];
   const targets = [];
   const seen = new Set();
@@ -232,10 +195,7 @@ try {
     }
     console.log(`[TEST] editing ${r.name} [${stage}] (${r.x},${r.y})..(${r.x + r.w},${r.y + r.h})`);
 
-    // ARMED-CONTROL model: a click ARMS the control in place, the arrow keys
-    // step its value (armedControlKeys), Enter accepts. The horizontal drag
-    // this test was written for no longer edits anything (synthControlHitAdapter
-    // OnDrag is a no-op), so the old sweep moved no value at all.
+    // A click ARMS the control, the arrows step it, Enter accepts: a drag edits nothing.
     const before = await page.evaluate((n) => (getInstrumentParams("snare") || {})[n], r.name);
     await page.mouse.click(canvasBox.x + r.x + r.w / 2, canvasBox.y + r.y + r.h / 2);
     await page.waitForTimeout(40);

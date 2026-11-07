@@ -21,9 +21,7 @@ func newInstrumentTestGame(t *testing.T) *Game {
 	return g
 }
 
-// TestInstrumentBundleRoundTripSynth exports a customized synth instrument and
-// re-imports it: the tone (base+seed), normalized effects, and EQ survive; the
-// builtin is never clobbered (import re-namespaces).
+// Import re-namespaces, so the builtin is never clobbered.
 func TestInstrumentBundleRoundTripSynth(t *testing.T) {
 	g := newDocsGame(t, roster.Snare)
 	const inst = roster.Snare
@@ -78,9 +76,7 @@ func TestInstrumentBundleRoundTripSynth(t *testing.T) {
 	}
 }
 
-// TestInstrumentBundleWavReferenceRoundTrip exports a user-WAV instrument (a
-// reference, NO PCM in the file) and re-imports it, resolving the WAV via a fake
-// locator that verifies the content hash.
+// The file carries a reference, never PCM; the fake locator verifies the content hash.
 func TestInstrumentBundleWavReferenceRoundTrip(t *testing.T) {
 	g := newDocsGame(t, roster.Snare)
 	const inst = roster.Snare
@@ -104,8 +100,7 @@ func TestInstrumentBundleWavReferenceRoundTrip(t *testing.T) {
 		t.Error("wav ref missing name")
 	}
 
-	// Import via the REAL localstorage locator (re-encodes the source sample's
-	// PCM to the canonical WAV bytes → hash matches the pin).
+	// The real localstorage locator re-encodes the sample's PCM to the canonical WAV bytes, so the hash matches.
 	results, err := g.drum.ApplyInstrumentBundle(&bundle, func(ImportCollision) CollisionChoice { return CollisionKeepBoth }, -1, g.drum.wavImportLocators())
 	if err != nil {
 		t.Fatalf("apply: %v", err)

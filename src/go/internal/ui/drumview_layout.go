@@ -9,23 +9,16 @@ import (
 
 /* ─── public update ────────────────────────────────────────── */
 
-// refreshLenButtonsStyle re-derives the length +/− buttons' Style and
-// IconColor. Both platforms now use the neutral stepper look (same recipe
-// as button-secondary) so there is no mobile/desktop branch. Called from
-// recalcButtons every layout pass and once from the ctor. Idempotent and O(1).
 func (dv *DrumView) refreshLenButtonsStyle() {
 	if dv.lenDecBtn == nil || dv.lenIncBtn == nil {
 		return
 	}
-	// Muted glyphs, like the lock, the counter's target icon and the grid's
-	// top-right cluster — the band's keycaps read as one family.
+	// Muted glyphs, so the band's keycaps read as one family with the lock and the counter.
 	setButtonStyleAndIcon(dv.lenDecBtn, LenDecStyle, colTextSecondary)
 	setButtonStyleAndIcon(dv.lenIncBtn, LenIncStyle, colTextSecondary)
 }
 
-// setButtonStyleAndIcon assigns style + icon color only when they changed:
-// storing a value into the ButtonVisual / color.Color interface fields boxes
-// it, and recalcButtons runs every layout pass (a per-frame allocation).
+// Only when changed: storing into the interface fields boxes the value, every layout pass.
 func setButtonStyleAndIcon(b *Button, st ButtonStyle, icon color.RGBA) {
 	if cur, ok := b.Style.(ButtonStyle); !ok || cur != st {
 		b.Style = st
@@ -36,22 +29,16 @@ func setButtonStyleAndIcon(b *Button, st ButtonStyle, icon color.RGBA) {
 }
 
 func (dv *DrumView) recalcButtons() {
-	// Re-derive profile-dependent button chrome before doing anything else
-	// so the rest of recalcButtons (and the components it positions) see
-	// styles that match the current LayoutProfile.
+	// First, so everything below sees styles for the current profile.
 	dv.refreshLenButtonsStyle()
-	// Late mobile init: when mobile profile first activates (after Layout()
-	// calls SetTouchScreenSize on WASM), collapse EQ and mark layout dirty.
+	// On WASM the mobile profile activates only after Layout calls SetTouchScreenSize.
 	p := Profile()
 	if p.IsMobile() && !dv.mobileEQInited {
 		dv.mobileEQInited = true
 		dv.mobileEQCollapsed = true
 		dv.bgDirty = true
 		if dv.widgets != nil {
-			// Update widget board for mobile column proportions.
-			// At construction time the profile may be desktop on WASM
-			// (SetTouchScreenSize hasn't been called yet), so the board
-			// was created with desktop weights [1, 3]. Fix that now.
+			// The board may have been built with desktop weights before the profile was known.
 			dv.widgets.SetWeights(p.ColWeights, p.RowWeights)
 			dv.widgets.ToggleWidget(WidgetWave, false)
 			dv.widgetRects[WidgetWave] = dv.widgets.Rect(WidgetWave)
@@ -60,11 +47,7 @@ func (dv *DrumView) recalcButtons() {
 		dv.eqH = 0
 	}
 	if runningUnderGoTest() {
-		// Tests normally collapse the audio panel (eqPanelHeight=0) to keep the
-		// drum rows dominant. eqPanelHeightForTest is a seam that lets a
-		// functional test exercise the REAL production-floored panel (where the
-		// panel top diverges from the widget-board boundary) — the scenario this
-		// gate otherwise hides. 0 = default collapse behaviour.
+		// Tests collapse the panel; eqPanelHeightForTest lets one exercise the real floored layout.
 		if eqPanelHeightForTest > 0 {
 			eqPanelHeight = eqPanelHeightForTest
 		} else {
@@ -74,25 +57,12 @@ func (dv *DrumView) recalcButtons() {
 	}
 	dv.calcLabelWidth()
 
-	// Reconcile eqH with the audio panel's actual painted floor for the CURRENT
-	// tab BEFORE the row rack is laid out below (its bottom + the add-row "+"
-	// anchor derive from rowsBottom() == Bounds.Max.Y - eqH). refreshWidgetLayout
-	// computes eqH only at SetBounds/resize, so a tab switch to Synth (taller
-	// 240 px floor) would otherwise leave eqH stale and strand the rack under
-	// the panel. Runs every frame; idempotent.
+	// Before the rack is laid out: refreshWidgetLayout only runs on resize, so a tab switch would
+	// leave eqH stale and strand the rack under the panel.
 	dv.reconcileEQHeightToPanelFloor()
 
-	// Allocate the mobile-only bottom action bar host. This is the bottom
-	// sheet that holds the volume icon, view-switch, and overflow controls
-	// in the mobile redesign (B3 critique). Desktop leaves the rect empty.
-	//
-	// Skip allocation when the drum-pane bounds are too tight to fit even
-	// one row above the bar (e.g. landscape phones at 140 px tall). The
-	// bar would otherwise consume TouchMinTarget px below the header and
-	// leave nothing for the rows themselves — visibleRows would collapse
-	// to 0 and the rack would not paint. Falling back to the pre-bar
-	// layout on these viewports keeps rows visible; vol/view/overflow
-	// remain reachable through the transport overflow menu.
+	// Skipped when the pane cannot fit one row above the bar, or the rack would collapse to zero rows;
+	// the bar's controls stay reachable from the transport.
 	if p.UseBottomSheet {
 		barH := TouchMinTarget()
 		usable := dv.Bounds.Dy() - dv.headerH - barH
@@ -110,24 +80,13 @@ func (dv *DrumView) recalcButtons() {
 		dv.bottomActionBarRect = image.Rectangle{}
 	}
 
-	// EQ peek strip is intentionally NOT allocated. The historical 24-px
-	// sparkline-above-the-bar surface (mobile EQ collapsed) rendered as
-	// a black band on default boot — every band sits at 0 dB so the
-	// sparkline is invisible against `colBGBottom`. The bottom segmented
-	// control already exposes an "EQ" tab providing the same expand-EQ
-	// affordance, so the peek was a redundant orphan surface between
-	// the row rack and the action bar (flagged in screenshot review
-	// 2026-05-10). The unified-layout invariant
-	// (`rowsBottom() == bottomActionBarRect.Min.Y`) is locked in by
-	// `mobile_default_unified_layout_test.go`.
+	// No EQ peek strip: the bottom nav's EQ tab already expands the EQ.
 	dv.eqPeekRect = image.Rectangle{}
 
 	transport := dv.widgetRects[WidgetTransport]
 	if transport.Empty() {
 		transport = image.Rect(dv.Bounds.Min.X, dv.Bounds.Min.Y, dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Min.Y+dv.headerH)
 	}
-	// On desktop, cap at the widget column width to prevent buttons
-	// from extending into the timeline widget area.
 	widgetColW := 0
 	if dv.widgets != nil {
 		widgetColW = dv.widgets.ColWidth(0)
@@ -151,11 +110,7 @@ func (dv *DrumView) recalcButtons() {
 		}
 		topBounds := image.Rect(controlLeft, leftCol.Min.Y, leftCol.Max.X, leftCol.Max.Y)
 		dv.tree.SetZoneRect("transport", topBounds)
-		// Tell the zone whether DrumView's bottom action bar is hosting
-		// vol/view/overflow this frame. When the bar collapses on
-		// ultra-short viewports (see bar allocation block above), the
-		// zone falls back to the pre-Task-1.3 two-row layout so those
-		// three buttons remain reachable inside the top toolbar.
+		// When the bar collapses on very short viewports, the zone keeps those buttons in the toolbar.
 		dv.transportZone.SetUseBottomBar(p.IsMobile() && !dv.bottomActionBarRect.Empty())
 		if dv.transportZone.NeedsLayout() || dv.transportZone.rect != topBounds {
 			dv.tree.LayoutZoneNow("transport")
@@ -163,16 +118,9 @@ func (dv *DrumView) recalcButtons() {
 		dv.mainVolIconRect = dv.transportZone.mainVolIconRect
 		dv.mainVolRect = dv.transportZone.mainVolRect
 
-		// Mobile (Theme 1+4): the bottom action bar hosts the 6-segment
-		// view switcher (Pads/EQ/Wave/Spec/Mtr/Scope) at full bar width.
-		// The vol icon and overflow kebab now live in the top toolbar
-		// (Theme 4) — placed by the transport zone's layoutMobile (we
-		// do NOT clear those rects here).
 		if p.IsMobile() && !dv.bottomActionBarRect.Empty() {
 			bar := dv.bottomActionBarRect
 			barPad := ActiveTopBarSpec().Padding
-			// Legacy binary view-switch is suppressed on mobile in favor
-			// of the segmented control — keep its rect cleared.
 			if dv.transportZone.viewSwitchBtn != nil {
 				dv.transportZone.viewSwitchBtn.SetRect(image.Rectangle{})
 			}
@@ -183,10 +131,7 @@ func (dv *DrumView) recalcButtons() {
 					segRect = image.Rect(segRect.Min.X+barPad, segRect.Min.Y, segRect.Max.X-barPad, segRect.Max.Y)
 				}
 				dv.viewSwitchSegmented.SetRect(segRect)
-				// Grey the Synth/Sampler segments when they have no instrument
-				// context: Master selected (both), or a WAV-sample instrument
-				// (Synth only). HitTest reads this live, so the hit area
-				// published below stays consistent with the visual.
+				// No instrument context (Master, or a WAV for Synth) greys the segment; HitTest reads this live.
 				if idx := bottomNavSynthIndex(); idx >= 0 {
 					dv.viewSwitchSegmented.SetSegmentDisabled(idx, dv.synthViewDisabled())
 				}
@@ -194,31 +139,14 @@ func (dv *DrumView) recalcButtons() {
 					dv.viewSwitchSegmented.SetSegmentDisabled(idx, dv.samplerViewDisabled())
 				}
 			}
-			// Re-rebuild hit areas so the segmented control is registered
-			// (transport zone's Layout ran before we placed it).
+			// Again: the transport zone laid out before the control was placed.
 			dv.transportZone.rebuildHitAreas()
 			dv.transportZone.SetBarRect(bar)
-			// Register the segmented control as a hit area in the transport zone.
-			// ZIndex ZViewSwitch (150): it MUST sit above ALL in-panel tab
-			// content so the tab switcher can never be occluded — otherwise a
-			// tab whose controls overlap the bottom bar strands the user on it.
-			// The Chain tab's stage cards (z=141) and swatches (z=142) draw
-			// down into the bar; the prior hardcoded z=140 lost to them, so
-			// the user could not switch away from Chain. ZViewSwitch is the
-			// dedicated constant for exactly this control (above eq controls
-			// at 131, chain content at 141/142; below row-zoom chips at 160
-			// and portals at 300). Pinned by the view-mode transition matrix.
+			// ZViewSwitch must sit above all in-panel content, or a tab whose controls reach into the bar
+			// (Chain's stage cards) strands the user on it.
 			dv.tree.HitIndexRef().Update("transport", dv.transportZone.HitAreas())
-			// The mobile view-switch segmented control is published into the
-			// AUDIO subtree's HitIndex (NOT the transport zone in dv.tree). The
-			// switcher overlays the bottom bar that the eq-panel catch-all
-			// (z=130, audioTree) also covers; for its ZViewSwitch (150) z to
-			// win it must live in the SAME subtree as the catch-all. After the
-			// two-subtree split, a hit area in dv.tree can never outrank one in
-			// audioTree (separate HitIndexes — audioTree, the higher-z child, is
-			// dispatched first and its catch-all consumes the tap). Publishing
-			// here keeps the switcher reachable on Chain/Sampler/etc. Pinned by
-			// the view-mode transition matrix.
+			// In the AUDIO subtree: only within the same HitIndex can its z beat the panel's catch-all,
+			// which covers the bar too.
 			if dv.audioTree != nil {
 				if dv.viewSwitchSegmented != nil && !dv.viewSwitchSegmented.Rect().Empty() {
 					dv.audioTree.HitIndexRef().Update("view-switch", []HitArea{{
@@ -233,9 +161,7 @@ func (dv *DrumView) recalcButtons() {
 				}
 			}
 		} else if dv.audioTree != nil {
-			// Non-mobile (or collapsed bar): no segmented switcher — clear any
-			// stale view-switch hit area from the audio subtree's HitIndex so a
-			// mobile→desktop transition can't strand it.
+			// Clear it so a mobile→desktop switch cannot strand it.
 			dv.audioTree.HitIndexRef().Update("view-switch", nil)
 		}
 	}
@@ -252,33 +178,17 @@ func (dv *DrumView) recalcButtons() {
 		if rackRect.Min.Y < rowsTop {
 			rackRect.Min.Y = rowsTop
 		}
-		// Clamp rack bottom to rowsBottom() so the rack zone never extends
-		// over the mobile bottom action bar (Pads/EQ/Wave/Spec/Mtr/Scope)
-		// or the EQ peek strip. The WidgetBoard does not know about these
-		// pane-level surfaces — it allocates the rack column down to
-		// dv.Bounds.Max.Y. Without this clamp the addRowBtn would anchor
-		// to dv.Bounds.Max.Y - rh and end up rendered ON TOP OF the
-		// segmented switcher in the bottom action bar (regression flagged
-		// in screenshot review 2026-05-10).
+		// The board allocates the rack down to the pane bottom; clamped, the add-row button never lands
+		// on the bottom bar.
 		if rb := dv.rowsBottom(); rb < rackRect.Max.Y {
 			rackRect.Max.Y = rb
 		}
-		// Override the zone's visible rows to the row count that actually
-		// fits inside the rack widget rect (rackVisibleRows) — never the
-		// bounds-derived dv.visibleRows() which can over-estimate when
-		// the widget board allocates space below the rack to the wave
-		// widget. Over-estimating placed per-row widgets at Y bands
-		// outside the rack rect, producing the screenshot's "phantom
-		// row + addRowBtn-in-the-middle" layout glitch. The complementary
-		// invariant (rack + timeline span the full rows-area when EQ is
-		// collapsed) is enforced in refreshWidgetLayout, so for the
-		// EQ-visible case rackVisibleRows == dv.visibleRows() in practice.
+		// rackVisibleRows, never visibleRows(): the latter can over-count when the board gives space
+		// below the rack to the wave widget.
 		dv.rowRackZone.SetVisibleRowsOverride(dv.rackVisibleRows())
 		dv.tree.SetZoneRect("row-rack", rackRect)
 		dv.rowRackZone.SetScreenBounds(dv.Bounds)
-		// Bidirectional sync: if RowRackZone's scroll updated its own
-		// rowOffset (via scroll handler), adopt that value before we
-		// push ours. This prevents overwriting scroll-initiated changes.
+		// Adopt a scroll-initiated offset before pushing ours, or it is overwritten.
 		if zoneOff := dv.rowRackZone.RowOffset(); zoneOff != dv.rowOffset {
 			dv.rowOffset = zoneOff
 		}
@@ -438,8 +348,6 @@ func (dv *DrumView) recalcButtons() {
 			bpmCol := safeInset(dv.transportGroup().Cell(3, 0), pad)
 			stackVertical(dv.bpmIncBtn(), dv.bpmDecBtn(), bpmCol, topBounds)
 			dv.subdivBtn().SetRect(safeInset(dv.transportGroup().Cell(4, 0), pad))
-			// col 5 is flexible spacer
-			// Desktop: icon-only volume (popup on click).
 			volCell := safeInset(dv.transportGroup().Cell(6, 0), pad)
 			dv.mainVolIconRect = volCell
 			if dv.mainVolSlider() != nil {
@@ -476,10 +384,6 @@ func (dv *DrumView) recalcButtons() {
 	if top < tlWidget.Min.Y {
 		top = tlWidget.Min.Y
 	}
-	// The track/lock keycap is the LEFT anchor of the counter band on BOTH
-	// platforms (counter + notification area sit to its right). It is a
-	// compact square the height of the beat-counter keycap, so the timeline
-	// ruler below keeps its full width.
 	const trackBtnGap = 4 // breathing room between track button and counter
 	dv.timelineRect = image.Rect(
 		tlWidget.Min.X,
@@ -488,34 +392,19 @@ func (dv *DrumView) recalcButtons() {
 		top+tlBarHeight(),
 	)
 
-	// Beat counter rect: above the timeline bar, right of the track keycap.
-	// infoH must accommodate the keycap chrome drawBeatCounter actually paints
-	// (`pillH = TextHeight() + 2*pillPadY + keycap wall depth`); otherwise the
-	// keycap bleeds below Max.Y into the timeline bar (startup-chrome bug) or is
-	// clipped short of its cap face.
+	// Tall enough for the keycap chrome drawBeatCounter paints, or it bleeds into the bar.
 	const minChromeGap = 2
 	pillH := TextHeight() + 2*beatCounterPillPadY + genGeomKeycapWallDepth
 	infoH := debugCharH + 4
 	if pillH > infoH {
 		infoH = pillH
 	}
-	// Floor the band to a comfortable keycap height matching the transport
-	// buttons so the counter + track/lock read as proper keycaps rather than
-	// thin slivers — capped by the room available above the timeline bar.
+	// Matches the transport buttons so the band reads as keycaps, not slivers.
 	if pb := dv.playBtn().Rect(); !pb.Empty() && pb.Dy() > infoH {
 		infoH = pb.Dy()
 	}
-	// Cap the band to the room actually available above the timeline bar. This
-	// must fire even when that room is smaller than pillH: under the real
-	// TrueType font (TextHeight 18 vs the stub's 16) pillH is 26 but a compact
-	// desktop header leaves only ~24px above the bar, so a `avail >= pillH`
-	// guard would skip the cap and let the counter overflow into the bar
-	// (TestDesktopBeatCounterAboveTimeline). drawBeatCounter clamps its pill to
-	// beatCounterRect.Dy(), so a slightly-shorter band shrinks the keycap
-	// rather than bleeding past it.
-	//
-	// bandTopGap keeps the band's keycaps clear of the pane splitter's 2 px
-	// line, drawn over the drum's top edge, which clipped their top corners.
+	// Capped even when the room is below pillH (real fonts are taller than the stub's), since
+	// drawBeatCounter shrinks to fit; bandTopGap keeps the keycaps clear of the splitter line.
 	const bandTopGap = 2
 	if avail := dv.timelineRect.Min.Y - tlWidget.Min.Y - minChromeGap - bandTopGap; avail > 0 && infoH > avail {
 		infoH = avail
@@ -524,10 +413,7 @@ func (dv *DrumView) recalcButtons() {
 	if bcTop < tlWidget.Min.Y+bandTopGap {
 		bcTop = tlWidget.Min.Y + bandTopGap
 	}
-	// Band keycaps — the track/lock chip, the beat counter and the len ± pair —
-	// share ONE height (the counter keycap's, clamped to the band) and one
-	// vertical centre, so the band reads as a single row of equal keycaps like
-	// the transport and the grid's top-right cluster.
+	// One height and one centre for every band keycap, so the band reads as a single row.
 	keyH := pillH
 	if keyH > infoH {
 		keyH = infoH
@@ -539,14 +425,8 @@ func (dv *DrumView) recalcButtons() {
 		dv.timelineRect.Max.X, bcTop+infoH,
 	)
 
-	// Position len +/- buttons at the right end of the counter band on
-	// desktop only. On mobile (or in EQ/Wave audio view) the +/− pair
-	// next to the timeline is too narrow to discover on phone-class
-	// screens (A7 in the screenshot critique); the entries live behind
-	// the overflow menu instead.
+	// Desktop only: the pair is too small to discover on a phone, where it lives in the overflow menu.
 	if !p.IsMobile() && dv.currentViewMode != viewModeEQ {
-		// Side by side (− then +), square keycaps matching the counter. They
-		// sit in the band only, so the ruler below keeps its full width.
 		gap := SpaceXS
 		incX := dv.beatCounterRect.Max.X - SpaceXS - keyH
 		decX := incX - gap - keyH
@@ -558,23 +438,8 @@ func (dv *DrumView) recalcButtons() {
 		dv.lenDecBtn.SetRect(image.Rectangle{})
 	}
 
-	// Row-zoom chips — mobile only, [⊕]/[⊖] vertical pair placed in the
-	// timeline header band at the right edge of the timeline widget,
-	// directly under the transport row 0 (Play/Stop/BPM) and to the right
-	// of the transport row 1 cluster (VolIcon/ViewSwitch/Overflow). The
-	// pair fits in a single `TouchMinTarget`-wide strip so the timeline
-	// ruler keeps its full readable width. The beat counter pill and
-	// ruler shrink to leave the chips a clean strip.
-	//
-	// Computed BEFORE the trackBtn block so the trackBtn's right edge
-	// (which is anchored to `beatCounterRect.Max.X`) lands at the already-
-	// shrunken pill edge — keeping the chip cluster, beat counter pill,
-	// and trackBtn all inside the timeline widget X range.
-	//
-	// Replaces the prior inline-with-addRow placement at the bottom of
-	// the rack column: the add-row "+" stays put below the row controls,
-	// the zoom chips move up next to the timeline they affect. Hidden
-	// when the bottom action bar collapses (ultra-short viewports).
+	// Before the track button, whose right edge anchors to the counter, so the chips, counter and
+	// track button all stay inside the timeline widget.
 	if dv.rowRackZone != nil {
 		dv.rowRackZone.SetAddRowRightReserve(0)
 	}
@@ -593,15 +458,11 @@ func (dv *DrumView) recalcButtons() {
 			y0 = dv.timelineRect.Min.Y
 		}
 		y1 := dv.timelineRect.Max.Y
-		// Guarantee a TouchMinTarget-tall combined strip even when the
-		// header band is shorter than 44 px (small viewports).
+		// At least TouchMinTarget tall, even in a short header.
 		if y1-y0 < side {
 			y1 = y0 + side
 		}
 		dv.rowZoomChipRect = image.Rect(chipsLeft, y0, chipsRight, y1)
-		// Each chip is a compact keycap the band's height, centred in its half
-		// of the strip (+ level with the lock and counter); its hit area fills
-		// the half (Touch + ClipRect, see the row-zoom hit areas below).
 		incCell, decCell := dv.rowZoomCells()
 		chipSide := keyH
 		if gapped := incCell.Dy() - SpaceXS; chipSide > gapped {
@@ -613,8 +474,6 @@ func (dv *DrumView) recalcButtons() {
 		if dv.rowZoomDecBtn != nil {
 			dv.rowZoomDecBtn.SetRect(centeredSquare(decCell, chipSide))
 		}
-		// Shrink the beat counter pill and timeline ruler bar so they do
-		// not paint under the chip strip.
 		rightLimit := chipsLeft - SpaceXS
 		if dv.timelineRect.Max.X > rightLimit {
 			dv.timelineRect.Max.X = rightLimit
@@ -632,10 +491,7 @@ func (dv *DrumView) recalcButtons() {
 		}
 	}
 
-	// Position the track/lock keycap — the LEFT anchor of the band, a square
-	// the counter keycap's height on its vertical centre. Its hit area is
-	// Touch-expanded (timeline_zone.go), so a phone still gets a 44 px target
-	// without the visual block that used to fill the left of the timeline.
+	// Its hit area is touch-expanded, so a phone gets a 44 px target without a big visual block.
 	if !dv.beatCounterRect.Empty() {
 		dv.trackBtn().SetRect(image.Rect(
 			tlWidget.Min.X, keyY,
@@ -643,15 +499,9 @@ func (dv *DrumView) recalcButtons() {
 		))
 	}
 
-	// Size the beat-counter slot to the LIVE rendered readout width so the chip
-	// stays tight to its content. Runs AFTER the len-button / row-zoom-chip
-	// shrinks so it respects their right clamps. beatCounterSlotWidth is the
-	// CEILING (a pathological 4-digit readout clips at the cap rather than
-	// swallowing the whole band); the readout also can't exceed the band width.
+	// After the len-button and chip shrinks so it respects their clamps; beatCounterSlotWidth is the ceiling.
 	if !dv.beatCounterRect.Empty() {
-		// Include the leading-icon + gap + cap padding (beatCounterContentWidth)
-		// so the keycap fits the icon AND the readout — omitting the icon
-		// allowance here was the cause of the counter cropping "0:00" to "0:0".
+		// Includes the leading icon and padding, or the keycap crops "0:00".
 		readoutW := beatCounterContentWidth(dv.timelineInfo(dv.lastElapsedBeats))
 		counterSlotW := readoutW
 		if ub := beatCounterSlotWidth(); counterSlotW > ub {
@@ -663,10 +513,7 @@ func (dv *DrumView) recalcButtons() {
 		dv.beatCounterRect.Max.X = dv.beatCounterRect.Min.X + counterSlotW
 	}
 
-	// Cell-grid anchor. Step cells fill the full horizontal span the timeline
-	// widget dedicates to them; the ribbon bar's chrome reservations (track
-	// chip, len +/- buttons, mobile zoom chips) are header-only and must not
-	// narrow the grid. See DrumView.cellGridRect.
+	// The chrome reservations narrow the ribbon only, never the grid.
 	{
 		cellsTop := dv.Bounds.Min.Y + dv.headerH
 		cellsBottom := dv.rowsBottom()
@@ -678,16 +525,8 @@ func (dv *DrumView) recalcButtons() {
 
 	// Delegate timeline zone layout when available.
 	if dv.timelineZone != nil && dv.tree != nil {
-		// The timeline zone hosts the chrome above the bar (beat counter pill,
-		// track button, len +/- buttons) AND the bar itself AND the steps
-		// grid below. The clip rect must cover all three vertical bands AND
-		// the full horizontal span — len buttons live just past
-		// `timelineRect.Max.X` and the track button lives at
-		// `tlWidget.Min.X` (left of the bar). Earlier code used
-		// `dv.timelineRect.{Min,Max}.X` and `dv.timelineRect.Min.Y` for the
-		// clip, which silently clipped the chrome above and outside the bar
-		// — beat counter pill rendered into a clipped sub-image, no pixels
-		// reached the screen.
+		// The clip must span the chrome above the bar, the bar and the grid, including the len buttons
+		// past timelineRect.Max.X and the track button left of it.
 		rowsBottom := dv.rowsBottom()
 		if p.IsMobile() && dv.MobileEQMode() {
 			rowsBottom = dv.Bounds.Max.Y
@@ -696,8 +535,7 @@ func (dv *DrumView) recalcButtons() {
 		if tlZoneRect.Max.Y < rowsBottom {
 			tlZoneRect.Max.Y = rowsBottom
 		}
-		// Union with the chrome rects so a future relayout that pushes any
-		// element outside `tlWidget` still gets clipped in (defense in depth).
+		// Defense in depth: chrome pushed outside tlWidget still gets clipped in.
 		tlZoneRect = tlZoneRect.Union(dv.beatCounterRect)
 		tlZoneRect = tlZoneRect.Union(dv.timelineRect)
 		if r := dv.trackBtn().Rect(); !r.Empty() {
@@ -723,22 +561,11 @@ func (dv *DrumView) recalcButtons() {
 	if eqWidget.Empty() {
 		eqWidget = image.Rect(tlWidget.Min.X, dv.Bounds.Max.Y-dv.eqH, tlWidget.Max.X, dv.Bounds.Max.Y)
 	}
-	// When the user has explicitly dragged the EQ divider, the panel height is
-	// dv.eqH (which already honors the clamp and overrides the floor). Anchor the
-	// rect to it and SKIP the analysis-tab floor expansion below — otherwise the
-	// floor re-inflates the panel and the divider drag has no effect (the
-	// "unusable divider" bug). Phase 0a otherwise expands every analysis tab to
-	// AudioPanelHeightMultiplier × eqPanelHeight (≈3×), clamped to
-	// AudioPanelHeightScreenFrac × bounds.Dy, because the widget-board's
-	// WidgetWave allocation is too short for the Spectrum/Levels/Chain chrome.
+	// A user drag sets eqH directly and must skip the floor expansion below, or the drag has no effect.
 	if dv.userEqH > 0 && !Profile().IsMobile() {
 		eqWidget = image.Rect(eqWidget.Min.X, dv.Bounds.Max.Y-dv.eqH, eqWidget.Max.X, dv.Bounds.Max.Y)
 	} else if minPanelH := dv.audioPanelFloorHeight(); minPanelH > 0 {
-		// minPanelH is the shared audio-panel floor (Synth tab: >= 240 px).
-		// dv.eqH is floored to the SAME value in refreshWidgetLayout so
-		// rowsBottom() (the row-rack bottom + add-row "+" anchor) lines up
-		// with this panel top — otherwise the rack renders underneath the
-		// panel (the add-row "+" occlusion regression).
+		// eqH is floored to the same value, so rowsBottom() lines up with this panel top.
 		if eqWidget.Dy() < minPanelH {
 			expanded := image.Rect(
 				eqWidget.Min.X,
@@ -746,9 +573,6 @@ func (dv *DrumView) recalcButtons() {
 				eqWidget.Max.X,
 				dv.Bounds.Max.Y,
 			)
-			// Don't overflow the drum view's top edge — if the bounds
-			// truly are smaller than minPanelH, give the panel every
-			// available pixel.
 			if expanded.Min.Y < dv.Bounds.Min.Y {
 				expanded.Min.Y = dv.Bounds.Min.Y
 			}
@@ -756,10 +580,7 @@ func (dv *DrumView) recalcButtons() {
 		}
 	}
 	dv.eqRect = eqWidget
-	// Mobile EQ mode: use full drum pane area below the transport header.
-	// Theme 1: clamp the panel to sit ABOVE the bottom action bar so the
-	// 6-segment view switcher remains visible (and tappable) in every
-	// mobile mode.
+	// Clamped above the bottom bar so the view switcher stays visible in every mobile mode.
 	if p.IsMobile() && dv.MobileEQMode() {
 		maxY := dv.Bounds.Max.Y
 		if !dv.bottomActionBarRect.Empty() && dv.bottomActionBarRect.Min.Y > 0 {
@@ -772,37 +593,22 @@ func (dv *DrumView) recalcButtons() {
 			maxY,
 		)
 	}
-	// EQ buttons, sliders, and rect layout are owned by EQPanelZone (Phase 2).
-	// Delegate layout to the zone, which sets all button/slider rects.
 	if len(dv.eqBandVals) != len(eqBandDefs) {
 		dv.eqBandVals = make([]float64, len(eqBandDefs))
 	}
 	if dv.eqPanelZone != nil && dv.audioTree != nil {
 		dv.audioTree.SetZoneRect("eq-panel", dv.eqRect)
-		// Force immediate layout so slider/button rects are available
-		// before Draw or the next Update cycle (fixes first-frame
-		// clicks) — when its inputs moved (eqPanelLayoutDue).
-		// LayoutZoneNow consults the zone's registered visibility
-		// predicate (the canonical "should the EQ panel paint?" decision
-		// in drumview_ctor.go): hidden zones get their HitIndex entry
-		// cleared so the panel's catch-all can never re-introduce the
-		// Pads-tab input leak.
+		// Immediately, so rects exist before Draw (first-frame clicks); LayoutZoneNow honours the
+		// visibility predicate, so a hidden panel's catch-all cannot leak over Pads.
 		if dv.eqPanelLayoutDue() {
 			dv.audioTree.LayoutZoneNow("eq-panel")
 		}
 	}
 
-	// Layout resize zone — refresh hit areas so column/row divider pills
-	// stay clickable after bounds changes and widget board resizes.
 	if dv.layoutResizeZone != nil && dv.audioTree != nil {
 		dv.audioTree.HitIndexRef().Update("layout-resize", dv.layoutResizeZone.HitAreas())
 	}
 
-	// EQ peek strip tap target (mobile, EQ-collapsed only). A single tap
-	// inside the 24-px sparkline strip expands the EQ panel — saving the
-	// user from hunting through the overflow menu. Registered as a
-	// drumview-owned hit area so the tree's input dispatcher routes taps
-	// here before they reach any zone below.
 	if dv.tree != nil {
 		var peekAreas []HitArea
 		if !dv.eqPeekRect.Empty() {
@@ -815,11 +621,7 @@ func (dv *DrumView) recalcButtons() {
 		}
 		dv.tree.HitIndexRef().Update("drumview-eq-peek", peekAreas)
 
-		// Row-zoom chip hit areas — Theme 3 of the mobile UI consistency
-		// pass. ⊕/⊖ buttons live above the rows zone on mobile only;
-		// rect zeroed elsewhere by recalcButtons.
-		// The visible keycaps are compact; Touch + ClipRect grows each target
-		// to its whole half of the chip strip and never past it.
+		// Compact keycaps; Touch + ClipRect grow each target to its half of the strip and no further.
 		var zoomAreas []HitArea
 		incCell, decCell := dv.rowZoomCells()
 		if dv.rowZoomIncBtn != nil && !dv.rowZoomIncBtn.Rect().Empty() {
@@ -845,13 +647,8 @@ func (dv *DrumView) recalcButtons() {
 		dv.tree.HitIndexRef().Update("drumview-row-zoom", zoomAreas)
 	}
 
-	// Keep the legacy DrumView mirrors of the instrument-menu search field in
-	// sync with the menu component. The native-gesture producers
-	// (softKeyboardCandidates / nativeInputCandidates in native_gesture.go)
-	// locate the field via dv.instSearchRect; it is otherwise never assigned, so
-	// it stays the zero rect and the search field is never registered — meaning a
-	// tap on it cannot open the mobile native keyboard. Mirror the component's
-	// live rect (empty in categories mode) every layout pass.
+	// The native keyboard producers find the field through dv.instSearchRect, which nothing else
+	// assigns; without this a tap on it never opens the phone keyboard.
 	if dv.instMenuComp != nil && dv.IsInstMenuOpen() {
 		dv.instSearchBox = dv.instMenuComp.SearchBox()
 		dv.instSearchRect = dv.instMenuComp.SearchRect()
@@ -860,15 +657,10 @@ func (dv *DrumView) recalcButtons() {
 	}
 }
 
-// resetOnScreenModeChange resets DrumView state when crossing the mobile ↔ desktop
-// threshold. Called from Game.Layout() when the profile's Class changes.
 func (dv *DrumView) resetOnScreenModeChange(toSmall bool) {
 	pp := Profile() // use fresh profile for the new mode
 	if !toSmall {
-		// Leaving mobile → desktop: reset mobile flags for next entry.
-		// SetMobileEQMode(false) routes through setViewMode, which is the
-		// only code path allowed to mutate currentViewMode. Don't write
-		// the field directly here — the AST guard test forbids it.
+		// Through setViewMode: the only path allowed to write currentViewMode.
 		dv.mobileEQInited = false
 		dv.SetMobileEQMode(false)
 		dv.mobileEQCollapsed = false
@@ -893,22 +685,14 @@ func (dv *DrumView) resetOnScreenModeChange(toSmall bool) {
 	dv.rowsLayerDirty = true
 	dv.toolbarCache = nil
 	dv.toolbarCacheHash = 0
-	// Force a widget-layout refresh now so derived sizes (headerH, eqH,
-	// controlsW, widgetRects) propagate even if the subsequent SetBounds
-	// short-circuits because new bounds happen to equal old ones. Defense
-	// in depth — SetBounds normally calls this too.
+	// Even if the following SetBounds short-circuits on equal bounds.
 	dv.refreshWidgetLayout()
-	// Re-derive profile-dependent button chrome immediately so any draw
-	// path that runs before the next recalcButtons (e.g. zone Draw fired
-	// from this same frame) sees the new-profile styles.
+	// Now, so a draw in this same frame sees the new profile's styles.
 	dv.refreshLenButtonsStyle()
 	dv.CloseAllPopups()
 }
 
-// clampLength enforces global min/max zoom limits for the drum view.
-// Minimum: one full beat (timelineUnitsPerBeat). Maximum: derived from
-// the effective cell-drawing width and a platform-aware minimum cell width
-// so cells stay visually readable on small screens.
+// At least one beat; at most what keeps cells readable at the platform's minimum cell width.
 func (dv *DrumView) clampLength(n int) int {
 	inc := max1(dv.timelineUnitsPerBeat)
 	minLen := inc
@@ -936,8 +720,7 @@ func (dv *DrumView) clampLength(n int) int {
 	return n
 }
 
-// changeLength applies a new drum length with clamping and refreshes row
-// buffers/caches. Callers should supply the desired length in subdivisions.
+// newLen is in subdivisions.
 func (dv *DrumView) changeLength(newLen int) {
 	newLen = dv.clampLength(newLen)
 	if newLen == dv.Length {
@@ -968,12 +751,7 @@ func (dv *DrumView) changeLength(newLen int) {
 	dv.markAllRowsDirty()
 }
 
-// rowRectForIndex, positionRowWidgets, and positionAddRowBtn are now
-// handled exclusively by RowRackZone.
-
-// rowsBottom returns the Y at which the rows area ends — above the EQ
-// panel and the mobile bottom action bar. Use this everywhere instead
-// of inlining the formula so layout invariants stay in one place.
+// The one formula for where the rows end; never inline it.
 func (dv *DrumView) rowsBottom() int {
 	rb := dv.Bounds.Max.Y - dv.eqH
 	if !dv.bottomActionBarRect.Empty() {
@@ -990,8 +768,7 @@ func (dv *DrumView) nameBoxRect() image.Rectangle {
 	return image.Rect(dv.Bounds.Min.X+10, dv.Bounds.Min.Y+110, dv.Bounds.Min.X+300, dv.Bounds.Min.Y+150)
 }
 
-// SuppressLayout prevents calcLayout from running until ResumeLayout is called.
-// Use during bulk operations (e.g., import) to avoid O(rows × instruments) work.
+// For bulk operations such as import, which would otherwise lay out O(rows × instruments).
 func (dv *DrumView) SuppressLayout() { dv.layoutSuppressed = true }
 
 // ResumeLayout re-enables layout and performs a single recalculation.
@@ -1025,10 +802,7 @@ func (dv *DrumView) calcLayout() {
 	if panelRect.Min.Y < rowsTop {
 		panelRect.Min.Y = rowsTop
 	}
-	// RowRackZone owns per-row buttons/sliders and the add-row button.
-	// Ensure the zone's entries match the current row count by triggering
-	// a re-layout — through the tree, so the HitIndex is republished in
-	// the same step. Accessor methods on DrumView delegate to the zone.
+	// Through the tree, so the HitIndex is republished in the same step.
 	dv.tree.LayoutZoneNow("row-rack")
 	// If timeline dimensions changed, row sprite caches must be rebuilt.
 	if dv.rowCacheW != dv.cellGridRect.Dx() || dv.rowCacheH != dv.rowHeight() {
@@ -1036,8 +810,6 @@ func (dv *DrumView) calcLayout() {
 		dv.rowCacheH = dv.rowHeight()
 		dv.markAllRowsDirty()
 	}
-	// Seed a sane default popup rect so layout tests have dimensions even
-	// before the menu opens.
 	if dv.instMenuFullRect.Dx() == 0 {
 		minMenuW := dv.labelW + dv.controlsW/2
 		if minMenuW < 260 {
@@ -1056,20 +828,15 @@ func (dv *DrumView) calcLayout() {
 	dv.markRowControlsDirty()
 }
 
-// invalidateLabelCaches marks label-related caches dirty so they are
-// recomputed on the next frame. Call this when instruments or rows change.
 func (dv *DrumView) invalidateLabelCaches() {
 	dv.labelWidthDirty = true
 	dv.instLabelCache = nil
 }
 
-// rackLabelMinW is the narrowest rack label column: room for a short
-// instrument name beside its swatch, so a kit of short names ("Kick", "Hat")
-// does not collapse the rack into a sliver.
+// Short names ("Kick", "Hat") must not collapse the rack into a sliver.
 const rackLabelMinW = 140
 
-// calcLabelWidth adjusts labelW to fit the longest row or instrument label
-// while keeping it within half of the viewport width.
+// Never more than half the viewport.
 func (dv *DrumView) calcLabelWidth() {
 	// Fast path: return cached value if not dirty and data hasn't changed.
 	maxAllowed := dv.Bounds.Dx() / 2
@@ -1085,8 +852,7 @@ func (dv *DrumView) calcLabelWidth() {
 		}
 	}
 	if !dv.labelWidthDirty && !dataChanged && dv.cachedLabelW > 0 {
-		// Re-apply maxAllowed constraint in case bounds changed without
-		// invalidating the cache (e.g., window resize).
+		// Bounds can change without invalidating the cache (window resize).
 		target := dv.cachedLabelW
 		if target > maxAllowed {
 			target = maxAllowed
@@ -1101,13 +867,8 @@ func (dv *DrumView) calcLabelWidth() {
 			maxPx = w
 		}
 	}
-	// Measured over the rows ON SCREEN only. Measuring every instrument the
-	// picker could offer (the whole catalog) sized the label column to the
-	// longest name in the roster — ~370 px of empty bar beside "Kick".
-	// A longer name chosen later re-measures (labelCacheRowNames changes).
-	// Leading identity swatch slot (SpaceSM + swatch-md + SpaceSM, see
-	// Button.LeadSwatch) plus a trailing SpaceSM so the longest name never
-	// touches the volume gutter.
+	// Measured over the rows on screen only: the whole catalog sized the column to the roster's
+	// longest name.
 	pad := SpaceSM*3 + SwatchSizeMD
 	target := maxPx + pad
 	if target < rackLabelMinW {
@@ -1133,10 +894,6 @@ func (dv *DrumView) calcLabelWidth() {
 	dv.labelWidthDirty = false
 }
 
-// eqPeekHitAdapter routes a tap on the mobile EQ peek strip to expand
-// the EQ panel. Mirrors the view-cycle audio-view entry: clears the
-// collapsed flag and switches the mobile view mode to audio so the
-// next layout pass allocates the full-pane EQ rect.
 type eqPeekHitAdapter struct {
 	dv *DrumView
 }
@@ -1158,9 +915,6 @@ func (h *eqPeekHitAdapter) OnDrag(x, y int)                     {}
 func (h *eqPeekHitAdapter) OnRelease(x, y int)                  {}
 func (h *eqPeekHitAdapter) OnWheel(x, y, steps int) InputResult { return InputIgnored }
 
-// segmentedHitAdapter routes taps on the mobile Pads/EQ/Wave segmented
-// control. HitTest dispatches the segment click (which calls setViewMode
-// via the onClick callback set at construction time in drumview_ctor.go).
 type segmentedHitAdapter struct{ sc *SegmentedControl }
 
 func (h *segmentedHitAdapter) OnPress(x, y int) InputResult {
@@ -1173,8 +927,6 @@ func (h *segmentedHitAdapter) OnDrag(x, y int)                     {}
 func (h *segmentedHitAdapter) OnRelease(x, y int)                  {}
 func (h *segmentedHitAdapter) OnWheel(x, y, steps int) InputResult { return InputIgnored }
 
-// rowZoomCells splits the mobile row-zoom chip strip into its + (top) and −
-// (bottom) halves: each chip's touch target, with its keycap centred inside.
 func (dv *DrumView) rowZoomCells() (inc, dec image.Rectangle) {
 	r := dv.rowZoomChipRect
 	if r.Empty() {

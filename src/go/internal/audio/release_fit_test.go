@@ -9,14 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestALongReleaseFadesOutInsideTheNote: the amp release starts at most
-// half-way through the voice (the ADSR stage caps it so attack/decay/sustain
-// keep the first half). It used to keep its FULL release time for the ramp,
-// so a release longer than half the voice was still loud when the voice ended
-// and hard-cut there (modular-pad at 120 BPM: 1.4 s release in a 0.5 s note
-// ended at about −5 dB). That defect is why the Tail dial had a per-voice
-// range cap — a knob meaning something different on every instrument. The
-// ramp now fits the half it is given: the note fades out inside itself.
+// The release starts at most half-way through the voice; its ramp fits the half it is given, so a long release fades
+// out inside the note instead of being hard-cut at the end, and one dial means the same on every instrument.
 func TestALongReleaseFadesOutInsideTheNote(t *testing.T) {
 	d, ok := EnsureInstrumentDoc(roster.ModularPad)
 	if !ok {

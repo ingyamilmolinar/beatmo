@@ -11,14 +11,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// These tests pin the audition flow: the instrument menu must stay open after
-// each selection so users can rapidly try multiple instruments without
-// reopening the menu. The menu only closes via explicit dismissal: the X
-// close button, Escape, click-outside, or opening another row's menu.
+// The menu stays open after each pick so users can try instruments rapidly; it closes only on the ×, Esc,
+// a click outside, or opening another row's menu.
 
-// auditionDV builds a minimal DrumView with one row and the menu component
-// ready to be opened. Mirrors the setup in inst_menu_open_close_test.go and
-// inst_menu_second_select_test.go.
 func auditionDV(t *testing.T) *DrumView {
 	t.Helper()
 	dv := NewDrumView(image.Rect(0, 0, 800, 600), nil, testLogger)
@@ -41,8 +36,7 @@ func auditionDV(t *testing.T) *DrumView {
 	return dv
 }
 
-// openInstMenuViaLabel exercises the real entry point: click the row label,
-// which routes through openInstMenuForRow → SetProps + Open + portal.
+// The real entry point: a row-label click routes through openInstMenuForRow.
 func openInstMenuViaLabel(t *testing.T, dv *DrumView, row int) {
 	t.Helper()
 	if row < 0 || row >= len(dv.rowLabels()) {
@@ -59,9 +53,7 @@ func openInstMenuViaLabel(t *testing.T, dv *DrumView, row int) {
 	}
 }
 
-// clickInstButton finds the menu button labeled buttonLabel and simulates
-// a press → release cycle on the component, which fires the button's
-// OnClick (and therefore the menu's OnSelect callback).
+// A press → release cycle, which fires the button's OnClick and so the menu's OnSelect.
 func clickInstButton(t *testing.T, dv *DrumView, buttonLabel string) {
 	t.Helper()
 	if dv.instMenuComp == nil || !dv.instMenuComp.IsOpen() {
@@ -90,8 +82,6 @@ func clickInstButton(t *testing.T, dv *DrumView, buttonLabel string) {
 	}
 }
 
-// TestInstrumentMenuStaysOpenAfterSelection — the core contract: clicking an
-// instrument must NOT close the menu.
 func TestInstrumentMenuStaysOpenAfterSelection(t *testing.T) {
 	assertDefaultParityState(t)
 	prev := suppressClicksUntilRelease
@@ -131,8 +121,6 @@ func TestInstrumentMenuStaysOpenAfterSelection(t *testing.T) {
 	restore()
 }
 
-// TestInstrumentMenuMultipleSelectionsInOneOpenSession — user can click
-// through several instruments without reopening.
 func TestInstrumentMenuMultipleSelectionsInOneOpenSession(t *testing.T) {
 	assertDefaultParityState(t)
 	prev := suppressClicksUntilRelease
@@ -162,14 +150,8 @@ func TestInstrumentMenuMultipleSelectionsInOneOpenSession(t *testing.T) {
 	}
 }
 
-// TestInstrumentMenuSameInstrumentSecondClickConfirms — re-selecting the row
-// already applied is the CONFIRM gesture and closes the menu.
-//
-// This test previously asserted the opposite (three clicks on the same row, menu
-// stays open every time). That predated the preview/confirm rule the colour
-// picker and note matrix already followed; the instrument menu now shares it, so
-// the pointer and the keyboard mean the same thing. What the test still guards
-// is that the row state is right and the FIRST click is a preview, not a commit.
+// The first click previews; re-selecting the applied row is the CONFIRM, the same rule as the colour picker,
+// the note matrix and the keyboard.
 func TestInstrumentMenuSameInstrumentSecondClickConfirms(t *testing.T) {
 	assertDefaultParityState(t)
 	prev := suppressClicksUntilRelease
@@ -197,10 +179,7 @@ func TestInstrumentMenuSameInstrumentSecondClickConfirms(t *testing.T) {
 	}
 }
 
-// TestInstrumentMenuSelectionDuringPlaybackKeepsPlayingAndOpen —
-// the headline use case: while playing, the user clicks through instruments
-// and the next scheduled beat naturally fires the latest pick. We verify the
-// row state updates and playback is uninterrupted.
+// While playing, the next scheduled beat fires the latest pick; playback is never interrupted.
 func TestInstrumentMenuSelectionDuringPlaybackKeepsPlayingAndOpen(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -260,8 +239,6 @@ func TestInstrumentMenuSelectionDuringPlaybackKeepsPlayingAndOpen(t *testing.T) 
 	stopPlaybackForTest(g)
 }
 
-// TestInstrumentMenuCloseButtonClosesAfterSelection — explicit X dismissal
-// must still work after the user has picked an instrument.
 func TestInstrumentMenuCloseButtonClosesAfterSelection(t *testing.T) {
 	assertDefaultParityState(t)
 	prev := suppressClicksUntilRelease
@@ -293,8 +270,6 @@ func TestInstrumentMenuCloseButtonClosesAfterSelection(t *testing.T) {
 	}
 }
 
-// TestInstrumentMenuEscapeClosesAfterSelection — Escape must still close
-// after the user has picked an instrument.
 func TestInstrumentMenuEscapeClosesAfterSelection(t *testing.T) {
 	assertDefaultParityState(t)
 	prev := suppressClicksUntilRelease
@@ -325,9 +300,7 @@ func TestInstrumentMenuEscapeClosesAfterSelection(t *testing.T) {
 	}
 }
 
-// TestInstrumentMenuClickOutsideClosesAfterSelection — clicking outside the
-// menu's bounds (and outside the row label that anchors it) must still close
-// after the user has picked an instrument.
+// Outside both the menu and the row label that anchors it.
 func TestInstrumentMenuClickOutsideClosesAfterSelection(t *testing.T) {
 	assertDefaultParityState(t)
 	prev := suppressClicksUntilRelease
@@ -362,17 +335,14 @@ func TestInstrumentMenuClickOutsideClosesAfterSelection(t *testing.T) {
 	}
 }
 
-// TestInstrumentMenuFavoriteStarDoesNotSelectOrClose — the star hit-rect is
-// processed before the row button, so a tap on the star toggles the favorite
-// without selecting the instrument or closing the menu.
+// The star hit-rect is processed before the row button, so a star tap neither selects nor closes.
 func TestInstrumentMenuFavoriteStarDoesNotSelectOrClose(t *testing.T) {
 	assertDefaultParityState(t)
 	prev := suppressClicksUntilRelease
 	suppressClicksUntilRelease = false
 	t.Cleanup(func() { suppressClicksUntilRelease = prev })
 
-	// Install a fresh in-memory favorites store so we can observe the toggle
-	// without polluting the global state across tests.
+	// A fresh in-memory store keeps the toggle out of the global state.
 	originalStore := Favorites()
 	store := NewInMemoryFavoritesStore()
 	SetFavoritesStore(store)
@@ -407,8 +377,6 @@ func TestInstrumentMenuFavoriteStarDoesNotSelectOrClose(t *testing.T) {
 	}
 }
 
-// TestInstrumentMenuSwitchingRowsClosesPriorMenu — opening a different row's
-// menu must close the previous one (CloseAllPopups exclusivity contract).
 func TestInstrumentMenuSwitchingRowsClosesPriorMenu(t *testing.T) {
 	assertDefaultParityState(t)
 	prev := suppressClicksUntilRelease

@@ -7,9 +7,7 @@ import (
 	"fmt"
 )
 
-// lsInstrumentBackend persists the instrument store to its own localStorage key,
-// sibling to the prefs key. Degrades to in-memory (nil reads) when localStorage
-// is unreachable, mirroring the prefs store.
+// Its own localStorage key; in-memory (nil reads) when localStorage is unreachable, like the prefs store.
 type lsInstrumentBackend struct {
 	key string
 }
@@ -30,9 +28,8 @@ func (b *lsInstrumentBackend) read() ([]byte, error) {
 	return []byte(val.String()), nil
 }
 
-// write reports a write the browser refused (quota full, private mode) or
-// cannot make (no localStorage): the user library's Save As must tell the user
-// rather than claim a save that is gone on reload.
+// A refused write (quota, private mode, no localStorage) is reported, so Save As tells the user instead of claiming a
+// save that is gone on reload.
 func (b *lsInstrumentBackend) write(data []byte) (err error) {
 	defer func() {
 		if r := recover(); r != nil {

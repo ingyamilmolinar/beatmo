@@ -10,16 +10,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestEssenceSelfIdentifiesUnderNuisance: pitch, note length, level, room
-// tone and reverb are what a player and a recording change; the matcher must
-// still hear the instrument. Each case is played as nuisanceRecording and
-// ranked against the WHOLE roster exactly as `refs match` ranks a download;
-// the voice itself (or a twin with the identical shipped sound) must come in
-// the top 3 -- the clips `make ab-match` plays. The first 13 cases span every
-// kind of sound the roster has, chosen before measuring; the last three are
-// the pitch failures `refs match -nuisance` found. The shipped matcher before
-// the essence rewrite placed 6 of these 13 in its top 3 (kick #21, marimba
-// #49, piano #36, organ #29, hi-hat #72, conga #99).
+// Pitch, length, level, room and reverb are what a player and a recording change: each voice, played that way and
+// ranked against the WHOLE roster as refs match ranks a download, must place itself (or an identical twin) in the top 3.
+// The cases span every kind of sound, chosen before measuring, plus the pitch failures -nuisance found.
 func TestEssenceSelfIdentifiesUnderNuisance(t *testing.T) {
 	if testing.Short() {
 		t.Skip("renders the whole roster per case")
@@ -31,10 +24,7 @@ func TestEssenceSelfIdentifiesUnderNuisance(t *testing.T) {
 		{roster.PianoGrand, 5}, {roster.Cello, -3}, {roster.Trumpet, 2}, {roster.Flute, 4},
 		{roster.GuitarNylon, -5}, {roster.Marimba, 3}, {roster.Organ, -2}, {roster.VoiceAhh, 1},
 		{roster.Clarinet, -4}, {roster.Kick, 2}, {roster.Snare, -2}, {roster.Hihat, 3}, {roster.Conga, -3},
-		// Inharmonic voices whose pitch reading flips under a nuisance
-		// (refs match -nuisance: kalimba #85, cowbell #7 before the
-		// explained-energy gate and the per-voice pitch frame), and a drum
-		// read an octave low (tom #14).
+		// Inharmonic voices whose pitch reading flips under a nuisance, and a drum read an octave low.
 		{roster.Kalimba, 3}, {roster.Cowbell, -2}, {roster.Tom, 5},
 	}
 	ids := rosterIDs()

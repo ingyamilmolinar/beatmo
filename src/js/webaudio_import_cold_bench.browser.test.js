@@ -1,25 +1,6 @@
-/**
- * Import-cold bench: load a heavy circuit, immediately play, and record how
- * long the engine keeps rendering while the user is listening.
- *
- * BASELINE 2026-09-13 (beach-gaelic, 91 distinct (instrument,pitch) pairs):
- *   neighborPlays=66 (notes played at the WRONG PITCH), deferredPlays=4 at
- *   288ms off-grid, renderMsAvg=270ms, workerQueuePeak=12, still rendering at
- *   t=27s. See docs/superpowers/specs/2026-09-13-import-warmup-playback-gate-design.md
- *
- * TARGET after the warm-up gate: neighborPlays=0, deferredPlays=0, 0 renders
- * during playback.
- *
- * Also (Task 15 Step 3) re-imports the SAME document in the SAME page
- * session after the first playback window and asserts the second
- * warmupProgress().total is 0 — proof that "same instruments, same params,
- * same notes" is a cache hit, not just an assumption.
- *
- * OUTPUT: bench-results/import_cold.json with schema
- *   { template, gateMs, samples: [{tSec, renders, neighborPlays,
- *     deferredPlays, deferMsAvg, renderMsAvg, workerQueuePeak, updateAvgMS,
- *     drawAvgMS}], reimport: {reimportMs, done, total, ready} }
- */
+/** Load a heavy circuit, play at once, and record how long the engine keeps rendering while the user listens; the
+ * warm-up gate's target is zero renders, neighbour plays or defers during playback. A same-session re-import must warm
+ * nothing (a cache hit, measured). → bench-results/import_cold.json */
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -79,15 +60,9 @@ const SECS = parseInt(process.env.SECS || "30", 10);
       `neighborPlays=${last.neighborPlays} deferredPlays=${last.deferredPlays} ` +
       `renderMsAvg=${last.renderMsAvg.toFixed(1)} queuePeak=${last.workerQueuePeak}`);
 
-    // Task 15 Step 3: re-import the SAME document in the SAME session and
-    // require the warm set to be empty — "same instruments, same params,
-    // same notes ⇒ cache hit", measured rather than assumed. Stop playback
-    // first so the second importJSON isn't racing live triggers.
+    // Stopped first so the second import does not race live triggers.
     await page.evaluate(() => {
-      // NOT `window.stop()` as a fallback: that is the standard DOM method
-      // that ABORTS PAGE LOADS, not the playback export (which is stopPlay).
-      // The guard made it look like a graceful degradation; it would have
-      // torn the page down instead of stopping the sequencer.
+      // Never window.stop(): that DOM method aborts page loads.
       if (typeof window.stopPlay === "function") window.stopPlay();
     });
     const reimportT0 = Date.now();

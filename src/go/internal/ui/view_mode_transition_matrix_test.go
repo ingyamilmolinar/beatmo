@@ -12,25 +12,10 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// This file pins the tab-isolation contract across EVERY ordered pair of
-// mobile view-mode transitions. The user reported that switching from the
-// Sampler tab to the Pads tab made all input stop working — the existing
-// alive-test only covered Pads→{EQ..Synth} (one direction, omitting
-// Sampler), so the regression slipped through. These tests walk all 56
-// ordered (from,to) pairs and assert, after each transition:
-//
-//	(a) the destination's interactive controls are reachable through the
-//	    tree's HitIndex (top hit at a real control belongs to the dest);
-//	(b) no hidden tab's exclusive hit area leaks into the destination;
-//	(c) the bottom-nav tab switcher is always on top at the bar, so the
-//	    user can never get stranded.
-//
-// Plus a dedicated sub-test pinning the headline cause: the Sampler tab's
-// modal Save-As dialog must be torn down on a view-mode switch (it was
-// leaking, holding keyboard/IME focus past the tab change).
+// Every ordered pair of mobile view modes: after each switch the destination's controls are reachable, no hidden
+// tab's exclusive hit area leaks in, and the bottom-nav switcher is on top so the user is never stranded; the
+// Sampler's modal Save As must not survive a switch.
 
-// allViewModeCases enumerates every mobile view mode with the bottom-nav
-// segment index a user taps to reach it and a label for failure messages.
 var allViewModeCases = []struct {
 	name string
 	mode viewMode
@@ -46,11 +31,7 @@ var allViewModeCases = []struct {
 	{"Sampler", viewModeSampler, 7},
 }
 
-// tabExclusiveOwner returns the human tab name that EXCLUSIVELY owns a hit
-// tag, or "" for tags that are shared chrome (sticky bar, row rack, the
-// tab switcher itself). The special owner "audio-any" marks the audio
-// panel's catch-all, which legitimately appears on every audio tab but
-// must vanish on Pads.
+// "audio-any" marks the audio catch-all: present on every audio tab, gone on Pads.
 func tabExclusiveOwner(tag string) string {
 	switch {
 	case strings.HasPrefix(tag, "synth-"):
@@ -66,24 +47,19 @@ func tabExclusiveOwner(tag string) string {
 	}
 }
 
-// tagForbiddenInMode reports whether a hit tag must NOT be present while
-// the named view mode is active.
 func tagForbiddenInMode(tag, modeName string) bool {
 	owner := tabExclusiveOwner(tag)
 	switch owner {
 	case "":
 		return false
 	case "audio-any":
-		// The audio-panel catch-all is allowed on any audio tab; only Pads
-		// (rows view) must be free of it.
 		return modeName == "Pads"
 	default:
 		return owner != modeName
 	}
 }
 
-// destControlRect returns a representative interactive control rect for the
-// destination mode, derived from the live layout (never magic coordinates).
+// From the live layout, never magic coordinates.
 func destControlRect(dv *DrumView, mode viewMode) image.Rectangle {
 	if mode == viewModeRows {
 		if dv.rowRackZone == nil {
@@ -103,9 +79,6 @@ func destControlRect(dv *DrumView, mode viewMode) image.Rectangle {
 	return dv.eqPanelZone.stickyBar.ChannelBtn().Rect()
 }
 
-// TestViewModeTransitionMatrix drives all ordered (from,to) view-mode pairs
-// on mobile and asserts the three legs of the tab-isolation contract after
-// each transition.
 func TestViewModeTransitionMatrix(t *testing.T) {
 	assertDefaultParityState(t)
 	setupMobileTest(t, true)
@@ -118,8 +91,7 @@ func TestViewModeTransitionMatrix(t *testing.T) {
 				continue
 			}
 			t.Run(from.name+"_to_"+to.name, func(t *testing.T) {
-				// Fresh game per pair: each transition is an independent
-				// reproduction, no cross-tab state contamination.
+				// A fresh game per pair, so no transition contaminates another.
 				logger := game_log.New(testLogOutput(), game_log.LevelError)
 				g := New(logger)
 				t.Cleanup(g.CloseForTest)
@@ -133,9 +105,7 @@ func TestViewModeTransitionMatrix(t *testing.T) {
 				}
 
 				tapSegment := func(seg int) {
-					// Synth/Sampler segments require a single-instrument context
-					// (Master blocks them); select the first row's instrument so
-					// the segment is enabled and the tap can switch views.
+					// Master blocks Synth/Sampler; selecting a row's instrument enables the segment.
 					if seg == bottomNavSynthIndex() || seg == segmentIndexForViewMode(viewModeSampler) {
 						if len(dv.Rows) > 0 {
 							dv.eqPanelZone.SetActiveChannel(channel.Of(dv.Rows[0].Instrument))
@@ -167,9 +137,7 @@ func TestViewModeTransitionMatrix(t *testing.T) {
 						continue
 					}
 					cx, cy := (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2
-					// The view-switch segmented control is published into the
-					// audio subtree's HitIndex (so its ZViewSwitch z outranks the
-					// eq-panel catch-all in the same subtree). Check there.
+					// Published into the audio subtree, where ZViewSwitch outranks the eq-panel catch-all.
 					hits := dv.audioTree.HitIndexRef().At(cx, cy)
 					if len(hits) == 0 {
 						t.Fatalf("%s->%s: no hit at the %s segment (%d,%d) — the user cannot switch tabs from here",
@@ -213,11 +181,7 @@ func TestViewModeTransitionMatrix(t *testing.T) {
 	}
 }
 
-// TestSamplerSaveAsDialog_ClosedOnTabSwitch pins the headline cause: the
-// Sampler tab's modal Save-As dialog (a focused TextInput) must be torn
-// down when the user switches view modes. Left open, it keeps consuming
-// keyboard/IME input from behind a now-invisible, unreachable panel — the
-// user is stranded.
+// A focused TextInput left open keeps consuming keyboard/IME input from behind an unreachable panel.
 func TestSamplerSaveAsDialog_ClosedOnTabSwitch(t *testing.T) {
 	assertDefaultParityState(t)
 	setupMobileTest(t, true)
@@ -232,9 +196,7 @@ func TestSamplerSaveAsDialog_ClosedOnTabSwitch(t *testing.T) {
 	tap := makeFullGameTap(g, w, h)
 
 	tapSegment := func(seg int) {
-		// Synth/Sampler segments require a single-instrument context (Master
-		// blocks them); select the first row's instrument so the segment is
-		// enabled and the tap switches views.
+		// Master blocks Synth/Sampler; selecting a row's instrument enables the segment.
 		if seg == bottomNavSynthIndex() || seg == segmentIndexForViewMode(viewModeSampler) {
 			if len(dv.Rows) > 0 {
 				dv.eqPanelZone.SetActiveChannel(channel.Of(dv.Rows[0].Instrument))
@@ -244,8 +206,7 @@ func TestSamplerSaveAsDialog_ClosedOnTabSwitch(t *testing.T) {
 		tap((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2)
 	}
 
-	// Go to the Sampler tab and load a working buffer so the Save-As dialog
-	// can open.
+	// A loaded buffer lets the Save As dialog open.
 	tapSegment(7)
 	advanceFrames(g, 2)
 	if dv.currentViewMode != viewModeSampler {
@@ -281,23 +242,9 @@ func TestSamplerSaveAsDialog_ClosedOnTabSwitch(t *testing.T) {
 	}
 }
 
-// TestViewModeTransition_TransientOverlayTornDown is the general regression
-// for the reported Sampler->Pads "input dead" bug. The existing matrix test
-// only switched between tabs with NOTHING open, so it never exercised the
-// real failure: a transient overlay (portal/popup/dropdown) opened on the
-// departing tab survived the switch and swallowed input on the destination.
-//
-// Root cause: setViewMode — the single documented chokepoint for EVERY view
-// transition (segmented control, toolbar button, EQ-peek tap) — only called
-// CloseAllPopups() inside `if dv.MobileEQMode()` (false when the destination
-// is Pads), and resetTransientTabState() only tore down the Save-As dialog +
-// pointer capture — not portals. So a transition into Pads leaked any open
-// overlay; a full-screen MODAL overlay (the naming portal) then filters the
-// HitIndex to itself and blocks ALL input.
-//
-// This drives setViewMode directly (the fix site) across all 56 ordered
-// pairs with a full-screen modal portal open on `from`, and asserts the
-// overlay is gone and the destination is reachable afterward.
+// setViewMode is the single chokepoint for every view transition and must tear down every transient overlay: a
+// modal portal surviving the switch filters the HitIndex to itself and blocks all input. Driven on every ordered
+// pair with a full-screen modal open on `from`.
 func TestViewModeTransition_TransientOverlayTornDown(t *testing.T) {
 	assertDefaultParityState(t)
 	setupMobileTest(t, true)
@@ -324,9 +271,7 @@ func TestViewModeTransition_TransientOverlayTornDown(t *testing.T) {
 					t.Fatalf("could not reach 'from' mode %s, got %v", from.name, dv.currentViewMode)
 				}
 
-				// Open a full-screen MODAL portal on the departing tab. It is
-				// self-persisting (isOpenFn = Has("naming"), ShouldClose=false),
-				// so it cannot self-heal and mask the bug.
+				// Self-persisting (it never closes itself), so it cannot mask the bug.
 				dv.openNamingPortal()
 				if !dv.portal().HasModal() {
 					t.Fatal("precondition: modal naming portal did not open")
@@ -349,8 +294,7 @@ func TestViewModeTransition_TransientOverlayTornDown(t *testing.T) {
 					t.Fatalf("%s->%s: a modal overlay survived the switch — it blocks ALL input on the %s view", from.name, to.name, to.name)
 				}
 
-				// The destination's controls must be reachable (a leaked modal
-				// portal filters them out of the HitIndex entirely).
+				// A leaked modal would filter them out of the HitIndex entirely.
 				ctrl := destControlRect(dv, to.mode)
 				if ctrl.Empty() {
 					t.Fatalf("%s->%s: no interactive control rect for the %s view", from.name, to.name, to.name)
@@ -370,12 +314,8 @@ func TestViewModeTransition_TransientOverlayTornDown(t *testing.T) {
 	}
 }
 
-// TestSamplerToPads_PortalSurvives_StrandsInput is the headline reproduction
-// of the exact user report: on the Sampler tab, with a transient overlay
-// open, switching to Pads leaves the overlay alive and input dead. It uses
-// the full-screen modal naming portal — the worst case, which blocks ALL
-// input until torn down — and switches via setViewMode (a modal would block
-// a bottom-nav tap, so the teardown must be invocation-path-agnostic).
+// Through setViewMode, not a tap: an open modal would block the bottom-nav tap, so teardown cannot depend on how the
+// switch is invoked.
 func TestSamplerToPads_PortalSurvives_StrandsInput(t *testing.T) {
 	assertDefaultParityState(t)
 	setupMobileTest(t, true)
@@ -396,8 +336,7 @@ func TestSamplerToPads_PortalSurvives_StrandsInput(t *testing.T) {
 	}
 	dv.sampler.loadFromInstrument(roster.Kick, []float32{0.1, 0.2, -0.3, 0.4, -0.1}, 48000, samplerSourceSynth)
 
-	// Open both a Save-As dialog and a full-screen MODAL portal — the kind
-	// of transient state a real session accumulates on the Sampler tab.
+	// The transient state a real Sampler session accumulates.
 	dv.samplerSaveAs()
 	dv.openNamingPortal()
 	if dv.saveAsDialog == nil {

@@ -2,8 +2,7 @@
 
 package ui
 
-// testCapturedNativeRects, when non-nil, receives every platformSyncNativeRects
-// call (last write wins the slice contents) for test inspection.
+// Last write wins.
 var testCapturedNativeRects *[]NativeRect
 
 func platformSyncNativeRects(rects []NativeRect) {

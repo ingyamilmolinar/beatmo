@@ -12,20 +12,10 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// This file is the regression guard for the ORIGINAL bug behind the GridTree
-// work: the node coordinate badge (the (i,j) pill drawn above a selected node)
-// painting ON TOP OF the node sidebar/pop-up menu. The structural fix routes
-// the grid pane through a z-ordered tree (GridTree) where the badge is a
-// z=GZCoordBadge(40) layer and the sidebar is z=GZSidebar(60); the tree draws
-// ascending-z, so the sidebar composites OVER the badge instead of being
-// overpainted by it. These tests FAIL if anyone reintroduces the bug by
-// moving the badge above the sidebar in z, or by reverting the tree dispatch
-// so the badge is drawn after the sidebar.
+// The coordinate badge (z=40) must never paint over the node sidebar (z=60): the z table and the real draw
+// order are both pinned.
 
-// TestCoordBadgeBelowSidebarZ is the structural guard for the reported bug
-// (coordinate badge painting over the node pop-up menu). The badge Layer
-// must sit strictly below the sidebar and the popups so GridTree.Draw
-// composites them on top of the badge.
+// Strictly below the sidebar and the popups.
 func TestCoordBadgeBelowSidebarZ(t *testing.T) {
 	if !(GZCoordBadge < GZLongPress && GZCoordBadge < GZSidebar) {
 		t.Fatalf("badge z=%d must be below popup z values long=%d sidebar=%d",
@@ -53,8 +43,7 @@ func TestCoordBadgeBelowSidebarZ(t *testing.T) {
 	if bi >= si {
 		t.Errorf("badge draws at or after sidebar (would overpaint): badge@%d sidebar@%d", bi, si)
 	}
-	// Also pin the long-press popup, which sits between the badge and the
-	// sidebar in z and must likewise composite over the badge.
+	// The long-press popup sits between them and must also composite over the badge.
 	lp := idx("grid-longpress")
 	if lp < 0 {
 		t.Fatalf("missing popup layer: longpress idx=%d", lp)
@@ -64,10 +53,7 @@ func TestCoordBadgeBelowSidebarZ(t *testing.T) {
 	}
 }
 
-// orderedDraw is one entry in the unified, ordered draw timeline captured
-// during a drawGridPane pass. It records both drawRect and drawRoundedRect
-// calls so the badge fill (drawRect) and the sidebar panel fill
-// (drawRoundedRect) land in the SAME chronological slice.
+// Holds both drawRect and drawRoundedRect calls, so the badge fill and the sidebar fill share one timeline.
 type orderedDraw struct {
 	rect    image.Rectangle
 	col     color.RGBA
@@ -75,12 +61,8 @@ type orderedDraw struct {
 	rounded bool
 }
 
-// collectOrderedDraws intercepts BOTH drawRect and drawRoundedRect during
-// fn() and returns every call in invocation order. The originals are still
-// invoked so the real draw side-effects happen. We need both primitives in
-// one timeline because the badge pill is a drawRect while the sidebar panel
-// is a drawRoundedRect — comparing their relative call order is exactly the
-// z-composite order GridTree.Draw produces.
+// The originals still run. Both primitives are captured because the badge is a drawRect and the panel a
+// drawRoundedRect, and their call order is the composite order.
 func collectOrderedDraws(t *testing.T, fn func()) []orderedDraw {
 	t.Helper()
 	var seq []orderedDraw
@@ -111,35 +93,14 @@ func collectOrderedDraws(t *testing.T, fn func()) []orderedDraw {
 	return seq
 }
 
-// TestCoordBadgeDrawnBeforeSidebarPanel is the runtime draw-order guard. It
-// drives drawGridPane on DESKTOP with the coordinate badge ACTIVE and the
-// sidebar OPEN over the same node, then asserts that — IF the badge is drawn
-// at all — the sidebar panel fill that overlaps the badge is drawn AFTER the
-// badge, so the sidebar composites on top of (and hides) the badge.
-//
-// The sidebar draws entirely within drawGridPane (it is a GridTree layer,
-// "grid-sidebar" at z=GZSidebar, clipped to the grid pane), so capturing
-// drawGridPane alone is sufficient to see both the badge fill and the
-// sidebar panel fill in one ordered timeline.
-//
-// Approach (A) from the task: draw-order interception. We intercept drawRect
-// (the badge pill fill, color genColorVizPillFill) and drawRoundedRect (the
-// sidebar panel fill, colPanelBG over the panel rect) into one ordered
-// timeline.
-//
-// Desktop is the meaningful case: the desktop badge guard does NOT suppress
-// the badge when the sidebar is open (only the mobile guard does), so the
-// badge IS drawn while the sidebar is open — exactly the bug scenario the
-// z-order tree must neutralize. If a future change suppresses the badge
-// entirely under an open sidebar, that ALSO satisfies "the badge can't
-// overpaint the sidebar"; that case is handled below with a comment.
+// If the badge is drawn at all, the sidebar fill overlapping it must be drawn after it. Desktop is the case
+// that matters: only the mobile guard hides the badge under an open sidebar.
 func TestCoordBadgeDrawnBeforeSidebarPanel(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
 	g := New(logger)
 	t.Cleanup(g.CloseForTest)
-	// Desktop screen class (width 1280) — desktop badge guard keeps the badge
-	// visible while the sidebar is open.
+	// Desktop keeps the badge visible under an open sidebar.
 	g.Layout(1280, 720)
 	if Profile().IsMobile() {
 		t.Fatalf("expected desktop profile after Layout(1280,720); IsMobile=true")
@@ -155,12 +116,8 @@ func TestCoordBadgeDrawnBeforeSidebarPanel(t *testing.T) {
 	if sidebarW <= 0 {
 		t.Fatalf("sidebar width not positive: %d", sidebarW)
 	}
-	// The sidebar card is node-anchored (gridAnchoredPopupRect / AnchorPopupRect,
-	// preferring PopupBelow) and CLAMPED TO THE GRID PANE (0,0,gridW,gridH) — it
-	// can never spill past the split line. To make the badge (which sits ~16px
-	// ABOVE its node) land under the card, place the node near the BOTTOM of the
-	// grid pane: too little room below flips the preferred side to above the
-	// node, landing the card directly over the badge.
+	// The card is clamped to the grid pane, so a node near the bottom flips it above the node, right over the
+	// badge.
 	gridH := g.split.GridH(g.winH)
 	g.cam.OffsetX = float64(sidebarW / 3)
 	g.cam.OffsetY = float64(gridH - 40 - gridTopOffset())
@@ -174,19 +131,14 @@ func TestCoordBadgeDrawnBeforeSidebarPanel(t *testing.T) {
 		t.Fatal("sidebar did not open")
 	}
 
-	// Sanity: the badge's computed pill rect overlaps the ACTUAL, node-anchored
-	// sidebar panel rect, otherwise the "sidebar paints over the badge"
-	// assertion would be vacuous.
+	// Otherwise the "paints over" assertion is vacuous.
 	bx1, by1, bx2, _ := g.nodeScreenRect(g.coordBadgeNode)
 	bcx := int((bx1 + bx2) * 0.5)
 	bcy := int(by1) - 16
 	if bcy < 2 {
 		bcy = 2
 	}
-	// Use the real formatter and the real width metric rather than restating
-	// them: this test had its own fmt.Sprintf("(%d, %d)") with raw grid units,
-	// which already disagreed with the shipped beat-axis format and would drift
-	// further every time the badge's contents change.
+	// The real formatter and width metric: a restated format drifts from the badge.
 	badgeText := g.coordBadgeText(g.coordBadgeNode)
 	tw := coordBadgePillWidth(badgeText)
 	badgePill := image.Rect(bcx-tw/2, bcy-1, bcx+tw/2, bcy+13)
@@ -199,8 +151,6 @@ func TestCoordBadgeDrawnBeforeSidebarPanel(t *testing.T) {
 			"reposition the camera so the badge lands under the sidebar", badgePill, panelRect)
 	}
 
-	// Drive the dispatch-only grid-pane draw through GridTree and capture the
-	// ordered draw timeline.
 	img := ebiten.NewImage(1280, 720)
 	seq := collectOrderedDraws(t, func() {
 		g.drawGridPane(img)
@@ -218,18 +168,12 @@ func TestCoordBadgeDrawnBeforeSidebarPanel(t *testing.T) {
 	}
 
 	if badgeIdx < 0 {
-		// The badge was not drawn at all (e.g. a future guard suppressed it
-		// while the sidebar is open). That ALSO means the badge cannot
-		// overpaint the sidebar, so the regression is not present. Pass, but
-		// log so the maintainer knows this path was taken (Test 1 remains the
-		// load-bearing structural guard).
+		// A badge not drawn at all cannot overpaint the sidebar either, so this passes; the z test still holds.
 		t.Logf("badge pill fill not drawn while sidebar open — badge cannot overpaint sidebar; " +
 			"ordering assertion vacuously satisfied (structural guard is TestCoordBadgeBelowSidebarZ)")
 		return
 	}
 
-	// Find a sidebar panel fill (rounded, filled, colPanelBG) that overlaps
-	// the badge and is drawn AFTER it.
 	sidebarAfter := false
 	for i := badgeIdx + 1; i < len(seq); i++ {
 		d := seq[i]
@@ -239,8 +183,7 @@ func TestCoordBadgeDrawnBeforeSidebarPanel(t *testing.T) {
 		}
 	}
 	if !sidebarAfter {
-		// Did a sidebar panel fill overlapping the badge appear BEFORE it
-		// (the bug — badge drawn last, over the sidebar)? Diagnose.
+		// A sidebar fill BEFORE the badge is the bug: the badge drawn last, over it.
 		for i := 0; i < badgeIdx; i++ {
 			d := seq[i]
 			if d.rounded && d.filled && d.col == wantPanelFill && !d.rect.Intersect(badgePill).Empty() {

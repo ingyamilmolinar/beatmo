@@ -11,9 +11,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestGridLogsButtonPresentBothPlatforms asserts the logs button exists on both
-// platforms, sits left of the folder button (same size, disjoint), and carries
-// the logs icon.
+// Left of the folder button: same size, disjoint.
 func TestGridLogsButtonPresentBothPlatforms(t *testing.T) {
 	check := func(t *testing.T, g *Game) {
 		if g.gridLogsBtn == nil {
@@ -41,8 +39,6 @@ func TestGridLogsButtonPresentBothPlatforms(t *testing.T) {
 	t.Run("mobile", func(t *testing.T) { check(t, newMobileGame(t)) })
 }
 
-// TestIconLogsDispatch verifies the logs glyph is registered in the icon
-// renderer (drawIconByID returns true).
 func TestIconLogsDispatch(t *testing.T) {
 	dst := ebiten.NewImage(24, 24)
 	r := image.Rect(0, 0, 24, 24)
@@ -68,9 +64,7 @@ func TestLogsIconTogglesPanel(t *testing.T) {
 	}
 }
 
-// TestLogsPanelAnchorsUnderLogsButton asserts the logs panel drops from the
-// grid-pane logs button and paints into the grid pane, not centered in the
-// bottom drum pane (the dv.Bounds-clamp bug).
+// The panel drops from the grid-pane button, not clamped into the drum pane by dv.Bounds.
 func TestLogsPanelAnchorsUnderLogsButton(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -92,8 +86,6 @@ func TestLogsPanelAnchorsUnderLogsButton(t *testing.T) {
 	if r.Min.Y < logsBtn.Min.Y {
 		t.Fatalf("logs panel %v should be at/below the logs button %v", r, logsBtn)
 	}
-	// Panel STARTS in the grid pane (above the split line), proving it is no
-	// longer clamped into the bottom drum pane.
 	if r.Min.Y >= g.drum.Bounds.Min.Y {
 		t.Fatalf("logs panel %v is pinned into the bottom drum pane (top %d); expected it to start in the grid pane",
 			r, g.drum.Bounds.Min.Y)

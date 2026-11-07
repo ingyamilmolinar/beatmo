@@ -12,24 +12,14 @@
 #define EXPORT
 #endif
 
-/* softsat_shared / osc_wave_shared: the single compiled copy of the
- * saturation + generator-waveform primitives, declared in synth_post.h and
- * called by the modular engine's voice sources. */
+/* The single compiled copy of the saturation and generator primitives (declared in synth_post.h). */
 float softsat_shared(float x) {
   // gentle tanh saturation
   return (float)tanh(x * 1.5);
 }
 
-/* osc_wave_shared: discrete generator waveform for the gen-slot voices
- * (the gen<N>_wave knob). 0=Sine 1=Saw 2=Square 3=Triangle.
- * Phase is in radians (possibly unbounded — saw/triangle wrap via floor).
- *
- * BYTE-PARITY CONTRACT: the Sine case is the exact `sin(phase)` expression
- * the engines used as literals, and the Square case is the exact
- * `(sin(phase) >= 0) ? 1 : -1` expression from the hi-hat cluster — so an
- * explicit selection of the engine's default waveform (the browser path,
- * which does not elide defaults) renders bit-identically to the NaN
- * fallback path. */
+/* 0=Sine 1=Saw 2=Square 3=Triangle, phase in radians (saw/triangle wrap via floor). Sine and Square are the exact
+ * expressions the engines used as literals, so an explicit default renders bit-identically. */
 double osc_wave_shared(int wave, double phase) {
   switch (wave) {
   case 1: { /* saw */
@@ -49,10 +39,8 @@ double osc_wave_shared(int wave, double phase) {
   }
 }
 
-// Decode an audio file (WAV/MP3/FLAC/OGG where enabled) into mono f32 at
-// targetSampleRate, or at the file's own rate when it is 0 (how Beatmo calls
-// it: the rate conversion is Go's, shared with the browser). Returns frame
-// count or a negative ma_result code.
+// Mono f32 at the file's own rate when targetSampleRate is 0, which is how Beatmo calls it: the rate conversion is
+// Go's, shared with the browser. Returns the frame count or a negative ma_result.
 int load_audio(const char *path, int targetSampleRate, float **buffer, int *sampleRate) {
   const ma_uint32 targetRate = (ma_uint32)targetSampleRate;
   ma_decoder_config cfg = ma_decoder_config_init(ma_format_f32, 1, targetRate);

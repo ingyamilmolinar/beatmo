@@ -1,51 +1,6 @@
-// Package env is the single source of truth for every environment variable
-// the Beatmo game reads.
-//
-// Every variable is declared exactly once in vars.go with a name, type,
-// default, scope and purpose. Nothing outside this package calls os.Getenv —
-// TestNoDirectGetenv in discipline_test.go enforces that.
-//
-// # Why a registry
-//
-// Before this package the tree held 99 os.Getenv call sites across 46 files
-// reading 95 distinct names, with five duplicated parse helpers and four
-// mutually inconsistent boolean dialects. Nothing knew the full set, so a
-// hand-maintained reset list in internal/ui had rotted in both directions —
-// two names with no reader, eighteen live names missing.
-//
-// # Caching
-//
-// Get() reads an atomically-held value resolved on first access rather than
-// calling os.Getenv per read. Several variables (NO_PIXEL_SNAP, RENDER_SAFE,
-// the audio bypasses) are read inside draw and mixing loops, and were
-// previously cached in package-level vars for exactly that reason.
-//
-// Reload() re-resolves every variable. Production calls it once at startup;
-// tests call it after os.Setenv. A SetForTest override deliberately survives
-// Reload so a test can force a value without touching the environment.
-//
-// # Concurrency
-//
-// Get() and IsSet() are each individually lock-free and safe to call from
-// any goroutine at any time. But every typed reload() (and SetForTest) writes
-// isSet and val as two INDEPENDENT atomic stores, not one atomic transaction.
-// A goroutine calling IsSet() then Get() back-to-back can observe isSet==true
-// paired with the value from before the reload — the isSet store lands first
-// and a concurrent reader can slip in between the two stores. Reload() and
-// SetForTest() are therefore not safe to call concurrently with each other or
-// with themselves on the same Var, and an IsSet()+Get() pair is only
-// guaranteed coherent when no Reload()/SetForTest() call is in flight for
-// that Var. Today's call pattern (one Reload() at startup, serial test
-// reloads) makes this inert; it matters once code (e.g. a profile-override
-// path gating a write on IsSet()) starts calling Get()/IsSet() from a draw or
-// audio loop while a test concurrently calls Reload() or SetForTest().
-//
-// # WASM
-//
-// os.Getenv works in the browser because the JS bootstrap populates go.env
-// before go.run() (src/js/index.html). wasm_exec.js serializes that object
-// into linear memory for goenvs_unix, so this package needs no build-tagged
-// lookup path and behaves identically on both platforms.
+// Package env declares every environment variable the game reads, once (vars.go), and nothing else calls os.Getenv.
+// Get reads a value cached on first access (some are read in draw and mix loops); Reload re-resolves after os.Setenv;
+// on WASM the JS bootstrap fills go.env before go.run, so there is no build-tagged path.
 package env
 
 import (
@@ -93,10 +48,7 @@ type Var interface {
 	Scope() Scope
 	DefaultString() string
 	TypeName() string
-	// IsSet reports whether the variable was present and non-empty in the
-	// environment. Callers that must not clobber an existing value when the
-	// variable is absent guard on this — applyEnvProfileOverride is the
-	// canonical case, replacing the old (value, ok) helpers.
+	// Callers that must not clobber an existing value when the variable is absent guard on this.
 	IsSet() bool
 	reload()
 }
@@ -116,12 +68,7 @@ func register(v Var) {
 	v.reload()
 }
 
-// unregister removes name from the registry. It exists solely so tests can
-// register scratch variables (via the registering constructors) without
-// leaking them into All() for the rest of the process — the registry is
-// process-global and otherwise permanent. Production code has no reason to
-// call this: real variables are declared once at package init and live for
-// the process lifetime by design.
+// Test-only: the registry is process-global and permanent, so a test's scratch variable would stay in All() for the run.
 func unregister(name string) {
 	registryMu.Lock()
 	defer registryMu.Unlock()
@@ -140,15 +87,8 @@ func All() []Var {
 	return out
 }
 
-// Reload re-resolves every registered variable from the environment.
-// Variables under a SetForTest override keep the overridden value.
-//
-// Reload is not safe to call concurrently with itself or with SetForTest on
-// the same Var: each typed reload() stores isSet and val as two separate
-// atomic operations, so a Get()/IsSet() pair observed mid-Reload from another
-// goroutine is not guaranteed coherent (see the package doc's "Concurrency"
-// section). Get() and IsSet() remain individually safe to call from any
-// goroutine at any time.
+// SetForTest overrides survive. Not safe concurrently with itself or SetForTest on one Var: isSet and val are two
+// separate atomic stores, so an IsSet()+Get() pair mid-Reload may mix old and new. Get and IsSet alone are always safe.
 func Reload() {
 	for _, v := range All() {
 		v.reload()
@@ -174,9 +114,7 @@ func (m *meta) Scope() Scope          { return m.scope }
 func (m *meta) DefaultString() string { return m.defStr }
 func (m *meta) TypeName() string      { return m.typeName }
 
-// IsSet reports whether the variable was present and non-empty in the
-// environment. SetForTest marks the variable set, so a forced value behaves
-// like an explicitly-provided one.
+// SetForTest marks the variable set, so a forced value behaves like a provided one.
 func (m *meta) IsSet() bool { return m.isSet.Load() }
 
 func newMeta(name, purpose string, s Scope, typeName, defStr string) meta {
@@ -189,9 +127,7 @@ func newMeta(name, purpose string, s Scope, typeName, defStr string) meta {
 	return meta{name: name, purpose: purpose, scope: s, typeName: typeName, defStr: defStr}
 }
 
-// raw returns the trimmed environment value and whether it was present and
-// non-empty. An empty value is treated as unset throughout, matching the
-// behavior of every call site this package replaced.
+// An empty value is unset everywhere.
 func raw(name string) (string, bool) {
 	s := strings.TrimSpace(os.Getenv(name))
 	return s, s != ""
@@ -232,15 +168,8 @@ func (v *StrVar) reload() {
 	v.val.Store(v.def)
 }
 
-// SetForTest forces a value until the returned func is called. The override
-// survives Reload and marks the variable IsSet.
-//
-// Restores must be strictly LIFO per Var: call `defer restore()` immediately
-// after SetForTest, and if you stack multiple overrides on the same Var,
-// restore them in the exact reverse order you applied them. Each restore
-// closure only knows the single (overridden, isSet) snapshot it captured at
-// its own SetForTest call; restoring out of order re-stores a stale snapshot
-// over the state belonging to a still-active later override, corrupting it.
+// SetForTest forces a value (marked IsSet, surviving Reload) until the returned restore runs. Restores must be LIFO per
+// Var: each knows only the snapshot it captured, so out of order it clobbers a still-active later override.
 func (v *StrVar) SetForTest(s string) func() {
 	prev, prevOverridden, prevSet := v.Get(), v.overridden.Swap(true), v.isSet.Swap(true)
 	v.val.Store(s)
@@ -280,9 +209,7 @@ func (v *BoolVar) reload() {
 	v.val.Store(parseBoolValue(s, ok, v.def))
 }
 
-// parseBoolValue applies the one truthy/falsy dialect used everywhere. A
-// present-but-unrecognized value falls back to def; before centralization
-// four mutually inconsistent dialects were in use.
+// The one truthy/falsy dialect; a present but unrecognised value falls back to def.
 func parseBoolValue(s string, present, def bool) bool {
 	if !present {
 		return def
@@ -296,15 +223,8 @@ func parseBoolValue(s string, present, def bool) bool {
 	return def
 }
 
-// SetForTest forces a value until the returned func is called. The override
-// survives Reload and marks the variable IsSet.
-//
-// Restores must be strictly LIFO per Var: call `defer restore()` immediately
-// after SetForTest, and if you stack multiple overrides on the same Var,
-// restore them in the exact reverse order you applied them. Each restore
-// closure only knows the single (overridden, isSet) snapshot it captured at
-// its own SetForTest call; restoring out of order re-stores a stale snapshot
-// over the state belonging to a still-active later override, corrupting it.
+// SetForTest forces a value (marked IsSet, surviving Reload) until the returned restore runs. Restores must be LIFO per
+// Var: each knows only the snapshot it captured, so out of order it clobbers a still-active later override.
 func (v *BoolVar) SetForTest(b bool) func() {
 	prev, prevOverridden, prevSet := v.val.Load(), v.overridden.Swap(true), v.isSet.Swap(true)
 	v.val.Store(b)
@@ -351,15 +271,8 @@ func (v *IntVar) reload() {
 	v.val.Store(int64(v.def))
 }
 
-// SetForTest forces a value until the returned func is called. The override
-// survives Reload and marks the variable IsSet.
-//
-// Restores must be strictly LIFO per Var: call `defer restore()` immediately
-// after SetForTest, and if you stack multiple overrides on the same Var,
-// restore them in the exact reverse order you applied them. Each restore
-// closure only knows the single (overridden, isSet) snapshot it captured at
-// its own SetForTest call; restoring out of order re-stores a stale snapshot
-// over the state belonging to a still-active later override, corrupting it.
+// SetForTest forces a value (marked IsSet, surviving Reload) until the returned restore runs. Restores must be LIFO per
+// Var: each knows only the snapshot it captured, so out of order it clobbers a still-active later override.
 func (v *IntVar) SetForTest(n int) func() {
 	prev, prevOverridden, prevSet := v.val.Load(), v.overridden.Swap(true), v.isSet.Swap(true)
 	v.val.Store(int64(n))
@@ -410,15 +323,8 @@ func (v *FloatVar) reload() {
 	v.val.Store(v.def)
 }
 
-// SetForTest forces a value until the returned func is called. The override
-// survives Reload and marks the variable IsSet.
-//
-// Restores must be strictly LIFO per Var: call `defer restore()` immediately
-// after SetForTest, and if you stack multiple overrides on the same Var,
-// restore them in the exact reverse order you applied them. Each restore
-// closure only knows the single (overridden, isSet) snapshot it captured at
-// its own SetForTest call; restoring out of order re-stores a stale snapshot
-// over the state belonging to a still-active later override, corrupting it.
+// SetForTest forces a value (marked IsSet, surviving Reload) until the returned restore runs. Restores must be LIFO per
+// Var: each knows only the snapshot it captured, so out of order it clobbers a still-active later override.
 func (v *FloatVar) SetForTest(f float64) func() {
 	prev, prevOverridden, prevSet := v.Get(), v.overridden.Swap(true), v.isSet.Swap(true)
 	v.val.Store(f)
@@ -468,15 +374,8 @@ func (v *DurVar) reload() {
 	v.val.Store(int64(v.def))
 }
 
-// SetForTest forces a value until the returned func is called. The override
-// survives Reload and marks the variable IsSet.
-//
-// Restores must be strictly LIFO per Var: call `defer restore()` immediately
-// after SetForTest, and if you stack multiple overrides on the same Var,
-// restore them in the exact reverse order you applied them. Each restore
-// closure only knows the single (overridden, isSet) snapshot it captured at
-// its own SetForTest call; restoring out of order re-stores a stale snapshot
-// over the state belonging to a still-active later override, corrupting it.
+// SetForTest forces a value (marked IsSet, surviving Reload) until the returned restore runs. Restores must be LIFO per
+// Var: each knows only the snapshot it captured, so out of order it clobbers a still-active later override.
 func (v *DurVar) SetForTest(d time.Duration) func() {
 	prev, prevOverridden, prevSet := v.val.Load(), v.overridden.Swap(true), v.isSet.Swap(true)
 	v.val.Store(int64(d))

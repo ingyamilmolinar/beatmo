@@ -36,17 +36,14 @@ const (
 	EffectPitchShift EffectType = "pitchshift"
 )
 
-// EffectTypes lists every insert effect type, the closed set a file, a
-// bridge call or a document may name (TestEveryEffectTypeIsRegistered keeps
-// the registry and this list the same set).
+// The closed set a file, a bridge call or a document may name.
 var EffectTypes = []EffectType{
 	EffectDistortion, EffectDelay, EffectReverb, EffectChorus, EffectBitcrusher, EffectFilter,
 	EffectPhaser, EffectFlanger, EffectTremolo, EffectGate, EffectLimiter, EffectRingMod,
 	EffectWaveshaper, EffectAutoWah, EffectCompressor, EffectTransient, EffectTape, EffectPitchShift,
 }
 
-// ParseEffectType reads an effect type named in data; an unknown name is an
-// error, never a slot that silently processes nothing.
+// An unknown name is an error, never a slot that silently processes nothing.
 func ParseEffectType(s string) (EffectType, error) {
 	for _, t := range EffectTypes {
 		if string(t) == s {
@@ -56,8 +53,7 @@ func ParseEffectType(s string) (EffectType, error) {
 	return "", fmt.Errorf("unknown insert effect type %q", s)
 }
 
-// UnmarshalText is ParseEffectType, so a project or bundle naming an unknown
-// effect is rejected at decode.
+// A project or bundle naming an unknown effect is rejected at decode.
 func (t *EffectType) UnmarshalText(b []byte) error {
 	v, err := ParseEffectType(string(b))
 	if err != nil {
@@ -90,8 +86,6 @@ type InsertEffect interface {
 	SetParam(name string, value float64)
 }
 
-// InsertEffectCatalog returns parameter definitions for all available effect types.
-// Delegates to the effect registry.
 func InsertEffectCatalog() map[EffectType][]EffectParamDef {
 	regs := EffectRegistrations()
 	out := make(map[EffectType][]EffectParamDef, len(regs))
@@ -116,8 +110,6 @@ func DefaultParams(t EffectType) map[string]float64 {
 	return m
 }
 
-// NewEffectProcessor creates a Processor for the given EffectSlot.
-// Looks up the constructor in the effect registry.
 func NewEffectProcessor(slot EffectSlot, sr int) InsertEffect {
 	params := mergeDefaults(slot.Type, slot.Params)
 	registryMu.RLock()

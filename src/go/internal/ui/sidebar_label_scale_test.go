@@ -4,10 +4,7 @@ package ui
 
 import "testing"
 
-// TestSidebarLabelScaleIsDensityToken pins sidebar label scaling to a density
-// token (was a hardcoded sidebarTextScale=1.2 const at 30+ sites). The helper
-// resolves the per-mille token to a float multiplier; Comfortable preserves
-// today's 1.2.
+// A density token; Comfortable keeps 1.2.
 func TestSidebarLabelScaleIsDensityToken(t *testing.T) {
 	if got := Profile().DensityValues().SidebarLabelScale; got <= 0 {
 		t.Fatalf("SidebarLabelScale density token unset (got %d per-mille)", got)

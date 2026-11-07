@@ -69,8 +69,7 @@ func TestOriginSelectIgnoresDifferentCircuitNode(t *testing.T) {
 		t.Fatalf("row1 origin=%d want %d", g.drum.Rows[1].Origin, b0.ID)
 	}
 
-	// Re-enter origin mode for row 1, set playing active; clicking a node from circuit A (a0)
-	// should NOT change because row 0 is audible and playback is active.
+	// Row 0 is audible and playing, so its circuit cannot become row 1's origin.
 	g.SetPlaying(true)
 	ob.OnClick()
 	_ = g.Update()

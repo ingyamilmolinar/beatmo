@@ -12,11 +12,8 @@ import (
 	"testing"
 )
 
-// TestNoTopLevelDerivedColorsOutsideTheme guards the rebuild-in-place theme
-// engine: a package-level var whose initialiser references a genColor* token
-// (directly or via WithAlpha/ButtonStyleFromSpec) is evaluated ONCE at init and
-// would go stale after ApplyTheme. Every such derivation must live inside
-// rebuildThemeAliases() (theme.go) so a theme change re-derives it.
+// A package-level var derived from a genColor* token is evaluated ONCE at init and goes stale after ApplyTheme;
+// such derivations live in rebuildThemeAliases().
 func TestNoTopLevelDerivedColorsOutsideTheme(t *testing.T) {
 	files, _ := filepath.Glob("*.go")
 	var bad []string
@@ -56,8 +53,7 @@ func TestNoTopLevelDerivedColorsOutsideTheme(t *testing.T) {
 						if strings.HasPrefix(id.Name, "col") && len(id.Name) > 3 && id.Name[3] >= 'A' && id.Name[3] <= 'Z' {
 							refs = true
 						}
-						// A style built by a helper call (e.g. primaryActionStyle())
-						// copies spec/alias colors at init just the same.
+						// A style built by a helper copies colours at init just the same.
 						if strings.HasSuffix(id.Name, "Style") || strings.HasSuffix(id.Name, "StyleFromSpec") {
 							refs = true
 						}

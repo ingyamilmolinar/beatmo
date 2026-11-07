@@ -9,9 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestButtonInnerShadowStrips asserts drawButtonInnerShadow emits inner strips
-// that stay inside the button rect (an inset, never an escaping shadow). Uses
-// the shared captureDrawRects helper (slider_level_indicator_test.go).
+// Inset strips that never escape the button rect.
 func TestButtonInnerShadowStrips(t *testing.T) {
 	r := image.Rect(40, 40, 120, 72)
 	dst := ebiten.NewImage(200, 200)
@@ -30,12 +28,8 @@ func TestButtonInnerShadowStrips(t *testing.T) {
 	}
 }
 
-// TestButtonDrawFlatHasNoDepthChrome drives the full Button.Draw path under
-// the flat-tonal model: a button paints no contact shadow, no socket wall and
-// no bevel in EITHER state, so pressing it changes the fill brightness but not
-// the number of emitted rects. This is the inverse of the retired keycap
-// contract (where a resting cap drew a shadow that a bottomed-out cap dropped)
-// and is what pins "nothing is 3D" — see DESIGN.md "Elevation & Depth".
+// No contact shadow, socket wall or bevel in either state: a press changes the fill brightness, never the rect
+// count. Nothing is 3D (DESIGN.md "Elevation & Depth").
 func TestButtonDrawFlatHasNoDepthChrome(t *testing.T) {
 	dst := ebiten.NewImage(300, 200)
 
@@ -49,8 +43,7 @@ func TestButtonDrawFlatHasNoDepthChrome(t *testing.T) {
 	if !pressed.pressed {
 		t.Fatal("setup: button should be pressed")
 	}
-	// Settle the press spring; it still runs (settle-to-silence contract) but
-	// no longer drives any geometry.
+	// The spring still runs to settle, but drives no geometry.
 	for i := 0; i < 6; i++ {
 		pressed.AdvancePressAnim()
 	}
@@ -63,8 +56,7 @@ func TestButtonDrawFlatHasNoDepthChrome(t *testing.T) {
 		t.Fatalf("flat button must emit the same rect count pressed and at rest "+
 			"(no contact shadow to drop): pressed=%d rest=%d", len(pressRects), len(restRects))
 	}
-	// And neither state may paint outside the button rect — a contact shadow
-	// was the only thing that ever did.
+	// Neither state paints outside the rect.
 	r := image.Rect(20, 20, 100, 52)
 	for _, rc := range append(append([]image.Rectangle{}, restRects...), pressRects...) {
 		if !rc.In(r) {

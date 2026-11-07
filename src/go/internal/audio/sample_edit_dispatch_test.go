@@ -9,15 +9,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Native-dispatch coverage for the non-destructive sample-edit descriptor:
-// a synth instrument with a saved Sampler edit KEEPS its recipe binding; the
-// edit is applied to the freshly-rendered recipe buffer at trigger time, so
-// synth changes always take effect (next trigger) and the instrument never
-// silently becomes a dead PCM blob.
+// A synth with a saved edit KEEPS its binding, so synth changes still take effect.
 
-// renderDispatchBuffer triggers id once through the dispatcher and drains the
-// voice exactly (cVoice signals done only AFTER the last real sample, so the
-// done-sample is not part of the buffer; 4s cap mirrors RenderInstrumentOneShot).
+// The done-sample is not part of the buffer; the 4 s cap matches RenderInstrumentOneShot.
 func renderDispatchBuffer(t *testing.T, id instrument.ID) []float32 {
 	t.Helper()
 	v := newRecipeAwareVoice(id, 44100)
@@ -42,9 +36,7 @@ func TestSampleEditDispatch_DescriptorAloneTakesRecipePath(t *testing.T) {
 		ResetInstrumentParams(roster.Snare)
 	})
 	ResetInstrumentParams(roster.Snare)
-	// No overlay params, defaults as shipped — but a descriptor exists, so the
-	// recipe path must be taken (the gate change). A half-trim makes the
-	// rendered buffer measurably shorter than the unedited render.
+	// Shipped values, but a descriptor exists, so the recipe path must be taken.
 	full := renderDispatchBuffer(t, roster.Snare)
 	SetSampleEdit(roster.Snare, SampleEdit{StartFrac: 0, EndFrac: 0.5})
 	if _, ok := tryRecipeVoice(roster.Snare, 44100); !ok {
@@ -87,9 +79,7 @@ func TestSampleEditDispatch_NoDescriptorByteIdentical(t *testing.T) {
 		ResetInstrumentParams(roster.Snare)
 	})
 	ResetInstrumentParams(roster.Snare)
-	// Parity-golden safety: set then clear a descriptor; the render must come
-	// back byte-identical to the never-edited output (no residue in the cache
-	// or the key).
+	// No residue in the cache or the key.
 	before := renderDispatchBuffer(t, roster.Snare)
 	SetSampleEdit(roster.Snare, SampleEdit{StartFrac: 0, EndFrac: 0.5})
 	renderDispatchBuffer(t, roster.Snare)
@@ -121,21 +111,8 @@ func TestSampleEditDispatch_DescriptorChangeMissesCache(t *testing.T) {
 	}
 }
 
-// A sample-edit must ROTATE the binding, not blanket-drop the instrument's other
-// cached voices. hashSampleEdit is already XORed into the voice-cache key
-// (synth_recipe_dispatch.go:138/:192/:264), so a new edit maps to a DIFFERENT key:
-// dispatch renders the new sound there and the stale entry simply goes unread.
-//
-// This test used to assert the OPPOSITE (that SetSampleEdit invalidates). That
-// blanket clear dropped every pitch's entry, so each following note cold-rendered
-// ~24ms+ ON the audioLoop dispatch goroutine — measured at 30-44 dispatch renders
-// per sampler edit, ~8x a synth-control drag. It is the same storm SetInstrumentParam
-// was fixed to avoid; see the NOTE at synth_recipe.go:256-267 and its retargeted
-// test TestSetInstrumentParam_DoesNotBlanketInvalidate.
-//
-// The BEHAVIOUR this file used to conflate with that mechanism — "an edit actually
-// takes effect on the next render" — is covered by
-// TestSampleEditDispatch_DescriptorChangeMissesCache above. Keep both.
+// The edit's hash is in the key, so the stale entry simply goes unread; dropping every pitch's entry would make each
+// following note cold-render on the dispatch goroutine.
 func TestSampleEditDispatch_SetDoesNotBlanketInvalidate(t *testing.T) {
 	resetSampleEditsForTest(t)
 	t.Cleanup(func() {
@@ -173,9 +150,7 @@ func TestRenderInstrumentOneShotRawIgnoresDescriptor(t *testing.T) {
 	if len(raw) == 0 {
 		t.Fatal("raw capture returned no audio")
 	}
-	// The raw capture feeds the Sampler editor, which overlays the saved trim
-	// itself — it must see the UN-edited source, i.e. strictly more audio than
-	// the half-trimmed dispatch render.
+	// The editor overlays the saved trim itself, so it must see the UN-edited source.
 	if len(raw) <= len(edited) {
 		t.Fatalf("raw len=%d not longer than edited len=%d — descriptor leaked into the raw capture", len(raw), len(edited))
 	}

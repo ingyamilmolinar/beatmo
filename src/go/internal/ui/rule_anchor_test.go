@@ -8,10 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// collectParityPitches reads the pitch the REAL scheduler computed at each
-// captured trigger for row 0, keyed by absolute subdivision index. Ported
-// from the controller's zz_evidence_rule_playback_test.go instrumentation
-// (collectParityPitches over g.parityAudio under g.parityMu).
+// The pitch the REAL scheduler computed at each trigger, keyed by abs.
 func collectParityPitches(g *Game) map[int]float64 {
 	out := map[int]float64{}
 	g.parityMu.Lock()
@@ -34,13 +31,8 @@ func sortedIdxs(pitches map[int]float64) []int {
 	return idxs
 }
 
-// roundPitchesInOrder collapses a sorted slice of absolute trigger indices
-// into one pitch value per DISTINCT round (round computed via the same
-// loopStart/loopLen math GroupRound uses), in ascending round order. The
-// 2-node test loop (buildEdge) fires twice per round (once per node), 32
-// subdivisions apart, so consecutive raw indices can share the same round —
-// this collapses that duplication so callers can assert "pitch increases by
-// exactly Delta every ROUND" without hardcoding the fixture's node count.
+// The 2-node loop fires twice per round, so raw indices are collapsed to one pitch per round (GroupRound's math):
+// callers assert "+Delta every round" without hardcoding the node count.
 func roundPitchesInOrder(idxs []int, pitches map[int]float64, loopStart, loopLen int) []float64 {
 	var out []float64
 	lastRound := -1
@@ -59,12 +51,8 @@ func roundPitchesInOrder(idxs []int, pitches map[int]float64, loopStart, loopLen
 	return out
 }
 
-// maxIdx returns the largest key in a pitch-by-abs map, or -1 if empty. Used
-// as a watermark to split "before"/"after" triggers — a plain length
-// comparison doesn't work because g.parityAudio is a bounded ring buffer:
-// once it's full, adding new entries evicts old ones, so the total count can
-// stay constant across a boundary even though the SET of captured indices has
-// moved forward.
+// A watermark, not a count: parityAudio is a bounded ring, so its size can stay constant while the captured set
+// moves forward.
 func maxIdx(pitches map[int]float64) int {
 	m := -1
 	for i := range pitches {
@@ -75,11 +63,7 @@ func maxIdx(pitches map[int]float64) int {
 	return m
 }
 
-// TestRulePitchStepsPerRoundFromStart is the permanent regression of the
-// working case (root-cause brief, Part C #2): a rule set BEFORE play starts
-// (AnchorIdx 0, the timeline origin) must produce pitches equal to the round
-// number exactly at each round's triggers. This must hold both before and
-// after the anchored-rounds fix.
+// A rule set before play (anchor 0) gives pitch == round at each round's triggers.
 func TestRulePitchStepsPerRoundFromStart(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -96,9 +80,7 @@ func TestRulePitchStepsPerRoundFromStart(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SetGroupRules: %v", err)
 	}
-	// task-enabled-status brief Part C: RulesEnabled is independent of Rules
-	// and defaults false — this test exercises rule APPLICATION, so it must
-	// explicitly enable.
+	// RulesEnabled is independent of Rules and defaults false.
 	if err := g.graph.SetGroupRulesEnabled(gid, true); err != nil {
 		t.Fatalf("SetGroupRulesEnabled: %v", err)
 	}
@@ -129,13 +111,8 @@ func TestRulePitchStepsPerRoundFromStart(t *testing.T) {
 	}
 }
 
-// TestRuleEnabledMidPlaybackAnchorsAtZero is the root-cause repro (brief Part
-// C #1). Playing ~10 rounds with NO rule, then enabling a pitch +1-every-1
-// rule via the MENU path (the paths that must stamp anchors: setRuleEnabled/
-// writeRule) must anchor the rule at the moment it's enabled: the first
-// post-enable round's pitch is 0, then +1, then +2 — NOT +10/+11/+12 (the
-// pre-fix bug, where GroupEffect used the absolute round number regardless of
-// when the rule was set).
+// A rule enabled mid-play through the menu anchors at that moment: the first round after is 0, then +1, +2, never
+// the absolute round number.
 func TestRuleEnabledMidPlaybackAnchorsAtZero(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -157,17 +134,11 @@ func TestRuleEnabledMidPlaybackAnchorsAtZero(t *testing.T) {
 	_ = g.Update()
 	// Play ~10 rounds with NO rule.
 	advancePlaybackByAbs(g, 10*loopLen)
-	// Snapshot the trigger watermark BEFORE enabling — the split point
-	// between "before" and "post-enable" triggers (see maxIdx's doc comment
-	// on why this must be a watermark, not a count).
+	// The split between before and after enabling.
 	beforeMax := maxIdx(collectParityPitches(g))
 
-	// Configure + enable the rule mid-playback via the MENU path
-	// (stepRuleDelta writes the rule via writeRules — the anchor-stamping
-	// path under test; setRuleEnabled flips the independent RulesEnabled bit,
-	// task-enabled-status brief Part C — deltas alone never apply). One
-	// rdpit+ step composes exactly "pitch +1 every 1 round" (scratch EveryN
-	// defaults to 1).
+	// stepRuleDelta writes the rule (stamping the anchor) and setRuleEnabled flips the independent bit; one rdpit+
+	// step is "pitch +1 every 1 round".
 	g.groupMenu.OpenAt(gid, 100, 100)
 	g.groupMenu.stepRuleDelta(model.GroupParamPitch, 1)
 	g.groupMenu.setRuleEnabled(true)
@@ -185,15 +156,8 @@ func TestRuleEnabledMidPlaybackAnchorsAtZero(t *testing.T) {
 	if len(post) < 3 {
 		t.Fatalf("not enough post-enable triggers captured: %v (beforeMax=%d)", post, beforeMax)
 	}
-	// The pre-fix bug used the ABSOLUTE round number regardless of when the
-	// rule was set: enabling ~10 rounds in produced pitches racing up from
-	// ~+10 toward the ±24 clamp. The fix anchors the rule at the enable
-	// moment, so the first post-enable ROUND's pitch must be small (nowhere
-	// near the ~10-11 the bug produced), and every subsequent round must step
-	// by exactly Delta (1 semitone) — linear accumulation from the anchor,
-	// not from the timeline origin. roundPitchesInOrder collapses the
-	// fixture's 2-triggers-per-round shape (buildEdge's a/b nodes) into one
-	// pitch per round.
+	// The first round after enabling is small and each later one steps by exactly Delta: accumulation from the anchor,
+	// not from the timeline origin.
 	byRound := roundPitchesInOrder(post, pitches, loopStart, loopLen)
 	if len(byRound) < 3 {
 		t.Fatalf("not enough distinct post-enable rounds: %v", byRound)
@@ -210,17 +174,8 @@ func TestRuleEnabledMidPlaybackAnchorsAtZero(t *testing.T) {
 	}
 }
 
-// TestRuleToggleOffOnGatesWithoutReanchor is the task-enabled-status brief
-// Part C port of the old "Off/On re-anchors" test: under the new INDEPENDENT
-// RulesEnabled status bit, toggling Off/On (setRuleEnabled) is a pure gate —
-// it NEVER touches Rules or AnchorIdx (that's writeRules' job, only invoked
-// by delta/EveryN edits). A rule active from the start (anchor 0) accumulates
-// for 5 rounds; disabling it makes pitch read flat identity (0) for as long
-// as it stays disabled (BuildGroupIndex skips the group's rules entirely);
-// re-enabling resumes the ramp at whatever the ORIGINAL anchor's formula
-// produces for the CURRENT round — a "jump" reflecting the rounds that
-// elapsed while disabled, not a reset back near 0 (that reset behavior
-// belonged to the old "Off clears rules" design, removed by this task).
+// Off/On is a pure gate that never touches Rules or AnchorIdx: disabled reads flat 0, and re-enabling resumes the
+// original anchor's ramp at the CURRENT round, a jump over the disabled rounds rather than a reset.
 func TestRuleToggleOffOnGatesWithoutReanchor(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -288,10 +243,7 @@ func TestRuleToggleOffOnGatesWithoutReanchor(t *testing.T) {
 	if len(post) == 0 {
 		t.Fatalf("no post-reenable triggers captured (preReenableMax=%d)", preReenableMax)
 	}
-	// The anchor never moved off 0, so GroupEffect's formula (steps == round,
-	// since AnchorIdx==0 and EveryN==1) applies at every captured post-
-	// reenable index — including ones with round >= 8, well past the pre-fix
-	// design's "reset near 0" expectation.
+	// The anchor never left 0, so steps == round at every capture after re-enabling.
 	for _, i := range post {
 		round := model.GroupRound(i, loopStart, loopLen)
 		want := float64(round)
@@ -301,14 +253,8 @@ func TestRuleToggleOffOnGatesWithoutReanchor(t *testing.T) {
 	}
 }
 
-// TestDisabledRulesAreInert is task-enabled-status brief test C4: a committed
-// group with configured deltas but RulesEnabled false must produce FLAT
-// (identity) pitch throughout playback — the rule is inert purely because
-// BuildGroupIndex skips a disabled group's Rules (core/model/group_effect.go)
-// — and enabling it via SetGroupRulesEnabled mid-session must make the ramp
-// resume immediately (the session's existing AnchorIdx applies — "session
-// anchor rules apply", matching how a live toggle behaves elsewhere in this
-// suite, e.g. TestRuleToggleOffOnGatesWithoutReanchor).
+// Configured deltas with RulesEnabled false are inert (BuildGroupIndex skips them); enabling mid-session resumes
+// the ramp at once from the existing anchor.
 func TestDisabledRulesAreInert(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -325,8 +271,7 @@ func TestDisabledRulesAreInert(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SetGroupRules: %v", err)
 	}
-	// Deliberately left Disabled (the model default) — pins that configuring
-	// deltas alone never makes them audible.
+	// Configuring deltas alone never makes them audible.
 	if grp, ok := g.graph.Group(gid); !ok || grp.RulesEnabled {
 		t.Fatalf("setup: group must start Disabled, got %+v ok=%v", grp, ok)
 	}
@@ -377,10 +322,7 @@ func TestDisabledRulesAreInert(t *testing.T) {
 	}
 }
 
-// TestRuleAnchorRoundTripsThroughExportImport is brief Part C #4: a rule with
-// a nonzero AnchorIdx must survive export -> Import byte-faithfully (the
-// exported document, and the re-exported document after import, must be
-// identical), and the imported rule's AnchorIdx must match exactly.
+// Byte-faithful through export → import, and the imported AnchorIdx matches exactly.
 func TestRuleAnchorRoundTripsThroughExportImport(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid, err := g.graph.CreateGroup("", []model.NodeID{aID, bID})
@@ -422,23 +364,10 @@ func TestRuleAnchorRoundTripsThroughExportImport(t *testing.T) {
 	}
 }
 
-// ─── Part 2: rule-edit continuity (task-rule-continuity brief) ────────────
-//
-// Current (pre-fix) behavior: writeRules stamps a FRESH AnchorIdx on EVERY
-// write, so an in-place delta/EveryN edit mid-play resets the ramp to 0 —
-// audio jumps back to base and restarts. The required behavior: an in-place
-// edit (the group already has a rule for that param) must PRESERVE the
-// existing AnchorIdx so the step count continues; only a param gaining a
-// rule for the first time (or Off->On) gets a fresh anchor.
+// An in-place edit (the param already has a rule) keeps the existing AnchorIdx so the ramp continues; only a param
+// gaining its first rule, or Off→On, gets a fresh anchor.
 
-// TestRuleDeltaEditMidPlaybackContinuesRamp is brief Part 2 test #1 (MUST
-// FAIL against current code, which re-anchors on every write): a pitch rule
-// active from the start (AnchorIdx 0) accumulates for 5 rounds; editing its
-// delta mid-play (1 -> 2, an IN-PLACE edit — the rule already exists) must
-// NOT re-anchor. Every round's expected pitch is derived directly from
-// GroupEffect's own formula (steps == round, since the anchor never moves
-// off 0): rounds up to and including the edit round keep the OLD delta,
-// rounds after use the NEW delta — continuing the ramp, not resetting it.
+// Rounds up to the edit keep the old delta, later ones use the new one: the ramp continues, it never resets.
 func TestRuleDeltaEditMidPlaybackContinuesRamp(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -471,8 +400,7 @@ func TestRuleDeltaEditMidPlaybackContinuesRamp(t *testing.T) {
 	const preEditRounds = 5
 	advancePlaybackByAbs(g, preEditRounds*loopLen+2)
 
-	// In-place delta edit via the menu path (stepRuleDelta -> writeRules) —
-	// the group already has a pitch rule, so this must preserve its anchor.
+	// The group already has a pitch rule, so the anchor must be kept.
 	g.groupMenu.OpenAt(gid, 100, 100)
 	g.groupMenu.stepRuleDelta(model.GroupParamPitch, 1) // delta 1 -> 2
 	advanceFrames(g, 1)
@@ -493,13 +421,8 @@ func TestRuleDeltaEditMidPlaybackContinuesRamp(t *testing.T) {
 	advancePlaybackByAbs(g, postEditRounds*loopLen)
 	g.SetPlaying(false)
 
-	// NOTE: onGroupsChanged (game_groups.go) wipes g.parityAudio whenever a
-	// group rule changes while playing — it drops in-flight captures so the
-	// new rule takes effect cleanly from the next re-predicted trigger. So
-	// only captures recorded AFTER the edit are visible here; derive the
-	// expected pitch per-capture from GroupEffect's own formula (round via
-	// model.GroupRound, anchor preserved at 0 so steps == round) rather than
-	// assuming a fixed pre/post round index list.
+	// onGroupsChanged wipes parityAudio when a rule changes while playing, so only captures after the edit exist;
+	// each one's expected pitch comes from GroupEffect's own formula.
 	after := collectParityPitches(g)
 	if len(after) == 0 {
 		t.Fatalf("no parity audio captured after the delta edit")
@@ -515,21 +438,13 @@ func TestRuleDeltaEditMidPlaybackContinuesRamp(t *testing.T) {
 			minRound = round
 		}
 	}
-	// Anti-regression guard: the pre-fix bug re-anchored on every write, so
-	// steps (and therefore round, and therefore pitch) would restart near 0
-	// instead of continuing from where playback had already reached
-	// (preEditRounds, since the edit landed right after that round fired).
+	// A re-anchor would restart the rounds near 0 instead of continuing from where playback was.
 	if minRound < preEditRounds {
 		t.Fatalf("earliest post-edit captured round = %d, want >= %d (ramp must continue, not reset)", minRound, preEditRounds)
 	}
 }
 
-// TestRuleEveryNEditMidPlaybackKeepsCycleCount is brief Part 2 test #2 (MUST
-// FAIL against current code): a pitch rule active from the start accumulates
-// for 4 rounds (+4); editing EveryN mid-play (1 -> 2, an IN-PLACE edit) must
-// preserve the anchor so the cycle COUNT continues — the step formula keeps
-// using the SAME anchor (0), just with the new EveryN divisor, rather than
-// resetting to a fresh anchor near "now".
+// The cycle COUNT continues: the same anchor (0) with the new EveryN divisor.
 func TestRuleEveryNEditMidPlaybackKeepsCycleCount(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -562,9 +477,6 @@ func TestRuleEveryNEditMidPlaybackKeepsCycleCount(t *testing.T) {
 	const preEditRounds = 4
 	advancePlaybackByAbs(g, preEditRounds*loopLen+2)
 
-	// In-place EveryN edit via the menu path — must PRESERVE the rule's
-	// existing AnchorIdx (0), so the step count continues from the same
-	// anchor with the new EveryN divisor.
 	g.groupMenu.OpenAt(gid, 100, 100)
 	g.groupMenu.stepRuleEveryN(1) // EveryN 1 -> 2
 	advanceFrames(g, 1)
@@ -585,13 +497,8 @@ func TestRuleEveryNEditMidPlaybackKeepsCycleCount(t *testing.T) {
 	advancePlaybackByAbs(g, postEditRounds*loopLen)
 	g.SetPlaying(false)
 
-	// NOTE: onGroupsChanged (game_groups.go) wipes g.parityAudio whenever a
-	// group rule changes while playing, so only captures recorded AFTER the
-	// edit are visible here. Derive the expected pitch per-capture from
-	// GroupEffect's own formula: steps = (round - anchorRound) / EveryN,
-	// anchorRound == 0 throughout (asserted above, preserved not reset), so
-	// steps = round / newEveryN using integer division exactly like
-	// GroupEffect.
+	// Only captures after the edit exist (onGroupsChanged wipes parityAudio); steps = round / newEveryN, integer
+	// division as in GroupEffect.
 	after := collectParityPitches(g)
 	if len(after) == 0 {
 		t.Fatalf("no parity audio captured after the EveryN edit")
@@ -608,21 +515,13 @@ func TestRuleEveryNEditMidPlaybackKeepsCycleCount(t *testing.T) {
 			minRound = round
 		}
 	}
-	// Anti-regression guard: the pre-fix bug re-anchored on every write, so
-	// the cycle count (and therefore round) would restart near 0 instead of
-	// continuing from where playback had already reached (preEditRounds,
-	// since the edit landed right after that round fired).
+	// A re-anchor would restart the rounds near 0 instead of continuing from where playback was.
 	if minRound < preEditRounds {
 		t.Fatalf("earliest post-edit captured round = %d, want >= %d (cycle count must continue, not reset)", minRound, preEditRounds)
 	}
 }
 
-// TestRuleNewParamMidPlaybackAnchorsFresh is brief Part 2 test #3: pitch has
-// a rule from the start; adding a brand-new DURATION rule mid-play (a param
-// the group had no rule for) must stamp a FRESH anchor for duration only —
-// the pre-existing pitch rule's anchor must stay untouched (per-param
-// anchors diverge correctly), and pitch's own ramp must keep continuing
-// exactly as if the duration rule had never been added.
+// Anchors are per param: the new duration rule gets a fresh one, and pitch keeps its anchor and its ramp.
 func TestRuleNewParamMidPlaybackAnchorsFresh(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -652,9 +551,6 @@ func TestRuleNewParamMidPlaybackAnchorsFresh(t *testing.T) {
 	_ = g.Update()
 	advancePlaybackByAbs(g, 5*loopLen+2)
 
-	// Add a brand-new DURATION rule mid-play via the menu (rddur+) — the
-	// group didn't have a duration rule before. Pitch's existing rule must
-	// keep its anchor (0); duration must get a FRESH (nonzero) anchor.
 	g.groupMenu.OpenAt(gid, 100, 100)
 	g.groupMenu.stepRuleDelta(model.GroupParamDuration, 1)
 	advanceFrames(g, 1)
@@ -679,13 +575,7 @@ func TestRuleNewParamMidPlaybackAnchorsFresh(t *testing.T) {
 	advancePlaybackByAbs(g, postAddRounds*loopLen)
 	g.SetPlaying(false)
 
-	// Pitch continues its pre-existing ramp (anchor 0, steps == round),
-	// undisturbed by the sibling duration rule being added. NOTE:
-	// onGroupsChanged wipes g.parityAudio whenever a group rule changes
-	// while playing, so only captures recorded AFTER the add are visible
-	// here — derive the expected pitch per-capture from GroupEffect's own
-	// formula rather than assuming a fixed round index list (mirrors tests
-	// #1/#2 above).
+	// Only captures after the add exist (onGroupsChanged wipes parityAudio); expected pitch from GroupEffect.
 	after := collectParityPitches(g)
 	if len(after) == 0 {
 		t.Fatalf("no parity audio captured after adding the duration rule")
@@ -707,38 +597,11 @@ func TestRuleNewParamMidPlaybackAnchorsFresh(t *testing.T) {
 	}
 }
 
-// ─── Part 3: replay after stop (task-rule-replay brief) ───────────────────
-//
-// Root-cause hypothesis: ruleAnchorIdxNow() stamps AnchorIdx at the live
-// playhead when rules are written during playback (e.g. abs 640). On
-// stop->play, the playhead restarts at abs 0; GroupEffect's
-// anchor=min(anchor,absIdx) collapse makes steps=0 for the entire region
-// below the stored anchor — the ramp is silent until the playhead re-passes
-// wherever it was saved. The fix: every FRESH playback start (stop->play,
-// not resume-from-pause) re-anchors ALL group rules to the session's
-// starting absolute index (model.Graph.ReanchorAllGroupRules, called from
-// handlePlaybackTransition's curr&&!prevPaused branch — the single chokepoint
-// shared by the transport play button and the JS startPlay export, since both
-// funnel through dv.playPressed -> Game.Update's PlayPressed() handling ->
-// handlePlaybackTransition at the end of the same Update() call).
-//
-// These tests drive the REAL production play/stop seam (dv.TriggerPlayPause/
-// dv.TriggerStop + g.Update(), mirroring the on-screen buttons per their doc
-// comments) rather than the direct g.SetPlaying(true) calls the Part 1/2
-// tests above use — a direct SetPlaying(true) call sets the state BEFORE
-// Update() runs, so Update()'s prevPlaying (captured at its own top) already
-// matches curr and handlePlaybackTransition never detects a transition. Only
-// the flag-and-consume path (TriggerPlayPause/TriggerStop) reproduces the
-// false->true edge within a single Update() call, exactly like a real button
-// press or the JS startPlay export.
+// An anchor stamped mid-play sits far past abs 0, and on stop → play every round below it would read steps=0.
+// Every FRESH start (not a resume) re-anchors all rules to the starting index in handlePlaybackTransition.
+// These drive the real TriggerPlayPause / TriggerStop seam: SetPlaying(true) before Update never shows a transition.
 
-// TestSavedRulesApplyOnReplayAfterStop is brief test #1 (MUST FAIL against
-// pre-fix code): play, enable a pitch +1-every-1 rule mid-play (anchoring it
-// well after abs 0), confirm the ramp is running, stop (production StopPressed
-// path), play again from abs 0, and assert the first few replayed rounds
-// step 0, +1, +2, +3 — NOT a wall of 0s (the pre-fix bug: the stale non-zero
-// anchor collapses every round below it to steps=0 until the playhead
-// re-passes that point).
+// A rule anchored well after abs 0, then stop and play: the replayed rounds step 0, +1, +2, not a wall of 0s.
 func TestSavedRulesApplyOnReplayAfterStop(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -765,10 +628,7 @@ func TestSavedRulesApplyOnReplayAfterStop(t *testing.T) {
 	setPlayStartForAbs(g, 5)
 	_ = g.Update()
 
-	// Configure + enable the rule ~round 5 in via the menu path (Save/commit
-	// flow — stepRuleDelta -> writeRules anchors the rule well after abs 0;
-	// setRuleEnabled flips the independent RulesEnabled bit — task-enabled-
-	// status brief Part C, deltas alone never apply).
+	// Enabled about five rounds in, so its anchor lands well after abs 0.
 	advancePlaybackByAbs(g, 5*loopLen)
 	g.groupMenu.OpenAt(gid, 100, 100)
 	g.groupMenu.stepRuleDelta(model.GroupParamPitch, 1)
@@ -784,8 +644,6 @@ func TestSavedRulesApplyOnReplayAfterStop(t *testing.T) {
 		t.Fatalf("setup: rule anchored at 0, want a nonzero mid-play anchor (playback is well underway) — the repro requires a stale nonzero anchor")
 	}
 
-	// Confirm the ramp is actually running before stopping (sanity, not the
-	// bug under test).
 	advancePlaybackByAbs(g, 3*loopLen)
 	running := collectParityPitches(g)
 	sawNonZero := false
@@ -799,16 +657,14 @@ func TestSavedRulesApplyOnReplayAfterStop(t *testing.T) {
 		t.Fatalf("rule does not appear to be ramping before stop: %v", running)
 	}
 
-	// Real stop path (production-closest — game_update.go's StopPressed()
-	// block via dv.TriggerStop, not the lighter stopPlaybackForTest helper).
+	// The production StopPressed path, not stopPlaybackForTest.
 	g.drum.TriggerStop()
 	_ = g.Update()
 	if g.Playing() {
 		t.Fatalf("setup: still playing after TriggerStop")
 	}
 
-	// Play again — the real production play-start seam, starting fresh from
-	// abs 0 (a genuine stop->play transition: prevPaused must be false).
+	// A genuine stop → play transition from abs 0.
 	g.drum.TriggerPlayPause()
 	_ = g.Update()
 
@@ -817,9 +673,6 @@ func TestSavedRulesApplyOnReplayAfterStop(t *testing.T) {
 		t.Fatalf("setup: rule must survive stop, got %+v", grp2.Rules)
 	}
 	replayAnchor := grp2.Rules[0].AnchorIdx
-	// The pre-fix bug: nothing re-anchors on replay, so the anchor stays at
-	// its stale pre-stop value (savedAnchor, well after abs 0). The fix
-	// re-anchors to (near) abs 0 on every fresh play start.
 	if replayAnchor >= savedAnchor {
 		t.Fatalf("replay anchor=%d, want far less than the stale pre-stop anchor=%d (must re-anchor near abs 0 on a fresh play start, not carry the old anchor across stop->play)", replayAnchor, savedAnchor)
 	}
@@ -832,15 +685,8 @@ func TestSavedRulesApplyOnReplayAfterStop(t *testing.T) {
 	if len(pitches) == 0 {
 		t.Fatalf("no parity audio captured on replay")
 	}
-	// Derive the expected pitch per capture from GroupEffect's own formula
-	// using the REAL replay anchor (rather than assuming round 0 is the
-	// first captured round — the scheduler may skip a couple of early
-	// rounds depending on pulse pre-spawn timing, which is orthogonal to the
-	// anchor bug under test here). The pre-fix bug means replayAnchor is
-	// still the stale savedAnchor, so this formula would predict pitch=0 for
-	// every captured round below that (round < anchorRound clamps steps to
-	// 0) — exactly the RED failure mode ("[0 0 0]") — while the assertion
-	// above already catches the anchor itself not moving.
+	// Expected pitch from GroupEffect with the REAL replay anchor: the scheduler may skip early rounds depending on
+	// pulse pre-spawn timing, which has nothing to do with the anchor.
 	anchorRound := model.GroupRound(replayAnchor, loopStart, loopLen)
 	minRound := -1
 	for abs, pitch := range pitches {
@@ -857,20 +703,13 @@ func TestSavedRulesApplyOnReplayAfterStop(t *testing.T) {
 			minRound = round
 		}
 	}
-	// Anti-regression: the earliest captured round's pitch must be small
-	// (the ramp restarted near round 0), not still deep into the pre-stop
-	// scale (would be ~8+ if the stale anchor persisted).
+	// The ramp restarted near round 0, not deep into the pre-stop scale.
 	if minRound > anchorRound+2 {
 		t.Fatalf("earliest captured round=%d is suspiciously far from the fresh anchor round=%d; replay may not have actually restarted the ramp", minRound, anchorRound)
 	}
 }
 
-// TestRuleSavedWhileStoppedStillRampsOnPlay is brief test #2 (control, passes
-// now): a rule saved while STOPPED (anchor 0, the timeline origin) must keep
-// ramping correctly on play — guards against the fix regressing the already-
-// working case (anchor-0 math is untouched by ReanchorAllGroupRules, since
-// re-anchoring to abs 0 on a fresh play start is a no-op for a rule already
-// anchored at 0).
+// Re-anchoring to abs 0 is a no-op for a rule already anchored at 0.
 func TestRuleSavedWhileStoppedStillRampsOnPlay(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -882,10 +721,6 @@ func TestRuleSavedWhileStoppedStillRampsOnPlay(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateGroup: %v", err)
 	}
-	// Configure + enable the rule via the menu path WHILE STOPPED (matches
-	// the brief's "rules written while STOPPED (anchor 0) replay fine"
-	// control case; setRuleEnabled flips the independent RulesEnabled bit —
-	// task-enabled-status brief Part C, deltas alone never apply).
 	g.groupMenu.OpenAt(gid, 100, 100)
 	g.groupMenu.stepRuleDelta(model.GroupParamPitch, 1)
 	g.groupMenu.setRuleEnabled(true)
@@ -909,12 +744,7 @@ func TestRuleSavedWhileStoppedStillRampsOnPlay(t *testing.T) {
 	if len(pitches) == 0 {
 		t.Fatalf("no parity audio captured")
 	}
-	// Anchor is 0 (asserted above), so GroupEffect's formula reduces to
-	// pitch == round exactly at every captured trigger — derived per-capture
-	// rather than assuming round 0 is literally the first captured round
-	// (the scheduler may skip a couple of early rounds depending on pulse
-	// pre-spawn timing under the real TriggerPlayPause seam; orthogonal to
-	// the anchor behavior this test guards).
+	// pitch == round at every capture; early rounds may be skipped by pulse pre-spawn timing.
 	for abs, pitch := range pitches {
 		round := model.GroupRound(abs, loopStart, loopLen)
 		want := float64(round)
@@ -924,15 +754,8 @@ func TestRuleSavedWhileStoppedStillRampsOnPlay(t *testing.T) {
 	}
 }
 
-// TestMidPlayEditContinuityStillHolds is brief test #3: re-anchoring only
-// fires at a fresh play START (handlePlaybackTransition's curr&&!prevPaused
-// branch), never mid-session, so the task-rule-continuity in-place-edit
-// continuity guarantee (TestRuleDeltaEditMidPlaybackContinuesRamp and
-// TestRuleEveryNEditMidPlaybackKeepsCycleCount, both defined above in this
-// file) must remain green under the replay fix. This is a smoke re-assertion
-// of that same invariant using the REAL production play-start seam (rather
-// than direct SetPlaying) to prove the fix doesn't reset an in-place edit's
-// anchor mid-session the way it correctly resets it across a stop->play.
+// Re-anchoring happens only at a fresh play START, never mid-session, so an in-place edit's continuity survives
+// the replay rule.
 func TestMidPlayEditContinuityStillHolds(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -966,9 +789,6 @@ func TestMidPlayEditContinuityStillHolds(t *testing.T) {
 	const preEditRounds = 5
 	advancePlaybackByAbs(g, preEditRounds*loopLen+2)
 
-	// In-place delta edit mid-SESSION (not a play-start transition) — must
-	// preserve the anchor (0), continuing the ramp, exactly like
-	// TestRuleDeltaEditMidPlaybackContinuesRamp above.
 	g.groupMenu.OpenAt(gid, 100, 100)
 	g.groupMenu.stepRuleDelta(model.GroupParamPitch, 1) // delta 1 -> 2
 	advanceFrames(g, 1)
@@ -1005,11 +825,7 @@ func TestMidPlayEditContinuityStillHolds(t *testing.T) {
 	}
 }
 
-// TestSeekPlayStartsRampAtSeek is brief test #4: seeking to a position several
-// rounds in BEFORE ever playing, then starting playback from that seek
-// position (real production seam), must re-anchor the rule AT the seek
-// position (not abs 0) — "the session's starting absolute index" is the seek
-// position when playback starts from a seek, per the brief's design note.
+// Playback started from a seek starts the session at the seek position, so the rule anchors there, not at 0.
 func TestSeekPlayStartsRampAtSeek(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -1053,8 +869,7 @@ func TestSeekPlayStartsRampAtSeek(t *testing.T) {
 		t.Fatalf("setup: want 1 rule, got %+v", grp.Rules)
 	}
 	anchor := grp.Rules[0].AnchorIdx
-	// The re-anchor must land at (or within 1 subdivision of, from the
-	// beats<->subdivision rounding) the seek position, NOT 0.
+	// Within one subdivision, from the beats↔subdivision rounding.
 	if d := anchor - seekAbs; d < -1 || d > 1 {
 		t.Fatalf("anchor after seek+play = %d, want within 1 of seek position %d (must start the ramp AT the seek, not at 0)", anchor, seekAbs)
 	}

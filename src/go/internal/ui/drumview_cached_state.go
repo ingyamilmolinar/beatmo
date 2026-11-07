@@ -1,7 +1,5 @@
 package ui
 
-// cachedRowWindow returns the cached window offset/length for a row when the
-// row sprite cache can be sampled at full resolution.
 func (dv *DrumView) cachedRowWindow(row int) (offset, length int, ok bool) {
 	if dv == nil || row < 0 || row >= len(dv.Rows) {
 		return 0, 0, false
@@ -18,8 +16,7 @@ func (dv *DrumView) cachedRowWindow(row int) (offset, length int, ok bool) {
 	if dv.rowCacheW <= 0 || dv.rowCacheH <= 0 || dv.rowCacheLen <= 0 {
 		return 0, 0, false
 	}
-	// When zoomed out (more steps than pixels), the cache is decimated and no
-	// longer represents per-step on/off state.
+	// Zoomed out, the cache is decimated and no longer holds per-step state.
 	if dv.rowCacheLen > dv.rowCacheW {
 		return 0, 0, false
 	}
@@ -31,8 +28,7 @@ func (dv *DrumView) cachedRowWindow(row int) (offset, length int, ok bool) {
 	return offset, length, true
 }
 
-// cachedRowState returns the cached row step state without sampling GPU textures.
-// It relies on a snapshot captured when the row cache was rebuilt.
+// Reads a snapshot taken at rebuild, never the GPU texture.
 func (dv *DrumView) cachedRowState(row, abs int) (val bool, ok bool) {
 	offset, length, ok := dv.cachedRowWindow(row)
 	if !ok {

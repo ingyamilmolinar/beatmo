@@ -10,8 +10,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// newLatestTestPrewarmer parks the pool's only worker on a gate so the test
-// decides when renders run.
 func newLatestTestPrewarmer(t *testing.T, queue int) (*voicePrewarmer, func(), *[]string, *sync.Mutex) {
 	t.Helper()
 	pool := async.NewPool(nil, async.Options{MaxConcurrent: 1, QueueSize: queue, Name: "test.prewarm.latest"})

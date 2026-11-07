@@ -10,9 +10,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// collectPillRects draws a horizontal divider at y and returns every filled
-// rect whose dimensions match the pill body (SplitterHandleLen ×
-// SplitterHandleThick).
 func collectPillRects(h *SplitterHandle, y int) []image.Rectangle {
 	dst := ebiten.NewImage(800, 600)
 	var pills []image.Rectangle
@@ -26,11 +23,7 @@ func collectPillRects(h *SplitterHandle, y int) []image.Rectangle {
 	return pills
 }
 
-// Every SplitterHandle centres its pill ON the divider line — the pill must
-// straddle the accent row, not hang above it. The main grid↔drum splitter used
-// to anchor its pill above the line (PillAnchorAbove), which detached it from
-// the horizon and read as a stray chip floating in the grid pane while the
-// row↔EQ divider's pill sat correctly on its line.
+// A pill hanging above the line detaches from the horizon and reads as a stray chip in the grid pane.
 func TestSplitterPillStraddlesDividerLine(t *testing.T) {
 	const y = 300
 	h := &SplitterHandle{}
@@ -48,10 +41,7 @@ func TestSplitterPillStraddlesDividerLine(t *testing.T) {
 	}
 }
 
-// Functional counterpart: the REAL grid↔drum splitter, drawn through
-// (*Game).drawDivider, must put its pill on the line exactly like the row↔EQ
-// divider does. Asserting on the shared handle alone would not have caught the
-// bug — NewSplitter opted its handle into the above-line anchor.
+// Through the real drawDivider: the shared handle alone would pass while NewSplitter opted into a different anchor.
 func TestGridDrumSplitterPillCentersOnDividerLine(t *testing.T) {
 	withDefaultStart(t, false)
 	g := New(testLogger)
@@ -81,9 +71,7 @@ func TestGridDrumSplitterPillCentersOnDividerLine(t *testing.T) {
 	}
 }
 
-// Both production dividers must place their pill identically — one pill
-// geometry, two dividers. Pins the two against each other so a future
-// per-divider anchor cannot reintroduce the split.
+// One pill geometry for both dividers, so a per-divider anchor cannot come back.
 func TestBothDividerPillsShareGeometry(t *testing.T) {
 	const y = 300
 	main := collectPillRects(&NewSplitter(720).handle, y)        // grid↔drum

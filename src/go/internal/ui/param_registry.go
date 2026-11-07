@@ -9,22 +9,15 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// paramFacet is the single source of truth for presenting ONE document
-// parameter: a label (localizable via labelKey, else a literal) plus a value
-// formatter that renders the value in the parameter's natural unit. It is shared
-// by undo/redo notifications (undo_change_detail.go) AND by UI rendering (the
-// Sampler captions route through sampleEditFacet) so a notification's "from → to"
-// always reads exactly like the readout the user saw on the control. Centralising
-// label+format here means a new knob is described specifically everywhere from a
-// single edit, instead of a generic "edit synth" / "edit sample".
+// paramFacet is the one presentation of a document parameter, shared by undo/redo notifications and the
+// UI readouts, so a notification's "from → to" reads exactly like the control did.
 type paramFacet struct {
 	labelKey i18n.Key // localized label; "" ⇒ use literal
 	literal  string   // label when labelKey == ""
 	format   func(float64) string
 }
 
-// notifLabel is the label form stored in a notification arg: "@<key>" so
-// display() localizes it on render, or the literal verbatim.
+// "@<key>" makes display() localize it on render; a literal is kept verbatim.
 func (f paramFacet) notifLabel() string {
 	if f.labelKey != "" {
 		return "@" + string(f.labelKey)
@@ -52,8 +45,7 @@ func litFacet(s string, format func(float64) string) paramFacet {
 	return paramFacet{literal: s, format: format}
 }
 
-// fmtUnit renders a value through the shared formatParamValue for a given unit,
-// so notification values and UI captions are byte-identical.
+// Through the shared formatParamValue, so notification values and captions are byte-identical.
 func fmtUnit(unit string) func(float64) string {
 	return func(v float64) string { return formatParamValue(v, unit) }
 }
@@ -69,10 +61,7 @@ func fmtOnOff(v float64) string {
 	return "Off"
 }
 
-// sampleEditFacet maps a sample_edit map key to its facet, reusing the exact
-// i18n labels and unit formatters the Sampler tab captions use. ok=false for an
-// unknown key. This is the table samplerKnobCaption renders from, so the Sampler
-// readout and the undo notification can never drift.
+// The table samplerKnobCaption renders from, so the readout and the undo notification cannot drift.
 func sampleEditFacet(key string) (paramFacet, bool) {
 	switch key {
 	case "start_frac":
@@ -95,8 +84,6 @@ func sampleEditFacet(key string) (paramFacet, bool) {
 	return paramFacet{}, false
 }
 
-// modularDefByName indexes the modular synth schema by param name so synth_params
-// diffs resolve the same Label/Unit the Synth tab knobs render with.
 var modularDefByName = func() map[string]audio.ParamDef {
 	m := map[string]audio.ParamDef{}
 	for _, d := range audio.ModularSynthParamDefs() {
@@ -105,9 +92,7 @@ var modularDefByName = func() map[string]audio.ParamDef {
 	return m
 }()
 
-// synthParamFacet resolves a synth_params key to a facet using the SAME display
-// name (synthParamDisplayName) and value formatter (formatSynthParamValue) the
-// Synth tab uses. Enum params render their selected option label, not an index.
+// Same display name and formatter as the Synth tab; enums render their option label, not an index.
 func synthParamFacet(key string) paramFacet {
 	label := synthParamDisplayName(key)
 	def, ok := modularDefByName[key]
@@ -129,9 +114,7 @@ func synthParamFacet(key string) paramFacet {
 // insertEffectCatalog caches the effect→param-defs map (immutable registry).
 var insertEffectCatalog = audio.InsertEffectCatalog()
 
-// effectParamFacet resolves one insert-effect param to a facet labelled
-// "<Effect> · <Param>" with the registry's unit. Effect/param names are the
-// canonical jargon keys — already specific, so they stay literal (not localized).
+// Effect/param names are already specific jargon keys, so they stay literal.
 func effectParamFacet(t audio.EffectType, name string) paramFacet {
 	unit := ""
 	for _, d := range insertEffectCatalog[t] {
@@ -144,9 +127,7 @@ func effectParamFacet(t audio.EffectType, name string) paramFacet {
 	return litFacet(label, fmtUnit(unit))
 }
 
-// eqBandFacet labels EQ band k by its centre frequency ("EQ 8.0 kHz") and formats
-// the gain in dB, matching the EQ tab readouts (formatHzShort + formatDB). bands
-// may be nil (legacy snapshot) — then the 1-based band index is used.
+// bands may be nil; then the 1-based band index labels it.
 func eqBandFacet(prefix string, bands [][2]float64, k int) paramFacet {
 	freq := ""
 	if k >= 0 && k < len(bands) {
@@ -166,8 +147,6 @@ func eqBandFacet(prefix string, bands [][2]float64, k int) paramFacet {
 
 // titleWordSlice / titleParamWord build a human label from a snake/space token.
 
-// titleParamWord upper-cases the first rune of each underscore/space token, so
-// "ring_mod" → "Ring Mod" and "feedback" → "Feedback".
 func titleParamWord(s string) string {
 	fields := strings.FieldsFunc(s, func(r rune) bool { return r == '_' || r == ' ' })
 	for i, w := range fields {

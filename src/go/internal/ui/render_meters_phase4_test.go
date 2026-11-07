@@ -12,14 +12,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestLevelsReadoutNeverDisappears pins the Phase 4 contract: across
-// every (density × width) combination, the aggregate readouts must
-// remain reachable. Three render paths cover the space:
-//   - full text column at wide widths
-//   - icon-row collapse at medium widths
-//   - footer chevron at narrow widths (one-tap to bottom-sheet)
-//
-// At no width should a user lose the Headroom number entirely.
+// At every density × width the Headroom number stays reachable: a full column when wide, an icon row when
+// medium, a footer chevron to a bottom sheet when narrow.
 func TestLevelsReadoutNeverDisappears(t *testing.T) {
 	state := &analyzer.State{
 		Master: analyzer.ChannelMetrics{
@@ -46,17 +40,13 @@ func TestLevelsReadoutNeverDisappears(t *testing.T) {
 			if len(rects) == 0 {
 				t.Errorf("density=%v w=%d: no rects drawn (expected at least the meter chrome)", d, w)
 			}
-			// We don't enforce a specific mode here — just that the
-			// renderer didn't blank out. The mode-selection contract
-			// is verified by the dedicated mode tests below.
+			// Only that it did not blank; the mode thresholds are tested below.
 		}
 		restore()
 	}
 }
 
-// TestLevelsReadoutModeSelection pins the mode-selection thresholds.
-// Below WFull + WIcons → chevron only. WFull + WIcons ≤ width < 2 ×
-// WFull → icon row. Width ≥ 2 × WFull → full text column.
+// Below WFull + WIcons a chevron; up to 2·WFull an icon row; beyond, the full column.
 func TestLevelsReadoutModeSelection(t *testing.T) {
 	restore := SetDensityForTest(DensityComfortable)
 	defer restore()
@@ -84,9 +74,7 @@ func TestLevelsReadoutModeSelection(t *testing.T) {
 	}
 }
 
-// TestLevelsAggregatesIconRowRendersAllThree — the icon-row collapse
-// must paint at least one rect per readout role (Headroom / Clips /
-// Loudest). Verified via rect count.
+// At least one rect per role: Headroom, Clips, Loudest.
 func TestLevelsAggregatesIconRowRendersAllThree(t *testing.T) {
 	restore := SetDensityForTest(DensityComfortable)
 	defer restore()
@@ -103,15 +91,11 @@ func TestLevelsAggregatesIconRowRendersAllThree(t *testing.T) {
 	rects := collectFilledRects(t, func() {
 		drawLevelsAggregatesIconRow(dst, image.Rect(0, 0, 60, 90), state, latches, nil)
 	})
-	// Text rects are NOT filled rects, so we don't expect them — but
-	// at minimum the chevron-style backgrounds shouldn't be there
-	// either since the icon-row uses pure text. The contract is
-	// "doesn't panic, doesn't blank the screen with no text".
+	// A smoke test: the icon row is pure text, which draws no filled rects.
 	_ = rects // smoke test
 }
 
-// TestLevelsAggregatesChevronRendersIcon — the chevron mode must
-// paint at least the rounded-rect background + the chevron icon.
+// The rounded background and the chevron icon at least.
 func TestLevelsAggregatesChevronRendersIcon(t *testing.T) {
 	dst := ebiten.NewImage(40, 20)
 	rects := collectFilledRects(t, func() {

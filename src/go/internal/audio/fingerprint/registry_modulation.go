@@ -1,11 +1,6 @@
 package fingerprint
 
-// registry_modulation.go — the modulation-spectrum descriptors.
-//
-// These join the EXISTING GroupMod group (registry_core.go's
-// IDSustainModulation is the first row in that group); they are registered
-// from a later file so this stays a pure addition with no reordering of the
-// nine byte-frozen core axes.
+// Joins GroupMod from a later file, a pure addition that leaves the frozen core axes in order.
 
 const (
 	IDModAMRate        = "mod.am.rate_hz"
@@ -17,22 +12,12 @@ const (
 
 const naModShort = "clip too short for a modulation spectrum (needs 32 frames)"
 
-// naModCollapsed is distinct from naModShort: it fires only when modApplies's
-// own frame-count gate has ALREADY passed (>= modMinFrames), but the hop rate
-// still leaves no bin inside 0.5-30 Hz once the frame count is rounded up to
-// an FFT size -- a resolution collapse, not a "too few frames" problem, and
-// reported as such rather than reusing a message the gate above already
-// disproved.
+// Past the frame-count gate, the hop rate still leaves no bin in 0.5–30 Hz: a resolution collapse, reported as such.
 const naModCollapsed = "clip's hop rate leaves no usable frequency bin across 0.5–30 Hz (a resolution collapse, not a frame-count shortfall)"
 
-// naModRateFloor fires when the modulation spectrum's peak IS its lowest
-// usable bin. The detrend removes a straight line, and an exponential decay
-// is not one, so a plain struck note's residual envelope curvature piles into
-// the bottom bin and wins the peak. Reporting that bin's centre frequency as
-// "the dominant modulation rate" dresses an analysis-window artifact up as a
-// measurement -- and it did: every decay-only reference read a rate near
-// modLoHz, which is why the axis scored 0/11 on the preference pairs. It is
-// an honest N/A instead.
+// A decay's curvature, which a linear detrend cannot remove, piles into the lowest bin and wins the peak; reporting
+// that bin as "the rate" dresses up an analysis artefact, which is why the axis scored 0/11 on the preference
+// pairs.
 const naModRateFloor = "dominant modulation sits in the lowest usable bin — envelope leakage, not a rate"
 
 func modApplies(b *Bundle) bool { return RequiresAudible(b) && b.Tracks().NumFrames >= modMinFrames }
@@ -43,10 +28,7 @@ func amSpectrum(b *Bundle) (ModSpectrum, bool) {
 	return ms, ms.OK
 }
 
-// modNAReason picks the accurate reason for an unavailable modulation
-// spectrum: modApplies already guarantees enough frames, so an !OK result
-// past that gate is either the resolution collapse ModSpectrum flags
-// explicitly, or a genuinely degenerate track (near-zero mean).
+// Past the frame gate an !OK result is either the flagged collapse or a degenerate track (near-zero mean).
 func modNAReason(ms ModSpectrum) string {
 	if ms.resolutionCollapsed {
 		return naModCollapsed

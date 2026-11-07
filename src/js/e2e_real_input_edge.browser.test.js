@@ -1,10 +1,4 @@
-/**
- * Real Input Edge Drag Test
- *
- * Tests edge creation via shift-drag and node deletion via right-click.
- * Uses a 4-node rectangle (all orthogonal edges) since the graph system
- * only allows edges between nodes sharing an I or J coordinate.
- */
+/** A rectangle of 4 nodes: edges are only allowed between nodes sharing an I or J coordinate. */
 
 import { setupFullWasm } from "./real_input_test_helpers.js";
 import {
@@ -27,9 +21,6 @@ try {
   });
   await page.waitForTimeout(200);
 
-  // ─────────────────────────────────────────────────────────────────────
-  // Step 1: Build 4 nodes in a rectangle at positions far from demo
-  // ─────────────────────────────────────────────────────────────────────
   console.log("real_input_edge_drag: Creating 4 nodes via API...");
   const nodes = [[50, -4], [54, -4], [54, -8], [50, -8]];
   await page.evaluate((ns) => {
@@ -48,9 +39,6 @@ try {
   }, [rect0]);
   await page.waitForTimeout(200);
 
-  // ─────────────────────────────────────────────────────────────────────
-  // Step 2: Create first edge via shift-drag (real input)
-  // ─────────────────────────────────────────────────────────────────────
   console.log("real_input_edge_drag: Creating edge (50,-4)->(54,-4) via shift-drag...");
   await shiftDragEdge(page, ...nodes[0], ...nodes[1]);
 
@@ -59,9 +47,6 @@ try {
   if (!hasEdge01) throw new Error("Shift-drag failed to create edge 0->1");
   console.log("  Edge 0->1 created via shift-drag");
 
-  // ─────────────────────────────────────────────────────────────────────
-  // Step 3: Complete loop via API (remaining 3 edges)
-  // ─────────────────────────────────────────────────────────────────────
   console.log("real_input_edge_drag: Completing loop via API...");
   await page.evaluate((ns) => {
     addEdgeGrid?.(ns[1][0], ns[1][1], ns[2][0], ns[2][1]);
@@ -80,19 +65,13 @@ try {
   }
   console.log("  All 4 edges verified");
 
-  // ─────────────────────────────────────────────────────────────────────
-  // Step 4: Delete node 1 (54,-4) via API (right-click in WASM has
-  // browser context menu interference that prevents reliable testing)
-  // ─────────────────────────────────────────────────────────────────────
+  // Via the API: in WASM the browser context menu interferes with right-click.
   console.log("real_input_edge_drag: Deleting node 1 via API...");
   await page.evaluate(([i, j]) => deleteNodeGrid?.(i, j), nodes[1]);
 
   await assertNoNode(page, ...nodes[1], "Node 1 should be deleted");
   console.log("  Node 1 deleted");
 
-  // ─────────────────────────────────────────────────────────────────────
-  // Step 5: Verify remaining circuit integrity
-  // ─────────────────────────────────────────────────────────────────────
   await assertNodeExists(page, ...nodes[0], "Node 0 should survive");
   await assertNodeExists(page, ...nodes[2], "Node 2 should survive");
   await assertNodeExists(page, ...nodes[3], "Node 3 should survive");
@@ -107,14 +86,8 @@ try {
   const e30 = succs3?.some(s => s.i === nodes[0][0] && s.j === nodes[0][1]);
   console.log(`  Edge 3->0: ${e30 ? "intact" : "removed"}`);
 
-  // ─────────────────────────────────────────────────────────────────────
-  // Step 6: Connect FROM A SELECTED NODE — the user's real flow.
-  // Click a node first (this opens the node sidebar, a full-height panel
-  // over the LEFT strip of the grid), then shift+drag from that same node
-  // to another node. Deliberately does NOT call closeNodeMenu (the
-  // workaround baked into shiftDragEdge that hides this scenario): the
-  // connect gesture itself must win over the open sidebar.
-  // ─────────────────────────────────────────────────────────────────────
+  // The user's real flow: click a node (the sidebar opens over the grid's left strip), then shift+drag from it. No
+  // closeNodeMenu: the connect gesture itself must win over the open sidebar.
   console.log("real_input_edge_drag: Connect from a selected node (sidebar open)...");
   const src = [50, -12], dst = [54, -12];
   await page.evaluate((ns) => {
@@ -123,8 +96,7 @@ try {
   }, [src, dst]);
   await page.waitForTimeout(200);
 
-  // Pan so the SOURCE node sits inside the sidebar's panel strip (x<200):
-  // in a large circuit that's where clicked nodes routinely are.
+  // Inside the sidebar's strip, where clicked nodes in a large circuit routinely are.
   const srcRect = await page.evaluate(([i, j]) => nodeRect?.(i, j), src);
   if (!srcRect) throw new Error("source node has no screen rect");
   await page.evaluate(([r]) => {
@@ -145,8 +117,7 @@ try {
   await page.mouse.click(srcPt.x, srcPt.y);
   await page.waitForTimeout(250);
 
-  // Step 6b: shift+press the SAME node, drag to the destination, release —
-  // all real gestures, nothing closed programmatically.
+  // All real gestures, nothing closed programmatically.
   const dstPt = await at(dst);
   await page.mouse.move(srcPt.x, srcPt.y);
   await page.waitForTimeout(50);

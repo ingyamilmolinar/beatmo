@@ -11,9 +11,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
-// minimalProject renders a smallest-valid project document with the given
-// version header spliced in verbatim, so each case exercises the real
-// Import path rather than a hand-built struct.
+// The version header spliced in verbatim, so each case goes through the real Import.
 func minimalProject(versionField string) []byte {
 	return []byte(`{
 		` + versionField + `
@@ -24,9 +22,7 @@ func minimalProject(versionField string) []byte {
 	}`)
 }
 
-// TestImportProjectVersionRule pins the strict rule at the Import boundary:
-// only the current schema_version is accepted; anything else — including a
-// pre-versioning file — is rejected.
+// Only the current schema_version is accepted; anything else, a pre-versioning file included, is rejected.
 func TestImportProjectVersionRule(t *testing.T) {
 	cases := []struct {
 		name         string
@@ -86,10 +82,7 @@ func TestImportProjectVersionRule(t *testing.T) {
 	}
 }
 
-// TestImportRejectsForeignJSONWipe is the regression guard for the data-loss
-// path the version check exists to close: import is replace-not-merge, so a
-// foreign document must be rejected rather than silently emptying the
-// project. Kept separate from the table because it asserts state, not error.
+// Import is replace-not-merge, so a foreign document must be rejected rather than empty the project.
 func TestImportRejectsForeignJSONWipe(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -117,8 +110,6 @@ func TestImportRejectsForeignJSONWipe(t *testing.T) {
 	}
 }
 
-// TestExportImportRoundTripCarriesVersion closes the loop: what the exporter
-// writes must be readable by the importer without any legacy affordance.
 func TestExportImportRoundTripCarriesVersion(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -154,8 +145,6 @@ func TestExportImportRoundTripCarriesVersion(t *testing.T) {
 	}
 }
 
-// TestImportRejectsSchemaLessProjectBeforeMutating: a file without
-// schema_version is rejected and the current circuit is left untouched.
 func TestImportRejectsSchemaLessProjectBeforeMutating(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -176,10 +165,8 @@ func TestImportRejectsSchemaLessProjectBeforeMutating(t *testing.T) {
 	}
 }
 
-// TestRejectedImportHasNoSideEffects: a rejected file (no schema_version, an
-// recipe-era row, invalid instrument document, …) must leave the session exactly as it was — the sequencer
-// path snapshot intact (a nil snapshot silences playback until the next edit)
-// and the undo history kept (a failed load is not a document swap).
+// The sequencer path snapshot stays intact (a nil one silences playback until the next edit) and the undo history
+// is kept: a failed load is not a document swap.
 func TestRejectedImportHasNoSideEffects(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)

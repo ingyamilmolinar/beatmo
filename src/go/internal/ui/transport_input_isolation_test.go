@@ -10,21 +10,8 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// These tests guard transport-bar input isolation: a tap on the visible rect
-// of one control must activate ONLY that control. The reported bug was that
-// tapping the BPM text box on mobile toggled recording — because the BPM box's
-// hit adapter returned InputIgnored, letting the dispatcher fall through to the
-// Record button's touch-EXPANDED hit rect (MinTarget=44 on mobile expands the
-// ~21px Record cell across the BPM-dec button into the BPM box).
-//
-// Root cause chain (see transport_zone.go + hit_index.go + drumview_tree.go):
-//   1. Simple transport buttons register Touch:true hit areas, expanded by
-//      TouchMinTarget() (44 on mobile) on every side in HitIndex.At.
-//   2. The BPM box registers an exact (non-Touch) hit at z+1; it sorts first
-//      (exact-before-expanded), but textInputHitAdapter.OnPress returned
-//      InputIgnored, so the dispatcher fell through to the next hit.
-//   3. The next hit is the Record button's expanded rect; buttonHitAdapter
-//      fires OnClick unconditionally -> recording toggles.
+// A tap on one control's visible rect activates only it. The BPM box once returned InputIgnored, so the press
+// fell through to Record's touch-expanded rect (44 px on mobile reaches across BPM-dec) and toggled recording.
 
 // newMobileTransportDV builds a laid-out mobile DrumView for input tests.
 func newMobileTransportDV(t *testing.T) *DrumView {
@@ -36,10 +23,7 @@ func newMobileTransportDV(t *testing.T) *DrumView {
 	return dv
 }
 
-// tapCenter injects a single left-button press at (cx,cy) and advances one
-// frame so the tree dispatches the press. It does NOT release — the one-frame
-// pressed flags (playPressed/stopPressed/recordPressed) are read immediately
-// after, before any consumer clears them.
+// No release: the one-frame pressed flags are read before a consumer clears them.
 func tapCenter(dv *DrumView, cx, cy int) {
 	restore := SetInputForTest(
 		func() (int, int) { return cx, cy },
@@ -57,8 +41,7 @@ func centerOf(r image.Rectangle) (int, int) {
 	return (r.Min.X + r.Max.X) / 2, (r.Min.Y + r.Max.Y) / 2
 }
 
-// TestMobileBPMBoxTapDoesNotToggleRecord is the precise regression for the
-// reported bug: tapping the BPM box must open its value wheel, never fire Record.
+// Opens its value wheel, never Record.
 func TestMobileBPMBoxTapDoesNotToggleRecord(t *testing.T) {
 	assertDefaultParityState(t)
 	restore := SetForceSmallScreen(t, true)
@@ -87,8 +70,7 @@ func TestMobileBPMBoxTapDoesNotToggleRecord(t *testing.T) {
 	}
 }
 
-// TestMobileTransportControlsTapIsolation sweeps each transport control and
-// asserts a center tap activates that control and no foreign transport button.
+// A centre tap activates that control and no other.
 func TestMobileTransportControlsTapIsolation(t *testing.T) {
 	assertDefaultParityState(t)
 	restore := SetForceSmallScreen(t, true)

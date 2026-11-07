@@ -13,18 +13,9 @@ import (
 	"testing"
 )
 
-// TestNodeTypeRegularIsNeverComparedDirectly keeps the chord node a
-// first-class firing node (docs/superpowers/specs/2026-10-09-chord-nodes-design.md).
-//
-// A chord fires exactly like a regular node; only where a note becomes sound
-// does its voice stack matter. Every "does this node sound / trigger / show
-// as on?" check must therefore ask NodeType.Fires(), never compare against
-// NodeTypeRegular — a single missed `== NodeTypeRegular` silently makes a
-// chord node not highlight, not schedule, or drop out of parity. A switch
-// clause listing NodeTypeRegular must list NodeTypeChord too.
-//
-// Sites that genuinely mean "exactly a plain regular node" are listed in
-// regularOnlySites with the reason.
+// A chord fires like a regular node, so every sounds/triggers/shows-on check asks NodeType.Fires(): one
+// `== NodeTypeRegular` drops chords from highlight, scheduling or parity. A clause listing Regular lists Chord
+// too; genuinely regular-only sites are listed with a reason.
 func TestNodeTypeRegularIsNeverComparedDirectly(t *testing.T) {
 	roots := []string{"../../core", ".."}
 	fset := token.NewFileSet()

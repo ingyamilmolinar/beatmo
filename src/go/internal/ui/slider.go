@@ -23,14 +23,9 @@ type Slider struct {
 	// Optional overrides (0/nil = use Profile() defaults).
 	TrackH     int   // track height override; 0 = Profile().SliderTrackH
 	LabelAbove *bool // label position override; nil = Profile().SliderLabelAbove
-	// SuppressLabel, when true, skips rendering the percent label and
-	// reserves no horizontal space for it. Use when the surrounding
-	// component already shows the value (e.g. FX-panel parameter rows
-	// render `Drive: 8.19` next to the slider, making "80%" duplicate).
+	// For callers that already show the value next to the slider.
 	SuppressLabel bool
-	// FillCol overrides the neon rail fill color. Zero value (alpha 0) keeps
-	// the default genColorPrimary. Set per-instance to tie a slider to its
-	// owning instrument's color (e.g. FX-panel param sliders).
+	// Alpha 0 keeps genColorPrimary; FX sliders tint to their instrument.
 	FillCol color.RGBA
 }
 
@@ -40,9 +35,6 @@ func (s *Slider) SetRect(r image.Rectangle) { s.r = r }
 
 func (s *Slider) Rect() image.Rectangle { return s.r }
 
-// HandleInputResult processes mouse interaction and returns an InputResult.
-// Returns InputCaptured during an active drag, InputConsumed on release after
-// a drag, and InputIgnored when the slider is not involved.
 func (s *Slider) HandleInputResult(mx, my int, pressed bool) InputResult {
 	if suppressClicksUntilRelease {
 		if !pressed {
@@ -88,8 +80,7 @@ func (s *Slider) setFromX(mx int) {
 func (s *Slider) Draw(dst *ebiten.Image) {
 	track, spr := s.trackRect()
 
-	// Track height: thicker on mobile for easier interaction.
-	// Use per-slider override if set, otherwise fall back to Profile.
+	// Thicker on mobile; a per-slider override wins.
 	p := Profile()
 	trackH := p.SliderTrackH
 	if s.TrackH > 0 {
@@ -99,9 +90,6 @@ func (s *Slider) Draw(dst *ebiten.Image) {
 	midY := track.Min.Y + track.Dy()/2
 	trackY := midY - trackH/2
 
-	// Neon rail: dim base + accent fill from left to the value. The fill color
-	// defaults to genColorPrimary but can be overridden per-instance (e.g. the
-	// FX-panel param sliders tint to their owning instrument's color).
 	fillCol := genColorPrimary
 	if s.FillCol.A != 0 {
 		fillCol = s.FillCol
@@ -169,9 +157,7 @@ func (s *Slider) trackRect() (image.Rectangle, *ebiten.Image) {
 	label := fmt.Sprintf("%d%%", int(math.Round(s.Value*100)))
 	spr := TextSprite(label)
 	labelW := spr.Bounds().Dx() + sliderLabelPad
-	// Ensure the track gets at least minTrackW pixels so setFromX
-	// can resolve a meaningful value even when the label is wide
-	// (e.g. TrueType fonts in real Ebiten builds).
+	// So setFromX resolves a value even beside a wide label.
 	const minTrackW = 20
 	maxLabelW := s.r.Dx() - minTrackW
 	if maxLabelW < 0 {

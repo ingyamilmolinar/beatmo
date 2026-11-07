@@ -13,11 +13,8 @@ import (
 	gamelog "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestMobileRenameUpdatesLabel reproduces the real mobile rename timing issue:
-// on mobile, mobileInputActive() returns false when Open() is called synchronously
-// from the edit button's OnClick handler because the native HTML input isn't
-// registered/active yet. So Open() falls through to desktop mode (TextInput),
-// and the mobile input result is never polled.
+// On a phone the native input is not active yet when Open() runs, so it takes the desktop path and the mobile
+// result must still be polled.
 func TestMobileRenameUpdatesLabel(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultAudio(t)
@@ -52,15 +49,10 @@ func TestMobileRenameUpdatesLabel(t *testing.T) {
 		t.Fatal("no edit buttons after initial Update")
 	}
 
-	// ── Step 1: Click the edit button WITHOUT setting testMobileInputActive ──
-	// This reproduces the real mobile timing: native input isn't active yet
-	// when Open() runs, so mobileInputActive("rename-0") returns false and
-	// Open() falls through to desktop mode.
+	// The native input is not active yet at Open().
 	dv.rowEditBtns()[0].OnClick()
 
-	// ── Step 2: Simulate the native input becoming active AFTER Open() ──
-	// On real mobile, the HTML input is created asynchronously. Here we inject
-	// the active state and the committed result that the user would type.
+	// The HTML input appears asynchronously, after Open().
 	testMobileInputActive = map[string]bool{"rename-0": true}
 	testMobileInputResult = map[string]*struct {
 		Value     string
@@ -73,9 +65,7 @@ func TestMobileRenameUpdatesLabel(t *testing.T) {
 		testMobileInputResult = nil
 	}()
 
-	// ── Step 3: Run several Update frames with no keyboard ──
-	// On mobile there is no physical keyboard, so no Enter key is pressed.
-	// The rename should be handled by polling the mobile input result.
+	// No physical keyboard: the rename comes from polling the mobile result.
 	for i := 0; i < 10; i++ {
 		restore = SetInputForTest(
 			func() (int, int) { return 0, 0 },
@@ -89,9 +79,7 @@ func TestMobileRenameUpdatesLabel(t *testing.T) {
 		restore()
 	}
 
-	// ── Step 4: Assert the rename took effect ──
-	// Rename is metadata-only: the display name + row label follow the new name,
-	// but the instrument id is NEVER changed.
+	// Metadata-only: name and label follow, the id never changes.
 	if dv.Rows[0].Name != "NewKick" {
 		t.Errorf("Rows[0].Name = %q, want %q (was %q)", dv.Rows[0].Name, "NewKick", origName)
 	}
@@ -115,10 +103,7 @@ func TestMobileRenameUpdatesLabel(t *testing.T) {
 	}
 }
 
-// TestRenameInvalidCharsShowsError verifies that instrument names containing
-// invalid characters (slashes, angle brackets, null bytes, backslashes) are
-// rejected with an error notification. Currently, the OnCommit callback only
-// does TrimSpace + empty check, so invalid names are silently accepted.
+// Slashes, angle brackets, NUL and backslashes are rejected with an error.
 func TestRenameInvalidCharsShowsError(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultAudio(t)

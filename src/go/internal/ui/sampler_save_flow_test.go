@@ -9,9 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestSamplerEnsureLoadedFromUserSample verifies the dropdown auto-load path
-// pulls a user sample's PCM straight from the canonical Go store (no synth
-// render), so WAV imports / saved chops load identically on every platform.
+// From the Go store, with no synth render, so imports and saved chops load the same everywhere.
 func TestSamplerEnsureLoadedFromUserSample(t *testing.T) {
 	g := newSamplerTabGame(t)
 	pcm := make([]float32, 1000)
@@ -39,10 +37,7 @@ func TestSamplerEnsureLoadedFromUserSample(t *testing.T) {
 	}
 }
 
-// TestSamplerEnsureLoadedRendersSynth verifies a synth-document instrument
-// auto-loads via a synth one-shot render when selected. A synth document is
-// what makes an instrument a synth source (the descriptor path that Save uses
-// is only applied to synth voices); an id with no document is a raw WAV.
+// A document makes an instrument a synth source; an id with none is a raw WAV.
 func TestSamplerEnsureLoadedRendersSynth(t *testing.T) {
 	g := newSamplerTabGame(t)
 	const id = "ensureload.synth.test" // synth document, never saved as a user sample
@@ -61,8 +56,7 @@ func TestSamplerEnsureLoadedRendersSynth(t *testing.T) {
 	}
 }
 
-// TestSamplerEnsureLoadedIdempotent verifies re-selecting the loaded instrument
-// is a no-op (does not re-render / clobber in-flight edits).
+// No re-render that would clobber in-flight edits.
 func TestSamplerEnsureLoadedIdempotent(t *testing.T) {
 	g := newSamplerTabGame(t)
 	g.drum.ensureSamplerLoaded(roster.Kick)
@@ -74,8 +68,7 @@ func TestSamplerEnsureLoadedIdempotent(t *testing.T) {
 	}
 }
 
-// TestSamplerFromSynthButtonRemoved guards the removal of the "From Synth"
-// button (the dropdown auto-load replaces it).
+// The dropdown auto-load replaced it.
 func TestSamplerFromSynthButtonRemoved(t *testing.T) {
 	g := newSamplerTabGame(t)
 	g.drum.sampler.captureFromSynth(roster.Kick)
@@ -85,9 +78,7 @@ func TestSamplerFromSynthButtonRemoved(t *testing.T) {
 	}
 }
 
-// TestSamplerSaveAsOpensDialog verifies the Save As button opens a name-prompt
-// dialog (consistent with the Synth tab) rather than saving immediately with a
-// hardcoded name.
+// A name prompt, as on the Synth tab.
 func TestSamplerSaveAsOpensDialog(t *testing.T) {
 	g := newSamplerTabGame(t)
 	g.drum.sampler.captureFromSynth(roster.Kick)
@@ -100,9 +91,7 @@ func TestSamplerSaveAsOpensDialog(t *testing.T) {
 	}
 }
 
-// TestChannelDropdownHidesMasterOnSynthSampler verifies Master is excluded from
-// the channel dropdown on the Synth and Sampler tabs (you can't sample/synth
-// the master bus), but kept on the other tabs.
+// The master bus cannot be sampled or synthesised; other tabs keep it.
 func TestChannelDropdownHidesMasterOnSynthSampler(t *testing.T) {
 	g := newSamplerTabGame(t)
 	z := g.drum.eqPanelZone

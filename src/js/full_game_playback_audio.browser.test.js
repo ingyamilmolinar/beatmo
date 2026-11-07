@@ -1,23 +1,6 @@
-/**
- * full_game_playback_audio.browser.test.js
- *
- * REGRESSION GUARD for "the game produces no audio during playback."
- *
- * Every other audio test exercises a NARROWER path: webaudio_smoke drives the
- * `playtest.wasm` auto-player, e2e_transport checks play/stop STATE (not sound),
- * audio_panel_render checks the analyzer tabs paint. NONE of them loaded the
- * production `index.html` + `main.wasm` full game, pressed Play through the
- * sequencer, and verified that real audio leaves the AudioContext destination.
- *
- * This test closes that gap: it is a 100%-production reproduction (createServer
- * serves index.html verbatim) that taps the AudioContext destination, calls
- * startPlay(), and asserts non-silent output. If the WASM↔WebAudio render/
- * schedule wiring ever goes dead while Go unit tests stay green, THIS fails.
- *
- * COVERED-BY-GO: internal/audio/mixer_signal_test.go proves the mixer itself
- * produces non-zero RMS; this owns the browser end-to-end sequencer→output path
- * that Go cannot reach.
- */
+/** The production page and main.wasm, Play through the sequencer, and non-silent output at the destination: the only
+ * test that proves the full sequencer → output path the narrower ones skip.
+ * COVERED-BY-GO: internal/audio/mixer_signal_test.go (the mixer itself) */
 import { chromium } from "playwright";
 import { buildMainWasm, createServer } from "./real_input_test_helpers.js";
 import { startPlaybackWhenReady } from "./audio_probe_bench_helpers.js";
@@ -40,8 +23,7 @@ page.on("console", (m) => {
   if (m.type() === "error") pageErrors.push("console.error: " + m.text());
 });
 
-// Tap the AudioContext destination BEFORE the page creates it, so we measure
-// the real output the user would hear. Mirrors webaudio_smoke's TestAC tap.
+// Before the page creates the context, so this is what the user would hear.
 await page.addInitScript(() => {
   const RealAC = window.AudioContext || window.webkitAudioContext;
   class TestAC extends RealAC {
@@ -72,13 +54,11 @@ await page.goto(`http://localhost:${port}/`, { waitUntil: "load" });
 await page.waitForFunction(() => typeof startPlay === "function", null, { timeout: 30000 });
 await page.waitForFunction(() => window.audioReady !== undefined, null, { timeout: 30000 });
 
-// Unlock audio with a real user gesture (WebAudio requires one), let warmup
-// settle, then start sequencer playback through the production transport.
+// A real gesture unlocks audio.
 await page.mouse.click(200, 200);
 await waitForAudioReady(page, { allowReject: true });
 await page.evaluate(() => { try { document.dispatchEvent(new Event("mousedown")); } catch (_) {} });
-// Play is ignored while the circuit warm-up gate is closed (the button is
-// disabled then); press it the way a user can — once the gate opens.
+// Play is ignored while the warm-up gate is closed.
 await startPlaybackWhenReady(page);
 
 // Let the demo circuit play several beats.

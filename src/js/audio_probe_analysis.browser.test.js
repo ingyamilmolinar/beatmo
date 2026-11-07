@@ -1,13 +1,5 @@
-// audio_probe_analysis.browser.test.js
-//
-// Pure Node test (no browser launched — named *.browser.test.js only so the
-// browser-test runner picks it up) for audio_probe_analysis.js, the analysis
-// every probe-enabled bench relies on. It feeds SYNTHETIC probe logs whose
-// correct answer is known by construction and asserts each metric reads it
-// back: a probe that mis-attributes onsets would make every bench report
-// confident nonsense, and the benches cannot tell.
-//
-// Usage: node src/js/audio_probe_analysis.browser.test.js
+// Pure Node (named *.browser.test.js for the runner): synthetic probe logs with known answers, since a probe that
+// mis-attributes onsets would make every bench report confident nonsense. Usage: node src/js/audio_probe_analysis.browser.test.js
 
 import { analyzeAudioProbe, clockSlips, stats } from "./audio_probe_analysis.js";
 
@@ -19,9 +11,7 @@ function check(cond, msg) {
 }
 const near = (a, b, tol = 0.05) => a != null && Math.abs(a - b) <= tol;
 
-// Build one bus's reports (100 ms each) covering [t0, t1) seconds with the
-// given onsets (seconds) and a coarse envelope that is `level` inside
-// [on, on+ring) and silent elsewhere.
+// 100 ms reports over [t0, t1) with the given onsets and an envelope at level inside [on, on+ring).
 function busReports({ t0, t1, onsets = [], ring = 0.05, level = 0.5, drift = () => 0, cuts = [], clicks = [] }) {
   const reps = [];
   const envFrames = 64;
@@ -84,8 +74,7 @@ const notes = Array.from({ length: 16 }, (_, i) => 1 + i * 0.25);
   check(r.mainThread.over100ms === 1, "main-thread stalls are reported");
 }
 
-// 2. Two notes started 30 ms late (a starved scheduler): both counted late,
-//    and the rhythm error shows the stumble.
+// 2. Two notes 30 ms late: counted late, and the rhythm error shows the stumble.
 {
   const late = new Set([5, 9]);
   const r = analyzeAudioProbe(log({ notes, startLate: (i) => (late.has(i) ? 0.03 : 0), onsetFor: (i, s) => s + 0.001 }));
@@ -95,8 +84,7 @@ const notes = Array.from({ length: 16 }, (_, i) => 1 + i * 0.25);
   check(near(r.ioiErrMs.max, 30), `late: IOI error 30 ms (got ${r.ioiErrMs.max})`);
 }
 
-// 3. A note that starts but produces NO sound, with the bus silent → missed;
-//    a note whose onset is masked by a ringing bus → masked (not missed).
+// 3. A silent bus → missed; an onset masked by a ringing note → masked, not missed.
 {
   const r1 = analyzeAudioProbe(log({ notes, onsetFor: (i, s) => (i === 7 ? null : s + 0.001) }));
   check(r1.notes.missed === 1 && r1.notes.masked === 0, `silent note → missed=1 (got ${JSON.stringify(r1.notes)})`);
@@ -112,18 +100,14 @@ const notes = Array.from({ length: 16 }, (_, i) => 1 + i * 0.25);
   check(r.notes.spurious === 1, `spurious onset counted (got ${r.notes.spurious})`);
 }
 
-// 5. An onset 40 ms after start(when) is NOT that note's onset (WebAudio
-//    starts are sample-accurate) — must not be matched as a 40 ms-late note.
+// 5. Starts are sample-accurate, so an onset 40 ms later is not that note's.
 {
   const r = analyzeAudioProbe(log({ notes, onsetFor: (i, s) => (i === 3 ? s + 0.04 : s + 0.001) }));
   check(r.late.over20ms === 0, `a far onset is not a late match (late>20 = ${r.late.over20ms})`);
   check(r.notes.heard === 15 && r.notes.spurious === 1, `…it's an unmatched note + spurious onset (${JSON.stringify(r.notes)})`);
 }
 
-// 5b. …unless the channel's insert chain DECLARED that latency (a pitch
-//     shifter is a delay line): audio.js records it at start(), the onset is
-//     matched — heard, late by its real lag — and never called silent. The
-//     2026-10-25 kick with a second Pitch Shifter read "9 notes silent".
+// 5b. Unless the insert chain DECLARED that latency (a pitch shifter): then it is matched, heard late, never silent.
 {
   const r = analyzeAudioProbe(log({
     notes,
@@ -136,8 +120,7 @@ const notes = Array.from({ length: 16 }, (_, i) => 1 + i * 0.25);
   // The effect's delay is reported as such — and is not the scheduler's.
   check(r.fxDelayed.notes === 8 && near(r.fxDelayed.lagMs.p50, 40, 1), `declared fx latency: reported as fxDelayed 8 @ ~40 ms (${JSON.stringify(r.fxDelayed)})`);
   check(r.late.over20ms === 0 && r.lagVsIdealMs.max < 5, `declared fx latency: engine timing untouched (late>20 = ${r.late.over20ms}, lag max ${r.lagVsIdealMs.max})`);
-  // The window widens by the DECLARED latency only: an onset beyond it is
-  // still not that note's.
+  // Only by the DECLARED latency.
   const r2 = analyzeAudioProbe(log({
     notes,
     fxLatency: (i) => (i === 3 ? 0.01 : 0),
@@ -152,8 +135,7 @@ const notes = Array.from({ length: 16 }, (_, i) => 1 + i * 0.25);
   check(r.lookahead.shifts === 1 && near(r.lookahead.maxShiftMs, 20, 0.2), `one 20 ms lookahead shift (got ${r.lookahead.shifts}/${r.lookahead.maxShiftMs})`);
 }
 
-// 7. Clock slips: minimum drift steps up 25 ms at t=3 s (an underrun), with
-//    ±8 ms device-burst jitter that must NOT count.
+// 7. Minimum drift steps up 25 ms at t = 3 s (an underrun); ±8 ms device jitter must NOT count.
 {
   const jitter = (t) => ((Math.round(t * 10) % 3) - 1) * 4;
   const reps = busReports({ t0: 0.5, t1: 6, drift: (t) => jitter(t) + (t >= 3 ? 25 : 0) });
@@ -177,8 +159,7 @@ const notes = Array.from({ length: 16 }, (_, i) => 1 + i * 0.25);
   check(r.notes.cancelled === 1 && r.notes.missed === 0, `cancelled note excluded from missed (${JSON.stringify(r.notes)})`);
 }
 {
-  // A lane voice swapped onto its fresh render re-starts the SAME pk at the
-  // same `when` (path lane-fresh): one note, heard once — not a duplicate.
+  // Same pk at the same `when`: one note heard once, not a duplicate.
   const raw = log({ notes, onsetFor: (i, s) => s + 0.001 });
   const s0 = raw.starts.find((x) => x.pk === 7);
   raw.starts.push({ ...s0, path: "lane-fresh", ctx: s0.ctx + 0.01 });
@@ -203,8 +184,7 @@ const notes = Array.from({ length: 16 }, (_, i) => 1 + i * 0.25);
 }
 
 {
-  // Node volumes ≠ 1: every 4th note's node is 1.5×. Before the edit the row
-  // volume is 1 (vols 1 / 1.5); after it 0.5 (vols 0.5 / 0.75). None is stale.
+  // Node volumes ≠ 1 (every 4th note 1.5×) must not read as stale.
   const raw = log({ notes, onsetFor: (i, s) => s + 0.001 });
   raw.requests.forEach((q, i) => {
     const k = i % 4 === 0 ? 1.5 : 1;
@@ -215,8 +195,7 @@ const notes = Array.from({ length: 16 }, (_, i) => 1 + i * 0.25);
 }
 
 {
-  // No pre-edit notes at all (the edit lands right away) and node vols
-  // 1.2/1.5: fresh notes must not be judged stale; a real straggler must be.
+  // Fresh notes must not be judged stale; a real straggler must be.
   const raw = log({ notes, onsetFor: (i, s) => s + 0.001 });
   const ks = [1.2, 1.5, 1, 1.2];
   raw.requests.forEach((q, i) => { q.vol = 0.7 * ks[i % 4]; });

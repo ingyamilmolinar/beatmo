@@ -46,9 +46,7 @@ type Ref struct {
 	// Template is the template stem a song-tier reference belongs to.
 	Template string `json:"template,omitempty"`
 
-	// File is the bare filename inside the reference-audio root (Root()).
-	// Empty when Status is set. The audio itself is NEVER in the repository:
-	// only this catalogue entry is (see TestNoAudioFilesInRepository).
+	// Inside Root(); empty when Status is set. The audio itself is NEVER in the repository, only this entry.
 	File string `json:"file,omitempty"`
 
 	Status string `json:"status,omitempty"`
@@ -57,30 +55,21 @@ type Ref struct {
 	Source  *Source  `json:"source,omitempty"`
 	Convert *Convert `json:"convert,omitempty"`
 
-	// PCMSHA256 hashes the DECODED PCM (samples + rate), not the container
-	// bytes. Container metadata varies between ffmpeg builds; the audio
-	// does not, so this is what makes verification meaningful.
+	// The DECODED PCM, not the container: ffmpeg builds vary the metadata, not the audio.
 	PCMSHA256 string `json:"pcm_sha256,omitempty"`
 
 	Measured     *Measured     `json:"measured,omitempty"`
 	Alternatives []Alternative `json:"alternatives,omitempty"`
 }
 
-// Source records where the audio came from, so `refs fetch` can re-create
-// it. Reference audio is local dev tooling that never ships, so there is no
-// licence to track.
+// So refs fetch can re-create it. Reference audio never ships, so there is no licence to track.
 type Source struct {
 	Provider string `json:"provider"` // uiowa-mis | vcsl | freesound | archive-org | imslp | local
 	URL      string `json:"url"`
 }
 
-// Rate is the sample rate every reference recording is converted to, and the
-// rate the reference tools render the synth at to compare a voice with one.
-// It is the CORPUS's rate, not the engine's (48 kHz since 2026-10-27): the
-// committed calibrations (thresholds, organic range, match hubness) were
-// measured with recording and voice both at this rate, and several analyses
-// count samples, so the same sound rendered at another rate reads as a
-// slightly different one (refs match lost conga and kalimba that way).
+// The CORPUS rate, not the engine's: the committed calibrations were measured with recording and voice both at it, and
+// several analyses count samples, so the same sound rendered at another rate reads as a slightly different one.
 const Rate = 44100
 
 // Convert is the deterministic conversion applied after download.
@@ -92,8 +81,7 @@ type Convert struct {
 	MaxSec   float64 `json:"max_sec"`
 }
 
-// Measured holds values detected FROM THE AUDIO, never parsed from a
-// filename or upstream metadata (which has been wrong repeatedly).
+// FROM THE AUDIO, never a filename or upstream metadata (wrong repeatedly).
 type Measured struct {
 	F0Hz        float64 `json:"f0_hz"`
 	SemisFromA3 int     `json:"semis_from_a3"`

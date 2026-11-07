@@ -2,9 +2,6 @@ package ui
 
 import "github.com/ingyamilmolinar/beatmo/internal/hooks"
 
-// seekReqMode discriminates the three flavors of navigation intent a
-// seekRequest can carry: an absolute subdivision target, a beat-snapped
-// delta, or a subdivision-granular delta.
 type seekReqMode int
 
 const (
@@ -13,11 +10,7 @@ const (
 	seekReqDeltaSteps
 )
 
-// seekRequest is a one-shot navigation intent set by any UI entry point
-// (ribbon, FF/RW, counter, keyboard) and drained once per frame by
-// Game.Update under seqMu. Absolute requests carry steps in value; delta
-// requests (beats or subdivision-granular steps) carry an offset in value
-// resolved against the live playhead in Game.
+// Drained once per frame under seqMu; deltas resolve against the live playhead.
 type seekRequest struct {
 	value  int // steps (abs) OR delta (beats/steps), per mode
 	mode   seekReqMode
@@ -34,8 +27,6 @@ func (dv *DrumView) RequestSeekDeltaBeats(deltaBeats int, origin hooks.SeekOrigi
 	dv.pendingSeek = &seekRequest{value: deltaBeats, mode: seekReqDeltaBeats, origin: origin}
 }
 
-// RequestSeekDeltaSteps queues a relative seek of `deltaSteps` subdivisions —
-// no beat snap, unlike RequestSeekDeltaBeats.
 func (dv *DrumView) RequestSeekDeltaSteps(deltaSteps int, origin hooks.SeekOrigin) {
 	dv.pendingSeek = &seekRequest{value: deltaSteps, mode: seekReqDeltaSteps, origin: origin}
 }

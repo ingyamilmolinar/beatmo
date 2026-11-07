@@ -1,60 +1,6 @@
-// webaudio_fx_chain_stress.browser.test.js
-//
-// Heavy-chain load/stress benchmark: the startup demo with EVERY instrument
-// carrying a few insert effects, shaped per-instrument EQ, HPF + LPF enabled,
-// delay/reverb sends, and ALL modular synth stages enabled (including the
-// default-OFF PITCH ENV / LFO / BURST modulators). This is the configuration
-// users report as "very choppy and inconsistent" during playback.
-//
-// The test verifies BOTH halves of "the audio sounds bad":
-//
-//   End-to-end latency (main thread → bridge → WebAudio):
-//     - getAudioScheduleMetrics: overdue, smallLeadCount, minLead
-//     - perfStats: audioQLatMax (Stage B queue tail)
-//     - getThreeStageLatency: Stage C lag (BufferSource.start past its `when`)
-//
-//   Audio consistency (audio rendering thread):
-//     - wall-clock vs AudioContext.currentTime drift — the smoking gun for
-//       render-thread overload: when the audio thread can't render realtime,
-//       ctx.currentTime falls behind the wall clock and playback "chops".
-//     - captured master WAV (production recording pipeline): overall RMS,
-//       silent-gap windows, and hard sample discontinuities (clicks).
-//
-// Thresholds are INTENTIONALLY tight (env-overridable via FX_STRESS_*) so the
-// test fails while the symptom exists — it is the reproducer for the
-// choppy-playback investigation; loosen a threshold only with a bench
-// citation explaining why that level is acceptable.
-//
-// The circuit is built export→mutate→import so the heavy config exercises the
-// exact production import wiring (insert-effect chains, per-instrument EQ,
-// sends, instrument documents) rather than test-only setters.
-//
-// Usage:
-//   GO=$(pwd)/.tools/go/bin/go node src/js/webaudio_fx_chain_stress.browser.test.js
-// Env:
-//   FX_STRESS_BPM=180            playback tempo
-//   FX_STRESS_DURATION_MS=12000  recorded playback window
-//   FX_STRESS_OVERDUE_MAX=0      max overdue audio events
-//   FX_STRESS_SMALL_LEAD_MAX=0   max events with <3ms lead
-//   FX_STRESS_QLAT_MAX_MS=8      max audio queue latency
-//   FX_STRESS_DRIFT_MAX=0.02     max |wall − audio-clock| fraction
-//   FX_STRESS_GAP_MAX_MS=120     longest tolerated silent gap in master
-//   FX_STRESS_SILENT_FRAC_MAX=0.05  max fraction of silent 20ms windows
-//   FX_STRESS_LAG_MAX_MS=1       max Stage C lag (start() past `when`)
-//   FX_STRESS_STAGEA_P99_MS=50   max Stage A seqFireLate p99
-//   FX_STRESS_STAGEA_MAX_MS=120  max Stage A seqFireLate max
-//
-// PROFILING CONCLUSION (scripts/profile_fx_chain_playback.mjs, 2026-06):
-// The deterministic failure is Stage A — the sequencer goroutine fires
-// 150-255ms LATE on every run, and an A/B sweep showed this is INDEPENDENT
-// of the FX/EQ/synth chain (baseline with no audio chain is just as late).
-// Root cause: the single cooperatively-scheduled WASM thread is saturated by
-// Ebiten draw (runtime.mapiternext / restorable.makeStaleIfDependingOn — the
-// O(N²) image-dependency walk), so the sequencer goroutine only runs between
-// frames and is chronically late. The clicks / queue-latency / clock-drift
-// checks below are the INTERMITTENT downstream tail of that starvation (plus
-// audio-thread worklet-budget pressure) — they fire on some runs, not all.
-// Stage A is the reliable signal; the symptom checks are belt-and-suspenders.
+// The demo with every instrument carrying insert effects, shaped EQ, HPF+LPF and every synth stage on: end-to-end
+// latency and audio consistency (clock drift, gaps, clicks in the recorded master), thresholds tight on purpose. Stage A
+// is the reliable signal: Ebiten draw saturates the single WASM thread, so the sequencer fires late regardless of the chain.
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";
@@ -78,8 +24,7 @@ const DRIFT_MAX = Number(process.env.FX_STRESS_DRIFT_MAX ?? "0.02");
 const GAP_MAX_MS = Number(process.env.FX_STRESS_GAP_MAX_MS ?? "120");
 const SILENT_FRAC_MAX = Number(process.env.FX_STRESS_SILENT_FRAC_MAX ?? "0.05");
 const LAG_MAX_MS = Number(process.env.FX_STRESS_LAG_MAX_MS ?? "1");
-// Diagnostic knob: insert effects per instrument (0-3). 0 isolates the
-// audio-thread worklet load from the rest of the heavy circuit.
+// 0 isolates the worklet load from the rest of the heavy circuit.
 const FX_COUNT = Math.max(0, Math.min(3, Number(process.env.FX_STRESS_FX_COUNT ?? "3")));
 const STAGEA_P99_MS = Number(process.env.FX_STRESS_STAGEA_P99_MS ?? "50");
 const STAGEA_MAX_MS = Number(process.env.FX_STRESS_STAGEA_MAX_MS ?? "120");
@@ -115,8 +60,7 @@ function check(name, cond, detail = "") {
   else { console.error(`✗ ${name} — ${detail}`); failures.push(name); }
 }
 
-// ─── Minimal stored-only PKZIP reader + WAV decoder ──────────────────────
-// (Same shape as recording_lifecycle.browser.test.js.)
+// The same shape as recording_lifecycle's.
 function parseZip(buf) {
   const u8 = new Uint8Array(buf);
   const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
@@ -220,8 +164,7 @@ function masterConsistency(wav) {
     }
   }
   const active = last - first + 1;
-  // Hard discontinuities (clicks): |Δsample| jumps that no rendered voice
-  // chain produces. Underruns that splice the stream show up here.
+  // Jumps no rendered voice chain produces: underruns splicing the stream.
   let clicks = 0;
   let maxJump = 0;
   for (let i = 1; i < frames; i++) {
@@ -246,16 +189,12 @@ try {
   browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
   const page = await browser.newPage();
   if (process.env.TEST_LOG) page.on("console", (m) => console.log(`  [page] ${m.text()}`));
-  // Optional runtime-profile override (knob sweeps): JSON object keyed by
-  // BEATMO_* variable names (internal/env/vars.go), injected as
-  // window.__beatmoEnv before WASM init (index.html folds it into go.env;
-  // applyEnvProfileOverride in internal/ui/runtime_profile_env.go reads it).
+  // Keyed by BEATMO_* names, into window.__beatmoEnv before init.
   if (process.env.BEATMO_ENV_OVERRIDE) {
     try {
       const ov = JSON.parse(process.env.BEATMO_ENV_OVERRIDE);
       console.log(`[fx-stress] env override: ${JSON.stringify(ov)}`);
-      // Values must be strings; wasm_exec.js builds KEY=value via a template
-      // literal, so non-strings are silently toString()-coerced.
+      // Non-strings are silently coerced.
       await page.addInitScript((cfg) => {
         window.__beatmoEnv = Object.fromEntries(
           Object.entries(cfg).map(([k, v]) => [k, String(v)]),
@@ -271,9 +210,7 @@ try {
 
   // ── Build the heavy circuit: export the demo, crank every instrument ──
   const importErr = await page.evaluate((fxCount) => {
-    // Default-ON stages stay on; force-enable the default-OFF modulator stages
-    // plus FINISH so every pipeline step renders — through each instrument's
-    // document, so the export below carries them in instrument_docs.
+    // Through each instrument's document, so the export carries them in instrument_docs.
     const tweaks = {
       osc_enabled: 1, fm_enabled: 1, env_enabled: 1, filter_enabled: 1, drive_enabled: 1,
       post_decay: 0.8,
@@ -321,8 +258,7 @@ try {
       fx: (i.effects || []).map((e) => e.type).join("+"),
       hpf: !!(i.eq && i.eq.hpf_enabled),
       lpf: !!(i.eq && i.eq.lpf_enabled),
-      // The instrument's live document (a stage the instrument ships ON — e.g.
-      // organ-church's vibrato LFO — counts like one the circuit turned on).
+      // A stage the instrument ships ON counts like one turned on.
       modulators: ["pitchenv_enabled", "lfo_enabled", "burst_enabled"]
         .filter((k) => ((getInstrumentParams(i.id) || {})[k] || 0) >= 0.5).length,
     }));
@@ -334,9 +270,7 @@ try {
     JSON.stringify(fxSummary),
   );
 
-  // ── Play + record under load ──
-  // Play is ignored while the warm-up gate is closed (the button is disabled
-  // then): wait for it before the reset + play + record block below.
+  // Play is ignored while the warm-up gate is closed.
   await page.waitForFunction(() => typeof warmupProgress !== "function" || warmupProgress().ready === true, null, { timeout: 30000, polling: 100 });
   const downloadPromise = page.waitForEvent("download", { timeout: 30000 });
   const clocks0 = await page.evaluate(async (bpm) => {
@@ -351,8 +285,7 @@ try {
     return { wall: performance.now(), audio: window.__audioCtx ? window.__audioCtx.currentTime : null };
   }, BPM);
 
-  // Per-second clock sampling to tell SUSTAINED audio-thread drift apart from
-  // a startup transient (worklet init). No CPU profiler running → clean.
+  // Tells SUSTAINED drift from the worklet-init transient.
   const driftSeries = [];
   let prevSample = clocks0;
   const secs = Math.round(DURATION_MS / 1000);
@@ -387,11 +320,7 @@ try {
   console.log("[fx-stress] schedMetrics:", JSON.stringify(result.sched));
   console.log("[fx-stress] threeStage:", JSON.stringify(result.threeStage));
 
-  // ── End-to-end latency assertions (tight) ──
-  // NB: perfStats.audioEnq counts per-EVENT, audioDeq counts per-BATCH
-  // (one onAudioDeq per PlayBatch, game_audio_loop.go) — a 6:1 ratio is
-  // normal batching, NOT a drained-too-slowly backlog. Read audioQLatMax
-  // for queue health instead.
+  // audioEnq counts events and audioDeq batches, so 6:1 is normal batching; audioQLatMax is the queue signal.
   const sched = result.sched || {};
   check("audio events flowed", (sched.count ?? 0) > 50, `count=${sched.count}`);
   check(`overdue ≤ ${OVERDUE_MAX}`, (sched.overdue ?? 1e9) <= OVERDUE_MAX, `overdue=${sched.overdue}`);
@@ -403,9 +332,7 @@ try {
     const lagMax = (result.threeStage.lead.maxLag ?? 0) * 1000;
     check(`Stage C lag ≤ ${LAG_MAX_MS}ms`, lagMax <= LAG_MAX_MS, `maxLag=${lagMax.toFixed(2)}ms`);
   }
-  // Stage A: the DETERMINISTIC root-cause signal. A healthy sequencer fires
-  // within a tick or two of its deadline; here it is chronically 150ms+ late
-  // because Ebiten draw saturates the single WASM thread (see header).
+  // A healthy sequencer fires within a tick or two of its deadline.
   if (result.threeStage && result.threeStage.seqFireLate) {
     const a = result.threeStage.seqFireLate;
     const p99 = (a.p99 ?? 1e9) * 1000;

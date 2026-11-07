@@ -8,9 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// TestSynthSaveDirty_FollowsOverlay — synthSaveDirty(instID) must report
-// false when the per-instrument overlay is empty and true after any param
-// edit, returning to false after Reset.
+// False with an empty overlay, true after an edit, false again after Reset.
 func TestSynthSaveDirty_FollowsOverlay(t *testing.T) {
 	env := setupSynthFooterEnv(t, 1280, 800, false)
 	dv := env.g.drum
@@ -32,10 +30,7 @@ func TestSynthSaveDirty_FollowsOverlay(t *testing.T) {
 	}
 }
 
-// TestSynthSaveButton_SpecTogglesByDirtyState — when synth params are clean,
-// the Save As button's spec must NOT be ComponentButtonPrimary. When dirty, it
-// must be ComponentButtonPrimary so the user gets a visual signal that there
-// is something to save.
+// Primary only when dirty, so the user sees there is something to save.
 func TestSynthSaveButton_SpecTogglesByDirtyState(t *testing.T) {
 	env := setupSynthFooterEnv(t, 1280, 800, false)
 	dv := env.g.drum

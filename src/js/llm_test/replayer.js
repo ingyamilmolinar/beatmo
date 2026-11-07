@@ -1,15 +1,9 @@
-/**
- * LLM Visual Testing — Replay Engine
- *
- * Reads recording.json and dispatches events via Playwright with correct timing.
- */
+/** Dispatches recording.json's events through Playwright with their timing. */
 
 import fs from "fs";
 import path from "path";
 
-/**
- * Whitelist of WASM export function names that are safe to evaluate.
- */
+/** The only exports a replay may evaluate. */
 const SAFE_EXPORTS = new Set([
   "startPlay", "stopPlay", "addNode", "addEdgeGrid", "deleteNodeGrid",
   "importJSON", "exportJSON", "updateBeatInfos", "forceDraw",
@@ -19,10 +13,7 @@ const SAFE_EXPORTS = new Set([
   "isPlaying", "getBPM", "totalRows", "totalNodes",
 ]);
 
-/**
- * Check if an evaluate string only calls whitelisted WASM exports.
- * Allows optional chaining (?.) and basic arguments.
- */
+/** Only whitelisted exports, optional chaining and basic arguments. */
 function isEvaluateSafe(fnStr) {
   // Match calls like: exportName?.(...) or exportName(...)
   const callPattern = /\b([a-zA-Z_]\w*)\s*\?\.\s*\(|([a-zA-Z_]\w*)\s*\(/g;
@@ -38,12 +29,6 @@ function isEvaluateSafe(fnStr) {
   return true;
 }
 
-/**
- * Load a recording from disk.
- *
- * @param {string} dirPath - Path to recording directory
- * @returns {Object} recording object with parsed JSON
- */
 export function loadRecording(dirPath) {
   const jsonPath = path.join(dirPath, "recording.json");
   if (!fs.existsSync(jsonPath)) {
@@ -54,16 +39,7 @@ export function loadRecording(dirPath) {
   return recording;
 }
 
-/**
- * Create a replayer for a recorded session.
- *
- * @param {import('playwright').Page} page - Playwright page
- * @param {Object} recording - Parsed recording object
- * @param {Object} options
- * @param {number} options.speedFactor - Playback speed multiplier (default 1.0)
- * @param {boolean} options.skipEvaluates - Skip evaluate events (default false)
- * @returns {Replayer}
- */
+/** options: speedFactor (default 1.0), skipEvaluates (false). */
 export function createReplayer(page, recording, options = {}) {
   const speedFactor = options.speedFactor ?? 1.0;
   const skipEvaluates = options.skipEvaluates ?? false;
@@ -139,18 +115,10 @@ export function createReplayer(page, recording, options = {}) {
   }
 
   return {
-    /**
-     * Replay the full session.
-     */
     async play() {
       return this.playUntil(Infinity);
     },
 
-    /**
-     * Replay up to a given timestamp.
-     *
-     * @param {number} timeMs - Stop after this timestamp
-     */
     async playUntil(timeMs) {
       // Restore initial state if exported JSON is available
       if (recording.initialState?.exported) {

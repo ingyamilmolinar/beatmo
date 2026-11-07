@@ -7,14 +7,7 @@ import (
 	"testing"
 )
 
-// TestFocusRingColor_IsHotPinkSecondAccent pins the focus-ring color to
-// hot-pink-300 (#FF2D9E) — the second accent of the Vice City two-accent
-// system (cyan primary for interactive/selected/active surfaces, hot-pink
-// for focus/selection rings). The ring must stay distinct from the cyan
-// `primary` family and from the historical coral (#FFA68C), which was
-// visually indistinguishable from the play-pulse halo. DESIGN.md is the
-// source of truth; this test pairs with TestDesignMDDrift to keep
-// DESIGN.md ↔ runtime aligned.
+// Hot-pink, the focus accent, distinct from the primary family and from the coral that read as the play-pulse halo.
 func TestFocusRingColor_IsHotPinkSecondAccent(t *testing.T) {
 	want := color.RGBA{R: 255, G: 45, B: 158, A: 255} // #FF2D9E
 	if genColorFocusRing != want {

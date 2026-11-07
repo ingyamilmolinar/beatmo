@@ -21,24 +21,9 @@ func TestMatch_RecoversPerturbedParams(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// What this test guards — and why it does NOT assert exact cutoff recovery:
-	//
-	// The matcher's global optimum here is correct: rendering sax at the
-	// reference pitch with filter_cutoff=1500 reproduces the reference exactly
-	// (fingerprint distance 0). Two real bugs that used to spoil that were fixed
-	// in this package — the pitch was double-detuned (12*log2(f0/220) ignored
-	// the voice's intrinsic ~+10-cent tuning) and the tunable amp_attack/
-	// amp_decay ranges excluded sax's own defaults, so a candidate could never
-	// match a self-rendered reference. With those fixed, cutoff=1500 is a clean
-	// zero-distance well.
-	//
-	// BUT that well is narrow and the fingerprint's distance is spiky and
-	// non-monotonic in filter_cutoff (a deep minimum at the true value flanked
-	// by higher ridges at ~1700 Hz), so a bounded-budget coordinate search from
-	// the default start cannot reliably climb into it. Asserting exact recovery
-	// would therefore test the pathological landscape, not the matcher. Assert
-	// instead what the matcher genuinely guarantees: it strictly reduces the fit
-	// loss (converges, does not diverge) and returns a valid, in-range result.
+	// The true cutoff is a zero-distance well, but narrow and flanked by ridges, so a bounded search from the default
+	// cannot reliably reach it; asserting recovery would test the landscape. What the matcher guarantees: the loss drops and
+	// the result is in range.
 	if res.BestLoss >= res.StartLoss {
 		t.Errorf("optimizer did not improve: start=%.4f best=%.4f", res.StartLoss, res.BestLoss)
 	}
@@ -69,9 +54,7 @@ func TestMatch_Deterministic(t *testing.T) {
 	audio.Reset()
 	audio.ResetInstruments()
 	ref, _ := RenderInstrument(roster.Violin, 0, 44100, 1.0)
-	// Budget kept modest: each eval renders + fingerprints (~1.5 s), and this
-	// test only needs enough steps to exercise the seeded restart path twice
-	// and compare — not full convergence.
+	// Each eval renders and fingerprints; this only needs the restart path twice.
 	a, _ := Match(roster.Violin, ref, 60, 1)
 	b, _ := Match(roster.Violin, ref, 60, 1)
 	if a.BestLoss != b.BestLoss {

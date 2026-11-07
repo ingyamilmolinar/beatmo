@@ -35,10 +35,8 @@ type FieldSet struct {
 	Value float64
 }
 
-// ValueDecl declares one value of a module type. Name is the ABI field name
-// (slot-relative for layers). Init is the value a NEWLY CREATED module starts
-// with — never read for an existing document. Allowed, when non-empty, lists
-// the only legal values (a selector that decides the type).
+// Name is the ABI field (slot-relative for layers). Init is a NEWLY CREATED module's value, never read for an existing
+// document. A non-empty Allowed lists the only legal values.
 type ValueDecl struct {
 	Name    string
 	Init    float64

@@ -163,10 +163,7 @@ func TestGroupChangedHookFires(t *testing.T) {
 
 // ─── ReanchorAllGroupRules (task-rule-replay brief, test #6) ───────────────
 
-// TestReanchorAllGroupRules proves the core contract: every rule of every
-// rule-bearing group is stamped with the new anchor, the group-changed hook
-// fires exactly once per TOUCHED group (not once per rule, not for groups
-// with no rules), and the returned count matches.
+// Every rule stamped, the hook once per TOUCHED group (not per rule, never for rule-less groups), the count returned.
 func TestReanchorAllGroupRules(t *testing.T) {
 	g, a, b, c := newGroupTestGraph(t)
 	id1, err := g.CreateGroup("", []NodeID{a, b})
@@ -230,9 +227,6 @@ func TestReanchorAllGroupRulesClampsNegative(t *testing.T) {
 	}
 }
 
-// TestReanchorAllGroupRulesNoGroups proves the zero-groups case returns 0 and
-// fires nothing (nil hook is fine — no groups means no fireGroupChanged call
-// regardless).
 func TestReanchorAllGroupRulesNoGroups(t *testing.T) {
 	g := NewGraph(testLogger)
 	if touched := g.ReanchorAllGroupRules(10); touched != 0 {
@@ -240,10 +234,7 @@ func TestReanchorAllGroupRulesNoGroups(t *testing.T) {
 	}
 }
 
-// TestReanchorAllGroupRulesSkipsAllRuleLessGroups proves that when EVERY
-// group is rule-less, nothing fires and the count is 0 (not just "the one
-// group with rules" case above, in case a future refactor special-cases the
-// first group).
+// Every group rule-less: nothing fires and the count is 0.
 func TestReanchorAllGroupRulesSkipsAllRuleLessGroups(t *testing.T) {
 	g, a, b, _ := newGroupTestGraph(t)
 	if _, err := g.CreateGroup("", []NodeID{a}); err != nil {
@@ -262,21 +253,7 @@ func TestReanchorAllGroupRulesSkipsAllRuleLessGroups(t *testing.T) {
 	}
 }
 
-// ─── Lowest-free group numbering (task-save-always brief, Part 2) ──────────
-//
-// nextGroupID + ReleaseGroupID (tail-rollback allocation) are GONE — replaced
-// entirely by a lowest-free-id scan (lowestFreeGroupID) run at every
-// CreateGroup. This subsumes tail-rollback: a discarded provisional's number
-// (or a node-deletion-auto-deleted group's number) is simply free again, no
-// explicit release call needed. TestReleaseGroupIDModel (the old mechanism-
-// specific test above) is gone; TestLowestFreeAllocatorModel below pins the
-// allocator directly, and TestGroupNumberFillsGapAfterNodeDeletionAutoDelete
-// pins the exact user-facing scenario from the brief.
-
-// TestLowestFreeAllocatorModel is task-save-always brief Part 2 test 8: pins
-// lowestFreeGroupID directly against g.Groups (bypassing CreateGroup's
-// validation/naming) so the four brief cases are exact: empty->1; {1,2}->3;
-// {2}->1; {1,3}->2.
+// Directly against g.Groups: empty → 1; {1,2} → 3; {2} → 1; {1,3} → 2.
 func TestLowestFreeAllocatorModel(t *testing.T) {
 	g := NewGraph(testLogger)
 	if got := g.lowestFreeGroupID(); got != 1 {
@@ -296,12 +273,7 @@ func TestLowestFreeAllocatorModel(t *testing.T) {
 	}
 }
 
-// TestGroupNumberFillsGapAfterNodeDeletionAutoDelete is task-save-always
-// brief Part 2 test 7: groups 1,2,3 committed; deleting the sole member node
-// of group 2 (auto-delete via RemoveNode) frees id 2, so the NEXT CreateGroup
-// gets id/name 2 (not 4). Likewise, explicitly deleting group 1 (mirrors the
-// menu's Delete button, which is just DeleteGroup+emit) frees id 1 for the
-// next create.
+// Deleting group 2's sole node (auto-delete) frees id 2 for the next create, as an explicit delete of group 1 frees 1.
 func TestGroupNumberFillsGapAfterNodeDeletionAutoDelete(t *testing.T) {
 	g, a, b, c := newGroupTestGraph(t)
 

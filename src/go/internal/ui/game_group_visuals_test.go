@@ -11,8 +11,7 @@ func TestSidebarGroupChipOpensGroupMenu(t *testing.T) {
 	gid, _ := g.graph.CreateGroup("", []model.NodeID{aID, bID})
 	g.sidebar.Open(g.nodesByID[aID])
 	advanceFrames(g, 1)
-	// Fire the chip's action directly (button plumbing is covered by the
-	// sidebar's own tests); the chip id is "grpchip:<gid>".
+	// Fired directly; the button plumbing has its own tests.
 	g.sidebar.fireGroupChip(gid)
 	advanceFrames(g, 2)
 	if g.sidebar.IsOpen() {

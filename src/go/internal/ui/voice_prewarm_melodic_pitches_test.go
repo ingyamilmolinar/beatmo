@@ -8,10 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// TestMelodicRowNodePitchesWarmed: computing a circuit's paths submits every
-// node pitch of a melodic row to the prewarmer. A melodic voice is rendered AT
-// its pitch, so a pitch left out cold-renders on dispatch — the crash logs that
-// started this showed exactly that for a melodic row's +5 and −2 nodes.
+// A melodic voice is rendered AT its pitch, so a node pitch left out cold-renders on dispatch.
 func TestMelodicRowNodePitchesWarmed(t *testing.T) {
 	pitches := []float64{0, 5, -2, 7}
 	g := newMelodicCircuitGame(t, pitches...)
@@ -24,9 +21,8 @@ func TestMelodicRowNodePitchesWarmed(t *testing.T) {
 		mu.Unlock()
 	}
 
-	// warmPitch submits only pitches that are NOT already cached, and the voice
-	// cache is process-global (building the circuit, or an earlier test, may
-	// have warmed it). Start cold so this measures enumeration, not history.
+	// warmPitch skips cached pitches and the cache is process-global, so start cold: this measures enumeration, not
+	// history.
 	audio.ClearVoiceCacheForTest()
 	g.updateBeatInfos()
 

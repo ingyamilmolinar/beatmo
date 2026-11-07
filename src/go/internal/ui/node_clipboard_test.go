@@ -59,9 +59,7 @@ func TestCopySelectedNodePopulatesClipboardAndEmits(t *testing.T) {
 	}
 }
 
-// withStubbedKeys swaps the isKeyPressed/isKeyJustPressed vars for the duration
-// of fn: keys in pressed report IsKeyPressed==true; keys in just report
-// IsKeyJustPressed==true (and IsKeyPressed==true too, matching real hardware).
+// A key in just also reports IsKeyPressed, as real hardware does.
 func withStubbedKeys(pressed, just []ebiten.Key, fn func()) {
 	oldP, oldJ := isKeyPressed, isKeyJustPressed
 	defer func() { isKeyPressed, isKeyJustPressed = oldP, oldJ }()
@@ -146,10 +144,6 @@ func TestCutRemovesNodeAndFillsClipboardAndUndoRestores(t *testing.T) {
 	}
 }
 
-// pasteAtCursor reads cursorPosition() then guideTargetAt(). Stub the cursor to
-// point at a grid cell by driving the guide resolver directly via the camera is
-// complex; instead we place the cursor and assert on the resolved cell by
-// choosing an empty target and reading the pasted node.
 func withStubbedCursor(x, y int, fn func()) {
 	old := cursorPosition
 	defer func() { cursorPosition = old }()
@@ -166,8 +160,7 @@ func TestPasteIntoEmptyCellCreatesIndependentCopyNoEdges(t *testing.T) {
 	g.graph.Nodes[src.ID] = node
 	g.copySelectedNode()
 
-	// Paste directly at a known-empty cell (bypass cursor->guide resolution by
-	// calling pasteNodeFrom, which pasteAtCursor delegates to).
+	// pasteNodeFrom directly, bypassing cursor resolution.
 	before := len(g.nodes)
 	pasted := g.pasteNodeFrom(40, 40, g.clipboard)
 	if pasted == nil {
@@ -218,11 +211,7 @@ func TestPasteAtCursorUndoRestores(t *testing.T) {
 	}
 }
 
-// TestPasteAtCursorPastesAtResolvedEmptyCell drives the REAL pasteAtCursor
-// glue: it stubs the cursor, lets guideTargetAt resolve the grid cell under
-// that cursor, and asserts a paste lands at that resolved cell. This covers the
-// cursorPosition()->guideTargetAt()->pasteNodeFrom path (the occupied-cell
-// branch is covered in Task 6).
+// The real cursor → guideTargetAt → pasteNodeFrom path lands the paste on the resolved cell.
 func TestPasteAtCursorPastesAtResolvedEmptyCell(t *testing.T) {
 	g := newClipboardTestGame(t)
 	g.tryAddNode(32, 32, 0) // source node, auto-selected
@@ -334,15 +323,8 @@ func TestEscCancelsPasteConfirm(t *testing.T) {
 	}
 }
 
-// TestEscClosesOnlyPasteConfirmNotUnderlyingPortal is a regression test for a
-// review-found bug: openPasteConfirmPortal's escapeFn used to call
-// CancelPasteOverwrite() (which does an explicit portal Close(id) on the
-// paste-confirm entry) and then return false, letting handleEscape's
-// unconditional fallback CloseTop() pop whatever portal was now topmost — a
-// DIFFERENT portal sitting beneath the paste-confirm (reachable because
-// Ctrl+V is ungated and can stack the confirm over an already-open popup).
-// The fix makes escapeFn cleanup-only (clear g.pastePending, return false) so
-// CloseTop removes the paste-confirm entry itself and nothing else.
+// Ctrl+V is ungated, so the confirm can stack over another popup; Esc must remove only the confirm, never the
+// portal beneath it.
 func TestEscClosesOnlyPasteConfirmNotUnderlyingPortal(t *testing.T) {
 	g := newClipboardTestGame(t)
 	p := g.drum.portal()
@@ -380,10 +362,7 @@ func TestEscClosesOnlyPasteConfirmNotUnderlyingPortal(t *testing.T) {
 	}
 }
 
-// TestPasteOnEdgeStitchesIntoConnection verifies that pasting a node onto a
-// grid cell lying on an existing (orthogonal) edge auto-wires the pasted node
-// into that connection — the same behavior as creating a node on an edge via
-// tryAddNode (which calls stitchEdgesAt). Edge A-B is split into A-n and n-B.
+// Like a node created on an edge: A-B becomes A-n and n-B.
 func TestPasteOnEdgeStitchesIntoConnection(t *testing.T) {
 	g := newClipboardTestGame(t)
 	hasEdge := func(a, b *uiNode) bool {
@@ -423,11 +402,8 @@ func TestPasteOnEdgeStitchesIntoConnection(t *testing.T) {
 	}
 }
 
-// TestPasteConfirm_OutsideClickCancels drives the shared ConfirmDialog's
-// click-outside contract through the REAL input path: a press well outside
-// the centered dialog panel yields zero hit-area matches, so the tree's
-// CloseTop → OnClose fires (ConfirmDialog.portalEntry wires OnClose to
-// d.cancel → g.CancelPasteOverwrite), leaving the graph untouched.
+// A press with no hit-area match closes the dialog through CloseTop → OnClose, which cancels: the graph is
+// untouched.
 func TestPasteConfirm_OutsideClickCancels(t *testing.T) {
 	g := newTestGameForUndo(t)
 	n := g.tryAddNode(3, 1, model.NodeTypeRegular)
@@ -440,8 +416,6 @@ func TestPasteConfirm_OutsideClickCancels(t *testing.T) {
 	if !g.pasteConfirmActive() {
 		t.Fatal("paste confirm should be active")
 	}
-	// A press well outside the dialog panel (screen top-left corner) must
-	// cancel via the portal's outside-click path.
 	clickAt(g, 2, 2)
 	if g.pasteConfirmActive() {
 		t.Fatal("outside click must cancel the paste confirm")

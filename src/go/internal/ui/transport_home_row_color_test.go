@@ -8,11 +8,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestHomeRowIconsAreMutedGreyNotWhite guards the desktop home-row (transport)
-// recolor: the play/stop icons — previously the near-white on-surface tint —
-// read as the calmer on-surface-muted grey (colTextSecondary), so the home row
-// reads like the instrument-row labels rather than glaring white. The record
-// icon keeps its semantic red. Uses the shared theme tokens (no new colors).
+// The calmer muted grey of the row labels, not glaring white; record keeps its red.
 func TestHomeRowIconsAreMutedGreyNotWhite(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(testLogOutput(), game_log.LevelError)

@@ -1,15 +1,7 @@
 package fingerprint
 
-// registry_timbre.go — vibrato, formants and MFCC, reconnected.
-//
-// Same argument as registry_family.go: computeVibrato, computeSpectralEnvelope
-// and computeMFCC all run on EVERY Fingerprint already, their results are
-// stored on it, and until now nothing read them. The battery was paying for
-// three analyzers and reporting none of them.
-//
-// These also close the gap where Descriptor.Repr declared ReprCepstral and
-// ReprMel with no descriptor anywhere using either -- a taxonomy that named
-// domains the report could not actually reach.
+// Vibrato, formants and MFCC run on every Fingerprint already and were read by nothing; registering them makes the
+// cepstral and mel representations reachable.
 
 // Timbre descriptor IDs.
 const (
@@ -38,14 +30,8 @@ const (
 func init() {
 	r := DefaultRegistry()
 
-	// --- vibrato ------------------------------------------------------------
-	//
-	// A bowed or sung note without vibrato reads as synthetic no matter how
-	// well its steady spectrum matches, and vibrato has FOUR independent
-	// parameters that a listener hears separately: how fast, how wide, how
-	// regular, and whether loudness moves with pitch. Collapsing them would
-	// lose exactly the distinctions being tuned -- a 4 Hz and a 7 Hz vibrato
-	// at equal extent sound nothing alike.
+	// Four independent vibrato parameters a listener hears separately (rate, width, regularity, loudness following
+	// pitch): a 4 Hz and a 7 Hz vibrato of equal extent sound nothing alike.
 
 	vibratoRow := func(id, name, doc string, kind Kind, drift, mismatch float64, unit string,
 		get func(VibratoFingerprint) float64) {
@@ -94,12 +80,7 @@ func init() {
 			"synthesis tell.",
 		KindFraction, 0, 0, "", func(v VibratoFingerprint) float64 { return v.AMDepth })
 
-	// --- formants / body resonance -------------------------------------------
-	//
-	// Formants are FIXED resonances of the instrument body: they stay put as
-	// the played pitch moves, which is precisely why they read as "this is a
-	// violin" rather than "this is a note". A spectral centroid cannot see
-	// them -- it moves with the pitch.
+	// Formants are FIXED body resonances that stay put as pitch moves, which a centroid (it moves with pitch) cannot see.
 
 	formantRow := func(id, name, doc string, get func(SpectralEnvelope) float64) {
 		r.Register(Descriptor{
@@ -159,11 +140,8 @@ func init() {
 	r.Register(Descriptor{
 		ID: IDMFCCProfile, Group: GroupCepstral, Name: "MFCC profile",
 		Scope: ScopeWhole, Repr: ReprCepstral, Kind: KindFraction,
-		// Thresholds in MFCC-coefficient units, the vector's own scale. The
-		// coefficients are log-energy-derived and run to roughly +/-20 on c0
-		// and a few units on the rest, so the KindFraction defaults would flag
-		// every pair. 1.5 mean absolute deviation across the profile is an
-		// audible timbre difference; 5 is a different instrument.
+		// In MFCC units: coefficients run to ±20 on c0 and a few units elsewhere, so the KindFraction defaults would flag every
+		// pair.
 		Drift: 1.5, Mismatch: 5,
 		Doc: "Fingerprint.MFCC: the first 13 Mel-frequency cepstral coefficients of the " +
 			"sustain window -- the standard perceptual timbre vector, and the only " +

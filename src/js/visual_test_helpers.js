@@ -1,10 +1,4 @@
-/**
- * Visual Test Helpers
- *
- * Shared utilities for visual regression and cross-viewport parity tests.
- * Provides screenshot capture, PNG region extraction, pixel analysis,
- * pixelmatch wrapper, and golden image I/O.
- */
+/** Screenshot capture, PNG region extraction, pixel analysis, pixelmatch and golden I/O for the visual suites. */
 
 import http from "http";
 import fs from "fs";
@@ -23,10 +17,7 @@ const goldenDir = path.join(jsDir, "testdata", "golden");
 
 // ─── WASM Build & Server ─────────────────────────────────────────────
 
-/**
- * Build the WASM binary.
- * @returns {void} Throws on failure.
- */
+/** Throws on failure. */
 export function buildWasm() {
   const GO = resolveGoBinary();
   const build = spawnSync(
@@ -41,11 +32,7 @@ export function buildWasm() {
   if (build.status !== 0) throw new Error("go build main.wasm failed");
 }
 
-/**
- * Start a minimal static server for WASM.
- * Uses OS-assigned port (port 0) to avoid EADDRINUSE collisions.
- * @returns {Promise<{server: http.Server, port: number}>}
- */
+/** Port 0 avoids EADDRINUSE. Returns {server, port}. */
 export async function startServer() {
   const server = http.createServer((req, res) => {
     const file = req.url === "/" ? "/index.html" : req.url;
@@ -57,9 +44,7 @@ export async function startServer() {
       else if (filePath.endsWith(".js")) ct = "application/javascript";
       else if (filePath.endsWith(".wasm")) ct = "application/wasm";
       else if (filePath.endsWith(".json")) ct = "application/json";
-      // No-cache: each test run rebuilds main.wasm, so the served assets must
-      // never come from a browser/proxy cache (a stale binary would silently run
-      // an old build).
+      // Each run rebuilds main.wasm; a cached binary would silently run an old build.
       res.writeHead(200, {
         "Content-Type": ct,
         "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
@@ -74,13 +59,7 @@ export async function startServer() {
   return { server, port };
 }
 
-/**
- * Create a page at the given viewport and wait for WASM to initialize.
- * @param {Browser} browser
- * @param {{width: number, height: number}} viewport
- * @param {number} port
- * @returns {Promise<Page>}
- */
+/** Waits for WASM to initialize. */
 export async function initPage(browser, viewport, port) {
   const page = await browser.newPage({ viewport });
   await page.goto(`http://localhost:${port}/`);
@@ -100,20 +79,10 @@ export async function initPage(browser, viewport, port) {
   return page;
 }
 
-/**
- * Wait for WASM JS exports to be available on an already-navigated page.
- * Used for remote BrowserStack pages where navigation happened separately
- * and the real device determines the viewport (not controllable at creation).
- * @param {Page} page
- * @param {number} [timeout=60000] Timeout in ms (remote devices are slower)
- */
+/** For remote pages navigated separately, whose viewport the real device decides. Remote devices are slow. */
 export async function waitForWasmReady(page, timeout = 90000) {
-  // BrowserStack caps a single page.waitForFunction at ~30s on its CDP relay
-  // and rejects with "browserstack_error: Operation timed out as timeout was
-  // set to 30000ms" regardless of the timeout option we pass. Older real
-  // devices (notably iPhone 14) can take longer than that to instantiate the
-  // ~30 MB WASM. So poll in sub-30s windows under our own outer deadline and
-  // re-poll on the relay's timeout instead of bubbling it up as a device skip.
+  // BrowserStack's relay caps one waitForFunction at ~30 s whatever the timeout, and older iPhones take longer to
+  // instantiate the wasm, so it polls in sub-30 s windows under its own deadline.
   const exportsReady = () =>
     typeof widgetLayoutSnapshot === "function" &&
     typeof forceDraw === "function" &&
@@ -131,8 +100,7 @@ export async function waitForWasmReady(page, timeout = 90000) {
       break;
     } catch (e) {
       lastErr = e;
-      // Relay/poll window elapsed without the exports appearing — loop and
-      // try again until the outer deadline.
+      // Loop until the outer deadline.
     }
   }
   if (!ready) {
@@ -150,21 +118,11 @@ export async function waitForWasmReady(page, timeout = 90000) {
 
 // ─── Screenshot & Region Extraction ──────────────────────────────────
 
-/**
- * Take a full-page screenshot and return a PNG buffer.
- * @param {Page} page
- * @returns {Promise<Buffer>}
- */
 export async function captureScreenshot(page) {
   return page.screenshot({ type: "png" });
 }
 
-/**
- * Decode a PNG buffer and extract a sub-rectangle.
- * @param {Buffer} pngBuf
- * @param {{x: number, y: number, w: number, h: number}} rect
- * @returns {{width: number, height: number, data: Uint8Array}} RGBA pixel data
- */
+/** RGBA {width, height, data}. */
 export function extractRegion(pngBuf, rect) {
   const png = PNG.sync.read(pngBuf);
   const x0 = Math.max(0, Math.floor(rect.x));
@@ -184,24 +142,8 @@ export function extractRegion(pngBuf, rect) {
   return { width: w, height: h, data };
 }
 
-/**
- * Get the drum row cell region from the WASM page.
- * This is the area where step sequencer cells appear — below the timeline
- * header bar, spanning the x/width of the CELL GRID.
- *
- * Use cellGridRect, not timelineRect, for the horizontal span: the ribbon bar
- * is narrowed by header-only chrome (track/lock chip, len +/- buttons, mobile
- * row-zoom chips) while the cell grid fills the full width the timeline widget
- * dedicates to it. timelineRect is still the right rect for scrub/seek.
- *
- * The layout is:
- *   timelineRect (header: transport controls)
- *   rows area    (cells: rowsAreaHeight tall)
- *   EQ panel     (optional, eqH tall)
- *
- * @param {Page} page
- * @returns {Promise<{x: number, y: number, w: number, h: number}>}
- */
+/** Below the timeline header, spanning cellGridRect: the ribbon is narrowed by header-only chrome (lock chip, len ±,
+ * zoom chips) while the cells fill the full width. */
 export async function getDrumRowRegion(page) {
   const dbg = await page.evaluate(() => {
     if (typeof debugDrumLayout !== "function") return null;
@@ -209,8 +151,7 @@ export async function getDrumRowRegion(page) {
   });
 
   if (dbg) {
-    // debugDrumLayout gives us precise info. Prefer cellGridRect (the true
-    // cell span); fall back to timelineRect for older builds.
+    // cellGridRect is the true cell span; timelineRect for older builds.
     const tl = dbg.timelineRect;
     if (!tl || tl.w <= 0) {
       throw new Error(`Invalid timelineRect from debugDrumLayout: ${JSON.stringify(tl)}`);
@@ -240,13 +181,7 @@ export async function getDrumRowRegion(page) {
 
 // ─── Pixel Analysis (no external deps) ──────────────────────────────
 
-/**
- * Compute color channel variance across all pixels.
- * Flat uniform areas have near-zero variance; rendered content has high variance.
- * @param {Uint8Array} data RGBA pixel data
- * @param {number} pixelCount
- * @returns {{r: number, g: number, b: number, total: number}}
- */
+/** Flat areas are near zero; rendered content is high. */
 export function colorVariance(data, pixelCount) {
   if (pixelCount === 0) return { r: 0, g: 0, b: 0, total: 0 };
 
@@ -273,14 +208,7 @@ export function colorVariance(data, pixelCount) {
   return { r: varR, g: varG, b: varB, total: varR + varG + varB };
 }
 
-/**
- * Fraction of pixels that differ from a background color.
- * @param {Uint8Array} data RGBA pixel data
- * @param {number} pixelCount
- * @param {{r: number, g: number, b: number}} bgColor Background color
- * @param {number} [threshold=15] Distance threshold per channel
- * @returns {number} Ratio 0..1
- */
+/** threshold is the per-channel distance (default 15). Ratio 0..1. */
 export function nonBackgroundRatio(data, pixelCount, bgColor, threshold = 15) {
   if (pixelCount === 0) return 0;
   let count = 0;
@@ -293,12 +221,6 @@ export function nonBackgroundRatio(data, pixelCount, bgColor, threshold = 15) {
   return count / pixelCount;
 }
 
-/**
- * Count unique RGB colors in the region.
- * @param {Uint8Array} data RGBA pixel data
- * @param {number} pixelCount
- * @returns {number}
- */
 export function uniqueColorCount(data, pixelCount) {
   const seen = new Set();
   for (let i = 0; i < pixelCount; i++) {
@@ -308,11 +230,7 @@ export function uniqueColorCount(data, pixelCount) {
   return seen.size;
 }
 
-/**
- * Compute all analysis metrics for a region.
- * @param {{width: number, height: number, data: Uint8Array}} region
- * @returns {{variance: object, nonBgRatio: number, uniqueColors: number, pixelCount: number}}
- */
+/** {variance, nonBgRatio, uniqueColors, pixelCount}. */
 export function analyzeRegion(region) {
   const pixelCount = region.width * region.height;
   const bgColor = { r: 20, g: 20, b: 20 }; // Beatmo background
@@ -326,21 +244,11 @@ export function analyzeRegion(region) {
 
 // ─── Golden Image Comparison ─────────────────────────────────────────
 
-/**
- * Ensure the golden directory exists.
- */
 function ensureGoldenDir() {
   fs.mkdirSync(goldenDir, { recursive: true });
 }
 
-/**
- * Compare a screenshot against a golden baseline using pixelmatch.
- * If no golden exists, saves the current image as the baseline (bootstrap mode).
- * @param {string} name Base name (e.g. "desktop_1280x720")
- * @param {Buffer} pngBuf Current screenshot PNG buffer
- * @param {number} [threshold=0.1] pixelmatch color threshold (0..1)
- * @returns {{match: boolean, bootstrapped: boolean, diffCount: number, diffPct: number, diffPng: Buffer|null}}
- */
+/** With no golden, the current image becomes the baseline. threshold is pixelmatch's colour threshold (default 0.1). */
 export function compareWithGolden(name, pngBuf, threshold = 0.1) {
   ensureGoldenDir();
   const goldenPath = path.join(goldenDir, `${name}.png`);
@@ -383,41 +291,23 @@ export function compareWithGolden(name, pngBuf, threshold = 0.1) {
   return { match: diffPct < 0.5, bootstrapped: false, diffCount, diffPct, diffPng };
 }
 
-/**
- * Save a PNG buffer as a golden baseline (overwrite existing).
- * @param {string} name
- * @param {Buffer} pngBuf
- */
+/** Overwrites an existing one. */
 export function saveGolden(name, pngBuf) {
   ensureGoldenDir();
   fs.writeFileSync(path.join(goldenDir, `${name}.png`), pngBuf);
 }
 
-/**
- * Save a diff image for debugging.
- * @param {string} name
- * @param {Buffer} diffPng
- */
 export function saveDiffImage(name, diffPng) {
   ensureGoldenDir();
   fs.writeFileSync(path.join(goldenDir, `${name}.diff.png`), diffPng);
 }
 
-/**
- * Save a screenshot for diagnostic purposes (not a golden).
- * @param {string} name
- * @param {Buffer} pngBuf
- */
+/** Diagnostic, not a golden. */
 export function saveDiagnostic(name, pngBuf) {
   ensureGoldenDir();
   fs.writeFileSync(path.join(goldenDir, `${name}.png`), pngBuf);
 }
 
-/**
- * Encode region data back to PNG buffer for saving.
- * @param {{width: number, height: number, data: Uint8Array}} region
- * @returns {Buffer}
- */
 export function regionToPng(region) {
   const png = new PNG({ width: region.width, height: region.height });
   png.data = Buffer.from(region.data);
@@ -426,12 +316,7 @@ export function regionToPng(region) {
 
 // ─── Layout Snapshot ─────────────────────────────────────────────────
 
-/**
- * Capture the full layout snapshot from the WASM page.
- * Returns null if the export doesn't exist (backward compatibility before WASM rebuild).
- * @param {Page} page
- * @returns {Promise<object|null>}
- */
+/** null when the export does not exist. */
 export async function captureLayoutSnapshot(page) {
   return page.evaluate(() => {
     if (typeof fullLayoutSnapshot !== "function") return null;
@@ -441,10 +326,6 @@ export async function captureLayoutSnapshot(page) {
 
 // ─── Fixture Loading ─────────────────────────────────────────────────
 
-/**
- * Load the multi-row parity fixture into the page.
- * @param {Page} page
- */
 export async function loadMultiRowFixture(page) {
   const fixturePath = path.join(
     goDir,

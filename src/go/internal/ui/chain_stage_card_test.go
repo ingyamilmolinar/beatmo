@@ -13,8 +13,6 @@ import (
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
-// TestChainStageMiniWaveform_NoSamplesIsNoop: empty samples slice
-// must not draw anything.
 func TestChainStageMiniWaveform_NoSamplesIsNoop(t *testing.T) {
 	dst := ebiten.NewImage(100, 20)
 	rects := collectFilledRects(t, func() {
@@ -25,8 +23,6 @@ func TestChainStageMiniWaveform_NoSamplesIsNoop(t *testing.T) {
 	}
 }
 
-// TestChainStageMiniWaveform_DrawsForActiveSamples: a populated samples
-// slice must produce at least one filled rect inside the strip.
 func TestChainStageMiniWaveform_DrawsForActiveSamples(t *testing.T) {
 	dst := ebiten.NewImage(100, 20)
 	samples := make([]float64, 256)
@@ -59,8 +55,6 @@ func TestChainFXBadgeCount_HiddenWhenZero(t *testing.T) {
 	}
 }
 
-// TestChainFXBadgeCount_ShownWhenPositive: a positive count produces
-// at least one rect (the badge background).
 func TestChainFXBadgeCount_ShownWhenPositive(t *testing.T) {
 	dst := ebiten.NewImage(100, 30)
 	rects := collectFilledRects(t, func() {
@@ -71,9 +65,7 @@ func TestChainFXBadgeCount_ShownWhenPositive(t *testing.T) {
 	}
 }
 
-// TestChainInsertFXCountForActiveRow_RouterEmpty: with no active taps
-// the count returns 0, never calls audio.GetInsertEffects with empty
-// id.
+// 0 with no taps, never asking audio.GetInsertEffects for an empty id.
 func TestChainInsertFXCountForActiveRow_NoTaps(t *testing.T) {
 	if got := chainInsertFXCountForActiveRow(nil); got != 0 {
 		t.Errorf("nil state: got %d want 0", got)
@@ -84,15 +76,9 @@ func TestChainInsertFXCountForActiveRow_NoTaps(t *testing.T) {
 	}
 }
 
-// TestChainInsertFXCountForActiveRow_RoutesToAudioGetInsertEffects:
-// with an active TapA carrying an instID, the helper must consult
-// audio.GetInsertEffects. We add a real insert effect to verify the
-// count is non-zero.
+// A real insert effect, so the count comes from the audio layer.
 func TestChainInsertFXCountForActiveRow_ReadsAudioLayer(t *testing.T) {
 	const id = "chain-fxbadge-test"
-	// Add a delay effect via the audio API so GetInsertEffects returns
-	// a non-empty slice. This exercises the full path through the
-	// effect-chain manager.
 	if slot := audio.AddInsertEffect(id, audio.EffectDelay, nil); slot < 0 {
 		t.Fatalf("AddInsertEffect returned negative slot: %d", slot)
 	}
@@ -110,9 +96,7 @@ func TestChainInsertFXCountForActiveRow_ReadsAudioLayer(t *testing.T) {
 	}
 }
 
-// TestChainMiniWaveHeightScalesWithDensity — the per-stage mini-waveform
-// strip is density-driven (was a fixed 6px). At Spacious the painted trace
-// must span a taller region than at Compact, proving the token is consumed.
+// Density-driven, so Spacious spans a taller strip than Compact.
 func TestChainMiniWaveHeightScalesWithDensity(t *testing.T) {
 	samples := make([]float64, 200)
 	for i := range samples {

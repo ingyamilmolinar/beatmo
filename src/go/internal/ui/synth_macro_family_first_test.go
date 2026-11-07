@@ -9,13 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// On a config-first family instrument (snare, kick, hi-hat, tom, FM bass) the
-// gen-slot knobs ARE the voice; the generic modular stages a card also claims
-// (OSC, FM, unison, formant, LFO) ship switched off on those instruments. Each card
-// listed the generic names first, so the snare's Source card opened on Wave /
-// Octave / Algorithm / Op Ratios — knobs of stages that make no sound — and its
-// Generator came 23rd. The legacy instruments led with their family knob
-// (snare_wave first in Source); this restores that: family knobs first.
+// On a config-first family instrument the gen-slot knobs ARE the voice and the generic modular stages ship off, so
+// each card lists the family knobs first, not knobs of stages that make no sound.
 func TestFamilyKnobsLeadTheirCategoryCards(t *testing.T) {
 	for _, inst := range []instrument.ID{roster.Snare, roster.FmBass, roster.Hihat, roster.Tom} {
 		defs, merged := instSchemaForTest(t, inst)

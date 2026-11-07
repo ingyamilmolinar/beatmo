@@ -6,14 +6,8 @@ import (
 	"testing"
 )
 
-// TestDesktopRowLabelFitsLongName asserts the desktop instrument-name label
-// renders in full (no ellipsis clip) for a realistically long name.
-//
-// Regression guard for widening the left column (desktopProfile ColWeights
-// {1,3} -> {2,3} in layout_profile.go). The label flexes to fill col0 minus the
-// right-anchored control cluster (see layoutRowControls); at the old 25% column
-// it was squeezed to ~110px and clipped all but the shortest names. The 40%
-// column gives roughly triple the label area so full instrument names render.
+// A long name renders in full: the label fills col0 minus the right-anchored controls, and the wider column gives
+// it room.
 func TestDesktopRowLabelFitsLongName(t *testing.T) {
 	forceSmallScreenForTest = false
 	activeProfile = nil
@@ -23,16 +17,13 @@ func TestDesktopRowLabelFitsLongName(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(1280, 720)
 
-	// 20 characters — comfortably longer than any built-in name and well wider
-	// than the pre-change ~110px label could show, but inside the widened one.
+	// Longer than any built-in name.
 	const longName = "Sidechain Bass Pluck"
 	if len(g.drum.Rows) == 0 {
 		t.Fatal("expected at least one demo row")
 	}
 	g.drum.Rows[0].Name = longName
 
-	// Re-run layout so the rack picks up the new name and the col0 width feeds
-	// through to the per-row label rects.
 	g.drum.calcLayout()
 	if err := g.Update(); err != nil {
 		t.Fatalf("update: %v", err)
@@ -44,8 +35,7 @@ func TestDesktopRowLabelFitsLongName(t *testing.T) {
 	}
 	labelRect := groups[0].Label.Rect()
 
-	// The label Button clips text to Dx()-2*SpaceXS (Button.Draw ->
-	// clipTextToWidth). Full render requires the name to fit within that.
+	// Button.Draw clips to Dx() − 2·SpaceXS.
 	avail := labelRect.Dx() - 2*SpaceXS
 	need := TextWidth(longName)
 	if need > avail {

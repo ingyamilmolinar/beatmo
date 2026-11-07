@@ -1,13 +1,5 @@
-// Package vector is a test-only stub of github.com/hajimehoshi/ebiten/v2/vector.
-//
-// Real Ebiten ships the vector package as antialiased path rasterization;
-// under -tags test the project builds with a stub Ebiten that has no
-// rendering, so the vector helpers here are intentionally no-ops. The stub
-// exists to let test builds compile and run unit tests that exercise icon
-// dispatch logic without a real GL context.
-//
-// Signatures must match Ebiten v2.8.8 (the version pinned in go.mod). If
-// upstream changes a signature, this stub must follow.
+// Package vector stubs Ebiten's vector package for the -tags test build: no rendering, so its helpers are no-ops that
+// let icon-dispatch logic be tested without a GL context. Signatures must follow the Ebiten pinned in go.mod.
 package vector
 
 import (
@@ -56,9 +48,7 @@ type StrokeOptions struct {
 
 // ── Path (path builder) ────────────────────────────────────────────────
 
-// Path is a path builder. The real package accumulates subpaths; the stub
-// just records nothing — vertex/index appending returns the input slices
-// unchanged so callers see "no triangles to draw."
+// Records nothing: appending returns the input slices, so callers see no triangles.
 type Path struct{}
 
 // MoveTo starts a new subpath at (x, y). No-op in the stub.

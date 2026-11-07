@@ -12,9 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestInstMenuCategoryActiveTintsToCurrentInstrument verifies the instrument
-// picker's chrome (here, the active CATEGORY row stripe) tints to the picker's
-// owning instrument color (props.CurrentInstrument), not the fixed azure.
+// The picker's chrome takes its owning instrument's colour, not the fixed azure.
 func TestInstMenuCategoryActiveTintsToCurrentInstrument(t *testing.T) {
 	assertDefaultParityState(t)
 

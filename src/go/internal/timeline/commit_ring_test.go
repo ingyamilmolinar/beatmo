@@ -657,13 +657,10 @@ func TestCommitRingEnsureCapacityCorruptedKinds(t *testing.T) {
 	r.append(0, true, model.NodeTypeRegular, CommitKindPlayback)
 	r.append(1, false, model.NodeTypeSilent, CommitKindSeeded)
 
-	// Simulate a corrupted state: kinds/vals length mismatch.
-	// Truncate kinds to trigger the self-healing rebuild at the top of
-	// ensureCapacity.
+	// A kinds/vals length mismatch must self-heal at the top of ensureCapacity.
 	r.kinds = r.kinds[:1] // len(kinds)=1 != len(vals)=8
 
-	// This call should trigger the self-healing: `r.kinds = make([]CommitKind, len(r.vals))`
-	// then return early because capacity(16) > len(r.vals)=8 triggers the growth path.
+	// Rebuilds kinds, then takes the growth path (16 > 8).
 	r.ensureCapacity(16)
 
 	// After rebuilding, kinds should be properly sized.

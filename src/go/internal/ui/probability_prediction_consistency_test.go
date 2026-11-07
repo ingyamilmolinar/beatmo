@@ -200,8 +200,7 @@ func TestProbabilityWithEverySkip_WindowsMatchPrediction(t *testing.T) {
 		t.Fatalf("missing engine predictor")
 	}
 	g.engine.Predictor.Ensure(horizon)
-	// Sweep many windows (both rewind and forward relative to a base),
-	// skipping exact seam boundaries to avoid cosmetic seam masks.
+	// Exact seam boundaries are skipped: their masks are cosmetic.
 	g.nextBeatIdxs = []int{64}
 	seg := g.loopLenByRow[0]
 	start := g.loopStartByRow[0]

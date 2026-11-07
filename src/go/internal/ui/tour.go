@@ -2,22 +2,8 @@
 
 package ui
 
-// The showcase tour: a scripted walk through the real game, driven through the
-// real input path, that `make showcase-video` records for the landing page
-// (spec docs/superpowers/specs/2026-10-23-landing-page-design.md, "The
-// recording"). Desktop only (the !js tag keeps it out of main.wasm).
-//
-// Input: the tour owns the input.go function variables for its whole run
-// (SetInputForTest) and feeds one scripted frame per Update — a cursor
-// position, the left button and the wheel. Nothing calls a game setter; every
-// change the video shows is a tap, a drag or a wheel notch the normal
-// Game.Update handles.
-//
-// Recording: the master bus goes through the game's own desktop Rec path, and
-// every finished frame is piped as raw RGBA to an ffmpeg child at a constant
-// 25 fps of the RECORDING clock. A frame slot that passes without a new draw
-// repeats the previous frame, so picture and sound share one timeline by
-// construction; repeated slots are counted and reported.
+// Drives the real game through the real input path only (no setter calls), recording the master via the Rec path
+// and frames to ffmpeg at a constant 25 fps of the RECORDING clock; a slot without a draw repeats the last frame.
 
 import (
 	"context"
@@ -43,14 +29,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/theme"
 )
 
-// TourFPS is the recording's constant frame rate. 25, not 30: under xvfb's
-// software GL the game draws ~28 frames/s, so 30 repeated one slot in six
-// (measured 17-19%) while 25 keeps nearly every slot a fresh frame.
+// Not 30: under xvfb the game draws ~28 frames/s, so 30 repeated one slot in six.
 const TourFPS = 25
 
-// tourTemplateStem names the built-in template the tour plays (the techno
-// Korobeiniki arrangement). Only code ever sees this stem; the landing never
-// shows it.
+// Only code sees this stem; the landing never shows it.
 const tourTemplateStem = "tetris-techno"
 
 type tourFrame struct {
@@ -59,9 +41,7 @@ type tourFrame struct {
 	wheelY float64
 }
 
-// tourStep is one beat of the tour: an action (queued input frames), a dwell
-// measured from the step's start, and an optional caption that opens a
-// chapter on the landing page.
+// A caption opens a chapter on the landing page.
 type tourStep struct {
 	name    string
 	chapter string // chapter id; a step with a caption and a chapter starts a new caption cue
@@ -136,10 +116,8 @@ type tourRunner struct {
 	clock        func() float64 // test seam: replaces the wall/recording clock
 }
 
-// StartTour arms the scripted tour for the given cut ("desktop" | "phone").
-// recordDir == "" plays it live; otherwise it records into recordDir:
-// frames.mkv (lossless video), audio/<stamp>/master.wav, <cut>.vtt and
-// report.json. The process exits when the tour ends.
+// recordDir "" plays live; otherwise frames.mkv, master.wav, <cut>.vtt and report.json land there. The process exits
+// when the tour ends.
 func (g *Game) StartTour(cut, recordDir string) error {
 	steps, ok := tourScripts[cut]
 	if !ok {
@@ -150,18 +128,15 @@ func (g *Game) StartTour(cut, recordDir string) error {
 	}
 	r := &tourRunner{cut: cut, steps: steps, recordDir: recordDir, start: time.Now(), log: g.logger.Infof}
 	if recordDir != "" {
-		// The recorder reads every frame back itself, so it never needs the
-		// swap to wait for the display — and a compositor that thinks the
-		// window is hidden throttles that wait to ~1 Hz (2026-10-24: 81-94%
-		// repeated frames with vsync on).
+		// The recorder reads every frame back itself, and a compositor that thinks the window is hidden throttles vsync to
+		// ~1 Hz.
 		ebiten.SetVsyncEnabled(false)
 	}
 	g.tour = r
 	return nil
 }
 
-// now is the tour clock: the recording's elapsed time while recording (the
-// clock the video frames and the cue file are stamped with), else wall time.
+// The recording's clock while recording (it stamps frames and cues), else wall time.
 func (r *tourRunner) now() float64 {
 	if r.clock != nil {
 		return r.clock()
@@ -267,9 +242,7 @@ func (r *tourRunner) runAct(s tourStep, g *Game, t float64) {
 	}
 }
 
-// boot waits for the demo, imports the tour's template (programmatically — the
-// template menu would show its title), waits for the voices to warm up, then
-// starts recording.
+// Imported programmatically: the template menu would show its title.
 func (r *tourRunner) boot(g *Game) bool {
 	if !g.demoBuilt {
 		return false
@@ -289,8 +262,7 @@ func (r *tourRunner) boot(g *Game) bool {
 			r.err = fmt.Errorf("import template: %w", err)
 			return false
 		}
-		// The captions are English, so the recorded UI is too, whatever the
-		// machine's language (setup, like the import — never in the video).
+		// The captions are English, so the UI is too (setup, never in the video).
 		if i18n.ActiveLocale() != i18n.LocaleEN {
 			i18n.SetLocale(i18n.LocaleEN)
 		}
@@ -338,8 +310,6 @@ func (r *tourRunner) startRecording(g *Game) error {
 	return audio.StartRecording(audio.RecordingOptions{OutputDir: r.audioDir, BPM: g.drum.BPM(), Format: audio.FormatWAV16})
 }
 
-// frame writes the finished frame into every 1/TourFPS slot of the recording
-// clock that has elapsed since the last write.
 func (r *tourRunner) frame(g *Game, screen *ebiten.Image) {
 	if r.ffIn == nil || !r.booted {
 		return
@@ -369,14 +339,11 @@ func (r *tourRunner) frame(g *Game, screen *ebiten.Image) {
 	}
 }
 
-// tourFrameSlots is how many 1/TourFPS slots of the recording clock have
-// begun by t: slot k covers [k/TourFPS, (k+1)/TourFPS).
+// Slot k covers [k/TourFPS, (k+1)/TourFPS).
 func tourFrameSlots(t float64) int { return int(t*TourFPS) + 1 }
 
-// writeSlots brings the video up to `want` slots: the slots no draw arrived
-// in hold the PREVIOUS frame (what was on screen then), and the frame just
-// drawn (r.pix) goes into its own slot, the last — so a stall freezes the
-// picture and never shows a later frame early, ahead of its sound.
+// Missed slots hold the PREVIOUS frame and the new frame goes last, so a stall freezes the picture and never shows a
+// frame early, ahead of its sound.
 func (r *tourRunner) writeSlots(want int) error {
 	if r.prev == nil {
 		r.prev = make([]byte, len(r.pix))
@@ -413,8 +380,7 @@ func (r *tourRunner) closeCaption(t float64) {
 	}
 }
 
-// trackTheme opens a theme cue whenever the active preset changes, so the
-// landing recolours exactly when the video does.
+// So the landing recolours exactly when the video does.
 func (r *tourRunner) trackTheme(g *Game, t float64) {
 	id := effectiveTheme(g.userTheme, g.circuitTheme).Preset
 	if id == "" {
@@ -486,9 +452,7 @@ func (r *tourRunner) writeOutputs(end float64, res *audio.RecordingResult) error
 	if err := os.WriteFile(filepath.Join(r.recordDir, r.cut+".vtt"), []byte(vtt), 0o644); err != nil {
 		return err
 	}
-	// The mixer renders ahead of what is heard, so the WAV leads the picture.
-	// The song's first note is heard when the transport starts (beat0 on the
-	// video clock): delaying the audio by beat0 - firstOnset lines them up.
+	// The mixer renders ahead of what is heard, so the WAV leads; delaying by beat0 - firstOnset lines them up.
 	onset, err := firstOnsetSeconds(master, 0.02)
 	if err != nil {
 		return fmt.Errorf("measure audio onset: %w", err)
@@ -511,10 +475,7 @@ func (r *tourRunner) writeOutputs(end float64, res *audio.RecordingResult) error
 	return os.WriteFile(filepath.Join(r.recordDir, "report.json"), js, 0o644)
 }
 
-// vtt renders the cue file landing.js reads: one whole-length head cue with
-// the song's beat clock and every preset's resolved palette (read from the
-// live theme resolver, not hand-copied), then the caption and theme cues, each
-// a JSON payload.
+// The palettes come from the live theme resolver, never hand-copied.
 func (r *tourRunner) vtt(end float64) (string, error) {
 	head := tourCue{start: 0, end: end, payload: map[string]any{
 		"song":     map[string]any{"bpm": 60 / r.beatSec, "beat0": r.beat0},
@@ -536,8 +497,6 @@ func (r *tourRunner) vtt(end float64) (string, error) {
 	return b.String(), nil
 }
 
-// firstOnsetSeconds returns the time of the first sample of a 16-bit PCM WAV
-// whose magnitude exceeds frac of full scale.
 func firstOnsetSeconds(path string, frac float64) (float64, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -588,8 +547,7 @@ func tourPalettes() []map[string]any {
 		out = append(out, map[string]any{
 			"id": p.ID, "name": tourPresetName(p.ID),
 			"bg": hexRGB(tok["background"]), "acc": hexRGB(tok["primary"]),
-			// Six vivid slots (probed per preset: viz-wave-b, node-fill and
-			// edge-color resolve near the background and would vanish).
+			// viz-wave-b, node-fill and edge-color sit near the background in some presets and would vanish.
 			"cols": []string{hexRGB(tok["focus-ring"]), hexRGB(tok["viz-wave-a"]), hexRGB(tok["viz-bass"]), hexRGB(tok["primary"]), hexRGB(tok["viz-treble"]), hexRGB(tok["primary-bright"])},
 		})
 	}
@@ -613,8 +571,7 @@ func tourChapterLabel(id string) string {
 
 // ─── input primitives (queue frames; the next Updates replay them) ───
 
-// A real pointer always arrives before it presses: hover first, so handlers
-// that key on the previous frame's hover (the splitter, row dividers) see it.
+// Hover before press, so handlers keyed on last frame's hover (splitter, dividers) see it.
 const tourHoverFrames = 4
 
 func (r *tourRunner) tap(p image.Point) {
@@ -650,8 +607,7 @@ func (r *tourRunner) wheel(p image.Point, notches int, every int) {
 	}
 }
 
-// wheelSmooth zooms by `notchesPerFrame` detents a frame for `frames` frames
-// (a native detent is a ~0.5% zoom, so a visible zoom needs several a frame).
+// A native detent is ~0.5% zoom, so a visible zoom needs several per frame.
 func (r *tourRunner) wheelSmooth(p image.Point, notchesPerFrame float64, frames int) {
 	for i := 0; i < frames; i++ {
 		r.queue = append(r.queue, tourFrame{x: p.X, y: p.Y, wheelY: notchesPerFrame})

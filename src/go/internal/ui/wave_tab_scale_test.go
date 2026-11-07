@@ -47,9 +47,6 @@ func TestResolveWaveGainManualIgnoresAuto(t *testing.T) {
 	}
 }
 
-// TestWaveControlsAutoPillFires verifies the AUTO pill toggle fires. The Wave
-// tab now also carries a freeze pill — that is covered by
-// TestWaveControlsHasBothAutoAndFreeze (freeze_pause_play_test.go).
 func TestWaveControlsAutoPillFires(t *testing.T) {
 	autoToggled := false
 	c := newWaveControls(5,

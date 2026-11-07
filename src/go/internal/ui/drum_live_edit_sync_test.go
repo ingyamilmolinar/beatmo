@@ -6,10 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Complex live edits must keep DrumView window aligned with the sequencer:
-// - The current subdivision (nextBeatIdxs[row]-1) is inside the window
-// - The highlight exists for that absolute index
-// - The Steps cell under the highlight matches predictor.VisibleAt
+// The current subdivision stays inside the window, highlighted, and its cell matches predictor.VisibleAt.
 func TestLiveEdit_ComplexSequence_SyncWithSequencer(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)

@@ -73,8 +73,7 @@ func TestResetInstrumentChannels(t *testing.T) {
 	_ = InstrumentChannel(channel.Of("reset-b"))
 	chanMgr.ensureChannel(channel.Of("reset-a")).SetVolume(0.3)
 
-	// Set a sentinel master volume so the preservation check is independent of
-	// the fresh-session master default (0.5, see channelManager.reset).
+	// A sentinel independent of the session default.
 	chanMgr.main.SetVolume(0.7)
 
 	resetInstrumentChannels()

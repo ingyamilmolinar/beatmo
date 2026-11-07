@@ -12,8 +12,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// fontTestGame is a minimal Ebiten game that runs font rendering assertions
-// inside the game loop where GPU context is available for ReadPixels.
+// Assertions run inside the game loop, the only place ReadPixels has a GPU context.
 type fontTestGame struct {
 	fn  func() map[string][]string // returns test name → error messages
 	ran bool
@@ -31,22 +30,10 @@ func (g *fontTestGame) Update() error {
 func (g *fontTestGame) Draw(*ebiten.Image)         {}
 func (g *fontTestGame) Layout(int, int) (int, int) { return 320, 240 }
 
-// TestRenderTextSpriteVisibility verifies that renderTextSprite produces
-// visible text correctly positioned in the sprite image.
-//
-// This test catches a historical bug where an extra GeoM.Translate by
-// face.Metrics().HAscent pushed glyphs to the bottom of the sprite,
-// leaving only ~2px of anti-aliased edges visible. Ebiten's text/v2
-// already handles the ascent offset internally, so any additional
-// translate double-counts it.
-//
-// The test runs in a subprocess because ebiten.RunGame can only be called
-// once per process and poisons all subsequent NewImage calls. Running in
-// a subprocess prevents this from breaking other tests in the package.
+// Runs in a subprocess: ebiten.RunGame works once per process and poisons every later NewImage. text/v2
+// already applies the ascent, so an extra translate by HAscent pushes the glyphs to the bottom of the sprite.
 func TestRenderTextSpriteVisibility(t *testing.T) {
 	if os.Getenv("FONTCACHE_SUBPROCESS") != "1" {
-		// Re-exec this test in a subprocess so RunGame doesn't poison
-		// the parent process's Ebiten state.
 		cmd := exec.Command(os.Args[0], "-test.run=^TestRenderTextSpriteVisibility$", "-test.v")
 		cmd.Env = append(os.Environ(), "FONTCACHE_SUBPROCESS=1")
 		out, err := cmd.CombinedOutput()
@@ -105,8 +92,6 @@ func TestRenderTextSpriteVisibility(t *testing.T) {
 	}
 }
 
-// checkTextAboveMidpoint verifies that text rendered at the given size
-// has its topmost visible pixel in the upper half of the sprite.
 func checkTextAboveMidpoint(size float64) []string {
 	// Use "Ag" to exercise both ascender (A) and descender (g).
 	img := renderTextSprite("Ag", size, true)
@@ -146,8 +131,6 @@ found:
 	return nil
 }
 
-// checkTextCoversHeight verifies that rendered text occupies a meaningful
-// portion of its sprite height, not just a thin sliver at the edge.
 func checkTextCoversHeight(size float64) []string {
 	img := renderTextSprite("Hg", size, true)
 	if img == nil {
@@ -177,9 +160,7 @@ func checkTextCoversHeight(size float64) []string {
 
 	textH := botRow - topRow + 1
 	pct := float64(textH) / float64(h)
-	// Text should occupy at least 40% of the sprite height.
-	// With correct layout, "Hg" (ascender + descender) typically
-	// covers 70-90% of the allocated height.
+	// "Hg" spans ascender to descender, so a correct layout covers most of the sprite.
 	if pct < 0.4 {
 		return []string{fmt.Sprintf(
 			"text occupies %d/%d rows (%.0f%%); expected >= 40%% of sprite height",

@@ -8,12 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/objects"
 )
 
-// bundle.go — the audio bundle (spec 2026-10-31 §2.1, §2.5–2.6): every setting
-// on top of an instrument's sound — the Sampler edit, the EQ and the insert
-// chain. It is a VALUE over the stores live edits already write (sampleEdits,
-// the insert-chain manager, the EQ settings), read by CurrentAudioBundle and
-// written by ApplyAudioBundle; there is no second store. A nil / empty part is
-// absent.
+// Every setting on top of an instrument's sound (Sampler edit, EQ, insert chain): a VALUE over the stores live edits
+// already write, never a second store. A nil or empty part is absent.
 type AudioBundle struct {
 	SampleEdit *SampleEdit  `json:"sample_edit,omitempty"`
 	EQ         *EQSettings  `json:"eq,omitempty"`
@@ -51,8 +47,7 @@ func CurrentAudioBundle(id instrument.ID) AudioBundle {
 	return b.Normalized()
 }
 
-// ApplyAudioBundle writes b into id's stores and channel (import, undo, a
-// pick): an absent part clears what the store held.
+// An absent part clears what the store held.
 func ApplyAudioBundle(id instrument.ID, b AudioBundle) {
 	b = b.Normalized()
 	if b.SampleEdit != nil {
@@ -76,8 +71,6 @@ func effectSlotEqual(a, b EffectSlot) bool {
 	return objects.Digest(a) == objects.Digest(b)
 }
 
-// BundleMode is how a circuit's bundle for an instrument combines with the
-// instrument's own (spec §2.5).
 type BundleMode int
 
 const (
@@ -93,8 +86,7 @@ func (m BundleMode) String() string                { return enum.String(bundleMo
 func (m BundleMode) MarshalText() ([]byte, error)  { return enum.Marshal(bundleModeNames, m) }
 func (m *BundleMode) UnmarshalText(b []byte) error { return enum.Unmarshal(bundleModeNames, b, m) }
 
-// Effective is the bundle an instrument plays with in a circuit: the one
-// place the instrument's and the circuit's bundles combine.
+// The one place the instrument's and the circuit's bundles combine.
 func Effective(inst, circ AudioBundle, m BundleMode) AudioBundle {
 	inst, circ = inst.Normalized(), circ.Normalized()
 	switch m {

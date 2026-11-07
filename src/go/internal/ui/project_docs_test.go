@@ -38,8 +38,7 @@ func TestExportCarriesEditedDocument(t *testing.T) {
 	}
 }
 
-// An imported project's documents replace the session's copies (replace, not
-// merge): an instrument the file does not carry returns to its library entry.
+// An instrument the file does not carry returns to its library entry.
 func TestImportReplacesDocuments(t *testing.T) {
 	g := newDocsGame(t, roster.Kick, roster.Snare)
 	audio.SetInstrumentParam(roster.Kick, "post_decay", 0.9)

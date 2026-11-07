@@ -12,10 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// The ablation addendum only earns its place if it routes the axes that need
-// routing: exactly the MISMATCH rows, ranked, with "no stage moves it" said
-// out loud rather than left as a missing line a reader would read as "not
-// analysed".
+// Exactly the MISMATCH rows, ranked, with "no stage moves it" said out loud rather than a missing line.
 func TestPrintAblation_ListsOnlyMismatchAxesRanked(t *testing.T) {
 	d := instrumentDiagnosis{
 		Instrument: roster.Violin,
@@ -63,9 +60,7 @@ func TestPrintAblation_ListsOnlyMismatchAxesRanked(t *testing.T) {
 	if !strings.Contains(out, "does not sum") {
 		t.Errorf("the header must say the matrix is not a decomposition:\n%s", out)
 	}
-	// The numbers are floor-subtracted (a KindSeconds axis reads 1/mismatch,
-	// not 0, when compared with itself), so the header has to say what the
-	// scale's origin IS or a reader will take a raw Norm reading.
+	// Floor-subtracted (a KindSeconds axis compared with itself reads 1/mismatch), so the header must name the origin.
 	if !strings.Contains(out, "no-effect floor") {
 		t.Errorf("the header must name the no-effect floor:\n%s", out)
 	}

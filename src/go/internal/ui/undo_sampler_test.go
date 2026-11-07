@@ -8,19 +8,12 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// setupSamplerForUndo captures a synth-source buffer on row-0's instrument (a
-// real project row, so its sample_edit is exported) and lays out the Sampler
-// tab so the production knob/handle/button handlers are wired. Returns the
-// captured instrument id.
+// A real project row, so its sample_edit is exported; laid out so the production handlers are wired.
 func setupSamplerForUndo(t *testing.T, g *Game) string {
 	t.Helper()
 	instID := g.drum.Rows[0].Instrument
-	// Hermetic setup: sampleEdits is a package-global in internal/audio, so a
-	// prior test that Accepted a sampler-wheel edit (e.g. the WheelPopup Accept
-	// test) can leave a stale descriptor on this instrument — which the exported
-	// undo baseline reads even though the freshly-captured UI state is clean,
-	// desyncing doc↔UI and breaking the "undo reverts to a clean baseline" check.
-	// Clear it here (and on cleanup) so the undo tests are order-independent.
+	// sampleEdits is package-global in internal/audio: a stale descriptor from an earlier test would sit in the exported
+	// baseline while the UI reads clean. Cleared here and on cleanup so the tests are order-independent.
 	audio.ClearSampleEdit(instID)
 	t.Cleanup(func() { audio.ClearSampleEdit(instID) })
 	g.drum.sampler.captureFromSynth(instID)
@@ -40,11 +33,8 @@ func clickSamplerButton(t *testing.T, g *Game, tag string) {
 	btn.OnClick()
 }
 
-// samplerKnobRelease drives a knob to a new value and commits its single undo
-// step the way the ParamCard control does: a value change (applySamplerKnob)
-// followed by the debounced wheel-nudge commit (bump → flush = exactly one
-// commit). This mirrors samplerKnobHitAdapter.OnWheel's commit path now that the
-// card no longer drives an in-place rotary drag (OnRelease is a no-op).
+// A value change plus the debounced wheel commit (bump → flush = one commit), as the ParamCard does; the card has no
+// rotary drag.
 func samplerKnobRelease(t *testing.T, g *Game, idx int, value float64) {
 	t.Helper()
 	ks := g.drum.sampler.knobs
@@ -58,8 +48,7 @@ func samplerKnobRelease(t *testing.T, g *Game, idx int, value float64) {
 	dv.samplerWheelNudge.flush()
 }
 
-// samplerTrimHandleDrag drives the start trim handle through the production
-// handle adapter (press → release), the real "trim the signal" gesture.
+// Through the production handle adapter, the real trim gesture.
 func samplerTrimHandleDrag(t *testing.T, g *Game) {
 	t.Helper()
 	dv := g.drum
@@ -74,9 +63,7 @@ func samplerTrimHandleDrag(t *testing.T, g *Game) {
 	h.OnRelease(x, y)
 }
 
-// samplerNumericEntry sets an exact value on a knob through the production
-// value wheel (typed entry was retired): open the gain wheel, step it down six
-// detents (live), and Accept — one commit, one undo step.
+// Through the value wheel: six detents down live, then Accept, one commit and one step.
 func samplerNumericEntry(t *testing.T, g *Game) {
 	t.Helper()
 	dv := g.drum
@@ -91,12 +78,8 @@ func samplerNumericEntry(t *testing.T, g *Game) {
 	w.Accept()
 }
 
-// TestSamplerKnobWheelViaTreeIsUndoable is the end-to-end functional proof: it
-// drives a real desktop wheel nudge over the gain CARD through the PRODUCTION
-// input path (SetInputForTest → g.Update → HitIndex → samplerKnobHitAdapter.
-// OnWheel), lets the debounce elapse, then undoes it — asserting the gesture
-// changed the document, recorded exactly one step, and that Undo reverted BOTH
-// the document and the sampler UI state. Replaces the retired rotary-drag test.
+// A real desktop wheel nudge over the gain card through g.Update → HitIndex → samplerKnobHitAdapter.OnWheel; Undo
+// must revert both the document and the Sampler UI state.
 func TestSamplerKnobWheelViaTreeIsUndoable(t *testing.T) {
 	g := samplerLayoutGame(t) // 1280x720 to match the dispatchWheelAt window
 	setupSamplerForUndo(t, g)
@@ -116,13 +99,10 @@ func TestSamplerKnobWheelViaTreeIsUndoable(t *testing.T) {
 	g.undoManager.OnExternalLoad()
 	before := g.undoCapture()
 	depth0 := len(g.undoManager.undo)
-	// Baseline gain — compared against, not hardcoded to 0, so the test is robust
-	// to a prior test having saved a sample-edit on this instrument (global
-	// audio store); the invariant under test is "undo reverts to baseline".
+	// Compared against, not hardcoded to 0: the invariant is "undo reverts to baseline".
 	gainBefore := g.drum.sampler.gainDB
 
-	// A desktop wheel notch over the card nudges the value; the whole spin
-	// collapses into ONE debounced undo step (run the debounce down below).
+	// The whole spin collapses into ONE debounced step.
 	dispatchWheelAt(t, g, r.Min.X+4, r.Min.Y+4, +1)
 	if g.drum.sampler.gainDB == gainBefore {
 		t.Fatal("real sampler card wheel did not change samplerState.gainDB")
@@ -149,13 +129,9 @@ func TestSamplerKnobWheelViaTreeIsUndoable(t *testing.T) {
 	}
 }
 
-// TestUndoSamplerEditRevertsUIState reproduces the real-app bug: undo reverts the
-// exported document, but the Sampler tab's editing state (samplerState knobs /
-// trim / reverse) stayed edited because ensureSamplerLoaded preserves an
-// already-loaded instrument's in-progress edit and never re-seeds from the
-// restored document. So the knobs don't move back and the next gesture
-// re-applies the stale edit. After undo (+ the next layout) the UI state must
-// match the reverted document.
+// ensureSamplerLoaded keeps a loaded instrument's in-progress edit and never re-seeds from the restored document, so
+// after undo the knobs stayed put and the next gesture re-applied the stale edit; the UI state must match the
+// reverted document.
 func TestUndoSamplerEditRevertsUIState(t *testing.T) {
 	t.Run("gain-knob", func(t *testing.T) {
 		g := newSamplerTabGame(t)
@@ -206,10 +182,8 @@ func TestUndoSamplerEditRevertsUIState(t *testing.T) {
 	})
 }
 
-// TestUndoSamplerEditGestures proves every Sampler-tab edit gesture (trim,
-// knobs, reverse/normalize/fade, numeric entry) applies live to the exported
-// document and records exactly one reversible undo step per gesture. Each case
-// drives the REAL production handler.
+// Every gesture applies live to the exported document and records exactly one reversible step, through the real
+// handler.
 func TestUndoSamplerEditGestures(t *testing.T) {
 	cases := []struct {
 		name string

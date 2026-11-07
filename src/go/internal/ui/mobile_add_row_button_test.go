@@ -7,10 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// mobileAddRowFooterCommonSetup builds a Game in mobile portrait, lays it
-// out at iPhone 13 dimensions, and returns the DrumView so tests can poke
-// at the rack. All tests in this file share these dimensions so visible-row
-// math stays consistent.
+// iPhone 13 dimensions, shared so the visible-row maths stays consistent.
 func mobileAddRowFooterCommonSetup(t *testing.T) *Game {
 	t.Helper()
 	setupMobileTest(t, true)
@@ -21,13 +18,7 @@ func mobileAddRowFooterCommonSetup(t *testing.T) *Game {
 	return g
 }
 
-// TestMobileAddRowButton_VisibleAndFullWidth_NoRows verifies the add-row
-// footer button is rendered (non-empty rect) and spans most of the rack
-// panel width even when there are no extra rows beyond the default. The
-// add-row "+" now owns the bottom rack strip on its own — the row-zoom
-// +/- chips have moved to the timeline header band (next to the ruler).
-// We assert separately that the chips live inside the timeline widget
-// rect (not the rack rect).
+// The add-row button owns the bottom rack strip alone; the zoom chips live in the timeline header.
 func TestMobileAddRowButton_VisibleAndFullWidth_NoRows(t *testing.T) {
 	g := mobileAddRowFooterCommonSetup(t)
 	dv := g.drum
@@ -40,8 +31,6 @@ func TestMobileAddRowButton_VisibleAndFullWidth_NoRows(t *testing.T) {
 	if rackRect.Empty() {
 		t.Fatal("rack rect is empty; layout did not run")
 	}
-	// The add-row button alone must span ≥ half the rack now that the
-	// zoom chips no longer share the strip.
 	if btnRect.Dx() < rackRect.Dx()/2 {
 		t.Errorf("expected add-row button to span ≥ half of rack; got width=%d (rack width=%d)",
 			btnRect.Dx(), rackRect.Dx())
@@ -80,10 +69,7 @@ func TestMobileAddRowButton_VisibleAndFullWidth_NoRows(t *testing.T) {
 	}
 }
 
-// TestMobileAddRowButton_AlwaysVisible_ManyRows verifies the add-row footer
-// button stays visible and never overlaps any visible row, even when rows
-// exceed the visible window so the rack must scroll. This is the "always
-// space to use it" guarantee.
+// Always visible and never over a row, even when the rack scrolls.
 func TestMobileAddRowButton_AlwaysVisible_ManyRows(t *testing.T) {
 	g := mobileAddRowFooterCommonSetup(t)
 	dv := g.drum
@@ -119,9 +105,7 @@ func TestMobileAddRowButton_AlwaysVisible_ManyRows(t *testing.T) {
 	}
 }
 
-// TestMobileAddRowButton_HiddenInEQMode is a regression that the footer
-// button is suppressed (empty rect) while the mobile EQ bottom-sheet is
-// active, so the button does not bleed through the sheet.
+// Hidden under the EQ bottom sheet, so it does not bleed through.
 func TestMobileAddRowButton_HiddenInEQMode(t *testing.T) {
 	g := mobileAddRowFooterCommonSetup(t)
 	dv := g.drum
@@ -138,8 +122,6 @@ func TestMobileAddRowButton_HiddenInEQMode(t *testing.T) {
 	}
 }
 
-// TestMobileAddRowButton_ClickAddsRow verifies that the footer button is
-// functional on mobile: invoking it via the OnClick path appends a row.
 func TestMobileAddRowButton_ClickAddsRow(t *testing.T) {
 	g := mobileAddRowFooterCommonSetup(t)
 	dv := g.drum
@@ -161,11 +143,7 @@ func TestMobileAddRowButton_ClickAddsRow(t *testing.T) {
 	}
 }
 
-// TestMobileAddRowButton_BelowRowsArea verifies the add-row ghost row sits
-// one slot BELOW the last visible row — never over row content, and never
-// floating at the rack bottom with an empty strip above it (DESIGN.md "Row
-// control" → Add row). Combined with the no-overlap test above, this
-// guarantees the button has dedicated layout space.
+// One slot below the last visible row: never over content, never floating at the rack bottom.
 func TestMobileAddRowButton_BelowRowsArea(t *testing.T) {
 	g := mobileAddRowFooterCommonSetup(t)
 	dv := g.drum

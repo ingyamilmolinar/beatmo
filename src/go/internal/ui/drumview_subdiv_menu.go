@@ -4,13 +4,8 @@ import (
 	"fmt"
 )
 
-// buildSubdivMenu populates dv.subdivMenuBtns — the legacy hit-rect mirror used
-// by JS exports (subdivMenuItemRects / applySubdivValue) and tests. The actual
-// menu surface is rendered by dv.subdivMenuComp (drumview_overlay_subdiv_comp.go),
-// which positions its card via the shared AnchorPopupRect primitive. To keep the
-// reported rects in sync with what the user sees, this mirror reuses the
-// component's resolved button rects instead of recomputing a fixed offset (the
-// old fixed math placed the rects ~250px below the anchor over the EQ panel).
+// Mirrors the component's resolved button rects instead of recomputing them, so JS exports and
+// tests report what the user sees.
 func (dv *DrumView) buildSubdivMenu() {
 	dv.subdivMenuBtns = dv.subdivMenuBtns[:0]
 	if dv.subdivMenuComp == nil {
@@ -36,8 +31,6 @@ func (dv *DrumView) buildSubdivMenu() {
 	}
 }
 
-// atoiSafe parses a base-10 int, returning 0 on error (the subdiv labels are
-// always small positive integers, so this never legitimately fails).
 func atoiSafe(s string) (int, error) {
 	n := 0
 	for _, c := range s {

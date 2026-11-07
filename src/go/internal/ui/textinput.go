@@ -9,18 +9,10 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// AcceptTextRune is the input filter for free-text fields (e.g. instrument
-// names): it permits any printable Unicode rune — letters, marks, digits,
-// punctuation, symbols, and spaces across all scripts — so non-ASCII names
-// (é, ñ, 日本語) can be typed. Control characters are rejected. Numeric fields
-// keep the ASCII-only default instead (they set no Accept).
+// Any printable rune in any script, so non-ASCII names can be typed; numeric fields keep the ASCII default.
 func AcceptTextRune(r rune) bool {
-	// unicode.IsGraphic already rejects control (Cc) and format (Cf) runes —
-	// that excludes bidi overrides (U+202E), zero-width joiners, and the DEL
-	// control used as our forward-delete sentinel — while permitting letters,
-	// marks, digits, punctuation, symbols and spaces across all scripts. Reject
-	// the noncharacters and unpaired-surrogate range explicitly as belt-and-
-	// suspenders against pasted junk that some fonts choke on.
+	// IsGraphic rejects control and format runes (bidi overrides, zero-width joiners, the DEL sentinel); noncharacters
+	// and surrogates are refused too, against pasted junk fonts choke on.
 	if !unicode.IsGraphic(r) {
 		return false
 	}
@@ -33,11 +25,7 @@ func AcceptTextRune(r rune) bool {
 	return true
 }
 
-// textInputHardMaxRunes is an absolute defensive cap on the number of runes any
-// text input will hold, enforced even when MaxLen is unset (0). It bounds memory
-// and per-frame work against a pathological or malicious paste, independent of
-// each field's semantic MaxLen (rename 32, search 40, …) which is usually far
-// smaller. A single frame also never processes more than this many typed runes.
+// Bounds memory and per-frame work against a pathological paste even when MaxLen is 0.
 const textInputHardMaxRunes = 1024
 
 // TextInput is a reusable editable text box with cursor support.
@@ -50,8 +38,7 @@ type TextInput struct {
 	anim    float64
 	blink   int
 	repeat  map[ebiten.Key]int
-	// Optional per-field validation and constraints
-	// Accept, when non-nil, should return true if rune r is allowed.
+	// nil allows the default set.
 	Accept func(rune) bool
 	// MaxLen, when >0, caps the number of runes permitted in Text.
 	MaxLen int
@@ -61,19 +48,11 @@ type TextInput struct {
 	InputMode     string // "numeric", "text", etc. — passed to soft keyboard
 	prevFocused   bool   // tracks focus transitions
 	prevMouseDown bool   // tracks left-button press edges (re-focus on re-click)
-	// MobileInputID, when set, causes Draw() to skip rendering when the
-	// corresponding mobile native input is active (the native HTML <input>
-	// is visible instead).
+	// Draw skips while the native <input> covers the box.
 	MobileInputID string
-	// LogField, when non-empty, causes EventTextCommitted to be emitted on
-	// Enter/blur with Field=LogField and Value=the committed text. Leave
-	// empty (the default) for domain editors that emit their own event
-	// (instrument rename, BPM entry, search query).
+	// Leave empty for domain editors that emit their own event (rename, BPM, search).
 	LogField string
-	// PadLeft / PadRight reserve horizontal room inside the field for
-	// inline adornments (a leading search icon, a trailing clear button)
-	// without shrinking the field's visible background. Text, cursor, and
-	// the visible-text window all shift/shrink by these amounts.
+	// Room for inline adornments without shrinking the visible field.
 	PadLeft  int
 	PadRight int
 
@@ -83,9 +62,7 @@ type TextInput struct {
 	liveTick uint64 // registry tick of the last Update
 	listed   bool   // present in reg.fields
 
-	// TextColor, when non-nil, tints the readout glyphs. Nil keeps the default
-	// near-white sprite color. Used to calm the home-row BPM readout to the
-	// on-surface-muted grey without touching the shared default.
+	// nil keeps the default near-white.
 	TextColor color.Color
 }
 
@@ -94,8 +71,7 @@ func NewTextInput(r image.Rectangle, style TextInputStyle) *TextInput {
 	return &TextInput{Rect: r, Style: style, repeat: make(map[ebiten.Key]int)}
 }
 
-// FitWidth returns a box width that fits text (plus padding + caret margin),
-// never below minW. Shared sizing for inline editable boxes.
+// Never below minW.
 func FitWidth(text string, minW int) int {
 	const pad = 4
 	const caretMargin = 8
@@ -109,21 +85,15 @@ func FitWidth(text string, minW int) int {
 // Focused reports whether the input currently has focus.
 func (t *TextInput) Focused() bool { return t.focused }
 
-// SetFocus toggles focus programmatically. Used by the instrument
-// menu to hand focus to the search input on '/' and to release it
-// on Esc. OnFocusGained / OnFocusLost still fire on transitions in
-// the next Update() call so soft-keyboard wiring stays consistent.
+// OnFocusGained/Lost still fire on the next Update, so the soft-keyboard wiring stays consistent.
 func (t *TextInput) SetFocus(focus bool) {
 	t.focused = focus
 }
 
-// FocusForTest is a test-only helper that sets focus directly without
-// going through Update's mouse/key handling. Production code should
-// rely on SetFocus or natural mouse/key events.
+// Production uses SetFocus or real input.
 func (t *TextInput) FocusForTest(focus bool) { t.focused = focus }
 
-// effectiveMaxLen returns the rune cap actually enforced: the smaller of the
-// field's semantic MaxLen (when set) and the absolute defensive hard cap.
+// The smaller of MaxLen and the hard cap.
 func (t *TextInput) effectiveMaxLen() int {
 	if t.MaxLen > 0 && t.MaxLen < textInputHardMaxRunes {
 		return t.MaxLen
@@ -131,9 +101,7 @@ func (t *TextInput) effectiveMaxLen() int {
 	return textInputHardMaxRunes
 }
 
-// SetText sets the current text and resets the cursor to the end. The value is
-// truncated to effectiveMaxLen (so even an unbounded field can't be driven past
-// the hard cap); content filtering beyond length is left to the typing path.
+// Truncated to effectiveMaxLen; content filtering is the typing path's job.
 func (t *TextInput) SetText(s string) {
 	rs := []rune(s)
 	if m := t.effectiveMaxLen(); len(rs) > m {
@@ -147,8 +115,7 @@ func (t *TextInput) SetText(s string) {
 // Value returns the current text value.
 func (t *TextInput) Value() string { return t.Text }
 
-// CursorForTest returns the caret's rune index. Read-only observation seam
-// for tests and the instMenuSearchState debug export.
+// Read-only, for tests and the instMenuSearchState export.
 func (t *TextInput) CursorForTest() int { return t.cursor }
 
 // Update processes mouse/keyboard input.
@@ -167,9 +134,7 @@ func (t *TextInput) Update() bool {
 	}
 	mx, my := cursorPosition()
 	consumed := false
-	// Press edge: this frame the button went down (level → edge). Used to
-	// re-assert focus side effects (re-focus the soft-keyboard proxy) when the
-	// user re-clicks an ALREADY-focused box — see the focus-transition block.
+	// The press edge lets a re-click on a focused box re-assert focus.
 	mouseDownNow := isMouseButtonPressed(ebiten.MouseButtonLeft) && !skipClick
 	pressEdge := mouseDownNow && !t.prevMouseDown
 	t.prevMouseDown = mouseDownNow
@@ -181,8 +146,6 @@ func (t *TextInput) Update() bool {
 			t.anim = 1
 			_, start := t.visibleText()
 			rel := mx - (t.Rect.Min.X + 4 + t.PadLeft)
-			// Walk runes from start, accumulating TextWidth, to find
-			// which character position the click falls on.
 			rs := []rune(t.Text)
 			idx := start
 			accW := 0
@@ -213,14 +176,8 @@ func (t *TextInput) Update() bool {
 			t.OnFocusGained()
 		}
 	} else if t.focused && clickedInside {
-		// Re-click on an already-focused box: the physical canvas click blurs the
-		// hidden soft-keyboard proxy (browser focus moves to the canvas), and with
-		// no focus transition OnFocusGained wouldn't otherwise re-fire — the box
-		// would silently drop to the lossy ebiten keyboard path (dropped Arrow /
-		// Backspace pressed+released between two slow frames). Re-assert focus so
-		// the proxy recaptures the keyboard. Gated to the press EDGE because
-		// OnFocusGained (softKeyboardShow) clears the proxy's char buffer; firing
-		// it every held frame would wipe pending keystrokes.
+		// A re-click blurs the hidden proxy (focus moves to the canvas) with no transition to re-fire OnFocusGained,
+		// dropping the box to the lossy keyboard path. Press edge only: OnFocusGained clears the proxy buffer.
 		if t.OnFocusGained != nil {
 			t.OnFocusGained()
 		}
@@ -246,16 +203,8 @@ func (t *TextInput) Update() bool {
 		t.blink = 0
 	}
 
-	// Caret navigation is applied BEFORE the character/backspace drain below.
-	// When a slow frame batches several key events together, a "move caret then
-	// edit" gesture (ArrowLeft… then type; ArrowRight… then Backspace) must land
-	// in the right order — editing at the freshly-moved caret, not the stale one.
-	// The keyRepeat path covers native (the canvas receives the keydown); the
-	// consumeSoftKeyboardArrow* path covers WASM, where the hidden proxy holds
-	// keyboard focus and forwards Arrow keys out-of-band. Those return a COUNT
-	// (not a flag) so several presses coalesced into one frame each move the caret
-	// instead of collapsing to one. keyRepeat is evaluated every frame regardless
-	// (it tracks per-key repeat state).
+	// Caret moves apply BEFORE the edit drain so a batched "move then edit" lands at the moved caret; the counts let
+	// several coalesced presses each move. keyRepeat runs every frame to keep its state.
 	leftMoves := consumeSoftKeyboardArrowLeft()
 	if t.keyRepeat(ebiten.KeyLeft) {
 		leftMoves++
@@ -272,13 +221,7 @@ func (t *TextInput) Update() bool {
 		t.cursor++
 	}
 
-	// Home / End jump the caret to the string bounds. Absolute moves, so they
-	// are applied after the relative arrow moves; when both fire in one batched
-	// frame the later assignment wins (harmless — both are idempotent). Native
-	// receives the keydown via keyRepeat; WASM forwards Home/End out-of-band
-	// through the proxy (the hidden input holds focus) via consumeSoftKeyboard*.
-	// keyRepeat is evaluated unconditionally (never short-circuited) so its
-	// per-key repeat state stays maintained every frame — matching the arrows.
+	// After the relative moves; the later jump wins (both idempotent). keyRepeat runs unconditionally to keep its state.
 	homeJumps := consumeSoftKeyboardHome()
 	if t.keyRepeat(ebiten.KeyHome) {
 		homeJumps++
@@ -294,8 +237,7 @@ func (t *TextInput) Update() bool {
 		t.cursor = utf8.RuneCountInString(t.Text)
 	}
 
-	// Gather input characters: prefer soft keyboard when active (mobile),
-	// fall back to Ebiten's InputChars() (desktop/hardware keyboard).
+	// The soft keyboard when active, else Ebiten's InputChars().
 	var chars []rune
 	if softKeyboardActive() {
 		skChars := softKeyboardDrainChars()
@@ -314,8 +256,7 @@ func (t *TextInput) Update() bool {
 	} else {
 		chars = inputChars()
 	}
-	// Defensive bound: never process more than the hard cap of typed runes in a
-	// single frame, so a pathological paste can't spin the insert loop.
+	// A pathological paste cannot spin the insert loop.
 	if len(chars) > textInputHardMaxRunes {
 		chars = chars[:textInputHardMaxRunes]
 	}
@@ -349,11 +290,7 @@ func (t *TextInput) Update() bool {
 			return true
 		}
 	}
-	// Treat Enter as commit even when it is not part of InputChars().
-	// Note: do NOT call emitTextCommitted here. Setting focused=false causes
-	// the blur-transition branch (line ~151) to fire on the next Update() frame,
-	// which is the sole emitter for EventTextCommitted. Emitting here would
-	// produce a double-emit (Enter frame + blur frame).
+	// No emit here: the blur branch next Update is the sole EventTextCommitted emitter, or it would fire twice.
 	if t.focused && isKeyPressed(ebiten.KeyEnter) {
 		t.focused = false
 		return true
@@ -369,8 +306,7 @@ func (t *TextInput) Update() bool {
 	return consumed
 }
 
-// deleteBackward removes the rune before the caret (Backspace) and moves the
-// caret left. No-op at the start of the string.
+// No-op at the start.
 func (t *TextInput) deleteBackward() {
 	if t.cursor <= 0 {
 		return
@@ -381,8 +317,7 @@ func (t *TextInput) deleteBackward() {
 	t.cursor--
 }
 
-// deleteForward removes the rune at the caret (Delete). The caret does not move.
-// No-op at the end of the string.
+// The caret stays; no-op at the end.
 func (t *TextInput) deleteForward() {
 	if t.cursor >= utf8.RuneCountInString(t.Text) {
 		return
@@ -393,10 +328,7 @@ func (t *TextInput) deleteForward() {
 }
 
 func (t *TextInput) keyRepeat(k ebiten.Key) bool {
-	// Consistent, smooth repeat across all text inputs:
-	// - First press fires immediately
-	// - Initial delay ~24 frames (~400ms at 60fps)
-	// - Then repeat at a fixed interval of 6 frames (~10Hz)
+	// One repeat cadence for every text input: immediate, ~400 ms delay, then ~10 Hz.
 	const delay = 24
 	const interval = 6
 	if isKeyPressed(k) {
@@ -514,8 +446,7 @@ var drawCursor = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	drawRect(dst, r, col, true)
 }
 
-// min and max remain for compatibility with other widgets that may override
-// drawCursor; keep them exported locally to avoid import cycles.
+// Local, to avoid an import cycle.
 func min(a, b int) int {
 	if a < b {
 		return a

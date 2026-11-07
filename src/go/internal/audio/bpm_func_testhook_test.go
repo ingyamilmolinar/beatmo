@@ -4,9 +4,7 @@ package audio
 
 import "testing"
 
-// TestSetBPMFuncForTestRoundTrip verifies that SetBPMFuncForTest installs the
-// provided callback and that nil resets it to a safe no-op (avoiding nil
-// dereferences in callers that always invoke the hook via SetBPM).
+// nil restores a safe no-op, since SetBPM always invokes the hook.
 func TestSetBPMFuncForTestRoundTrip(t *testing.T) {
 	prev := BPMFuncForTest()
 	t.Cleanup(func() { SetBPMFuncForTest(prev) })

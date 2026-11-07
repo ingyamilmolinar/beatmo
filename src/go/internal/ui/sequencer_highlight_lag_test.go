@@ -6,9 +6,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Regression: if the UI playhead (nextBeatIdxs) lags the global playhead,
-// late-but-ordered highlights should still advance the UI instead of being
-// dropped by a past-boundary check that is too aggressive.
+// When the UI playhead lags, late but ordered highlights must still advance it, not be dropped by an
+// over-eager past check.
 func TestApplySequencerHighlight_AllowsCatchUpWhenUIBehind(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

@@ -9,9 +9,7 @@ import (
 	"runtime/pprof"
 )
 
-// maybeStartPprofServer starts the net/http pprof server on localhost:6060 when
-// PPROF=1 is set. Desktop-only: the browser build gets a no-op (profiling_js.go)
-// so net/http + crypto/tls never enter the WASM binary.
+// A no-op in the browser build, so net/http + crypto/tls never enter the WASM binary.
 func maybeStartPprofServer() {
 	if os.Getenv("PPROF") != "1" {
 		return

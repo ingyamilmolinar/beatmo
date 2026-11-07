@@ -9,10 +9,8 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// These tests pin the bounded dirty-rebuild optimization: a node-param edit must
-// NOT cost O(windowStart) (session length). The cost was the deterministic root
-// cause of "choppy when I add node rules" (see internal/audio node-logic cost
-// table). The optimization must be byte-identical to the full re-walk.
+// A node-param edit must NOT cost O(windowStart) (it starved the scheduler mid-song), and the bounded rebuild must be
+// byte-identical to the full re-walk.
 
 func buildRebuildCircuit(t *testing.T, profile string) (*Predictor, *model.Graph, model.NodeID) {
 	t.Helper()
@@ -119,9 +117,7 @@ func TestDirtyRebuildEquivalentToFullWalk(t *testing.T) {
 	}
 }
 
-// TestDirtyRebuildBoundedByWindowCap: rebuild cost must NOT scale with session
-// length. Pre-optimization it was ~14-18x from windowStart 4096→131072; bounded
-// it should be roughly flat.
+// Rebuild cost must stay roughly flat with session length.
 func TestDirtyRebuildBoundedByWindowCap(t *testing.T) {
 	const reps = 9
 	timeRebuild := func(ws int) time.Duration {

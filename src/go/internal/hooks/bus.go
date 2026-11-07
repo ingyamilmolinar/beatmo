@@ -9,14 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/async"
 )
 
-// Bus is a non-blocking pub/sub event bus. Publish never blocks: each
-// subscriber callback runs as a separate job on the bus's async.Pool. If
-// the pool is saturated the event is dropped (counted, never blocks the
-// publisher).
-//
-// Bus is safe for concurrent use from any goroutine. Subscribers must
-// not assume any particular ordering across kinds and must not block
-// indefinitely; the pool is bounded.
+// Publish never blocks: each subscriber runs as a job on the bus's pool, and a saturated pool drops (counted).
+// Subscribers must not assume ordering across kinds or block indefinitely.
 type Bus struct {
 	pool *async.Pool
 
@@ -43,10 +37,7 @@ type Options struct {
 	Name string
 }
 
-// NewBus constructs a standalone Bus with its own internal async.Pool.
-// Used by tests and any caller that wants isolation from the process-
-// wide registry. Production code should call GlobalBus instead so all
-// fan-out work counts against a single budget.
+// A standalone pool, for isolation; production uses GlobalBus, so fan-out counts against the one budget.
 func NewBus(parent context.Context, opts Options) *Bus {
 	if opts.PoolWorkers <= 0 {
 		opts.PoolWorkers = 4
@@ -92,9 +83,7 @@ func newRegistryBus(opts Options) *Bus {
 		OnDrop:        func(string) { b.dropped.Add(1) },
 	})
 	if err != nil {
-		// Registry budget exhausted — fall back to a private pool so the
-		// bus still functions (we don't want to silently drop hooks just
-		// because some other subsystem hogged the budget).
+		// Budget exhausted: a private pool, so hooks are never silently dropped.
 		pool = async.NewPool(context.Background(), async.Options{
 			MaxConcurrent: opts.PoolWorkers,
 			QueueSize:     opts.PoolQueue,
@@ -165,17 +154,12 @@ func (b *Bus) Publish(e Event) {
 	}
 }
 
-// PublishKind is a convenience for Publish(Event{Kind: k, Payload: payload}).
-// The resulting Event carries no Source; use PublishWithSource from the emit
-// helpers in internal/ui/event_helpers.go when source attribution is wanted.
+// No Source: the emit helpers use PublishWithSource when attribution is wanted.
 func (b *Bus) PublishKind(k Kind, payload any) {
 	b.Publish(Event{Kind: k, Payload: payload})
 }
 
-// PublishWithSource is the source-aware variant of PublishKind. The src
-// argument is typically captured at the call site of an emit helper via
-// captureSource (see internal/hooks/source.go); the resulting Event carries
-// the originating user-code file:line through the bus to subscribers.
+// src is captured at the emit helper's call site, so the originating file:line reaches subscribers.
 func (b *Bus) PublishWithSource(k Kind, payload any, src Source) {
 	b.Publish(Event{Kind: k, Payload: payload, Source: src})
 }
@@ -204,19 +188,13 @@ func (b *Bus) Close() error {
 	return b.pool.Close()
 }
 
-// globalBus is the process-wide bus, created lazily so libraries that
-// don't construct one don't pay for an idle pool. Most callers should use
-// the package-level Publish/Subscribe helpers.
+// Lazy, so a library that never publishes pays for no idle pool.
 var (
 	globalBusOnce sync.Once
 	globalBus     *Bus
 )
 
-// GlobalBus returns the lazily-initialized process-wide Bus. Its
-// fan-out pool is sourced from async.DefaultRegistry so the bus's
-// workers count against the same global budget as recording and
-// eventstream — the system never spawns more goroutines than the
-// registry budget allows.
+// Its fan-out pool comes from async.DefaultRegistry, the same budget as everything else.
 func GlobalBus() *Bus {
 	globalBusOnce.Do(func() {
 		globalBus = newRegistryBus(Options{Name: "hooks.fanout"})

@@ -2,19 +2,9 @@
 
 package main
 
-// session_tuned.go -- what `make ab-tuned` plays.
-//
-// `refs tune` scores a candidate against a recording loaded the way `refs
-// match` loads it (onset-trimmed, capped with a faded cut) and a voice held as
-// long as that recording sounds (synthmatch.VoiceBPMFor), at the pitch the
-// shipped voice sounds closest at. The listener must hear exactly that. The
-// generic compare render (renderSessionClips) plays every voice at 120 BPM --
-// a 1 s oboe against a 2 s recording, then digital silence -- and the
-// catalogue clip cut hard at its trim, so the first ab-tuned round played
-// sounds nobody had tuned: chopped voices against a clicking reference.
-//
-// clipFaults / holdFault are the listening contract every written clip is
-// checked against before it is played; a fault is printed, never hidden.
+// The listener must hear exactly what refs tune scored: the recording loaded as refs match loads it and a voice held as
+// long as it sounds, at the search pitch. The generic compare render plays each voice at its shipped length and the
+// catalogue clip cut hard at its trim: chopped voices against a clicking reference. Every clip is checked first.
 
 import (
 	"encoding/json"
@@ -76,8 +66,7 @@ func loadTuneMeta(dir string) (tuneMeta, error) {
 	return m, nil
 }
 
-// maxSec is the window the search heard; a meta written before it was
-// recorded used the -max-sec default.
+// A meta from before it was recorded used the -max-sec default.
 func (m tuneMeta) maxSec() float64 {
 	if m.MaxSec > 0 {
 		return m.MaxSec
@@ -85,8 +74,7 @@ func (m tuneMeta) maxSec() float64 {
 	return adoptMaxSecDefault
 }
 
-// searchPitch is the pitch the search scored the candidate at on refID (nil
-// in a run that predates it: the shipped voice's pitch, as then).
+// nil in a run that predates it: the shipped voice's pitch.
 func (m tuneMeta) searchPitch(refID string) *float64 {
 	for _, r := range m.Records {
 		if r.Ref == refID || r.Recording == refID {
@@ -113,13 +101,8 @@ type tunedAudition struct {
 	Faults []string
 }
 
-// renderTunedAudition writes R, C and T for inst against the recording at
-// refPath. Each comes from the tuner's own code: newTuneRec (the recording
-// as the search heard it), settlePitch (the search pitch), matchTarget.eval
-// / evalDoc (the held, onset-trimmed voice the essence was measured on).
-// T plays at candPitch, the search pitch recorded in meta.json (nil: the
-// shipped voice's, as every run before From). The clips are then
-// level-matched like every compare set and checked.
+// R, C and T from the tuner's own code (newTuneRec, settlePitch, matchTarget.eval / evalDoc); T at candPitch from
+// meta.json. Then level-matched and checked.
 func renderTunedAudition(inst instrument.ID, cand instrument.Doc, refPath, refID string, maxSec float64, candPitch *float64) (tunedAudition, error) {
 	tmp, err := os.MkdirTemp("", "beatmo-ab-tuned-*")
 	if err != nil {
@@ -146,9 +129,7 @@ func renderTunedAudition(inst instrument.ID, cand instrument.Doc, refPath, refID
 		return tunedAudition{}, err
 	}
 
-	// The search judged each clip between its trims; the listener must not
-	// hear a trim as a click -- the onset trim cuts a slow rise, and the
-	// catalogue clip itself can end mid-note.
+	// The listener must not hear a trim as a click: the onset trim cuts a slow rise, and the catalogue clip can end mid-note.
 	waves := [3]wave.Wave{
 		listeningCopy(wave.Wave{Samples: rec.w.Samples, SampleRate: rec.w.SampleRate, Label: refID}),
 		listeningCopy(cur.w), listeningCopy(tc.w),
@@ -208,20 +189,12 @@ func listeningCopy(w wave.Wave) wave.Wave {
 
 // ---- level ------------------------------------------------------------------
 
-// clipHeadroom is the true-peak ceiling of every clip the session writes:
-// -1 dBTP, the broadcast margin that survives the resampling between the
-// file and the DAC (PipeWire plays these 44.1 kHz clips at 48 kHz).
+// -1 dBTP survives the resampling between file and DAC (PipeWire plays these 44.1 kHz clips at 48 kHz).
 var clipHeadroom = math.Pow(10, -1.0/20)
 
-// tunedLevelGains is the level plan of a tuned audition (rms[0] and
-// truePeaks[0] are the recording's): the VOICES are brought to the
-// recording's loudness and the recording keeps its own level -- the reference
-// the listener hears is the WAV itself. The compare plan meets at the average
-// instead, which raised a quiet recording (the oboe +15.6 dB) together with
-// its hiss and room tone, up to a 0.99 sample peak the DAC then clipped
-// between samples. When a voice would breach the headroom, the whole set is
-// lowered together (clampFamilyGains): the recording may get quieter, never
-// louder.
+// The VOICES come to the recording's loudness and the recording keeps its own: meeting at the average raised a quiet
+// recording with its hiss to a peak the DAC clipped. A breach lowers the whole set together, so the recording may get
+// quieter, never louder.
 func tunedLevelGains(rms, truePeaks []float64) []float64 {
 	g := make([]float64, len(rms))
 	for i, r := range rms {
@@ -233,10 +206,8 @@ func tunedLevelGains(rms, truePeaks []float64) []float64 {
 	return clampFamilyGains(g, truePeaks, clipHeadroom)
 }
 
-// truePeak is the peak of the wave the samples describe, not of the samples:
-// 4x oversampled through a Hann-windowed sinc (the ITU-R BS.1770 method), so
-// a peak that falls between two samples -- which the DAC and every
-// resampler reconstruct -- is seen.
+// 4x oversampled through a Hann-windowed sinc (ITU-R BS.1770), so a peak between two samples, which the DAC
+// reconstructs, is seen.
 func truePeak(s []float64) float64 {
 	const taps = 16 // each side
 	var peak float64
@@ -281,9 +252,7 @@ const (
 	// faultHeldDB: a sound "holds" while it is within this of its loudest
 	// faultEnvSec window.
 	faultHeldDB = -20.0
-	// faultSilentDB / faultCutSec: reaching digital silence this fast is a
-	// gate, not a decay (a dry snare loses 36-75 dB in 200 ms and keeps
-	// ringing below that; the 120 BPM gate fell to -240 dB).
+	// A gate, not a decay: a dry snare loses tens of dB in 200 ms and keeps ringing below that.
 	faultSilentDB = -120.0
 	faultCutSec   = 0.2
 	faultEnvSec   = 0.05
@@ -353,13 +322,8 @@ func firstAbove(s []float64, thr float64) int {
 	return len(s)
 }
 
-// holdFault reports a voice that is CUT while the recording it imitates still
-// holds its note -- the 1 s voice gated against a 2 s oboe: within
-// faultCutSec it falls from within faultHeldDB of its loudest to digital
-// silence (faultSilentDB), while the recording stays within faultHeldDB of
-// its own loudest across that whole fall. A voice that DECAYS faster than the
-// recording -- a pluck tuned shorter, a dry drum against a live room -- is
-// timbre for the listener to judge, not a broken clip.
+// A voice CUT while the recording still holds its note (falls to digital silence within faultCutSec). A voice that
+// merely DECAYS faster is timbre for the listener to judge, not a broken clip.
 func holdFault(key string, ref, voice wave.Wave) string {
 	re, ve := envelopeDB(ref), envelopeDB(voice)
 	span := int(math.Round(faultCutSec / faultEnvSec))

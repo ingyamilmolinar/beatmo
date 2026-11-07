@@ -111,9 +111,7 @@ console.log("Test 1: Touch scroll instrument list");
   }
 }
 
-// Test 2: Touch drag on instrument list does NOT close menu (scroll, not select)
-// This is the core behavior being fixed: dragging on an instrument should
-// scroll the list, not select the instrument.
+// Test 2: dragging on an instrument must scroll the list, not select it.
 console.log("Test 2: Touch drag on instrument does not select");
 {
   const { context, page } = await setupMobilePage();

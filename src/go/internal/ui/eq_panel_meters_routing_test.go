@@ -1,9 +1,7 @@
 //go:build test
 
-// Routing test for Phase 2A + 2B. Locks the Meters-tab path to the
-// scalar-only AnalyzerMetricsOnly callback so a regression that
-// reroutes it through the heavy AnalyzerState path immediately fails
-// the per-Draw expectation.
+// Meters must use the scalar-only AnalyzerMetricsOnly path; the heavy AnalyzerState path was the long-session
+// OOM.
 
 package ui
 
@@ -14,10 +12,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 )
 
-// TestMetersTabRoutesThroughMetricsOnly verifies EQPanelZone.Draw on
-// TabMeters calls AnalyzerMetricsOnly and never AnalyzerState. This is
-// the contract the long-session OOM fix depends on: routing TabMeters
-// back through the heavy path would resurrect the leak.
 func TestMetersTabRoutesThroughMetricsOnly(t *testing.T) {
 	withDefaultAudio(t)
 	withDefaultStart(t, false)
@@ -65,10 +59,7 @@ func TestMetersTabRoutesThroughMetricsOnly(t *testing.T) {
 	}
 }
 
-// TestNonMetersTabsRouteThroughAnalyzerState verifies the OTHER tabs
-// (Wave, Spectrum) keep using the full AnalyzerState builder. Asserts
-// the Phase 2A change didn't accidentally drop slice data needed by
-// non-Meters renderers.
+// Wave and Spectrum keep the full builder, which holds the slice data they need.
 func TestNonMetersTabsRouteThroughAnalyzerState(t *testing.T) {
 	withDefaultAudio(t)
 	withDefaultStart(t, false)

@@ -11,15 +11,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// TestMobileTransportNoVolViewMenuCaptions guarantees the mobile transport
-// bar never renders the "Vol", "View", or "Menu" text captions that used
-// to overlap the corresponding icon buttons on the secondary row. The
-// captions were deleted because they overlapped their icons in tight
-// cells; this test prevents reintroduction.
-//
-// The test exploits the fact that text rendering in this package is
-// routed through TextSprite(), which caches by exact string. Any text
-// drawn during the transport render lands as a key in textSprites.
+// The captions overlapped their icons in tight cells. Every string drawn goes through TextSprite's cache, so its
+// keys show what was rendered.
 func TestMobileTransportNoVolViewMenuCaptions(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true

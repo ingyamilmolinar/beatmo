@@ -196,12 +196,8 @@ func inModule(pkgPath, module string) bool {
 	return pkgPath == module || strings.HasPrefix(pkgPath, module+"/")
 }
 
-// computeDepths returns, for each function in the call graph, the number of
-// distinct strongly-connected components on the longest downstream path starting
-// at that function (a cycle collapses to a single component). It is deterministic
-// — independent of Go map iteration order — via Tarjan SCC condensation followed
-// by longest-path over the resulting DAG. A leaf (or a lone self-recursive
-// function) has depth 1.
+// computeDepths counts the strongly-connected components on the longest downstream path from each function (a cycle is
+// one), via Tarjan condensation then longest path, so it never depends on map order. A leaf has depth 1.
 func computeDepths(callees map[string]map[string]bool) map[string]int {
 	// Collect all nodes (callers and callees), deterministically ordered.
 	nodeSet := map[string]bool{}

@@ -1,21 +1,7 @@
 package ui
 
-// synth_view_plot.go builds the GEOMETRY of a Synth-tab graph view — lines,
-// filled bands, ticks, markers, labels and the two readouts — from analysed
-// renders (specs docs/superpowers/specs/2026-10-24-synth-graphs-and-devtools-design.md §4.4,
-// 2026-10-25-synth-dial-relevance-and-cheap-graphs-design.md §3.3).
-//
-// Pure: no Ebiten, no draw calls. synth_view_draw.go paints a viewPlot; tests
-// and the honesty guard (TestEveryControlMovesItsGraph) measure it, so "the
-// graph moved" is a statement about the same geometry the user sees.
-//
-// Rules shared by every view: TRUE SCALE (no per-render gain — the played
-// voice is drawn at its played level), ONE axis for NOW and every ghost, and
-// the axes come from the renders on screen, not from the control's value, so
-// a turned control moves the curve, never the frame around it. Every view
-// says what it shows twice: in WORDS (the default, no digit or unit) and in
-// NUMBERS (the Details toggle) — and only NUMBERS mode labels the level and
-// frequency axes with values.
+// Pure geometry, so tests and the honesty guard measure exactly what the user sees. TRUE SCALE, ONE axis for
+// NOW and every ghost, axes from the renders on screen so a turned control moves the curve, never the frame.
 
 import (
 	"fmt"
@@ -38,8 +24,7 @@ const (
 
 type fpt struct{ x, y float32 }
 
-// plotLine is a polyline (local coordinates). A line with gaps is several
-// plotLines.
+// A line with gaps is several plotLines.
 type plotLine struct {
 	role plotRole
 	pts  []fpt
@@ -149,8 +134,7 @@ const (
 	plotFloorDB = -60.0
 )
 
-// sameSound reports whether two renders are the same sound: equal content
-// keys (audio.GraphRenderKey) when they carry one, else the same request.
+// Equal content keys when both carry one, else the same request.
 func sameSound(a, b *graphRender) bool {
 	if a.key != 0 || b.key != 0 {
 		return a.key == b.key
@@ -213,8 +197,7 @@ func buildSynthViewPlot(v synthView, w, h int, in synthViewInput) *viewPlot {
 
 // --- shared axes ---
 
-// viewTimeSpan is the time axis every render on screen fits: the longest
-// audible length (+15 %), rounded up to a nice value.
+// The longest audible length +15 %, rounded up to a nice value.
 func viewTimeSpan(in synthViewInput, minSec float64) float64 {
 	span := minSec
 	for _, r := range in.all() {
@@ -272,8 +255,7 @@ func (vp *viewPlot) timeTicks(span, beatSec float64) {
 	}
 }
 
-// dbTicks draws the level grid; its values are labelled in NUMBERS mode only
-// (WORDS mode says quiet / loud at the axis ends).
+// Values are labelled in NUMBERS mode only; WORDS says quiet/loud at the ends.
 func (vp *viewPlot) dbTicks() {
 	for _, db := range []float64{0, -20, -40} {
 		lbl := ""
@@ -315,9 +297,7 @@ func (vp *viewPlot) addSeries(role plotRole, xs, ys []float32, baseline float32)
 
 // --- ghost labels ---
 
-// addGhostLabel names a ghost where it stands farthest from the NOW curve
-// (where the eye looks for the difference); placeLabels moves it off anything
-// it would cover.
+// Where it stands farthest from NOW, where the eye looks for the difference.
 func (vp *viewPlot) addGhostLabel(role plotRole, text string) {
 	if text == "" {
 		return
@@ -401,11 +381,7 @@ func (vp *viewPlot) axisWordRects() []textRect {
 	return out
 }
 
-// placeLabels gives every ghost label a final spot inside the plot that
-// covers no other label and no axis word: its preferred spot (left of and
-// above the point it names), else the nearest free spot above or below, else
-// the same on the point's right. A label with no free spot is dropped — an
-// unreadable pile of words is worse than a missing name.
+// A label with no free spot is dropped: an unreadable pile of words is worse than a missing name.
 func (vp *viewPlot) placeLabels() {
 	if len(vp.labels) == 0 {
 		return
@@ -451,8 +427,6 @@ func (vp *viewPlot) placeLabels() {
 	vp.labels = placed
 }
 
-// labelRects is every piece of text drawn inside the plot (axis words, marker
-// labels, ghost labels) — what TestGraphLabelsNeverOverlap checks.
 func (vp *viewPlot) labelRects() []textRect {
 	out := vp.axisWordRects()
 	mh := StyledTextHeight(RoleMicro)
@@ -464,8 +438,7 @@ func (vp *viewPlot) labelRects() []textRect {
 	return out
 }
 
-// diffShade shades where the NOW and BEFORE curves (functions of x) differ by
-// more than 2 px — the automatic "here is what changed" highlight.
+// More than 2 px: the automatic "here is what changed" highlight.
 func (vp *viewPlot) diffShade() {
 	var now, before *plotLine
 	for i := range vp.lines {
@@ -540,8 +513,6 @@ func maxf(a, b float32) float32 {
 	return b
 }
 
-// setReadouts sets both readouts: numbers (+ "(was key)" when the BEFORE's key
-// differs) and words (+ cmp's change phrase against the BEFORE).
 func (vp *viewPlot) setReadouts(in synthViewInput, numbers string, key func(*graphRender) string, words string, cmp func(before, now *graphRender) string) {
 	vp.readout, vp.summary = numbers, words
 	b, n := in.before, in.now
@@ -596,9 +567,7 @@ func buildLoudness(vp *viewPlot, in synthViewInput) {
 		})
 }
 
-// buildAttack is THE FIRST MOMENT: the note's loudness from its first onset at
-// 1 ms (soundview.OnsetCurve), so a fade-in rises, a snap jumps and a click
-// stands over the body — read off one curve, true scale.
+// One 1 ms loudness curve from the first onset, so a fade-in, a snap and a click all read off it at true scale.
 func buildAttack(vp *viewPlot, in synthViewInput) {
 	win := 0.05
 	for _, r := range in.all() {
@@ -782,11 +751,8 @@ func (m pitchMotion) wobbleCents() float64 {
 	return m.depthCents
 }
 
-// pitchMotionOf describes the pitch track over the audible note: a GLIDE when
-// its start and end (medians, not single frames) differ by more than 50 cents,
-// a WOBBLE only for a real oscillation (at least two full swings, 1.5–15 a
-// second, deeper than 8 cents), else it HOLDS. A slow drift is not a wobble,
-// and the jitter left after a fast drop is not one either.
+// Glide: start and end medians > 50 cents apart. Wobble: ≥ 2 full swings at 1.5–15 /s deeper than 8 cents.
+// A slow drift or the jitter after a fast drop is neither.
 func pitchMotionOf(a *soundview.Analysis) pitchMotion {
 	tr := a.Pitch()
 	aud := a.AudibleSec()
@@ -860,8 +826,7 @@ func (m pitchMotion) numbers() string {
 	return i18n.T(i18n.KeyGraphNoPitch)
 }
 
-// key is the one number "(was …)" repeats: where a glide starts, how deep a
-// wobble swings, the held pitch.
+// The one number "(was …)" repeats.
 func (m pitchMotion) key() string {
 	switch m.kind {
 	case pitchGlide:
@@ -883,9 +848,8 @@ func (vp *viewPlot) logHzX(f float64) float32 {
 	return vp.xAt(math.Log(math.Max(f, 20)/20) / math.Log(1000))
 }
 
-// buildColour is TONE COLOUR: the note's average spectrum, every curve on ONE
-// level scale (each shifted by its RefDB against the loudest on screen — a
-// quieter version sits lower instead of being re-normalised to the same peak).
+// ONE level scale: each curve shifts by its RefDB, so a quieter version sits lower instead of being
+// re-normalised to the same peak.
 func buildColour(vp *viewPlot, in synthViewInput) {
 	vp.dbTicks()
 	for _, f := range []float64{100, 1000, 10000} {
@@ -985,8 +949,7 @@ func (vp *viewPlot) freqY(f float64, r image.Rectangle) float32 {
 	return float32(r.Max.Y) - float32(math.Max(0, math.Min(1, frac)))*float32(r.Dy())
 }
 
-// centroidMoves is a note's brightness at its start and at its end (medians of
-// the first and last fifth of its loud part).
+// Medians of the first and last fifth of the loud part.
 func centroidMoves(r *graphRender) (float64, float64) {
 	sg := r.an.Spectrogram()
 	env := r.an.Envelope()
@@ -1004,15 +967,11 @@ func centroidMoves(r *graphRender) (float64, float64) {
 	return median(vals[:k]), median(vals[len(vals)-k:])
 }
 
-// buildColourTime is BRIGHTNESS OVER TIME: each sound's brightness centre as a
-// line across the note (dark down, bright up) — the ends and BEFORE compare
-// at a glance, which a spectrogram never let them do.
+// A line per sound, so the ends and BEFORE compare at a glance, which a spectrogram never allowed.
 func buildColourTime(vp *viewPlot, in synthViewInput) {
 	span := viewTimeSpan(in, 0.1)
 	vp.timeTicks(span, in.beatSec)
-	// The brightness axis spans the sounds on screen (octaves, at least 1.5,
-	// a quarter octave of margin) like the pitch view's — fixed while the
-	// control moves (its ends are on screen), never 9 octaves for any sound.
+	// The axis spans the sounds on screen (≥ 1.5 octaves) and holds still while the control moves.
 	visible := func(r *graphRender, c int) bool {
 		sg := r.an.Spectrogram()
 		env := r.an.Envelope()
@@ -1091,9 +1050,7 @@ func median(v []float64) float64 {
 	return c[len(c)/2]
 }
 
-// noiseShareLoudDB: only frames within this of the loudest are drawn on the
-// tone-vs-noise curve — the part of the note its single number is made of
-// (energy-weighted), so the curve and the number agree.
+// Only frames this close to the loudest, the part the single number is made of, so curve and number agree.
 const noiseShareLoudDB = 30.0
 
 func buildNoise(vp *viewPlot, in synthViewInput) {
@@ -1130,8 +1087,7 @@ func buildNoise(vp *viewPlot, in synthViewInput) {
 			}
 			cur = nil
 		}
-		// Each point is the share over three hops (the frame and its
-		// neighbours, energy-weighted): one hop of a noise burst jitters.
+		// Three hops, energy-weighted: one hop of a noise burst jitters.
 		at := func(i int) (float64, bool) {
 			var n, e float64
 			for j := max(0, i-1); j <= min(len(ns.Tonal)-1, i+1); j++ {
@@ -1171,12 +1127,8 @@ func buildNoise(vp *viewPlot, in synthViewInput) {
 	})
 }
 
-// waveGrit is how far a wave has been squared off — what drive does — from
-// the FULLNESS of its lobes: each half-cycle between two zero crossings (of
-// the window's mean) fills area / (peak × width) of its box, 2/π for a sine,
-// 1 for a square. Mapped to 0 (sine) .. 1 (square) and averaged over the
-// whole lobes in the close-up: blind to the level, to a DC offset, to the
-// note decaying (each lobe is half a period) and to where the window starts.
+// From the fullness of each half-cycle lobe: 2/π for a sine, 1 for a square, mapped to 0..1. Blind to level,
+// DC offset, decay and the window start.
 func waveGrit(s []float32) float64 {
 	n := len(s)
 	if n < 30 {
@@ -1269,9 +1221,8 @@ func buildWave(vp *viewPlot, in synthViewInput) {
 	sqOf := func(r *graphRender) float64 { return soundGrit(r, r.an.WaveAt(at, 3).Samples) }
 	sq := soundGrit(in.now, wins[0].w.Samples)
 	pct := func(v float64) string { return fmt.Sprintf("%.0f%%", 100*v) }
-	// With the dial's two ends on screen the words place the sound between
-	// them (an instrument's clean end may carry harmonics of its own);
-	// otherwise on the absolute grit scale.
+	// With the dial's ends on screen the words place the sound between them (a clean end may carry harmonics);
+	// otherwise on the absolute scale.
 	words := shapeWords(sq)
 	if in.lo != nil && in.hi != nil && in.lo.an != nil && in.hi.an != nil {
 		lo, hi := sqOf(in.lo), sqOf(in.hi)
@@ -1296,10 +1247,7 @@ func buildWave(vp *viewPlot, in synthViewInput) {
 	})
 }
 
-// buildOverview is YOUR SOUND: the whole note's loudness as a band (the
-// envelope's 20 ms loudness as a peak-equivalent level, drawn symmetric about
-// the centre, true scale — smooth, never the cycles of a low note), the
-// note-end marker and a one-line summary.
+// A smooth loudness band at true scale, never the cycles of a low note.
 func buildOverview(vp *viewPlot, in synthViewInput) {
 	n := in.now.an
 	span := viewTimeSpan(in, 0.1)

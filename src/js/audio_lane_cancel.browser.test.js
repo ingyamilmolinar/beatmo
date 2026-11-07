@@ -1,20 +1,6 @@
-// audio_lane_cancel.browser.test.js
-//
-// JS Test Charter §1 (WebAudio behavior): the audio lane commits sequencer
-// notes up to ~1 s ahead as lane voices (vid > 0) and must be able to take
-// them back. Verified on the real audio.js with the playback probe (onsets
-// detected on the audio thread, so "silent" means silent in the output):
-//
-//   - a lane voice cancelled before it starts never sounds, with no click;
-//   - a kept lane voice sounds;
-//   - a vid-0 voice (preview / UI sound) survives cancelAllLaneFuture;
-//   - cancelAllLaneFuture removes every not-yet-started lane voice;
-//   - a voice cancelled while its render is still in flight (cold miss →
-//     deferred replay) is tombstoned and never plays when the render lands;
-//   - stopLaneAt(inst, t) fades the voice that started before t and spares
-//     the one starting after t.
-//
-// Usage: node src/js/audio_lane_cancel.browser.test.js
+// The lane commits notes up to ~1 s ahead and must take them back, verified on the real audio.js with the playback
+// probe (so "silent" is silent in the output): a cancelled voice never sounds, a kept one does, previews survive, and a
+// stop fades only voices started before it. Usage: node src/js/audio_lane_cancel.browser.test.js
 
 import { chromium } from "playwright";
 import http from "http";
@@ -24,11 +10,8 @@ import { fileURLToPath } from "url";
 import { waitForAudioReady } from "./browser_test_helpers.js";
 import { setupFullWasm } from "./real_input_test_helpers.js";
 
-// Every voice renders from the param block Go pushes for its instrument
-// document (window.setInstrumentBlock), so a page without Go has no
-// instruments. The test needs a QUIET page (its lead times assume nothing else
-// on the main thread), so: read the blocks once from the real app, then run on
-// a bare audio.js page with exactly those blocks installed.
+// A page without Go has no instruments, and the lead times assume a QUIET page: the blocks are read once from the
+// real app, then installed on a bare audio.js page.
 const IDS = ["kick", "cowbell", "tom", "rimshot", "clap", "snare", "hihat", "organ-church"];
 let blocks;
 {
@@ -69,8 +52,7 @@ try {
     for (const [id, s] of Object.entries(bs)) setInstrumentBlock(id, Float64Array.from(s.block), s.seconds, s.amp, s.melodic, s.gateTail, s.fx);
   }, blocks);
 
-  // Shared page helpers: schedule one lane event; read master onsets and the
-  // master envelope peak over a window (seconds relative to t0).
+  // Schedule one lane event; read master onsets and the envelope peak over a window (seconds from t0).
   await page.evaluate(() => {
     window.__ev = (id, vid, when, pitch = 0) =>
       playSoundsBatchFlat([id], [1], [pitch], [1], [when], [true], [0], [vid], [when], [when], [vid]);
@@ -171,18 +153,12 @@ try {
   check(c.onsets.some((o) => Math.abs(o - 0.70) < 0.02), "the voice starting after t still sounds");
   check(c.clicks === 0, `no clicks (${c.clicks})`);
 
-  // ── D: a STALE record (knob just edited) must not hand a lane voice's
-  // timing to the main thread. The stale-while-revalidate race waits on a
-  // main-thread setTimeout / render promise; blocked main thread ⇒ the note
-  // started whenever the thread came back (edit storms: 4 notes bunched
-  // 160–415 ms late into one burst). A lane voice is scheduled on the stale
-  // buffer at once and swapped to the fresh render only if that lands before
-  // the voice starts.
+  // A lane voice on a STALE record must not hand its timing to the main thread: it is scheduled on the stale buffer at
+  // once and swapped only if the fresh render lands before it starts.
   const d = await page.evaluate(async () => {
     const ctx = window.__audioCtx;
     await ensureSynthSample("kick");
-    // Case C's organ rings on; on top of its tail the onset detector can miss
-    // these kicks although they sound (envelope peaks present, no onset).
+    // Case C's organ rings on; over its tail the onset detector can miss these kicks although they sound.
     await new Promise((r) => setTimeout(r, 3000));
     await startAudioProbe({ channels: false });
     { // generation bump: re-push kick's own block, so the cached render is stale
@@ -212,12 +188,7 @@ try {
   check(nearD(1.10) === 1 && d.s402[d.s402.length - 1] === "lane-fresh", `fresh render landed first: the voice plays the FRESH buffer once (paths ${d.s402})`);
   check(d.clicks === 0, `no clicks (${d.clicks})`);
 
-  // ── E: per-volume buses are capped per instrument (16) and the least
-  // recently used one is disconnected — with "used" meaning SCHEDULED. The
-  // lane schedules a horizon ahead and re-commits on every volume edit, so a
-  // bus whose voice was still RINGING got disconnected under it (edit-vol
-  // A/B: 13 master clicks vs legacy 0). A bus is never evicted while a voice
-  // on it can still sound.
+  // Scheduling and cancelling many lane voices at other volumes must never cut a voice still ringing.
   const e = await page.evaluate(async () => {
     const ctx = window.__audioCtx;
     const id = "organ-church";

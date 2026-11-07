@@ -89,8 +89,7 @@ func TestDelayEchoTiming(t *testing.T) {
 func TestBitcrusherCreatesDistortion(t *testing.T) {
 	fx := newBitcrusher(testSR, map[string]float64{"bits": 4, "rate": 1, "mix": 1})
 	out := processFX(fx, 440, testSR, testN)
-	// 4-bit quantization should create harmonic distortion products.
-	// Check for harmonics rather than RMS change (quantization preserves amplitude).
+	// Quantisation preserves amplitude, so harmonics are checked, not RMS.
 	mag880 := goertzelMagnitude(out, 880, testSR)
 	mag1320 := goertzelMagnitude(out, 1320, testSR)
 	if mag880 < 0.001 && mag1320 < 0.001 {

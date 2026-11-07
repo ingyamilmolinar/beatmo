@@ -4,10 +4,7 @@ package ui
 
 import "syscall/js"
 
-// platformVibrate calls the browser's `navigator.vibrate` API. Silently
-// no-ops if the browser doesn't support vibration (desktop browsers,
-// locked-down WebViews) — there is no reasonable fallback for haptics on
-// those platforms.
+// Silently a no-op where vibration is unsupported; there is no reasonable fallback.
 func platformVibrate(ms int) {
 	if ms <= 0 {
 		return

@@ -47,10 +47,7 @@ func readMixerSamples(m *mixer, n int) []float64 {
 	return out
 }
 
-// TestMixerMultiVoiceSameInstrumentWithEQ exercises the exact scenario that
-// caused the desktop distortion bug: multiple overlapping voices for the same
-// instrument processed through shared EQ. The 3-phase mixer should handle this
-// without clipping or corruption.
+// Overlapping voices of one instrument summed through ONE shared EQ: a biquad must see one continuous stream.
 func TestMixerMultiVoiceSameInstrumentWithEQ(t *testing.T) {
 	ResetInstruments()
 	t.Cleanup(func() { ResetInstruments() })
@@ -87,17 +84,13 @@ func TestMixerMultiVoiceSameInstrumentWithEQ(t *testing.T) {
 		t.Fatalf("expected non-zero audio output, got RMS=%.6f", outRMS)
 	}
 
-	// RMS should be reasonable: 3 voices × 0.5 amp × 0.25 headroom × EQ attenuation.
-	// Expected peak is about 3 × 0.5 × 0.25 = 0.375 before EQ.
-	// After lowpass, 440Hz should pass with some attenuation.
+	// About 3 × 0.5 × 0.25 = 0.375 peak before EQ; 440 Hz passes the lowpass with some attenuation.
 	t.Logf("multi-voice kick RMS: %.6f", outRMS)
 	if outRMS > 0.5 {
 		t.Fatalf("RMS unexpectedly high (possible EQ bypass): %.6f", outRMS)
 	}
 }
 
-// TestMixerMultiInstrumentWithEQ verifies correct mixing of different
-// instruments with different EQ settings through the 3-phase pipeline.
 func TestMixerMultiInstrumentWithEQ(t *testing.T) {
 	ResetInstruments()
 	t.Cleanup(func() { ResetInstruments() })
@@ -138,8 +131,6 @@ func TestMixerMultiInstrumentWithEQ(t *testing.T) {
 	t.Logf("multi-instrument RMS: %.6f", outRMS)
 }
 
-// TestMixerOutputCaptureMatchesWorkBuf verifies that the output capture API
-// correctly captures the mixed audio output.
 func TestMixerOutputCaptureMatchesWorkBuf(t *testing.T) {
 	game_log.TailOnFailure(t) // the capture lines, only if this test fails
 	ResetInstruments()

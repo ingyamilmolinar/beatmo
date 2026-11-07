@@ -9,9 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// TestToastTaskIsSticky pins that a task toast does NOT expire on the error
-// toast's TTL. A progress indicator that vanishes after 4s while the work is
-// still running is worse than none.
+// A progress indicator that vanishes while the work still runs is worse than none.
 func TestToastTaskIsSticky(t *testing.T) {
 	var tt logsToast
 	tt.beginTask(i18n.KeyNotifCircuitLoading, 10)
@@ -27,9 +25,7 @@ func TestToastTaskIsSticky(t *testing.T) {
 	}
 }
 
-// TestToastTaskRendersLocalisedProgress pins that the label is built from an
-// i18n key each frame (so a mid-load locale switch is reflected) and carries
-// the done/total counts.
+// Built from an i18n key each frame, so a locale switch mid-load is reflected.
 func TestToastTaskRendersLocalisedProgress(t *testing.T) {
 	var tt logsToast
 	tt.beginTask(i18n.KeyNotifCircuitLoading, 120)
@@ -40,8 +36,6 @@ func TestToastTaskRendersLocalisedProgress(t *testing.T) {
 	}
 }
 
-// TestToastErrorPathUnchanged pins that the pre-existing error toast behaviour
-// (plain string, TTL expiry) is untouched by the task mode.
 func TestToastErrorPathUnchanged(t *testing.T) {
 	var tt logsToast
 	tt.push("boom")
