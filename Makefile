@@ -34,9 +34,18 @@ LOG_ENV += BEATMO_TEST_LOG_LEVEL=$(TEST_LOG_LEVEL)
 endif
 endif
 
+EMCC_FLAGS = -O3 -DMA_ENABLE_MP3 -sWASM=1 -sSINGLE_FILE=1 -sENVIRONMENT=web -sASSERTIONS=0 -sALLOW_MEMORY_GROWTH=0 -sSTACK_SIZE=1048576 -sEXPORTED_FUNCTIONS='[_render_modular_p,_modular_param_count,_ifx_param_names,_ifx_create,_ifx_run,_ifx_set,_ifx_clear,_ifx_destroy,_eq_create,_eq_update,_eq_run,_eq_clear,_eq_destroy,_soft_clip_run,_malloc,_free]' -sEXPORTED_RUNTIME_METHODS='["ccall","HEAPU8","HEAPF32","HEAPF64"]' -sMODULARIZE=1 -sEXPORT_ES6=1
+
+# The committed browser engine must be what the pinned emcc builds from src/c.
+check-ma-js:
+	@command -v emcc >/dev/null 2>&1 || { echo "check-ma-js needs emcc $(EMSDK_VERSION) (make doctor)"; exit 1; }
+	@mkdir -p build
+	emcc $(C_SRC) $(EMCC_FLAGS) -o build/drums.single.js
+	@cmp -s build/drums.single.js $(MA_JS) || { echo "$(MA_JS) is stale: rebuild it with emcc $(EMSDK_VERSION) (make $(MA_JS)) and commit it"; exit 1; }
+
 $(MA_JS): $(C_SRC) $(C_HDRS)
 	@if command -v emcc >/dev/null 2>&1; then \
-		emcc $(C_SRC) -O3 -DMA_ENABLE_MP3 -sWASM=1 -sSINGLE_FILE=1 -sENVIRONMENT=web -sASSERTIONS=0 -sALLOW_MEMORY_GROWTH=0 -sSTACK_SIZE=1048576 -sEXPORTED_FUNCTIONS='[_render_modular_p,_modular_param_count,_ifx_param_names,_ifx_create,_ifx_run,_ifx_set,_ifx_clear,_ifx_destroy,_eq_create,_eq_update,_eq_run,_eq_clear,_eq_destroy,_soft_clip_run,_malloc,_free]' -sEXPORTED_RUNTIME_METHODS='["ccall","HEAPU8","HEAPF32","HEAPF64"]' -sMODULARIZE=1 -sEXPORT_ES6=1 -o $(MA_JS); \
+		emcc $(C_SRC) $(EMCC_FLAGS) -o $(MA_JS); \
 	else \
 		if [ -f "$(MA_JS)" ]; then \
 			echo "[INFO] emcc not found; using existing $(MA_JS)"; \
@@ -664,6 +673,7 @@ gograph-test:
 ci-build: $(C_LIB)
 	cd src/go && CGO_ENABLED=1 $(GO) build ./...
 	cd src/go && GOOS=js GOARCH=wasm $(GO) build ./...
+	$(MAKE) check-ma-js
 	$(MAKE) gograph-test
 	$(MAKE) js-audit
 
@@ -964,12 +974,15 @@ test-real: $(C_LIB)
 test-real-go: $(C_LIB)
 	cd src/go && BPM_TIMING_TEST=1 xvfb-run -a $(GO) test -timeout 30m $(or $(PKGS),./...)
 
-# CI's reference-corpus checks. A failed upstream fetch only warns: refs-check
-# then skips loudly instead of failing on someone else's server.
+# CI's reference-corpus checks. The calibrations are derived from the WHOLE
+# corpus, so when any reference cannot be fetched (upstream down, or a ref only
+# its owner's disk has) refs-check skips loudly instead of reporting drift.
 refs-ci: $(C_LIB)
-	$(MAKE) fetch-refs TIER=instrument ONLY_MISSING=1 || echo "::warning::reference WAV fetch failed; refs-check will skip"
-	cd src/go && $(GO) run ./cmd/refs verify
-	$(MAKE) refs-check
+	@if $(MAKE) fetch-refs TIER=instrument ONLY_MISSING=1; then fetched=1; else fetched=0; fi; \
+	  cd src/go && $(GO) run ./cmd/refs verify || exit 1; cd ../..; \
+	  if [ $$fetched = 1 ]; then $(MAKE) refs-check; else \
+	    msg="refs-check SKIPPED: the reference corpus is incomplete (see the fetch FAIL lines), so the calibrations cannot be re-derived"; \
+	    echo "::warning::$$msg"; [ -z "$$GITHUB_STEP_SUMMARY" ] || echo "- $$msg" >> "$$GITHUB_STEP_SUMMARY"; fi
 
 # Writes the Go/C coverage tables to $GITHUB_STEP_SUMMARY (or stdout).
 coverage-summary:
