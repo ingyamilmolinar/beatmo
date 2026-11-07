@@ -18,8 +18,9 @@ type workflow struct {
 		Needs     any `yaml:"needs"`
 		Container any `yaml:"container"`
 		Steps     []struct {
-			Uses string `yaml:"uses"`
-			Run  string `yaml:"run"`
+			Uses string            `yaml:"uses"`
+			Run  string            `yaml:"run"`
+			With map[string]string `yaml:"with"`
 		} `yaml:"steps"`
 	} `yaml:"jobs"`
 }
@@ -201,4 +202,23 @@ func goBin() string {
 		return p
 	}
 	return filepath.Join(runtime.GOROOT(), "bin", "go")
+}
+
+// A Go cache built by another image (another compiler) must never be restored,
+// so every key starts from the image's inputs.
+func TestGoJobsRestoreACacheKeyedOnTheImage(t *testing.T) {
+	for id, job := range readCI(t).Jobs {
+		if hostJobs[id] {
+			continue
+		}
+		ok := false
+		for _, st := range job.Steps {
+			if strings.HasPrefix(st.Uses, "actions/cache@") && strings.Contains(st.With["path"], "/cache/go-build") {
+				ok = strings.Contains(st.With["key"], "hashFiles('ci/**')") && strings.Contains(st.With["restore-keys"], "hashFiles('ci/**')")
+			}
+		}
+		if !ok {
+			t.Errorf("job %s has no /cache/go-build cache keyed on hashFiles('ci/**')", id)
+		}
+	}
 }
