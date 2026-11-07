@@ -107,7 +107,7 @@ func TestRunnerRetriesOnlyPerformanceTests(t *testing.T) {
 		}
 	}
 	write("webaudio_perf.browser.test.js", `n=$(cat `+counter+` 2>/dev/null || echo 0); echo $((n+1)) > `+counter+`; [ "$n" -ge 1 ]`+"\n")
-	write("e2e_transport.browser.test.js", "echo once >> "+filepath.Join(dir, "e2e_runs")+"; exit 1\n")
+	write("e2e_transport.browser.test.js", "echo once >> "+filepath.Join(dir, "e2e_runs")+"; echo 'the e2e failure detail'; exit 1\n")
 
 	run := func(tests string) (string, error) {
 		cmd := exec.Command("bash", "scripts/run-browser-tests.sh", "--no-fail-fast", "--tests", tests)
@@ -126,6 +126,9 @@ func TestRunnerRetriesOnlyPerformanceTests(t *testing.T) {
 	out, err = run("e2e_transport.browser.test.js")
 	if err == nil {
 		t.Fatalf("a failing correctness test passed the run:\n%s", out)
+	}
+	if !strings.Contains(out, "Failed tests:\n  e2e_transport.browser.test.js") || !strings.Contains(out, "the e2e failure detail") {
+		t.Errorf("the failed test is not named, or its log is not printed:\n%s", out)
 	}
 	if runs := mustRead(t, filepath.Join(dir, "e2e_runs")); strings.Count(runs, "once") != 1 {
 		t.Errorf("a correctness test was retried (%d runs)", strings.Count(runs, "once"))

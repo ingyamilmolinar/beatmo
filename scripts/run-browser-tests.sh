@@ -91,7 +91,7 @@ if [[ -z "${GO:-}" ]]; then
     if [[ -x "$REPO_ROOT/.tools/go/bin/go" ]]; then
         GO="$REPO_ROOT/.tools/go/bin/go"
     else
-        GO="go"
+        GO="$(command -v go || echo go)"
     fi
 fi
 export GO
@@ -378,23 +378,23 @@ fi
 # ──────────────────────────────────────────────────────────────────────
 declare -a RETRIED=()
 declare -a STILL_FAILED=()
-for t in "${FAILED_TESTS[@]}"; do
-    if ! is_retry "$t"; then STILL_FAILED+=("$t"); continue; fi
+for ft in "${FAILED_TESTS[@]}"; do
+    if ! is_retry "$ft"; then STILL_FAILED+=("$ft"); continue; fi
     passed=false
     for ((attempt = 2; attempt <= RETRIES + 1; attempt++)); do
-        echo "── Retry: $t (attempt $attempt) ──"
+        echo "── Retry: $ft (attempt $attempt) ──"
         port_base=$((10000 + GLOBAL_IDX * 100))
         ((GLOBAL_IDX++)) || true
-        cmd_env=$(build_test_cmd_env "$t" "$port_base")
-        if eval "env $cmd_env $NODE_BIN $t" > "$LOG_DIR/${t}.log" 2>&1; then
-            RETRIED+=("RETRIED: $t passed on attempt $attempt")
+        cmd_env=$(build_test_cmd_env "$ft" "$port_base")
+        if eval "env $cmd_env $NODE_BIN $ft" > "$LOG_DIR/${ft}.log" 2>&1; then
+            RETRIED+=("RETRIED: $ft passed on attempt $attempt")
             ((PASSED++)) || true
             ((FAILED--)) || true
             passed=true
             break
         fi
     done
-    [[ "$passed" == true ]] || STILL_FAILED+=("$t")
+    [[ "$passed" == true ]] || STILL_FAILED+=("$ft")
 done
 FAILED_TESTS=("${STILL_FAILED[@]}")
 if [[ ${#RETRIED[@]} -gt 0 ]]; then
