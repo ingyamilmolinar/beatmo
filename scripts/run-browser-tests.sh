@@ -96,8 +96,12 @@ if [[ -z "${GO:-}" ]]; then
 fi
 export GO
 
+# Overridable so the runner itself can be tested without a browser.
+NODE_BIN="${BROWSER_TEST_NODE:-node}"
+RETRIES="${BROWSER_TEST_RETRIES:-2}"
+
 # Find all browser test files
-cd "$REPO_ROOT/src/js"
+cd "${BROWSER_TEST_DIR:-$REPO_ROOT/src/js}"
 
 # Collect test files
 declare -a TEST_FILES=()
@@ -235,7 +239,7 @@ if [[ $PARALLEL_COUNT -gt 0 ]]; then
             echo "----------------------------------------"
 
             cmd_env=$(build_test_cmd_env "$test_name" "$port_base")
-            cmd="env $cmd_env node $test_file"
+            cmd="env $cmd_env $NODE_BIN $test_file"
 
             if eval "$cmd"; then
                 echo "PASS: $test_name"
@@ -290,7 +294,7 @@ if [[ $PARALLEL_COUNT -gt 0 ]]; then
                 # Launch in background
                 env GO="$GO" WASM_PREBUILT=1 BROWSER_TEST_PORT_BASE="$port_base" \
                     $env_vars $record_env \
-                    node "$test_file" > "$log_file" 2>&1 &
+                    "$NODE_BIN" "$test_file" > "$log_file" 2>&1 &
 
                 BATCH_PIDS+=($!)
                 BATCH_FILES+=("$test_file")
@@ -351,7 +355,7 @@ if [[ $SEQ_COUNT -gt 0 ]] && [[ "$STOP_EARLY" == false ]]; then
         echo "----------------------------------------"
 
         cmd_env=$(build_test_cmd_env "$test_name" "$port_base")
-        cmd="env $cmd_env node $test_file"
+        cmd="env $cmd_env $NODE_BIN $test_file"
 
         if eval "$cmd"; then
             echo "PASS: $test_name"
@@ -367,6 +371,37 @@ if [[ $SEQ_COUNT -gt 0 ]] && [[ "$STOP_EARLY" == false ]]; then
         fi
         echo ""
     done
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# Phase 3: Retry failed performance tests, alone, up to $RETRIES times
+# ──────────────────────────────────────────────────────────────────────
+declare -a RETRIED=()
+declare -a STILL_FAILED=()
+for t in "${FAILED_TESTS[@]}"; do
+    if ! is_retry "$t"; then STILL_FAILED+=("$t"); continue; fi
+    passed=false
+    for ((attempt = 2; attempt <= RETRIES + 1; attempt++)); do
+        echo "── Retry: $t (attempt $attempt) ──"
+        port_base=$((10000 + GLOBAL_IDX * 100))
+        ((GLOBAL_IDX++)) || true
+        cmd_env=$(build_test_cmd_env "$t" "$port_base")
+        if eval "env $cmd_env $NODE_BIN $t" > "$LOG_DIR/${t}.log" 2>&1; then
+            RETRIED+=("RETRIED: $t passed on attempt $attempt")
+            ((PASSED++)) || true
+            ((FAILED--)) || true
+            passed=true
+            break
+        fi
+    done
+    [[ "$passed" == true ]] || STILL_FAILED+=("$t")
+done
+FAILED_TESTS=("${STILL_FAILED[@]}")
+if [[ ${#RETRIED[@]} -gt 0 ]]; then
+    printf '%s\n' "${RETRIED[@]}"
+    if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+        { echo "### Performance tests that needed a retry"; printf -- '- %s\n' "${RETRIED[@]}"; } >> "$GITHUB_STEP_SUMMARY"
+    fi
 fi
 
 # Print summary

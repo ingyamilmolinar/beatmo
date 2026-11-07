@@ -138,6 +138,42 @@ is_sequential() {
 }
 
 # Function to check if test should be skipped
+# Performance tests: the only ones a failure is retried for (BROWSER_TEST_RETRIES,
+# default 2), and each gets a CI runner to itself. Correctness tests never retry.
+RETRY_TESTS=(
+    "audio_lane_e2e.browser.test.js"
+    "landing_load.browser.test.js"
+    "synth_stage_toggle_ui_bench.browser.test.js"
+    "timing_traces.browser.test.js"
+    "wasm_load_startup.browser.test.js"
+    "webaudio_all_knob_bpm_stress.browser.test.js"
+    "webaudio_audio_isolation_bench.browser.test.js"
+    "webaudio_bench_startup.browser.test.js"
+    "webaudio_bpm_stress.browser.test.js"
+    "webaudio_import_cold_bench.browser.test.js"
+    "webaudio_instrument_switch_bench.browser.test.js"
+    "webaudio_live_edit_budget.browser.test.js"
+    "webaudio_pan_stress.browser.test.js"
+    "webaudio_perf.browser.test.js"
+    "webaudio_perf_e2e.browser.test.js"
+    "webaudio_render_latency_bench.browser.test.js"
+    "webaudio_stress_complex.browser.test.js"
+    "webaudio_synth_param_stress.browser.test.js"
+    "webaudio_three_stage_latency.browser.test.js"
+    "webaudio_timing_stress.browser.test.js"
+    "webaudio_zoom_stress.browser.test.js"
+)
+
+is_retry() {
+    local test_name="$1"
+    for t in "${RETRY_TESTS[@]}"; do
+        if [[ "$t" == "$test_name" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 should_skip() {
     local test_name="$1"
     for t in "${SKIP_TESTS[@]}"; do

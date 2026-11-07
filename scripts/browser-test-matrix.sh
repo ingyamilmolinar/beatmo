@@ -82,34 +82,24 @@ if [[ $TOTAL -eq 0 ]]; then
     exit 0
 fi
 
-# Build JSON array of batches
-json='{"include":['
-batch_index=0
-
-for ((i = 0; i < TOTAL; i += BATCH_SIZE)); do
-    batch_end=$((i + BATCH_SIZE))
-    if [[ $batch_end -gt $TOTAL ]]; then
-        batch_end=$TOTAL
-    fi
-
-    # Collect test names for this batch
-    tests=""
-    for ((j = i; j < batch_end; j++)); do
-        if [[ -n "$tests" ]]; then
-            tests="$tests ${TEST_FILES[$j]}"
-        else
-            tests="${TEST_FILES[$j]}"
-        fi
-    done
-
-    ((batch_index++)) || true
-
-    if [[ $i -gt 0 ]]; then
-        json="$json,"
-    fi
-    json="$json{\"index\":$batch_index,\"tests\":\"$tests\"}"
+# Performance tests get a runner each (timing on a shared 4-vCPU runner means
+# nothing); the rest are packed BATCH_SIZE to a job.
+declare -a PERF_FILES=() OTHER_FILES=()
+for f in "${TEST_FILES[@]}"; do
+    if is_retry "$f"; then PERF_FILES+=("$f"); else OTHER_FILES+=("$f"); fi
 done
 
+json='{"include":['
+batch_index=0
+add_batch() {
+    ((batch_index++)) || true
+    [[ $batch_index -gt 1 ]] && json="$json,"
+    json="$json{\"index\":$batch_index,\"tests\":\"$1\"}"
+}
+for f in "${PERF_FILES[@]}"; do add_batch "$f"; done
+for ((i = 0; i < ${#OTHER_FILES[@]}; i += BATCH_SIZE)); do
+    add_batch "${OTHER_FILES[*]:i:BATCH_SIZE}"
+done
 json="$json]}"
 
 echo "$json"
