@@ -84,7 +84,7 @@ func eigHermitianJacobi(a *Matrix) ([]float64, *Matrix) {
 }
 
 // sortDescending orders eigenpairs by descending eigenvalue (stable).
-func sortDescending(diag []float64, V *Matrix) ([]float64, *Matrix) {
+func sortDescending(diag []float64, v *Matrix) ([]float64, *Matrix) {
 	n := len(diag)
 	idx := make([]int, n)
 	for i := range idx {
@@ -92,11 +92,11 @@ func sortDescending(diag []float64, V *Matrix) ([]float64, *Matrix) {
 	}
 	sort.SliceStable(idx, func(x, y int) bool { return diag[idx[x]] > diag[idx[y]] })
 	vals := make([]float64, n)
-	vecs := New(V.Rows, n)
+	vecs := New(v.Rows, n)
 	for c, i := range idx {
 		vals[c] = diag[i]
-		for r := 0; r < V.Rows; r++ {
-			vecs.Set(r, c, V.At(r, i))
+		for r := 0; r < v.Rows; r++ {
+			vecs.Set(r, c, v.At(r, i))
 		}
 	}
 	return vals, vecs

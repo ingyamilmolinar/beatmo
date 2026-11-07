@@ -214,6 +214,5 @@ func Close() {
 	mix.mu.Unlock()
 	if mix.player != nil {
 		mix.player.Pause()
-		mix.player.Close()
 	}
 }

@@ -519,7 +519,7 @@ func tourPickPreset(id string, beats float64) tourStep {
 			return nil
 		},
 		reached: func(r *tourRunner, g *Game) error {
-			if got := g.UserTheme().Preset; got != id && !(id == defaultThemePresetID && got == "") {
+			if got := g.UserTheme().Preset; got != id && (id != defaultThemePresetID || got != "") {
 				return fmt.Errorf("theme preset is %q, want %q", got, id)
 			}
 			return nil

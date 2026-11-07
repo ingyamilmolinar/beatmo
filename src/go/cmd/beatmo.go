@@ -197,6 +197,11 @@ func main() {
 		Logger: func(format string, args ...any) { logger.Infof(format, args...) },
 	})
 	defer func() { _ = prefsStore.Close() }()
+	// os.Exit skips defers; every exit flushes the prefs writer first.
+	exitFlushed := func(code int) {
+		_ = prefsStore.Close()
+		os.Exit(code)
+	}
 	ui.SetFavoritesStore(ui.NewPersistedFavoritesStore(prefsStore))
 
 	// Notification history: persist the in-band notification log across
@@ -212,7 +217,6 @@ func main() {
 	// sees, so saved instruments are playable and listed from frame 1; Save /
 	// Save As / Restore shipped persist through the same store.
 	instStore := userprefs.NewInstrumentStore(userprefs.Options{})
-	defer instStore.Close()
 	audio.SetInstrumentLibrarySink(instStore)
 	// Sampler edits saved before versioning join their instrument's first
 	// version (read once, never written again).
@@ -309,7 +313,7 @@ func main() {
 			id, err := instrument.ParseID(*benchStormInst)
 			if err != nil {
 				logger.Errorf("[bench-synth-storm-inst] %v", err)
-				os.Exit(1)
+				exitFlushed(1)
 			}
 			stormInst = id
 		}
@@ -331,7 +335,7 @@ func main() {
 	go func() {
 		<-sigCh
 		g.Close()
-		os.Exit(0)
+		exitFlushed(0)
 	}()
 
 	// Optional window settings (not used in WASM, but for desktop builds)
@@ -345,7 +349,7 @@ func main() {
 	// Run the game. On WASM, this will create a <canvas> in index.html
 	if err := ebiten.RunGame(g); err != nil {
 		logger.Errorf("[run] %v", err)
-		os.Exit(1) //nolint:gocritic // exitAfterDefer: acceptable for main()
+		exitFlushed(1)
 	}
 	// Clean up audio on normal window close.
 	g.Close()

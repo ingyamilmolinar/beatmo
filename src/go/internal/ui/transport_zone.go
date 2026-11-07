@@ -374,10 +374,8 @@ func (z *TransportZone) refreshProfileStyles() {
 		if z.viewSwitchBtn != nil {
 			z.viewSwitchBtn.Style = recede
 		}
-	} else {
-		if z.viewSwitchBtn != nil {
-			z.viewSwitchBtn.Style = p.ViewSwitchStyle
-		}
+	} else if z.viewSwitchBtn != nil {
+		z.viewSwitchBtn.Style = p.ViewSwitchStyle
 	}
 }
 

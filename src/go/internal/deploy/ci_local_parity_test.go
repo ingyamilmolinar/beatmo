@@ -5,7 +5,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -198,10 +197,10 @@ func goBin() string {
 	if g := os.Getenv("GO"); g != "" {
 		return g
 	}
-	if p, err := exec.LookPath("go"); err == nil {
-		return p
+	if goroot := os.Getenv("GOROOT"); goroot != "" {
+		return filepath.Join(goroot, "bin", "go")
 	}
-	return filepath.Join(runtime.GOROOT(), "bin", "go")
+	return "go"
 }
 
 // A Go cache built by another image (another compiler) must never be restored,

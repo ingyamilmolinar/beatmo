@@ -52,7 +52,7 @@ func (g *Game) Close() {
 	// The palette is package state; a Game that applied a theme (scene setup,
 	// an imported circuit) must not leak it into the next Game — test suites
 	// build hundreds of Games in one process. Production closes once, at exit.
-	if !g.circuitTheme.IsEmpty() || !g.userTheme.Doc.IsEmpty() || !ActiveTheme().IsEmpty() {
+	if !g.circuitTheme.IsEmpty() || !g.userTheme.IsEmpty() || !ActiveTheme().IsEmpty() {
 		ApplyTheme(theme.Doc{})
 	}
 	g.StopBackgroundPredictorForTest()

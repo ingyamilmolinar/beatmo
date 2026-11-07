@@ -76,8 +76,11 @@ func (g *Game) syncHeldInstruments() {
 }
 
 func (g *Game) buildWarmSet() warmSet {
+	if g == nil {
+		return warmSet{}
+	}
 	out := warmSet{bpm: g.bpm}
-	if g == nil || g.drum == nil {
+	if g.drum == nil {
 		return out
 	}
 	seen := make(map[warmItem]struct{})

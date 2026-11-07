@@ -258,10 +258,6 @@ func init() {
 	}
 
 	// Wire sized text-role renderer and measurement.
-	styledTextSpriteRenderer = func(s string, size float64, bold bool) *ebiten.Image {
-		return renderTextSprite(s, size, bold)
-	}
-	styledTextMeasure = func(s string, size float64, bold bool) (int, int) {
-		return measureStyled(s, size, bold)
-	}
+	styledTextSpriteRenderer = renderTextSprite
+	styledTextMeasure = measureStyled
 }

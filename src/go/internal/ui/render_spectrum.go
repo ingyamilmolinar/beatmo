@@ -664,10 +664,11 @@ func drawSpectrumGridChrome(dst *ebiten.Image, rect image.Rectangle, detail bool
 		// avoidable share of the Spectrum tab's alloc budget.
 		gridCol := WithAlpha(genColorBorder, genAlphaWhiteDecoration)
 		solid := false
-		if db == 0 {
+		switch db {
+		case 0:
 			gridCol = WithAlpha(genColorError, genAlphaMedium)
 			solid = true
-		} else if db == -12 {
+		case -12:
 			gridCol = WithAlpha(genColorBorder, genAlphaMedium)
 			solid = true
 		}

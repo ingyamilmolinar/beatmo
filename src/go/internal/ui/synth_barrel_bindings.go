@@ -166,7 +166,7 @@ func (b synthResolutionBinding) stepBy(detents int) bool {
 	if moved {
 		// Keep the knob's per-notch step in sync with the chosen rung and
 		// persist the choice (mirrors persistKnobStep call sites).
-		if k := (synthValueBinding{dv: b.dv, idx: b.idx, instID: b.instID}).knob(); k != nil {
+		if k := (synthValueBinding(b)).knob(); k != nil {
 			k.StepMul = bg.Step()
 		}
 		b.dv.persistKnobStep(bg)

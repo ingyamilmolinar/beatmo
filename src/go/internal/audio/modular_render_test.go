@@ -107,7 +107,7 @@ func TestLfoTarget_DefaultZeroKeepsAmpLFOByteIdentical(t *testing.T) {
 		}
 	}
 	// And it must actually wobble (sanity: not silent / not flat).
-	var mn, mx float32 = a[0], a[0]
+	var mn, mx = a[0], a[0]
 	for _, v := range a {
 		if v < mn {
 			mn = v

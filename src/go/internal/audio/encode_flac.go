@@ -125,9 +125,10 @@ func writeFlacVerbatimFrame(w io.Writer, block []int16, sampleRate, bps, channel
 	fb.writeUTF8(frameNum)
 
 	// Block size if code indicates "get from end of header"
-	if bsCode == 6 {
+	switch bsCode {
+	case 6:
 		fb.writeBits(uint32(len(block)-1), 8)
-	} else if bsCode == 7 {
+	case 7:
 		fb.writeBits(uint32(len(block)-1), 16)
 	}
 

@@ -144,8 +144,8 @@ func main() {
 	}
 }
 
-func printReport(rows []row, L, peakCap float64) {
-	fmt.Printf("# loudness measurement  L=%.4f  peakCap=%.2f  n=%d\n", L, peakCap, len(rows))
+func printReport(rows []row, loud, peakCap float64) {
+	fmt.Printf("# loudness measurement  L=%.4f  peakCap=%.2f  n=%d\n", loud, peakCap, len(rows))
 	fmt.Printf("%-22s %10s %10s %10s %10s\n", "instrument", "curRMSdB", "newRMSdB", "curAmp", "newAmp")
 	var before, after []float64
 	var capped []string

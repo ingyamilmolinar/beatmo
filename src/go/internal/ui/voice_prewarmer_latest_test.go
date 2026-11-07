@@ -14,7 +14,7 @@ import (
 // decides when renders run.
 func newLatestTestPrewarmer(t *testing.T, queue int) (*voicePrewarmer, func(), *[]string, *sync.Mutex) {
 	t.Helper()
-	pool := async.NewPool(nil, async.Options{MaxConcurrent: 1, QueueSize: queue, Name: "test.prewarm.latest"})
+	pool := async.NewPool(context.Background(), async.Options{MaxConcurrent: 1, QueueSize: queue, Name: "test.prewarm.latest"})
 	t.Cleanup(func() { pool.Close() })
 	gate := make(chan struct{})
 	var once sync.Once

@@ -43,7 +43,7 @@ func Build(dir string) ([]byte, error) {
 	if err := json.Unmarshal(idxBytes, &idx); err != nil {
 		return nil, err
 	}
-	if err := idx.Envelope.Validate("instrument index"); err != nil {
+	if err := idx.Validate("instrument index"); err != nil {
 		return nil, err
 	}
 	p := Pack{Envelope: schema.Current(), Order: idx.Instruments, Shipped: map[instrument.ID]string{}, Docs: map[string]instrument.Doc{}}

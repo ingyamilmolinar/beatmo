@@ -26,9 +26,6 @@ func TestEnvInt(t *testing.T) {
 			const k = "BEATMO_ENVINT_TEST"
 			if tc.set {
 				t.Setenv(k, tc.val)
-			} else {
-				// t.Setenv unsets on cleanup, but we want absent to start.
-				// Setting to "" then deleting is awkward; rely on default unset.
 			}
 			got := envInt(k, tc.def)
 			if got != tc.want {

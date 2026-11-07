@@ -815,11 +815,12 @@ func (sb *NodeSidebar) wireButtons() {
 		sb.btns[id].SetTextRole(RoleBody)
 		// +/− steppers use icon-based drawing (Button.Draw path) instead of the
 		// legacy hand-drawn glyph so they get cushion + glow + rounded chrome.
-		if id.el == elMinus {
+		switch id.el {
+		case elMinus:
 			sb.btns[id].Icon = "minus"
 			sb.btns[id].Text = ""
 			sb.btns[id].IconColor = colTextPrimary
-		} else if id.el == elPlus {
+		case elPlus:
 			sb.btns[id].Icon = "plus"
 			sb.btns[id].Text = ""
 			sb.btns[id].IconColor = colTextPrimary
@@ -1984,14 +1985,12 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 						sb.drawDropdownItem(dst, id, id == selID, sb.nodeAccent())
 					}
 				}
-			} else {
-				if haveNode {
-					if gpRect := sb.rects[sbMinus(fieldGroovePct)]; !gpRect.Empty() && sb.inViewport(gpRect) {
-						DrawTextStyled(dst, i18n.T(i18n.KeyCapPct), sidebarPad+2, gpRect.Min.Y+(sidebarBtnH-StyledTextHeight(RoleCaption))/2, RoleCaption, colTextSecondary)
-						sb.drawBtn(dst, sbMinus(fieldGroovePct))
-						sb.drawValuePill(dst, sbValue(fieldGroovePct), fmt.Sprintf("%.0f%%", mn.Params.GroovePct*100))
-						sb.drawBtn(dst, sbPlus(fieldGroovePct))
-					}
+			} else if haveNode {
+				if gpRect := sb.rects[sbMinus(fieldGroovePct)]; !gpRect.Empty() && sb.inViewport(gpRect) {
+					DrawTextStyled(dst, i18n.T(i18n.KeyCapPct), sidebarPad+2, gpRect.Min.Y+(sidebarBtnH-StyledTextHeight(RoleCaption))/2, RoleCaption, colTextSecondary)
+					sb.drawBtn(dst, sbMinus(fieldGroovePct))
+					sb.drawValuePill(dst, sbValue(fieldGroovePct), fmt.Sprintf("%.0f%%", mn.Params.GroovePct*100))
+					sb.drawBtn(dst, sbPlus(fieldGroovePct))
 				}
 			}
 		}

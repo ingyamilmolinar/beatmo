@@ -305,7 +305,7 @@ func TestProvisionalGroupEmptiedByNodeDeleteNoDoubleDelete(t *testing.T) {
 	// annulus arms a link drag, not a marquee. Walk up-left from node a's
 	// corner until production agrees the point is empty, so this test stays
 	// correct however the snap radius is tuned.
-	px, py := int(ax1)-10, int(ay1)-10
+	var px, py int
 	for off := 10; ; off += 10 {
 		px, py = int(ax1)-off, int(ay1)-off
 		if px < 1 || py < 1 {

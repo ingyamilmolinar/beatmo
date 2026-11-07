@@ -284,7 +284,7 @@ func marshalPrefs(snap prefsSnapshot) ([]byte, error) {
 		cp := snap.audioPanel
 		doc.AudioPanel = &cp
 	}
-	if !snap.theme.Doc.IsEmpty() || snap.theme.OverrideCircuits {
+	if !snap.theme.IsEmpty() || snap.theme.OverrideCircuits {
 		cp := snap.theme.Clone()
 		doc.Theme = &cp
 	}

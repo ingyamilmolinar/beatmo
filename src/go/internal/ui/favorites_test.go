@@ -57,7 +57,7 @@ func TestInMemoryFavoritesStoreNilSafe(t *testing.T) {
 		t.Fatalf("nil store Get should report false")
 	}
 	s.Set(roster.Kick, true) // must not panic
-	if keys := s.Keys(); keys != nil && len(keys) != 0 {
+	if keys := s.Keys(); len(keys) != 0 {
 		t.Fatalf("nil store Keys should be nil/empty, got %v", keys)
 	}
 }

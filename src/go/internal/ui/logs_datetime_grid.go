@@ -3,7 +3,7 @@ package ui
 import "time"
 
 // logsNowFn returns "now"; overridable in tests for a deterministic calendar.
-var logsNowFn = func() time.Time { return time.Now() }
+var logsNowFn = time.Now
 
 // daysInMonth returns the number of days in (year, m).
 func daysInMonth(year int, m time.Month) int {

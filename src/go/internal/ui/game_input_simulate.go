@@ -21,10 +21,10 @@ import (
 // pressing for one Update tick and releasing on the next.
 func (g *Game) SimulateClickAt(x, y int) {
 	restore := overrideMouse(x, y, true)
-	g.Update()
+	_ = g.Update()
 	restore()
 	restore = overrideMouse(x, y, false)
-	g.Update()
+	_ = g.Update()
 	restore()
 }
 
@@ -36,7 +36,7 @@ func (g *Game) SimulateDrag(from, to image.Point, frames int) {
 	}
 	// Press at start position.
 	restore := overrideMouse(from.X, from.Y, true)
-	g.Update()
+	_ = g.Update()
 	restore()
 	// Drag across intermediate positions.
 	for i := 1; i <= frames; i++ {
@@ -44,12 +44,12 @@ func (g *Game) SimulateDrag(from, to image.Point, frames int) {
 		x := from.X + int(float64(to.X-from.X)*t)
 		y := from.Y + int(float64(to.Y-from.Y)*t)
 		restore = overrideMouse(x, y, true)
-		g.Update()
+		_ = g.Update()
 		restore()
 	}
 	// Release at end.
 	restore = overrideMouse(to.X, to.Y, false)
-	g.Update()
+	_ = g.Update()
 	restore()
 }
 
@@ -57,10 +57,10 @@ func (g *Game) SimulateDrag(from, to image.Point, frames int) {
 // ticks: one with the key pressed, one with it released.
 func (g *Game) SimulateKey(k ebiten.Key) {
 	restore := overrideKey(k, true)
-	g.Update()
+	_ = g.Update()
 	restore()
 	restore = overrideKey(k, false)
-	g.Update()
+	_ = g.Update()
 	restore()
 }
 
@@ -68,7 +68,7 @@ func (g *Game) SimulateKey(k ebiten.Key) {
 func (g *Game) SimulateScroll(x, y int, dy float64) {
 	restoreM := overrideMouse(x, y, false)
 	restoreW := overrideWheel(0, dy)
-	g.Update()
+	_ = g.Update()
 	restoreW()
 	restoreM()
 }

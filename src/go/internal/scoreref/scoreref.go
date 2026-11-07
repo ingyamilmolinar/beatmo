@@ -232,7 +232,7 @@ func Catalogue() (Cat, error) {
 			catErr = fmt.Errorf("scoreref: catalogue.json: %w", err)
 			return
 		}
-		if err := catVal.Envelope.Validate(Format); err != nil {
+		if err := catVal.Validate(Format); err != nil {
 			catErr = fmt.Errorf("scoreref: catalogue.json: %w", err)
 			return
 		}

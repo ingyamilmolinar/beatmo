@@ -193,9 +193,9 @@ func selectPoles(y, cand []complex128, noiseVar float64) ([]complex128, []comple
 
 // rotation solves W↓·Φ = W↑ in the least-squares sense for the first p
 // eigenvectors (W↓ = rows 0..L−2, W↑ = rows 1..L−1).
-func rotation(vecs *linalg.Matrix, L, p int) (*linalg.Matrix, error) {
-	down := linalg.New(L-1, p)
-	for i := 0; i < L-1; i++ {
+func rotation(vecs *linalg.Matrix, l, p int) (*linalg.Matrix, error) {
+	down := linalg.New(l-1, p)
+	for i := 0; i < l-1; i++ {
 		for j := 0; j < p; j++ {
 			down.Set(i, j, vecs.At(i, j))
 		}
@@ -205,9 +205,9 @@ func rotation(vecs *linalg.Matrix, L, p int) (*linalg.Matrix, error) {
 		return nil, err
 	}
 	phi := linalg.New(p, p)
-	col := make([]complex128, L-1)
+	col := make([]complex128, l-1)
 	for j := 0; j < p; j++ {
-		for i := 0; i < L-1; i++ {
+		for i := 0; i < l-1; i++ {
 			col[i] = vecs.At(i+1, j)
 		}
 		x := f.Solve(col)

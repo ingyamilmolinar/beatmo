@@ -69,7 +69,7 @@ func AnalyzePiano(w wave.Wave, f0 float64) PianoMetrics {
 // measured partial frequencies over the post-attack spectral window. For each
 // partial n, s_n = f_measured/(n·f0) and s_n² = 1 + B·n², so B is the
 // amplitude-weighted least-squares slope of (s_n²−1) against n².
-func pianoInharmonicity(x []float64, sr int, f0 float64) (B float64, stretch []float64, nUsed int, centroid float64) {
+func pianoInharmonicity(x []float64, sr int, f0 float64) (bCoef float64, stretch []float64, nUsed int, centroid float64) {
 	a := secToSamples(pianoSpecSkipS, sr)
 	b := a + secToSamples(pianoSpecLenS, sr)
 	if b > len(x) {
@@ -128,12 +128,12 @@ func pianoInharmonicity(x []float64, sr int, f0 float64) (B float64, stretch []f
 		nUsed++
 	}
 	if denB > 1e-12 {
-		B = numB / denB
+		bCoef = numB / denB
 	}
-	if B < 0 {
-		B = 0
+	if bCoef < 0 {
+		bCoef = 0
 	}
-	return B, stretch, nUsed, centroid
+	return bCoef, stretch, nUsed, centroid
 }
 
 // pianoDecay measures the RMS-envelope decay in an early window (prompt sound)

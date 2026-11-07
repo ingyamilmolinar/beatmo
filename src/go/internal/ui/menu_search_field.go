@@ -53,7 +53,7 @@ func menuSearchAdornmentsActive(box *TextInput) bool {
 	if box == nil {
 		return false
 	}
-	return !(Profile().IsMobile() && box.MobileInputID != "" && mobileInputActive(box.MobileInputID))
+	return !Profile().IsMobile() || box.MobileInputID == "" || !mobileInputActive(box.MobileInputID)
 }
 
 // drawMenuSearchBox draws the search TextInput plus its shared adornments: a

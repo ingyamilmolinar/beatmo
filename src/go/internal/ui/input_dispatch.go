@@ -68,7 +68,7 @@ func (d *InputDispatcher) Dispatch(x, y int, pressed bool) bool {
 		if !h.Capturing() {
 			d.capture = nil
 		}
-		if !(edge && result == InputIgnored) {
+		if !edge || result != InputIgnored {
 			if edge {
 				d.pressOwner = h
 			}

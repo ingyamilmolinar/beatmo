@@ -359,7 +359,7 @@ func (s *playbackSlate) seqScheduleTime() {
 					} else if runningUnderGoTest() && g.playFn != nil && g.scheduleHook == nil {
 						g.seqNextIdxs[row]++
 						incAtEnd = false
-						if layers := g.playbackSlate.nodeLayersAt(info); layers != nil {
+						if layers := g.nodeLayersAt(info); layers != nil {
 							for _, l := range layers {
 								g.playFn(inst, vol*l.Gain)
 							}

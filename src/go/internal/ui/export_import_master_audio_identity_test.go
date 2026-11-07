@@ -490,7 +490,7 @@ func TestHeadlineEditsAreAudible(t *testing.T) {
 	}
 	// The chord node's quality must be audible (an identity test is only as
 	// good as the proof that its edits are audible).
-	var chordID model.NodeID = model.InvalidNodeID
+	var chordID = model.InvalidNodeID
 	for nid, n := range g.graph.Nodes {
 		if n.Type == model.NodeTypeChord {
 			chordID = nid

@@ -116,7 +116,7 @@ func TestGitignoreHidesEveryAudioFile(t *testing.T) {
 	cmd.Stdin = strings.NewReader(strings.Join(probes, "\x00") + "\x00")
 	out, err := cmd.Output()
 	var exitErr *exec.ExitError
-	if err != nil && !(errors.As(err, &exitErr) && exitErr.ExitCode() == 1) {
+	if err != nil && (!errors.As(err, &exitErr) || exitErr.ExitCode() != 1) {
 		git(t, root, "rev-parse", "--git-dir") // skips outside a work tree
 		t.Fatalf("git check-ignore: %v", err)
 	}

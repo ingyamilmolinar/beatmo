@@ -613,7 +613,7 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 	// background workers. The atomic pointer check is zero-cost when not
 	// recording; Tap itself is non-blocking and allocation-free.
 	if pipe := pipelinePtr.Load(); pipe != nil {
-		pipe.Tap(m.instSlotIDs, m.activeSlots, m.instBufs, m.workBuf[:], blockLen)
+		pipe.Tap(m.instSlotIDs, m.activeSlots, m.instBufs, m.workBuf, blockLen)
 	}
 
 	// Convert to int16. Use math.Round instead of truncation to reduce

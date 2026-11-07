@@ -131,7 +131,7 @@ func (dv *DrumView) wavImportLocators() map[audio.WavSourceKind]audio.WavLocator
 			}
 			return nil, false
 		},
-		audio.WavSourceFile: func(ref string) ([]byte, bool) { return readWavFileBytes(ref) },
-		audio.WavSourceURL:  func(ref string) ([]byte, bool) { return fetchWavURLBytes(ref) },
+		audio.WavSourceFile: readWavFileBytes,
+		audio.WavSourceURL:  fetchWavURLBytes,
 	}
 }

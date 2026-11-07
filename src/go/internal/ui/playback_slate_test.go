@@ -39,7 +39,7 @@ func TestPlaybackSlate_DeterministicRoll(t *testing.T) {
 
 func TestPlaybackSlate_WrapBeatIndexRow(t *testing.T) {
 	g := &Game{}
-	g.playbackSlate.g = g // bare literal bypasses New(); set the back-ref (see New()).
+	g.g = g // bare literal bypasses New(); set the back-ref (see New()).
 
 	// Row 0: 4 beats, non-looping. Row 1: 6 beats, looping from index 2 (loopLen=4).
 	g.beatInfosByRow = [][]model.BeatInfo{

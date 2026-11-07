@@ -80,7 +80,7 @@ func TestTextRoleHierarchy(t *testing.T) {
 	sh := StyledTextHeight(RoleSectionHeader)
 	bd := StyledTextHeight(RoleBody)
 	cap := StyledTextHeight(RoleCaption)
-	if !(pt > sh && sh > bd && bd > cap) {
+	if pt <= sh || sh <= bd || bd <= cap {
 		t.Fatalf("role heights must strictly decrease: panelTitle=%d sectionHeader=%d body=%d caption=%d", pt, sh, bd, cap)
 	}
 	if cap < 10 {

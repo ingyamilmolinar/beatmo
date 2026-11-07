@@ -34,7 +34,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"text/template"
@@ -442,13 +441,6 @@ func parseScalarNode(n *yaml.Node, label string) ([]keyVal, error) {
 		}
 		out = append(out, keyVal{Key: k.Value, Val: v.Value})
 	}
-	// Stable ordering: preserve YAML source order (already true above).
-	// Provide a deterministic fallback in case yaml.v3 ever reorders.
-	if !sort.SliceIsSorted(out, func(i, j int) bool {
-		return out[i].Key < out[j].Key
-	}) {
-		// keep source order
-	}
 	return out, nil
 }
 
@@ -569,7 +561,7 @@ func parseInstrumentSequence(node *yaml.Node, swatches []swatchOut) ([]sequenceO
 		name := entry.Value
 		sw, ok := byName[name]
 		if !ok {
-			return nil, fmt.Errorf("instrumentSequence[%d]: %q is not a name declared in instrumentSwatches:", i, name)
+			return nil, fmt.Errorf("instrumentSequence[%d]: %q is not a name declared in instrumentSwatches", i, name)
 		}
 		hexFF := sw.SrcHex
 		if len(hexFF) == 7 { // "#RRGGBB" → "#RRGGBBFF"
@@ -928,7 +920,7 @@ func emitTokens(colors, spacing, rounded, icon, alpha []keyVal, swatches []swatc
 	}
 
 	tpl := template.Must(template.New("gen").Funcs(template.FuncMap{
-		"intToUint8": func(i int) string { return strconv.Itoa(i) },
+		"intToUint8": strconv.Itoa,
 	}).Parse(genTemplate))
 
 	var buf bytes.Buffer
