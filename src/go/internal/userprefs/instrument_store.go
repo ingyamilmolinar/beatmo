@@ -157,20 +157,27 @@ func (s *instrumentStore) SaveSampleEdit(instID instrument.ID, fields map[string
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.ensureLoadedLocked()
+	prev, had := s.doc.SampleEdits[instID]
 	if len(fields) == 0 {
 		delete(s.doc.SampleEdits, instID)
-		s.persistLocked()
-		return nil
+	} else {
+		if s.doc.SampleEdits == nil {
+			s.doc.SampleEdits = map[instrument.ID]map[string]float64{}
+		}
+		cp := make(map[string]float64, len(fields))
+		for k, v := range fields {
+			cp[k] = v
+		}
+		s.doc.SampleEdits[instID] = cp
 	}
-	if s.doc.SampleEdits == nil {
-		s.doc.SampleEdits = map[instrument.ID]map[string]float64{}
+	if err := s.persistLocked(); err != nil {
+		if had {
+			s.doc.SampleEdits[instID] = prev
+		} else {
+			delete(s.doc.SampleEdits, instID)
+		}
+		return err
 	}
-	cp := make(map[string]float64, len(fields))
-	for k, v := range fields {
-		cp[k] = v
-	}
-	s.doc.SampleEdits[instID] = cp
-	s.persistLocked()
 	return nil
 }
 
@@ -190,10 +197,12 @@ func (s *instrumentStore) SaveWavRegistry(raw []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.ensureLoadedLocked()
-	cp := make([]byte, len(raw))
-	copy(cp, raw)
-	s.doc.WavRegistry = cp
-	s.persistLocked()
+	prev := s.doc.WavRegistry
+	s.doc.WavRegistry = append([]byte(nil), raw...)
+	if err := s.persistLocked(); err != nil {
+		s.doc.WavRegistry = prev
+		return err
+	}
 	return nil
 }
 
