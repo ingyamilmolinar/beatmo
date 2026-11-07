@@ -5,6 +5,14 @@ on:
     branches: [main]
   pull_request:
 
+# A newer push to the same branch supersedes the run in progress.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Every job but `images`, `browser-matrix` and `verdict` runs inside the pinned
+# image (ci/versions.env), and every step is a make target that runs the same
+# way natively and under `make dev`.
 jobs:
   # Builds and pushes the CI images only when ci/ changed (the tag is a content
   # hash); otherwise it finds both tags and finishes in seconds.
@@ -28,136 +36,86 @@ jobs:
 
   build:
     name: Build
+    needs: [images]
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
+    container: ${{ needs.images.outputs.build }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: src/go/go.mod
-          cache-dependency-path: src/go/go.sum
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y \
-            build-essential pkg-config libasound2-dev libgl1-mesa-dev \
-            xorg-dev libxcursor-dev libxrandr-dev libxinerama-dev \
-            libxi-dev libxxf86vm-dev
-      - name: Build C library
-        run: make build/libdrums.a
-      # `make test` runs this same target first, so a tree that builds locally
-      # cannot fail to build here.
-      - name: Build (desktop, js/wasm, gograph, JS bridge audit)
-        run: make ci-build
+      - run: make ci-build
 
   lint:
     name: Lint
-    needs: [build]
+    needs: [images]
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
+    container: ${{ needs.images.outputs.browser }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: src/go/go.mod
-          cache-dependency-path: src/go/go.sum
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: src/js/package-lock.json
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y \
-            build-essential pkg-config libasound2-dev libgl1-mesa-dev \
-            xorg-dev libxcursor-dev libxrandr-dev libxinerama-dev \
-            libxi-dev libxxf86vm-dev cppcheck
-      - run: cd src/js && npm ci
       - run: make lint
 
   test-go:
-    name: Test Go
-    needs: [build]
+    name: Test Go (-tags test)
+    needs: [images]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    # Reference instrument audio is NEVER committed and NO test reads it. It is
-    # fetched OUTSIDE the checkout (runner.temp) only so the explicit
-    # `make refs-check` step can re-derive the corpus calibrations.
-    # BEATMO_WAV_REFS is set on just the steps that use the corpus (fetch /
-    # verify / check) -- never on a `go test` step -- and per step because the
-    # `runner` context is not available in job-level env.
+    timeout-minutes: 45
+    container: ${{ needs.images.outputs.build }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - run: make test-go-tagged COVER=1
+      - if: always()
+        run: make coverage-summary
+      - if: always()
+        uses: actions/upload-artifact@v4
         with:
-          go-version-file: src/go/go.mod
-          cache-dependency-path: src/go/go.sum
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y \
-            build-essential pkg-config libasound2-dev libgl1-mesa-dev \
-            xorg-dev libxcursor-dev libxrandr-dev libxinerama-dev \
-            libxi-dev libxxf86vm-dev xvfb
-      - name: Build C library
-        run: make build/libdrums.a
-      - name: Fetch public-domain reference WAVs
-        # Non-fatal: if upstream is unreachable, `make refs-check` below SKIPS
-        # (loudly) and CI stays green. Reuses the exact target used locally.
-        env:
-          BEATMO_WAV_REFS: ${{ runner.temp }}/wav-refs
-        run: make fetch-refs TIER=instrument ONLY_MISSING=1 || echo "::warning::reference WAV fetch failed; refs-check will skip"
-      - name: Verify the reference corpus hashes
-        # Fails on a PCM hash mismatch or a decode error -- i.e. reference audio
-        # that changed under us. "Missing" is not an error here: song-tier refs
-        # are never committed.
-        #
-        # The step above is deliberately non-fatal, and that `||` is how a
-        # renamed target went unnoticed for a whole rewrite. The structural
-        # guard against a recurrence is
-        # internal/deploy/ci_make_target_drift_test.go, which asserts every
-        # `make <target>` in this file exists in the Makefile; this step covers
-        # the different question of whether the audio itself is intact.
-        env:
-          BEATMO_WAV_REFS: ${{ runner.temp }}/wav-refs
-        run: cd src/go && go run ./cmd/refs verify
-      - name: Re-derive the corpus calibrations
-        # thresholds.json, organic_range.json, F0ReliableConfidence and the
-        # shipped audition candidates are all derived from the corpus; only a
-        # re-run against it shows one has gone stale. These used to be tests --
-        # tests never read reference audio, so they are a command now.
-        env:
-          BEATMO_WAV_REFS: ${{ runner.temp }}/wav-refs
-        run: make refs-check
-      - name: Run Go tests with coverage
-        run: |
-          mkdir -p coverage
-          cd src/go && go test -tags test -modfile=go.test.mod \
-            -coverprofile=../../coverage/go.out -covermode=atomic \
-            -timeout 120s ./... 2>&1 | tee ../../coverage/test-output.txt
-      - name: Run Go tests (real Ebiten + xvfb)
-        run: cd src/go && BPM_TIMING_TEST=1 xvfb-run -a go test ./...
-      # gcov line coverage of our own C DSP sources (miniaudio excluded) via
-      # the native CGo test run. Also captures coverage/go-native.out — the
-      # bridge files (drums_c.go, insert_fx_c.go, ...) that the -tags test
-      # coverage above never compiles. Floor enforced at the recorded
-      # baseline (see coverage-c-check in the Makefile). Runs after the
-      # other test steps because the script transiently swaps in an
-      # instrumented build/libdrums.a (restored/cleaned via trap on exit).
-      - name: C coverage (gcov, own DSP sources)
-        run: COVERAGE_C_XVFB=1 make coverage-c-check
-      - name: C coverage summary
-        if: always()
-        run: |
-          if [ -f coverage/c-summary.txt ]; then
-            echo "## C Coverage (own DSP sources, miniaudio excluded)" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat coverage/c-summary.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          fi
-      - name: Upload C coverage
-        if: always()
+          name: go-coverage
+          path: coverage/go.out
+          retention-days: 30
+
+  test-audio-real:
+    name: Test audio (real DSP)
+    needs: [images]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: ${{ needs.images.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: make test-audio-real
+
+  test-real-go:
+    name: Test Go (real Ebiten + xvfb)
+    needs: [images]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    container: ${{ needs.images.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: make test-real-go
+
+  test-race:
+    name: Test Go (race)
+    needs: [images]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: ${{ needs.images.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: make test-race
+
+  # gcov line coverage of our own C DSP sources (miniaudio excluded) via the
+  # native CGo test run, floor at the recorded baseline.
+  coverage-c:
+    name: C coverage
+    needs: [images]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: ${{ needs.images.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: make coverage-c-check COVERAGE_C_XVFB=1
+      - if: always()
+        run: make coverage-summary
+      - if: always()
         uses: actions/upload-artifact@v4
         with:
           name: c-coverage
@@ -166,105 +124,57 @@ jobs:
             coverage/c/
             coverage/go-native.out
           retention-days: 30
-      - name: Coverage summary
-        if: always()
-        run: |
-          echo "## Go Test Coverage" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Package | Coverage |" >> $GITHUB_STEP_SUMMARY
-          echo "|---------|----------|" >> $GITHUB_STEP_SUMMARY
-          grep -E '^ok\s' coverage/test-output.txt | \
-            sed 's|github.com/ingyamilmolinar/beatmo/||' | \
-            awk '{ pkg=$2; for(i=1;i<=NF;i++) if($i=="coverage:") { printf "| `%s` | %s |\n", pkg, $(i+1); break } }' \
-            >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [ -f coverage/go.out ]; then
-            total=$(cd src/go && go tool cover -func=../../coverage/go.out | tail -1 | awk '{print $NF}')
-            echo "**Total: ${total}**" >> $GITHUB_STEP_SUMMARY
-          fi
-      - name: Upload coverage
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: go-coverage
-          path: coverage/go.out
-          retention-days: 30
 
-  test-go-race:
-    name: Test Go (race)
-    needs: [build]
+  # Reference audio is never committed and no test reads it; the corpus is
+  # fetched outside the checkout only to re-derive the calibrations.
+  refs:
+    name: Reference corpus
+    needs: [images]
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
+    container: ${{ needs.images.outputs.build }}
+    env:
+      BEATMO_WAV_REFS: ${{ github.workspace }}/../wav-refs
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: src/go/go.mod
-          cache-dependency-path: src/go/go.sum
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y \
-            build-essential pkg-config libasound2-dev libgl1-mesa-dev \
-            xorg-dev libxcursor-dev libxrandr-dev libxinerama-dev \
-            libxi-dev libxxf86vm-dev
-      - name: Build C library
-        run: make build/libdrums.a
-      # Race detector over the concurrency-relevant packages (the engine run
-      # loop + scheduler, async pools, hooks bus, recording lifecycle, analyzer
-      # SPSC ring, event sinks/loggers, scope-export service). Excludes giant
-      # suites and single-threaded numeric optimizers — see the test-race
-      # target in the Makefile for the exclusion rationale. -race is native
-      # only, so this does not cover the js/wasm build.
-      - name: Run Go tests with -race
-        run: make test-race
+      - run: make refs-ci
 
-  test-browser-matrix:
-    name: Prepare browser test matrix
-    needs: [build]
+  browser-matrix:
+    name: Browser test matrix
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
-      - name: Generate test matrix
-        id: set-matrix
-        run: |
-          matrix=$(./scripts/browser-test-matrix.sh --batch-size ${{ vars.BROWSER_BATCH_SIZE || '4' }})
-          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+      - id: set-matrix
+        run: make browser-matrix BATCH_SIZE=${{ vars.BROWSER_BATCH_SIZE || '4' }}
 
-  test-browser:
+  browser:
     name: "Browser tests (batch ${{ matrix.index }})"
-    needs: [test-browser-matrix]
+    needs: [images, browser-matrix]
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
+    container:
+      image: ${{ needs.images.outputs.browser }}
+      options: --ipc=host --init
     strategy:
-      matrix: ${{ fromJson(needs.test-browser-matrix.outputs.matrix) }}
+      matrix: ${{ fromJson(needs.browser-matrix.outputs.matrix) }}
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: src/go/go.mod
-          cache-dependency-path: src/go/go.sum
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: src/js/package-lock.json
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y \
-            build-essential pkg-config libasound2-dev libgl1-mesa-dev \
-            xorg-dev libxcursor-dev libxrandr-dev libxinerama-dev \
-            libxi-dev libxxf86vm-dev xvfb libgtk-3-dev
-      - name: Install JS dependencies & Playwright
-        run: cd src/js && npm ci && npx playwright install --with-deps chromium
-      - name: Build WASM
-        run: make wasm-all
-      - name: Run browser tests
-        run: |
-          GO=$(pwd)/.tools/go/bin/go ./scripts/run-browser-tests.sh \
-            --no-fail-fast --tests "${{ matrix.tests }}"
+      - run: make test-browser-batch TESTS="${{ matrix.tests }}"
+
+  # The one required check: shard and batch counts can change without touching
+  # branch protection.
+  verdict:
+    name: CI verdict
+    if: always()
+    needs: [images, build, lint, test-go, test-audio-real, test-real-go, test-race, coverage-c, refs, browser-matrix, browser]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: make ci-verdict
