@@ -1,31 +1,7 @@
 package ui
 
-// synth_macro_groups.go is the UI-ONLY "category layer" over the synth's raw
-// params: a small set of plain-English concept buckets, each owning an ordered
-// list of existing ParamDef names. It adds NO persisted state and NO audio-path
-// change — every leaf still writes through audio.SetInstrumentParam. It is the
-// data model behind the Synth tab's overview → drill UI (root shows the category
-// cards; drilling into one shows its params as ParamCards).
-//
-// Design rules (docs/superpowers/specs/2026-09-05-synth-tab-overview-and-signal-graph-design.md):
-//   - EVERY recipe with a schema gets categories — no instrument has a
-//     different flow. WAV/sample instruments (no recipe) never reach here.
-//   - MORE clean buckets beat fewer overloaded ones — each concept is ONE idea
-//     (Attack ≠ Length, Width ≠ Human Feel, Movement ≠ Human Feel).
-//   - Discrete character pickers (osc_type, filter_type, body_model, lfo_target,
-//     formant_vowel/voice_type, fm_algorithm, <family>_wave, kick variant) live
-//     inside a concept but are never fused into a continuous macro — they
-//     render as their existing enum picker.
-//   - HIDE-UNUSED: every modular recipe exposes the SAME full schema, so a concept
-//     is shown only when the instrument actually uses it (via enable flags / key
-//     values), not merely because its params exist in the schema.
-//   - Essentials: a category's params whose ParamDef.Tier is not Advanced, in
-//     table order. The drilled view shows them first; the rest sit behind "More".
-//
-// Two concept tables exist — macroGroupDefsMelodic and macroGroupDefsPercussion —
-// selected per instrument by synthCategoryTableFor(schema): kick-stage recipes
-// and the bespoke drum families take the percussion table, everything else the
-// melodic one.
+// A UI-only category layer over the raw params: no persisted state, no audio-path change. Every schema gets
+// categories; each concept is ONE idea; pickers stay pickers; a concept shows only when the instrument uses it.
 
 import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
@@ -33,30 +9,22 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/synthdial"
 )
 
-// macroGroup is a concrete, in-use concept bucket for one instrument: a label,
-// a one-liner, the stage(s) it maps to, and the ordered subset of
-// its candidate params that are actually visible on this instrument.
 type macroGroup struct {
 	ID     string
 	Label  string
 	Gloss  string
 	Stages []synthSectionID
 	Params []string // child param names, in display order
-	// Essentials is the Params subset whose Tier is not Advanced (table order).
-	// The drilled view shows these first; Params minus Essentials sit under More.
+	// The non-Advanced params in table order; the rest sit under More.
 	Essentials []string
 	// spriteID keys the root card's render cache ("cat:" + ID), built once.
 	spriteID string
-	// Dials are the card's macro dials live on this instrument (≤3, file
-	// order; synth_dials.go). Each term is a param this card claims.
+	// Each term is a param this card claims.
 	Dials []synthdial.Resolved
 }
 
-// macroGroupDef is a table entry. Params lists every param the concept CAN own
-// (across all instruments); the builder keeps only those present + visible on a
-// given instrument. active decides HIDE-UNUSED (nil = always shown). Stages
-// names the pipeline stage(s) the concept's params live in — a concept with
-// exactly one stage shows that stage's enable pill when drilled.
+// Params lists everything the concept CAN own across instruments; active decides HIDE-UNUSED (nil = always).
+// A concept with exactly one stage shows that stage's pill when drilled.
 type macroGroupDef struct {
 	ID       string
 	LabelKey i18n.Key
@@ -66,14 +34,11 @@ type macroGroupDef struct {
 	active   func(m audio.RecipeParams) bool
 }
 
-// enableOn returns an active-predicate that is true when a stage's *_enabled flag
-// (or any 0/1 gate param) is on in the merged params.
 func enableOn(name string) func(audio.RecipeParams) bool {
 	return func(m audio.RecipeParams) bool { return m[name] >= 0.5 }
 }
 
-// voicesGT1 gates the ensemble concepts (Width / Human Feel): only meaningful
-// once the instrument stacks more than one voice.
+// Width and Human Feel mean nothing with a single voice.
 func voicesGT1(m audio.RecipeParams) bool { return m["unison_voices"] >= 1.5 }
 
 // bodyModelOn gates the Body concept: body_model 0 == "Off".
@@ -103,12 +68,8 @@ func anyOf(fns ...func(audio.RecipeParams) bool) func(audio.RecipeParams) bool {
 	}
 }
 
-// macroGroupDefsMelodic is the ordered concept table for melodic instruments
-// (modular voices, the fm-* family, the base modular, pad, whisper). Ordering is
-// musical priority (what a beginner reaches for first). Every visible param
-// except the output `gain` (that is the row's volume, not a synth timbre
-// control) is claimed by exactly one concept — guarded by
-// TestMacroGroups_EveryInstrumentHasCategories.
+// Ordered by what a beginner reaches for first. Every visible param except `gain` (the row volume) is claimed
+// by exactly one concept.
 var macroGroupDefsMelodic = []macroGroupDef{
 	{ID: "sound", LabelKey: i18n.KeySynthCatSound, GlossKey: i18n.KeySynthCatSoundGloss,
 		Stages: []synthSectionID{synthSectionOsc, synthSectionFM, synthSectionVoice, synthSectionFinish},
@@ -118,8 +79,7 @@ var macroGroupDefsMelodic = []macroGroupDef{
 			"fm_op1_level", "fm_op2_level", "fm_op3_level", "fm_op4_level",
 			"osc_sax_blow", "osc_sax_reed_off", "osc_sax_reed_slope", "osc_sax_reflect", "osc_sax_breath", "osc_sax_loss",
 			"osc_bow_pos", "osc_bow_slope", "osc_bow_vel", "osc_bow_loss"}},
-	// The WAV-clone stages: a measured instrument's ringing modes (+ residual
-	// noise) and the mallet that excites them.
+	// The WAV-clone stages: a measured instrument's modes, its residual noise and the mallet.
 	{ID: "ring", LabelKey: i18n.KeySynthCatModes, GlossKey: i18n.KeySynthCatModesGloss,
 		Stages: []synthSectionID{synthSectionModal, synthSectionNoise},
 		Params: []string{"modal_tune", "modal_decay_x", "modal_bright", "modal_keep", "noiseband_level",
@@ -155,8 +115,7 @@ var macroGroupDefsMelodic = []macroGroupDef{
 	{ID: "pitchdrop", LabelKey: i18n.KeySynthCatPitchDrop, GlossKey: i18n.KeySynthCatPitchDropGloss,
 		Stages: []synthSectionID{synthSectionPitch},
 		Params: []string{"pitchenv_amt", "pitchenv_decay"},
-		// nonZeroMacro covers the gen-bank spellings, so a family that becomes a
-		// config seed keeps lighting this card without being named here.
+		// nonZeroMacro covers the gen-bank spellings, so a family converted to a config seed keeps lighting this card.
 		active: anyOf(enableOn("pitchenv_enabled"), nonZeroMacro("pitchdrop"))},
 	{ID: "voice", LabelKey: i18n.KeySynthCatVoice, GlossKey: i18n.KeySynthCatVoiceGloss,
 		Stages: []synthSectionID{synthSectionFormant},
@@ -167,14 +126,7 @@ var macroGroupDefsMelodic = []macroGroupDef{
 		Params: []string{"burst_sharp", "burst1_off", "burst1_amp", "burst2_off", "burst2_amp", "burst3_off", "burst3_amp", "burst4_off", "burst4_amp"}, active: enableOn("burst_enabled")},
 }
 
-// macroGroupDefsPercussion is the ordered concept table for kick/percussion
-// recipes: the modular kick-stage family (schemaUsesKickStage) AND the bespoke
-// drum families (snare/clap/hihat/cymbal/tom/kick/sub-bass/conga). Modular kicks
-// share the full modular schema PLUS the kick `gen1_kick_*` shaping stage; the
-// bespoke drums carry their own family knobs (snare_*/cym_*/tom_*/bass_*/kick_*)
-// plus the generic pitch/decay/tone/drive/body/brightness knobs. Ordering =
-// what a beatmaker reaches for first: transient → body → pitch → tone → tail →
-// engine → grit.
+// Ordered by what a beatmaker reaches for first: transient → body → pitch → tone → tail → engine → grit.
 var macroGroupDefsPercussion = []macroGroupDef{
 	{ID: "ring", LabelKey: i18n.KeySynthCatModes, GlossKey: i18n.KeySynthCatModesGloss,
 		Stages: []synthSectionID{synthSectionModal, synthSectionNoise},
@@ -220,11 +172,8 @@ var macroGroupDefsPercussion = []macroGroupDef{
 		Params: []string{"drive", "post_drive", "out_clamp"}},
 }
 
-// synthCategoryTableFor picks the concept table for a schema: percussion for
-// the percussive gen-slot families, melodic otherwise.
 func synthCategoryTableFor(schema []audio.ParamDef) []macroGroupDef {
-	// A drum is identified by its gen-slot SOURCE (a Percussive family stage):
-	// its knobs are gen1_<family>_*, so no knob name can tell it apart.
+	// A drum is identified by its gen-slot source: its knobs are gen1_<family>_*, so no knob name tells it apart.
 	if fam, ok := activeFamilyStage(schema); ok && fam.Percussive {
 		return macroGroupDefsPercussion
 	}
@@ -235,26 +184,18 @@ func synthCategoryTableFor(schema []audio.ParamDef) []macroGroupDef {
 func macroGroupLabel(def macroGroupDef) string { return i18n.T(def.LabelKey) }
 func macroGroupGloss(def macroGroupDef) string { return i18n.T(def.GlossKey) }
 
-// buildMacroGroups computes the in-use concept buckets for one instrument from
-// its document's knob schema + current param values. Pure — no DrumView state —
-// so it is unit-testable against any schema/value pair. Never returns an empty
-// list for a non-empty schema: HIDE-UNUSED is skipped for the last surviving
-// concept so the root always has something to tap.
+// Pure, so it is testable against any schema/value pair. Never empty for a non-empty schema: the last concept
+// skips HIDE-UNUSED so the root always has something to tap.
 func buildMacroGroups(schema []audio.ParamDef, merged audio.RecipeParams) []macroGroup {
 	return buildMacroGroupsFiltered(schema, merged, true, 0)
 }
 
-// buildMacroGroupsForVoice is buildMacroGroups for a voice that sounds for
-// voiceSecs seconds (the root's dials then hide envelope changes that land
-// past the end of the note — see the "settles" dial condition).
+// The root's dials then hide envelope changes that land past the end of the note.
 func buildMacroGroupsForVoice(schema []audio.ParamDef, merged audio.RecipeParams, voiceSecs float64) []macroGroup {
 	return buildMacroGroupsFiltered(schema, merged, true, voiceSecs)
 }
 
-// buildMacroGroupsAll is buildMacroGroups WITHOUT the HIDE-UNUSED filter: every
-// concept that owns at least one visible param, active or not. The coverage
-// discipline test uses it (an off LFO's params are still claimed by Movement —
-// they are reached through the pipeline strip's stage drill, not the root).
+// Without HIDE-UNUSED, for the coverage test: an off LFO's params are still claimed by Movement.
 func buildMacroGroupsAll(schema []audio.ParamDef, merged audio.RecipeParams) []macroGroup {
 	return buildMacroGroupsFiltered(schema, merged, false, 0)
 }
@@ -274,17 +215,8 @@ func buildMacroGroupsFiltered(schema []audio.ParamDef, merged audio.RecipeParams
 	var fallback *macroGroup // first concept with params, kept if HIDE-UNUSED empties the list
 	for _, def := range defs {
 		var ps, ess []string
-		// The gen-slot family knobs (kick/snare/tom/cymbal/FM) are claimed by
-		// the REGISTRY, not by def.Params: modularStageKnobs records the card
-		// each one belongs to, so surfacing a new family needs no edit here.
-		// They used to be enumerated by hand as well, which is how a knob came
-		// to be listed in one card and declared in another.
-		//
-		// On a family instrument those knobs ARE the voice, so they lead the card;
-		// the generic modular stages the table also lists (OSC, FM, unison,
-		// formant, LFO) ship switched off on such recipes and come after. Listed
-		// generic-first, the snare's Source card opened on Wave / Octave /
-		// Algorithm — stages that make no sound — with its Generator 23rd.
+		// The gen-slot family knobs are claimed by the REGISTRY, not def.Params, so a new family needs no edit here;
+		// on a family instrument they ARE the voice and lead the card, ahead of the generic stages it ships switched off.
 		gen := audio.GenSlotParamsForMacro(macroConceptFor(def.ID))
 		names := append(append([]string(nil), def.Params...), gen...)
 		if familyOK {
@@ -307,8 +239,7 @@ func buildMacroGroupsFiltered(schema []audio.ParamDef, merged audio.RecipeParams
 			continue
 		}
 		if len(ess) == 0 {
-			// Every param is fine-tuning: promote the first so the drilled view
-			// never opens on an empty essentials grid.
+			// All fine-tuning: promote the first so the drilled view never opens on an empty grid.
 			ess = ps[:1]
 		}
 		g := macroGroup{
@@ -331,12 +262,8 @@ func buildMacroGroupsFiltered(schema []audio.ParamDef, merged audio.RecipeParams
 	return out
 }
 
-// productionMacroCards is the production root's card list (spec 2026-10-24
-// §4.2): the cards with at least one live dial, in table order. A dial-less
-// card holds only discrete character choices (oscillator, generator, variant)
-// and tuning — developer territory — and the production UI has nothing else to
-// offer on it. Returns cards itself when nothing is dropped (no allocation on
-// the common path). Guard: TestEveryInstrumentKeepsProductionDials.
+// A dial-less card holds only pickers and tuning, which production has nothing to offer for. Returns cards
+// itself when nothing is dropped, so the common path allocates nothing.
 func productionMacroCards(cards []macroGroup) []macroGroup {
 	keep := 0
 	for _, c := range cards {
@@ -356,16 +283,8 @@ func productionMacroCards(cards []macroGroup) []macroGroup {
 	return out
 }
 
-// macroConceptFor maps a macro CARD id back to the concept name the family-stage
-// registry uses for it.
-//
-// The two category tables deliberately name the same ideas differently for
-// their audience — a beatmaker reaches for "Source", "Boom", "Tone" and
-// "Punch"; a melodic player for "Sound", "Body", "Brightness" and "Attack" —
-// so one registry concept resolves to a different card depending on which
-// table is active. The registry writes the percussion spelling (it was built
-// for the drum families), and this is the one place that knows the melodic
-// synonyms. A card with no registry concept simply claims no gen-slot knobs.
+// The two tables name the same ideas for their audience ("Source"/"Punch" vs "Sound"/"Attack"); the registry
+// uses the percussion spelling and this is the one place that knows the melodic synonyms.
 func macroConceptFor(cardID string) string {
 	switch cardID {
 	case "sound":
@@ -382,12 +301,7 @@ func macroConceptFor(cardID string) string {
 	return cardID
 }
 
-// nonZeroMacro is nonZero over every SLOT-1 gen-bank knob the family-stage
-// registry files under a macro concept. It keeps a HIDE-UNUSED predicate
-// honest across a family conversion: the concept's wired param names change,
-// but the concept does not. Without it an FM instrument with a live pitch
-// sweep stopped showing Pitch Drop at the root the moment it became a seed,
-// because the predicate still named only the wired fm_pitch_env_amount.
+// Keeps HIDE-UNUSED honest across a family conversion: the wired param names change, the concept does not.
 func nonZeroMacro(concept string) func(audio.RecipeParams) bool {
 	names := audio.GenSlotParamsForMacro(concept)
 	return func(m audio.RecipeParams) bool {

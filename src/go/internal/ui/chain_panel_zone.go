@@ -12,10 +12,7 @@ import (
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
-// chainStageKey maps a scope pipeline Stage to its i18n display-label key.
-// Stage names keep their common DAW English form (Synth/AntiPop/FX/EQ/Bus/
-// Master) but route through i18n so the Chain tab is fully localizable; the
-// scope package stays free of any i18n dependency.
+// Common DAW English names, routed through i18n so the scope package needs no i18n dependency.
 func chainStageKey(st scope.Stage) i18n.Key {
 	switch st {
 	case scope.StageSynth:
@@ -32,8 +29,7 @@ func chainStageKey(st scope.Stage) i18n.Key {
 	return ""
 }
 
-// chainStageLabelLocalized returns the localized stage label for st, falling
-// back to the scope package's canonical English label for unknown stages.
+// Unknown stages fall back to the scope package's English label.
 func chainStageLabelLocalized(st scope.Stage) string {
 	if k := chainStageKey(st); k != "" {
 		return i18n.T(k)
@@ -55,8 +51,7 @@ const (
 	chainDiff                            // A-B difference waveform
 )
 
-// ChainCallbacks contains callbacks for the ChainPanelZone to communicate
-// with the DrumView and audio engine. Zones don't reference Game or each other.
+// Zones never reference Game or each other.
 type ChainCallbacks struct {
 	ScopeState     func() *scope.State
 	ActiveRows     func() []*DrumRow
@@ -66,23 +61,13 @@ type ChainCallbacks struct {
 	OnClearTapB    func()
 	OnFreezeToggle func() bool
 
-	// StagePeak returns the latest peak/RMS dB for the given pipeline
-	// stage. Used to paint per-stage mini-meters beside every stage
-	// button so the column becomes a live signal-flow display (not just
-	// a stage chooser). Stages with no signal should return -Inf so the
-	// meter renders dark. Nil disables the per-stage display entirely.
+	// Turns the stage column into a live signal-flow display. -Inf = dark; nil disables it.
 	StagePeak func(stage scope.Stage) (peakDB, rmsDB float64)
 
-	// IsHiddenForInput mirrors the EQPanelZone gate (see EQCallbacks
-	// docstring) — when set and returning true, `HitAreas()` returns
-	// nil. Belt-and-suspenders against the Pads-tab input leak, in
-	// case a future refactor mounts the chain zone as its own tree
-	// node (it's currently delegated through the EQ panel).
+	// Belt-and-suspenders like EQPanelZone's: true makes HitAreas() return nil.
 	IsHiddenForInput func() bool
 }
 
-// ChainPanelZone implements the Zone interface for the oscilloscope panel.
-// It provides A/B comparison of pipeline stages with interactive tap selection.
 type ChainPanelZone struct {
 	rect       image.Rectangle
 	needLayout bool
@@ -96,15 +81,10 @@ type ChainPanelZone struct {
 	diffBtn      *Button                  // pill: difference (top-right)
 	freezeBtn    *Button                  // freeze toggle
 
-	// segmentedRowH is the vertical space claimed by the mobile segmented
-	// OVR|SPL|DIF row (0 on desktop, where the modes are pills in the chrome
-	// row). contentRect() drops the trace below it so the segmented control
-	// never overlaps the waveform.
+	// 0 on desktop; contentRect() drops the trace below it so the segmented control never overlaps it.
 	segmentedRowH int
 
-	// Hover-dwell tooltip state (desktop only). The tooltip itself lives
-	// in a TooltipOverlay opened on the shared OverlayPortal once the
-	// cursor has lingered ~300ms over a control.
+	// Desktop only; the tooltip opens on the shared portal after ~300 ms over a control.
 	hoverStartMs int64
 	hoveredID    string // "stage-N" or "mode-overlay/split/diff"; empty when no hover
 
@@ -122,38 +102,20 @@ type ChainPanelZone struct {
 	showTapA    bool             // true = draw tap A trace (default true)
 	showTapB    bool             // true = draw tap B trace (default true)
 
-	// fitState is reusable scratch for the auto-fit sub-sliced snapshot so
-	// Draw never heap-allocates a new State per frame (alloc budget gate).
+	// Reused so Draw never allocates a State per frame.
 	fitState scope.State
 
-	// Trace cache. The waveform trace area (drawChainTraces) is by far the
-	// hottest renderer on the audio panel — two full-width traces at ~2
-	// drawRect blits per pixel column (~5k blits/frame, ~87% of the Chain
-	// tab's Draw cost). The scope service republishes State only at ~30 Hz
-	// (scope/service.go) while Draw runs up to 60 fps, so between ticks the
-	// trace pixels are identical. We render the trace into an offscreen image
-	// once per (state-timestamp + layout) change and blit it on the unchanged
-	// frames. That halves the panel's per-frame blit count and — the part
-	// that actually fixes the audio — hands the sequencer goroutine a cheap
-	// frame between renders on the single WASM thread, so a Draw burst stops
-	// starving it (the choppy-under-Chain-tab report). Pixel-identical: the
-	// cache holds the real render. See profile_chain_tab.mjs and
-	// TestChainTraceCacheMatchesDirect.
+	// The trace is the panel's hottest renderer, and the scope publishes at ~30 Hz while Draw runs at
+	// 60, so render once per state/layout change and blit otherwise; that frees the single WASM thread for
+	// the sequencer. Pixel-identical to a direct render.
 	traceCache *ebiten.Image
 	traceKey   chainTraceKey
 	traceKeyOK bool
-	// traceState pins the scope.State the cache was last rendered from. The
-	// state pointer is the cache's freshness signal: ScopeState() hands back a
-	// fresh *scope.State whenever the data refreshes — on desktop the service
-	// swaps it every ~30 Hz tick, and on WASM cachedScopeState rebuilds it
-	// every stateCacheTTL. (Do NOT key on state.Timestamp — the WASM
-	// SynthesizeScopeState path leaves it 0, which would freeze the trace.)
-	// Holding the reference also prevents the allocator from reusing the
-	// address while it is still our key, so pointer identity is unambiguous.
+	// Pointer identity is the freshness signal: ScopeState() returns a new pointer on every refresh, and
+	// the WASM path leaves Timestamp 0, so keying on it would freeze the trace. Holding it stops address reuse.
 	traceState *scope.State
 
-	// WASM-only zone-local state. On desktop these stay zero-valued because
-	// the audio.ScopeService() owns freeze + instrument selection.
+	// WASM only; on desktop the scope service owns freeze and instrument selection.
 	frozenState  *scope.State // cached snapshot held while frozen
 	instrumentID channel.ID   // selected channel, fed to snapshot calls
 
@@ -161,11 +123,8 @@ type ChainPanelZone struct {
 	hitAreas []HitArea
 }
 
-// NewChainPanelZone creates a new ChainPanelZone with the provided callbacks.
-// Tap A defaults to StageSynth so opening the Chain tab shows the synth signal
-// immediately instead of a blank panel; the OnTapAChange callback fires once
-// here so the desktop scope service mirrors the UI default. (On WASM the
-// callback is a no-op and the zone-local tapA field is authoritative.)
+// Tap A defaults to Synth so the tab opens on a signal, and the callback fires once so the desktop
+// service mirrors it.
 func NewChainPanelZone(cb ChainCallbacks) *ChainPanelZone {
 	z := &ChainPanelZone{
 		instrumentID: channel.Master,
@@ -175,11 +134,8 @@ func NewChainPanelZone(cb ChainCallbacks) *ChainPanelZone {
 		tapB:         -1,
 		windowMs:     20,
 		yGain:        1.0,
-		// Both framing axes default ON. They used to be opt-in pills, which
-		// meant the out-of-the-box Chain tab showed a correct-but-unreadable
-		// trace: a quiet tap drawn against a hardcoded 1.0 full-scale
-		// reference across a 500 ms capture window. Manual control survives
-		// (SetYGain / SetWindowMs turn the respective axis back to manual).
+		// Both framing axes default ON: opt-in pills left the default trace correct but unreadable. Manual
+		// setters turn an axis back to manual.
 		autoGain: true,
 		autoFit:  true,
 		showTapA: true,
@@ -202,8 +158,6 @@ func (z *ChainPanelZone) initButtons() {
 		z.stageButtons[i].SetTextKey(chainStageKey(st))
 	}
 
-	// Three separate mode pills replace the previous OVR/SPL/DIF cycle button.
-	// Clicking each sets the displayMode directly (no implicit cycle).
 	z.overlayBtn = NewButton("OVR", InstButtonStyle, func() {
 		z.displayMode = chainOverlay
 	})
@@ -216,19 +170,14 @@ func (z *ChainPanelZone) initButtons() {
 		z.displayMode = chainDiff
 	})
 	z.diffBtn.SetTextKey(i18n.KeyChainDiff)
-	// Freeze is a TEXT code pill here (FRZ / LIVE), not the shared icon pill:
-	// a bare pause glyph one row under the transport bar reads as transport
-	// pause, and it was the only icon among five text codes. See
-	// newFreezeCodePill.
+	// A text pill, not the icon: a pause glyph under the transport reads as transport pause.
 	z.freezeBtn = NewButton(i18n.T(i18n.KeyChainFreeze), InstButtonStyle, func() {
 		z.SetFrozen(!z.frozen)
 	})
 	applyFreezeCodeVisual(z.freezeBtn, z.frozen)
 }
 
-// SetTapA programmatically sets the TapA stage (use -1 to clear). Fires
-// the OnTapAChange / OnClearTapA callbacks so the desktop audio service is
-// kept in sync; on WASM those callbacks are no-ops and only zone state moves.
+// -1 clears.
 func (z *ChainPanelZone) SetTapA(stage scope.Stage) {
 	if int(stage) < 0 {
 		z.tapA = -1
@@ -258,12 +207,7 @@ func (z *ChainPanelZone) SetTapB(stage scope.Stage) {
 	}
 }
 
-// handleStageClick implements the A/B tap selection logic:
-//   - If stage == tapA, clear tapA
-//   - If stage == tapB, clear tapB
-//   - If tapA unset, assign tapA
-//   - If tapB unset, assign tapB
-//   - Otherwise, replace tapB
+// Tapping a set stage clears it; otherwise A, then B, then B is replaced.
 func (z *ChainPanelZone) handleStageClick(stage scope.Stage) {
 	switch {
 	case z.tapA == stage:
@@ -298,8 +242,7 @@ func (z *ChainPanelZone) handleStageClick(stage scope.Stage) {
 
 func (z *ChainPanelZone) ID() string { return "chain-panel" }
 
-// Rect returns the full scope-panel rectangle (header + content area).
-// Returns the zero Rectangle before Layout has run.
+// Zero before Layout.
 func (z *ChainPanelZone) Rect() image.Rectangle { return z.rect }
 
 // ContentRect returns the trace drawing area (rect minus the header strip).
@@ -311,8 +254,7 @@ func (z *ChainPanelZone) Frozen() bool { return z.frozen }
 // AutoGain reports whether the scope is auto-gain.
 func (z *ChainPanelZone) AutoGain() bool { return z.autoGain }
 
-// DisplayMode reports the current trace display mode (0=overlay, 1=split, 2=diff).
-// Exposed for agent read-back checkpoints.
+// 0 = overlay, 1 = split, 2 = diff.
 func (z *ChainPanelZone) DisplayMode() int { return int(z.displayMode) }
 
 // Chrome pill button accessors (rect exposure for the agent harness / screenshots).
@@ -321,8 +263,7 @@ func (z *ChainPanelZone) SplitBtn() *Button   { return z.splitBtn }
 func (z *ChainPanelZone) DiffBtn() *Button    { return z.diffBtn }
 func (z *ChainPanelZone) FreezeBtn() *Button  { return z.freezeBtn }
 
-// TraceVisible reports whether the named trace ("A" or "B") is currently
-// drawn. Unknown labels return false.
+// Unknown labels return false.
 func (z *ChainPanelZone) TraceVisible(label string) bool {
 	switch label {
 	case "A":
@@ -339,31 +280,19 @@ func (z *ChainPanelZone) WindowMs() float64 { return z.windowMs }
 // YGain returns the current Y-axis gain factor.
 func (z *ChainPanelZone) YGain() float64 { return z.yGain }
 
-// SetFrozen drives the same freeze flow the freeze-button click takes,
-// including the audio-service callback and the button label/color update.
-// Idempotent: SetFrozen(z.Frozen()) is a no-op.
-//
-// UI state is authoritative: z.frozen always ends up matching `frozen`,
-// regardless of what OnFreezeToggle reports. The callback is fired so
-// the audio service can mirror the change, but if it short-circuits or
-// the audio side is unavailable (test stub, WASM-fallback with no
-// snapshots) the UI still latches the requested state.
+// The UI state is authoritative: the callback lets the audio side mirror it, but cannot veto it.
 func (z *ChainPanelZone) SetFrozen(frozen bool) {
 	if z.frozen == frozen {
 		return
 	}
 	if z.callbacks.OnFreezeToggle != nil {
-		// Fire-and-best-effort: ask the callback to flip the audio
-		// side, but ignore its return — we don't let the audio side
-		// veto the requested UI state.
 		_ = z.callbacks.OnFreezeToggle()
 	}
 	z.frozen = frozen
 	applyFreezeCodeVisual(z.freezeBtn, z.frozen)
 }
 
-// SetAutoGain drives the same auto-gain flow the AG-button click takes
-// (resets manual gain when enabling). Idempotent.
+// Enabling resets manual gain.
 func (z *ChainPanelZone) SetAutoGain(on bool) {
 	if z.autoGain == on {
 		return
@@ -374,9 +303,6 @@ func (z *ChainPanelZone) SetAutoGain(on bool) {
 	}
 }
 
-// SetTraceVisible toggles the visibility of trace A or B. Matches the
-// per-swatch click handler (chainSwatchHandler) so scene Setup can produce
-// the same visual state as a user click without synthesizing input.
 // Unknown labels are ignored.
 func (z *ChainPanelZone) SetTraceVisible(label string, visible bool) {
 	switch label {
@@ -387,20 +313,12 @@ func (z *ChainPanelZone) SetTraceVisible(label string, visible bool) {
 	}
 }
 
-// SetInstrumentID assigns the zone-local instrument id used by the WASM
-// ScopeState fallback (BuildScopeStateFromSnapshots). Desktop reads the
-// id from audio.ScopeService instead; this setter is the WASM equivalent
-// and is also used by setEQChannel(id) browser tests to make
-// probeScopeState() reflect the new channel without going through a
-// click on the EQ panel's channel-cycle button.
+// The WASM equivalent of the scope service's instrument (also used by browser tests).
 func (z *ChainPanelZone) SetInstrumentID(id channel.ID) {
 	z.instrumentID = id
 }
 
-// SetWindowMs sets the X-axis time window directly, clamped to the same
-// [1, 500] range the wheel handler enforces. Like the plain-scroll path,
-// calling this disables auto-fit so the manual window sticks until the user
-// re-enables FIT.
+// Clamped to [1, 500] like the wheel; disables auto-fit so the manual window sticks.
 func (z *ChainPanelZone) SetWindowMs(ms float64) {
 	if ms < 1 {
 		ms = 1
@@ -412,9 +330,7 @@ func (z *ChainPanelZone) SetWindowMs(ms float64) {
 	z.windowMs = ms
 }
 
-// SetAutoFit drives the same flow the FIT-button click takes: when enabled,
-// the X window auto-frames the signal's active span every frame; the last
-// manual windowMs is preserved as the ceiling. Mirrors SetAutoGain.
+// The last manual windowMs stays the ceiling.
 func (z *ChainPanelZone) SetAutoFit(on bool) {
 	z.autoFit = on
 }
@@ -422,10 +338,7 @@ func (z *ChainPanelZone) SetAutoFit(on bool) {
 // AutoFit reports whether auto-fit is active (test/scene introspection).
 func (z *ChainPanelZone) AutoFit() bool { return z.autoFit }
 
-// SetDisplayMode selects the A/B display mode ("overlay" | "split" | "diff").
-// Mirrors clicking the OVR/SPL/DIF pill; used by scene Setup and tests to
-// drive the same visual state without synthesizing a click. Unknown values
-// fall back to overlay.
+// Unknown values fall back to overlay.
 func (z *ChainPanelZone) SetDisplayMode(mode string) {
 	switch mode {
 	case "split":
@@ -437,9 +350,7 @@ func (z *ChainPanelZone) SetDisplayMode(mode string) {
 	}
 }
 
-// SetYGain sets the Y-axis gain directly, clamped to [0.25, 16.0]. Like
-// the shift-scroll path, calling this disables auto-gain so manual zoom
-// sticks until the user re-enables AG.
+// Clamped to [0.25, 16]; disables auto-gain so manual zoom sticks.
 func (z *ChainPanelZone) SetYGain(gain float64) {
 	if gain < 0.25 {
 		gain = 0.25
@@ -466,9 +377,7 @@ func (z *ChainPanelZone) Layout(rect image.Rectangle) {
 	z.rebuildHitAreas()
 }
 
-// Update drives the hover-dwell tooltip: when the cursor sits over a stage
-// thumbnail or a mode pill for ~300ms we open a TooltipOverlay through the
-// shared OverlayPortal. Mobile profiles skip hover entirely (no cursor).
+// Mobile skips hover.
 func (z *ChainPanelZone) Update() {
 	if Profile().IsMobile() {
 		return
@@ -530,8 +439,6 @@ func (z *ChainPanelZone) Update() {
 		return
 	}
 	if cur != z.hoveredID {
-		// Cursor moved to a different control: close any prior tooltip
-		// and re-arm the dwell timer for the new control.
 		z.portal.Close("chain-tt")
 		z.hoveredID = cur
 		z.hoverStartMs = now
@@ -543,9 +450,7 @@ func (z *ChainPanelZone) Update() {
 		return
 	}
 	if now-z.hoverStartMs >= 300 {
-		// Dwell threshold crossed: open the tooltip. Open is idempotent
-		// against duplicate IDs (closeByID happens first in OverlayPortal.Open),
-		// so re-open per-frame is cheap and self-correcting.
+		// Open closes a duplicate id first, so re-opening per frame is cheap and self-correcting.
 		if !z.portal.Has("chain-tt") {
 			z.portal.Open(PortalEntry{
 				ID:      "chain-tt",
@@ -560,8 +465,6 @@ func (z *ChainPanelZone) Update() {
 }
 
 func (z *ChainPanelZone) HitAreas() []HitArea {
-	// Self-defense input gate — see EQPanelZone.HitAreas for the
-	// architectural rationale.
 	if z.callbacks.IsHiddenForInput != nil && z.callbacks.IsHiddenForInput() {
 		return nil
 	}
@@ -602,9 +505,7 @@ func (z *ChainPanelZone) HandleChars(_ []rune) InputResult {
 	return InputIgnored
 }
 
-// contentRect returns the drawable trace area: to the right of the vertical
-// stage column (density-driven width) and below the chrome strip plus the
-// mobile segmented mode row (segmentedRowH, 0 on desktop).
+// segmentedRowH is 0 on desktop.
 func (z *ChainPanelZone) contentRect() image.Rectangle {
 	left := z.rect.Min.X + Profile().DensityValues().ChainStageColW + Profile().DensityValues().ChainContentGap
 	top := z.rect.Min.Y + chainHeaderH + z.segmentedRowH
@@ -620,8 +521,7 @@ func (z *ChainPanelZone) SetPortal(p *OverlayPortal) { z.portal = p }
 // --- Header drawing ---
 
 func (z *ChainPanelZone) drawHeader(dst *ebiten.Image) {
-	// Draw vertical stage thumbnails on the left, with A/B badges. No arrows
-	// between rows — the column itself is the visual chain.
+	// No arrows: the column itself is the chain.
 	stages := scope.AllStages()
 	for i, btn := range z.stageButtons {
 		if btn == nil {
@@ -630,9 +530,7 @@ func (z *ChainPanelZone) drawHeader(dst *ebiten.Image) {
 		isA := i < len(stages) && z.tapA == stages[i]
 		isB := i < len(stages) && z.tapB == stages[i]
 		active := isA || isB
-		// Reserve horizontal room for the A/B badge so the centered stage
-		// label is squeezed into the area LEFT of the badge instead of being
-		// centered under it (bug #1: "AntiPop"/"Master" ran under the badge).
+		// Room for the badge, so the label centres left of it instead of running under it.
 		badgeReserve := 0
 		if isA {
 			bw, _ := chainBadgeSize("A")
@@ -647,18 +545,12 @@ func (z *ChainPanelZone) drawHeader(dst *ebiten.Image) {
 		} else if isB {
 			z.drawBadge(dst, btn, "B", colScopeB)
 		}
-		// Per-stage mini-meter: lit fill height = dB-fraction of the
-		// stage's latest peak. Silent stages return -Inf → frac=0 →
-		// background only, so the column reads as "this stage is live
-		// vs. this stage is silent" at a glance. Phase 3.
+		// Silent stages read -Inf → background only, so live vs silent shows at a glance.
 		if i < len(stages) && z.callbacks.StagePeak != nil {
 			peakDB, _ := z.callbacks.StagePeak(stages[i])
 			z.drawStageMeter(dst, btn.Rect(), peakDB)
 		}
 
-		// Phase 3 audio-panel redesign: per-stage mini-waveform + FX
-		// badge count. drawChainStageCardDecorations centralises both
-		// renders so the per-stage loop stays focused on the meter.
 		z.drawChainStageCardDecorations(dst, btn, i, isA, isB)
 	}
 
@@ -668,9 +560,7 @@ func (z *ChainPanelZone) drawHeader(dst *ebiten.Image) {
 		zoomText += fmt.Sprintf(" Y:%.3gx", z.yGain)
 	}
 	zoomW := StyledTextWidth(zoomText, RoleMicro)
-	// Anchor the zoom readout left of the leftmost chrome-row control. On
-	// desktop that's the OVR pill; on mobile the mode pills moved to their own
-	// row, so anchor to FIT (the leftmost remaining chrome control).
+	// Mobile moves the mode pills to their own row, so FIT is the leftmost chrome there.
 	chromeLeft := z.overlayBtn.Rect().Min.X
 	if Profile().ChainModeSegmented {
 		chromeLeft = z.freezeBtn.Rect().Min.X
@@ -679,17 +569,12 @@ func (z *ChainPanelZone) drawHeader(dst *ebiten.Image) {
 	zoomY := z.rect.Min.Y + 4 + (18-StyledTextHeight(RoleMicro))/2
 	DrawTextStyled(dst, zoomText, zoomX, zoomY, RoleMicro, colTextSecondary)
 
-	// Explanatory strip. Everything between the stage column and the zoom
-	// readout was blank before this; the next-tap hint, the A/B legend and the
-	// active mode's plain-English gloss all go there, so the whole explanatory
-	// layer costs no layout and takes nothing from the trace area.
+	// That span was empty, so the explanatory layer costs no layout.
 	stripLeft := z.rect.Min.X + Profile().DensityValues().ChainStageColW + Profile().DensityValues().ChainContentGap + SpaceXS
 	strip := image.Rect(stripLeft, z.rect.Min.Y+4, zoomX-SpaceSM, z.rect.Min.Y+4+18)
 	drawChainHeaderStrip(dst, strip, z.tapA, z.tapB, z.displayMode)
 
-	// Mode selector — three pills. Desktop: separated, in the chrome row.
-	// Mobile: a contiguous segmented control on its own row (rects set in
-	// layoutButtons); always-visible either way.
+	// Separate pills on desktop, a segmented row on mobile; always visible.
 	drawPillTabAt(dst, z.overlayBtn, z.displayMode == chainOverlay)
 	drawPillTabAt(dst, z.splitBtn, z.displayMode == chainSplit)
 	drawPillTabAt(dst, z.diffBtn, z.displayMode == chainDiff)
@@ -697,9 +582,7 @@ func (z *ChainPanelZone) drawHeader(dst *ebiten.Image) {
 	drawPillTabAt(dst, z.freezeBtn, z.frozen)
 }
 
-// drawPillChrome paints just the pill background + border (active = filled
-// surface with azure stroke; inactive = outline only). Shared by every pill
-// renderer so the chrome stays identical across chrome pills and stage cards.
+// Shared so chrome pills and stage cards look identical.
 func (z *ChainPanelZone) drawPillChrome(dst *ebiten.Image, r image.Rectangle, active bool) {
 	if active {
 		drawRect(dst, r, colSurface2, true)
@@ -729,9 +612,7 @@ func pillGlyphColor(active, disabled bool) color.Color {
 	}
 }
 
-// drawStagePill draws a stage button's chrome plus its label, reserving
-// badgeReserve px on the right for the A/B badge so the label centers in the
-// area left of the badge (bug #1) and elides with "…" when it still overflows.
+// The label centres left of the badge reservation and elides when it still overflows.
 func (z *ChainPanelZone) drawStagePill(dst *ebiten.Image, btn *Button, active bool, badgeReserve int) {
 	r := btn.Rect()
 	if r.Empty() {
@@ -740,8 +621,6 @@ func (z *ChainPanelZone) drawStagePill(dst *ebiten.Image, btn *Button, active bo
 	z.drawPillChrome(dst, r, active)
 
 	glyphCol := pillGlyphColor(active, false)
-	// Inner label rect: inset 2px each side, then drop badgeReserve from the
-	// right edge so the centered label never runs under the badge.
 	labelR := image.Rect(r.Min.X+2, r.Min.Y, r.Max.X-2-badgeReserve, r.Max.Y)
 	if labelR.Dx() <= 0 {
 		return
@@ -757,9 +636,7 @@ func (z *ChainPanelZone) drawStagePill(dst *ebiten.Image, btn *Button, active bo
 	DrawTextStyled(dst, text, tx, ty, RoleCaption, glyphCol)
 }
 
-// chainElideLabel truncates `text` with a trailing "…" so its caption-role
-// width fits within maxW px. Returns the full text untouched when it already
-// fits; returns "…" (or "") when nothing fits.
+// The full text when it fits; "…" (or "") when nothing does.
 func chainElideLabel(text string, maxW int) string {
 	if maxW <= 0 {
 		return ""
@@ -781,19 +658,12 @@ func chainElideLabel(text string, maxW int) string {
 	return ell
 }
 
-// drawStageMeter paints a 3 px-wide vertical fill flush to the right
-// edge of the stage button rect, height proportional to peakDB (clamped
-// to meter floor / ceil). Silent stages get only the dim background
-// rail; active stages fill in meterColor(peakDB). This turns the stage
-// column into a live signal-flow display rather than a chooser-only
-// strip. Phase 3.
+// Silent stages get only the dim rail.
 func (z *ChainPanelZone) drawStageMeter(dst *ebiten.Image, btnRect image.Rectangle, peakDB float64) {
 	if btnRect.Empty() {
 		return
 	}
-	// Phase 3 audio-panel redesign: mini-meter width follows density
-	// so the 4-px Compact rail expands to 10 px at Spacious (mobile)
-	// where the user can actually see "signal flowing here vs not".
+	// Wider at Spacious (mobile) so the rail is visible there.
 	dv := Profile().DensityValues()
 	meterW := dv.ChainMiniMeterW
 	meterGap := dv.ChainMiniMeterGap
@@ -821,14 +691,10 @@ func (z *ChainPanelZone) drawStageMeter(dst *ebiten.Image, btnRect image.Rectang
 	drawRect(dst, image.Rect(railX0, railY1-fillH, railX1, railY1), col, true)
 }
 
-// chainBadgeInset is the gap (px) the A/B badge is pulled in from the stage
-// button's edges so it never sits on top of the 2px azure selection stroke
-// drawn around an active pill (bug #2: badge overlapped the selection border).
+// Keeps the badge off the active pill's 2px selection stroke.
 const chainBadgeInset = 2
 
-// chainBadgeSize returns the rendered width/height of an A/B badge for the
-// given label at the current density. Shared by drawBadge (the renderer) and
-// the stage-label centering reservation (bug #1) so the two stay in lockstep.
+// Shared by the badge renderer and the label reservation so they agree.
 func chainBadgeSize(label string) (w, h int) {
 	tw := StyledTextWidth(label, RoleCaption)
 	th := StyledTextHeight(RoleCaption)
@@ -836,12 +702,7 @@ func chainBadgeSize(label string) (w, h int) {
 	return tw + 2*padX, th + 2*padY
 }
 
-// drawBadge draws a colored A/B pill at the top-right of a stage button.
-// The pill is sized to the density-aware badge text (was a fixed 8×8 box
-// holding ~7px text — unreadable) so the A/B assignment is legible at a
-// glance, especially on mobile (Spacious). The badge is inset by
-// chainBadgeInset from the button's top/right edges so it sits inside the
-// 2px azure selection stroke of an active pill (bug #2) instead of on it.
+// Sized to the density text so A/B is legible, inset inside the selection stroke.
 func (z *ChainPanelZone) drawBadge(dst *ebiten.Image, btn *Button, label string, col color.Color) {
 	r := btn.Rect()
 	badgeW, badgeH := chainBadgeSize(label)
@@ -855,11 +716,7 @@ func (z *ChainPanelZone) drawBadge(dst *ebiten.Image, btn *Button, label string,
 // --- Layout ---
 
 const (
-	// chainStageColW + chainStageRowH are Comfortable-density anchors
-	// preserved as constants for static call sites that don't have a
-	// Profile() handy at file scope. The runtime path
-	// (chainStageDims()) reads density values directly so Compact /
-	// Spacious shrink/expand the stage column appropriately.
+	// Comfortable-density anchors for static sites; runtime reads the density values.
 	chainStageColW = 56
 	chainStageRowH = 22
 )
@@ -882,8 +739,6 @@ func (z *ChainPanelZone) layoutButtons() {
 		btn.SetRect(image.Rect(colX, yTop, colX+stageW, yTop+stageH))
 	}
 
-	// --- Right-aligned chrome row at TOP, just above the trace area ---
-	// Vertically center the pills in the header band (chainHeaderH tall).
 	bandTop := r.Min.Y + 4
 	if pad := (chainHeaderH - btnH) / 2; pad > 0 {
 		bandTop = r.Min.Y + pad
@@ -899,12 +754,8 @@ func (z *ChainPanelZone) layoutButtons() {
 
 	z.segmentedRowH = 0
 	if Profile().ChainModeSegmented {
-		// Mobile / narrow layout: OVR|SPL|DIF as one always-visible
-		// contiguous segmented control on a DEDICATED row below the chrome
-		// strip — never in the cramped right edge, never overlapping the
-		// trace/legend. Each segment is touch-min tall. The row claims
-		// vertical space via segmentedRowH so contentRect() drops the trace
-		// below it.
+		// Mobile: a dedicated segmented row below the chrome strip, never squeezed into the right edge;
+		// segmentedRowH drops the trace below it.
 		segH := ExpandHitArea(btnH)
 		segY := y + btnH + 2
 		x0 := colX + stageW + Profile().DensityValues().ChainContentGap
@@ -915,9 +766,6 @@ func (z *ChainPanelZone) layoutButtons() {
 		}
 		z.segmentedRowH = segH + 4
 	} else {
-		// Desktop: three separate mode pills in the chrome row, right-aligned.
-		// Each pill content-fit via audioPillWidth (labels are 3 chars so the
-		// widths match the analyzer-tab pills).
 		for _, btn := range []*Button{z.diffBtn, z.splitBtn, z.overlayBtn} {
 			pillW := audioPillWidth(btn)
 			btn.SetRect(image.Rect(rightEdge-pillW, y, rightEdge, y+btnH))
@@ -933,14 +781,7 @@ func (z *ChainPanelZone) rebuildHitAreas() {
 
 	const zIdx = 140
 
-	// Chain panel input isolation. Mirrors the EQPanelZone catch-all
-	// pattern (see input_capture.go file-level docstring). Today the
-	// chain panel is mounted as a delegated zone inside EQPanelZone so
-	// the EQ-level catch-all already covers its rect, but registering
-	// our own catch-all at the chain zone's nominal z keeps the
-	// contract local — a future refactor that promotes chain to a
-	// standalone tree node still has input isolation, with no follow-
-	// up change required.
+	// Its own catch-all at its nominal z, so isolation holds even if it is ever mounted outside the EQ panel.
 	if !z.rect.Empty() {
 		z.hitAreas = append(z.hitAreas, NewInputCaptureHitArea(z.rect, zIdx, "chain-panel-capture"))
 	}
@@ -971,9 +812,7 @@ func (z *ChainPanelZone) rebuildHitAreas() {
 		}
 	}
 
-	// Three separate mode pills (overlay, split, diff). The legacy
-	// "scope-split-btn" tag is preserved on the split pill so older callers
-	// and discipline tests that expect it still resolve.
+	// The split pill keeps the "scope-split-btn" tag for callers that expect it.
 	if sr := z.overlayBtn.Rect(); !sr.Empty() {
 		ha := HitArea{
 			Rect:    sr,
@@ -1029,10 +868,8 @@ func (z *ChainPanelZone) rebuildHitAreas() {
 		z.hitAreas = append(z.hitAreas, ha)
 	}
 
-	// Trace visibility toggles: the A/B legend segments in the reserved strip
-	// below the waveform are the click targets (tap the A readout to hide A).
-	// chainLegendHalves is the single source of truth shared with
-	// drawChainLegend so clicks land exactly on the rendered readout.
+	// The legend readouts below the waveform are the click targets; chainLegendHalves is shared with
+	// the draw so clicks land on the rendered text.
 	contentR := z.contentRect()
 	if !contentR.Empty() {
 		_, legendStrip := chainTraceRects(contentR)
@@ -1064,9 +901,7 @@ func (h *chainSwatchHandler) OnWheel(x, y, steps int) InputResult { return Input
 
 // --- Scroll wheel zoom handler ---
 
-// chainZoomHandler implements HitHandler for scroll-wheel zoom on the scope content area.
-// Plain scroll adjusts time window; Shift+scroll adjusts Y-axis gain.
-// Double-click resets both axes to defaults.
+// Scroll zooms time, Shift+scroll the gain; double-click resets both.
 type chainZoomHandler struct {
 	zone          *ChainPanelZone
 	lastPressTime int64 // monotonic ms for double-click detection
@@ -1104,8 +939,7 @@ func (h *chainZoomHandler) OnWheel(x, y, steps int) InputResult {
 			h.zone.yGain = 16.0
 		}
 	} else {
-		// Plain scroll: time-axis zoom. Disables auto-fit so the manual
-		// window sticks (double-click restores it).
+		// Disables auto-fit so the manual window sticks.
 		h.zone.autoFit = false
 		factor := 1 + float64(steps)*0.15
 		h.zone.windowMs *= factor

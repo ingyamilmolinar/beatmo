@@ -10,10 +10,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// ParamCard is the closed state of every synth/sampler parameter control on
-// every platform: a compact keycap-style card showing the param NAME, the
-// current VALUE (resolution-aware), and a thin range GAUGE. Tapping it opens
-// the value-wheel popup; on desktop the mouse wheel nudges the value in place.
+// ParamCard is the closed state of every synth/sampler parameter control: name, resolution-aware value
+// and a thin range gauge. A tap opens the wheel popup; on desktop the mouse wheel nudges in place.
 
 type paramCardGaugeKind int
 
@@ -23,8 +21,7 @@ const (
 	gaugeDots
 )
 
-// paramCardMaxDots is the largest enum rendered as discrete position dots;
-// longer enums fall back to an index-proportional fill.
+// Longer enums fall back to an index-proportional fill.
 const paramCardMaxDots = 8
 
 type paramCardGauge struct {
@@ -65,12 +62,9 @@ func drawParamCard(dst *ebiten.Image, r image.Rectangle, name, value string, g p
 	if r.Empty() {
 		return
 	}
-	// Shared chrome serving many rect sizes (a peek-band card can be a few px
-	// tall): fit the role radius so a clipped slot never over-asks.
+	// A peek-band card can be a few px tall, so fit the radius to the rect.
 	rad := fitRadius(RadiusControl, r)
-	// Flat-tonal card: one filled body, no shell/bevel/rim. The card's
-	// silhouette is the surface-3 tone step against the panel behind it.
-	// Selection is a 2px accent bar, not an outline.
+	// Flat-tonal: one filled body; the silhouette is the surface-3 tone step, and selection a 2 px accent bar.
 	capR := r
 	drawFlatButtonBody(dst, capR, TokenSurface3(), rad)
 	if st.Selected {
@@ -126,11 +120,7 @@ func drawParamCardGauge(dst *ebiten.Image, gr image.Rectangle, g paramCardGauge,
 	drawGaugeStrip(dst, gr, g, fill)
 }
 
-// drawGaugeStrip is the DESIGN.md "gauge" affordance — the hairline strip on a
-// control's bottom inner edge that shows its value at rest. One renderer for
-// every valued control (synth param cards, the per-row and master volume
-// buttons); only the fill color varies (accent for params, the instrument
-// color for a row's volume).
+// The one renderer for every valued control's gauge strip; only the fill color varies.
 func drawGaugeStrip(dst *ebiten.Image, gr image.Rectangle, g paramCardGauge, fill color.Color) {
 	if gr.Empty() {
 		return
@@ -179,9 +169,6 @@ func drawGaugeStrip(dst *ebiten.Image, gr image.Rectangle, g paramCardGauge, fil
 	}
 }
 
-// clamp01 clamps v into the [0,1] range. The package has no existing helper
-// (the sibling in internal/audio/sample_edit.go is unexported to that
-// package), so this is the ui-local copy used by the gauge fill/bipolar math.
 func clamp01(v float64) float64 {
 	if v < 0 {
 		return 0

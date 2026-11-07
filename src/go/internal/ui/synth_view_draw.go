@@ -1,12 +1,7 @@
 package ui
 
-// synth_view_draw.go paints a viewPlot (synth_view_plot.go): the card, the
-// caption / view title / readout rows, the plot's grid and tick labels,
-// filled bands, the NOW and ghost curves, markers and end labels —
-// and, outside the sprite cache, the trigger GLOW (glowLayer).
-//
-// Colours are the Visualizers family (data canvases, never the chrome
-// accent), all derived in rebuildThemeAliases so a theme change repaints.
+// Visualizers colours, never the chrome accent, derived in rebuildThemeAliases so a theme change repaints.
+// The glow is drawn outside the sprite cache.
 
 import (
 	"image"
@@ -27,9 +22,7 @@ var (
 	colGraphGlow     color.NRGBA // the trigger glow
 	colGraphGlowRing color.NRGBA // the glow's ring around the plot
 
-	// The Visualizers accent every Synth-tab data surface shares: the NOW
-	// curve here, the dial arcs, the focused card's bar (never the chrome
-	// accent — DESIGN.md "Data canvases use the Visualizers family").
+	// Shared by every Synth-tab data surface; never the chrome accent.
 	colConceptFill   color.NRGBA
 	colConceptStroke color.NRGBA
 )
@@ -136,8 +129,7 @@ func drawViewPlot(dst *ebiten.Image, off image.Point, vp *viewPlot) {
 		col.A /= 2
 		drawRect(dst, image.Rect(x, plot.Min.Y, x+1, plot.Max.Y), col, true)
 	}
-	// Axis words and marker labels at the spots placeLabels kept free of the
-	// ghost labels (one geometry: axisWordRects).
+	// One geometry with placeLabels (axisWordRects), so these spots stay clear of the ghost labels.
 	for _, t := range vp.axisWordRects() {
 		DrawTextStyled(dst, t.text, off.X+t.r.Min.X, off.Y+t.r.Min.Y, RoleMicro, WithAlpha(TokenTextSecondary(), AlphaStrong))
 	}
@@ -146,11 +138,8 @@ func drawViewPlot(dst *ebiten.Image, off image.Point, vp *viewPlot) {
 	}
 }
 
-// glowLayer is the trigger GLOW baked once per picture and theme: the NOW
-// curve stroked wide in the glow colour and the ring around the plot. A
-// glowing frame only blits it with its alpha scaled by the intensity — no
-// path tessellation per frame (with a beat playing, the glow is on almost
-// every frame). The resting picture underneath stays as it was.
+// Baked once per picture and theme: a glowing frame only blits it with scaled alpha. With a beat playing the
+// glow is on almost every frame, so per-frame tessellation is out.
 type glowLayer struct {
 	img    *ebiten.Image
 	vp     *viewPlot
@@ -187,8 +176,6 @@ func (g *glowLayer) draw(dst *ebiten.Image, off image.Point, vp *viewPlot, inten
 	dst.DrawImage(g.img, &g.op)
 }
 
-// release frees the baked layer (the Synth tab's sprites are released when
-// the tab hides).
 func (g *glowLayer) release() {
 	if g.img != nil {
 		g.img.Deallocate()
@@ -210,10 +197,8 @@ func strokePlotLine(dst *ebiten.Image, pts []fpt, off image.Point, w float32, co
 	drawPath(dst, &p, makeStrokeOptions(w), col)
 }
 
-// fillPlotBand fills a band one pixel column at a time (top/bot interpolated
-// between the band's points): exact, seam-free under a translucent colour
-// (an anti-aliased polygon fill showed its triangle fan), and visible to the
-// drawRect-intercepting pixel tests.
+// One column at a time: seam-free under a translucent colour (a polygon fill showed its triangle fan) and
+// visible to drawRect-intercepting pixel tests.
 func fillPlotBand(dst *ebiten.Image, b plotBand, off image.Point, col color.Color) {
 	if len(b.xs) < 2 {
 		return

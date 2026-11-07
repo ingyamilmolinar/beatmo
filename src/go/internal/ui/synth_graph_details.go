@@ -1,11 +1,6 @@
 package ui
 
-// synth_graph_details.go — the Synth graph's Details toggle (spec
-// docs/superpowers/specs/2026-10-25-synth-dial-relevance-and-cheap-graphs-design.md §3.3).
-// Off (the default): the graph speaks in WORDS ("Short · Warm · Clean tone").
-// On: the literal NUMBERS ("Sounds for 248 ms · brightness 1.2 kHz · 4 %
-// noise") and value-labelled axes. The choice is remembered across sessions
-// in prefs (AudioPanelStateDoc.SynthGraphDetails).
+// Words by default, numbers and value-labelled axes when on; remembered across sessions in prefs.
 
 import (
 	"image"
@@ -17,8 +12,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/userprefs"
 )
 
-// AudioPanelStateSink is the persistence the audio panel's remembered state
-// writes through. userprefs.AudioPanelStore satisfies it; tests use a stub.
 type AudioPanelStateSink interface {
 	LoadAudioPanelState() (userprefs.AudioPanelStateDoc, error)
 	SaveAudioPanelState(userprefs.AudioPanelStateDoc) error
@@ -29,9 +22,7 @@ var (
 	audioPanelStateSink   AudioPanelStateSink
 )
 
-// SetAudioPanelStateSink registers the audio-panel state persistence. The
-// bootstraps (cmd/beatmo.go, js_bootstrap_wasm.go) call it with the prefs
-// store; nil keeps the state in memory only.
+// nil keeps the state in memory only.
 func SetAudioPanelStateSink(s AudioPanelStateSink) {
 	audioPanelStateSinkMu.Lock()
 	audioPanelStateSink = s
@@ -44,8 +35,6 @@ func activeAudioPanelStateSink() AudioPanelStateSink {
 	return audioPanelStateSink
 }
 
-// synthGraphDetailsState is the toggle's per-DrumView state, loaded from the
-// sink on first use.
 type synthGraphDetailsState struct {
 	loaded bool
 	on     bool
@@ -66,8 +55,6 @@ func (dv *DrumView) synthGraphNumbers() bool {
 	return st.on
 }
 
-// toggleSynthGraphDetails flips the readout between words and numbers and
-// remembers the choice.
 func (dv *DrumView) toggleSynthGraphDetails() {
 	on := !dv.synthGraphNumbers()
 	dv.graphDetails.on = on
@@ -91,14 +78,10 @@ func (dv *DrumView) synthGraphDetailsButton() *Button {
 	return st.btn
 }
 
-// detailsToggleReserve is the width the toggle takes from the graph's header
-// rows (the view title and the readout are truncated before it).
 func detailsToggleReserve() int {
 	return TextWidth(i18n.T(i18n.KeyGraphDetails)) + 2*Profile().DensityValues().AudioPillPadX + SpaceSM
 }
 
-// synthGraphDetailsRect is where the toggle sits on a graph pane: the header's
-// top-right corner, spanning the caption and readout rows.
 func synthGraphDetailsRect(pane image.Rectangle) image.Rectangle {
 	if pane.Dx() < 160 || pane.Dy() < 60 {
 		return image.Rectangle{}
@@ -110,8 +93,7 @@ func synthGraphDetailsRect(pane image.Rectangle) image.Rectangle {
 	return image.Rect(x1-w, y0, x1, y0+h)
 }
 
-// drawSynthGraphDetails draws the toggle over the graph pane (outside the
-// graph's sprite: its pressed / hover states are live).
+// Outside the graph's sprite: its pressed and hover states are live.
 func (dv *DrumView) drawSynthGraphDetails(dst *ebiten.Image, pane image.Rectangle) {
 	r := synthGraphDetailsRect(pane)
 	btn := dv.synthGraphDetailsButton()

@@ -9,11 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
-// chainTraceCacheEnabled gates the Chain-tab waveform-trace cache. It is the
-// test seam (mirrors SetRowsLayerWindowingForTest): tests that need the trace
-// re-rendered every frame — e.g. a per-frame draw-call count or an animation
-// assertion — flip it off so Draw always takes the direct path. Production
-// keeps it on so inter-tick frames are a single blit instead of ~5k blits.
+// Tests that need a per-frame render turn it off.
 var chainTraceCacheEnabled = true
 
 // SetChainTraceCacheForTest toggles the trace cache and returns a restore func.
@@ -23,12 +19,7 @@ func SetChainTraceCacheForTest(on bool) func() {
 	return func() { chainTraceCacheEnabled = prev }
 }
 
-// chainTraceKey fingerprints the layout/display inputs that determine the
-// trace pixels. The scope data itself is tracked separately by pinning the
-// *scope.State pointer (z.traceState) — see that field's doc for why pointer
-// identity (not state.Timestamp) is the correct freshness signal. Sample rate
-// and density tokens are session-constant (a density change comes with a
-// relayout that changes w/h), so they need not enter the key.
+// The scope data is tracked by pointer (traceState); sample rate and density are session-constant.
 type chainTraceKey struct {
 	w, h     int
 	mode     chainDisplayMode
@@ -39,20 +30,15 @@ type chainTraceKey struct {
 	windowMs float64
 	showA    bool
 	showB    bool
-	// theme is the ThemeGeneration: the cache bakes the scope background and
-	// trace colors, so a runtime theme change must re-render it.
+	// The cache bakes theme colors.
 	theme int
 }
 
-// chainBlitOp is the reusable blit options for the cached-trace DrawImage so
-// the per-frame blit stays allocation-free.
+// Reused so the blit is allocation-free.
 var chainBlitOp ebiten.DrawImageOptions
 
-// drawTracesCached renders the waveform trace area into screen at cr, going
-// through an offscreen cache when nothing that affects the trace has changed
-// since the last render. drawChainTraces draws entirely rect-relative, so the
-// cache is rendered at a (0,0)-origin rect and blitted to cr.Min — the blitted
-// pixels are identical to rendering directly at cr.
+// Rendered at a (0,0)-origin rect and blitted to cr.Min: drawChainTraces is rect-relative, so the
+// pixels are identical.
 func (z *ChainPanelZone) drawTracesCached(screen *ebiten.Image, cr image.Rectangle, state *scope.State) {
 	w, h := cr.Dx(), cr.Dy()
 	if w < 1 || h < 1 {
@@ -73,8 +59,7 @@ func (z *ChainPanelZone) drawTracesCached(screen *ebiten.Image, cr image.Rectang
 
 	dimsChanged := z.traceCache == nil ||
 		z.traceCache.Bounds().Dx() != w || z.traceCache.Bounds().Dy() != h
-	// Rebuild on a new scope state (data refreshed), any layout/display change,
-	// or a resize. state == z.traceState is the data-unchanged fast path.
+	// state == traceState is the data-unchanged fast path.
 	if !z.traceKeyOK || z.traceKey != key || z.traceState != state || dimsChanged {
 		if dimsChanged {
 			releaseImage(z.traceCache)
@@ -94,11 +79,7 @@ func (z *ChainPanelZone) drawTracesCached(screen *ebiten.Image, cr image.Rectang
 	screen.DrawImage(z.traceCache, &chainBlitOp)
 }
 
-// renderTracesDirect computes the effective Y-gain / auto-fit window and draws
-// the traces into dst at rect. This is the exact pre-cache body lifted out of
-// Draw verbatim, used both on a cache miss (rect at origin) and when the cache
-// is disabled (rect == the real content rect). Keeping one renderer guarantees
-// the cached and uncached paths are pixel-identical.
+// One renderer for both paths, so cached and uncached are pixel-identical.
 func (z *ChainPanelZone) renderTracesDirect(dst *ebiten.Image, rect image.Rectangle, state *scope.State) {
 	effectiveGain := z.yGain
 	if z.autoGain && state != nil {
@@ -114,13 +95,8 @@ func (z *ChainPanelZone) renderTracesDirect(dst *ebiten.Image, rect image.Rectan
 		}
 	}
 
-	// Auto-fit: frame the X window to the signal's active span so the
-	// waveform fills the trace. The scope captures ~500ms but a transient is
-	// ~2ms; without this the trace is ~98% dead width and the time-axis
-	// labels (driven by windowMs) disagree with what's rendered. We sub-slice
-	// each tap's samples (alloc-free, into reusable scratch) and derive an
-	// effective window so labels match. Manual zoom (z.windowMs) is the
-	// ceiling. See [[project_chain_tab_redesign]] / scope.ActiveSpan.
+	// Frame the window to the signal's active span (a transient is ~2 ms of a ~500 ms capture), with the
+	// manual windowMs as the ceiling; sub-slicing is alloc-free, and the labels follow the effective window.
 	drawState := state
 	drawWindowMs := z.windowMs
 	if z.autoFit && state != nil {

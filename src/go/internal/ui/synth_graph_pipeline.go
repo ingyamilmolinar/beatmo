@@ -1,17 +1,7 @@
 package ui
 
-// synth_graph_pipeline.go — renders the documents the Synth tab's graph shows
-// and analyses them (spec docs/superpowers/specs/2026-10-24-synth-graphs-and-devtools-design.md §4.3).
-//
-// Slots: NOW (the live document), LO / HI (the focused control at its two
-// ends). Each slot holds its LANDED render (stale-while-revalidate: the
-// previous picture keeps drawing until the next lands, and after a failure)
-// and at most one pending job; a new request replaces the pending one, so a
-// drag that streams a request per detent renders only the latest (one job in
-// flight plus the newest). Renders run on synth.preview — the 1-worker pool
-// the mirror owns (no new registry name) — through audio.RenderDocForGraph,
-// the exact voice a trigger plays. The analysis (soundview) is warmed on the
-// worker before the render is handed over, so the UI goroutine only reads.
+// Each slot keeps its LANDED render while at most one newer job is pending, so a drag renders only the
+// latest. Analysis is warmed on the worker before hand-over, so the UI goroutine only reads.
 
 import (
 	"context"
@@ -38,10 +28,8 @@ const (
 // graphCacheCap bounds the cache (a 2 s render is ~380 KB; 16 ≈ 6 MB).
 const graphCacheCap = 16
 
-// graphIdent is the cheap, comparable identity of a slot's request: the
-// document identity (synthParamsHash: id + revision), the Sampler edit (it is applied to the render but does not bump the revision), and what
-// the slot varies. Equal idents are equal audio, so a frame that asks again
-// costs one struct compare.
+// The Sampler edit is part of it because it changes the render without bumping the revision. Equal idents
+// are equal audio.
 type graphIdent struct {
 	inst    instrument.ID // whose sound: a render is never shown for another
 	hash    string
@@ -49,9 +37,7 @@ type graphIdent struct {
 	variant string // "now", "lo", "hi"
 	ctl     string // the control the variant moves
 	n       int    // extra discriminator
-	// key is the CONTENT of an end ghost's document (audio.GraphRenderKey):
-	// the ends do not change while their own control turns, so they are
-	// identified by what they sound like, not by the live revision.
+	// The ends do not change while their own control turns, so they are keyed by content, not revision.
 	key uint64
 }
 
@@ -93,21 +79,16 @@ type synthGraphPipeline struct {
 	dirty  atomic.Bool
 	busy   sync.WaitGroup   // jobs taken and still running
 	now    func() time.Time // injectable clock; nil = time.Now
-	// warming holds the analyses still to compute for landed renders, so a
-	// view switch on the same render warms on the worker instead of the UI
-	// goroutine (warm / takeWarm).
+	// A view switch on a landed render warms on the worker, not the UI goroutine.
 	warming map[*graphRender]soundview.Need
 	warmSub map[*graphRender]bool
 
-	// Dial relevance (synth_dial_relevance.go): sounds waiting to be measured,
-	// ONE probe per pool job so a graph render queued meanwhile never waits
-	// for a whole instrument; the verdicts by sound signature.
+	// ONE probe per pool job, so a graph render queued meanwhile never waits for a whole instrument.
 	relQueue []*relevanceJob
 	relSub   bool
 	relDone  map[uint64][]string
 	relCount int
-	// relStep serialises relevance steps: the pool's worker and a synchronous
-	// drain (scene setup, tests) may both step the queue.
+	// The worker and a synchronous drain (scenes, tests) may both step the queue.
 	relStep sync.Mutex
 }
 
@@ -122,8 +103,6 @@ type relevanceJob struct {
 	failed bool
 }
 
-// graphSlowAfter is how long a render may be pending before the graph says
-// it is updating (the previous picture keeps drawing meanwhile).
 const graphSlowAfter = 300 * time.Millisecond
 
 func (p *synthGraphPipeline) clock() time.Time {
@@ -133,8 +112,6 @@ func (p *synthGraphPipeline) clock() time.Time {
 	return time.Now()
 }
 
-// slow reports whether slot has waited more than graphSlowAfter for the
-// render of what it wants.
 func (p *synthGraphPipeline) slow(slot graphSlot) bool {
 	p.mu.Lock()
 	st := p.slots[slot]
@@ -145,23 +122,18 @@ func (p *synthGraphPipeline) slow(slot graphSlot) bool {
 	return p.clock().Sub(st.askedAt) > graphSlowAfter
 }
 
-// graphAnalysisYield runs between analysis stages on the worker. The browser
-// build sets it to hand the single thread back to the frame loop.
+// The browser build sets it to hand the single thread back to the frame loop.
 var graphAnalysisYield func()
 
 func newSynthGraphPipeline(pool *async.Pool) *synthGraphPipeline {
 	return &synthGraphPipeline{pool: pool, render: audio.RenderDocForGraph, cache: map[graphIdent]*graphRender{}}
 }
 
-// newSynthGraphPipelineForTest builds a pipeline whose jobs run only when the
-// test drains them (drainForTest), with render as the renderer.
 func newSynthGraphPipelineForTest(render graphRenderFunc) *synthGraphPipeline {
 	return &synthGraphPipeline{render: render, cache: map[graphIdent]*graphRender{}}
 }
 
-// want asks slot to show the document mk builds, identified by ident. A
-// repeated ident is a no-op; a cached one lands at once; otherwise a render is
-// scheduled (replacing any pending one for the slot).
+// A repeated ident is a no-op; a cached one lands at once.
 func (p *synthGraphPipeline) want(slot graphSlot, ident graphIdent, mk func() graphReq) {
 	p.mu.Lock()
 	st := &p.slots[slot]
@@ -187,9 +159,7 @@ func (p *synthGraphPipeline) want(slot graphSlot, ident graphIdent, mk func() gr
 	}
 }
 
-// submit queues a wrapper that runs slot's pending job once. A refused
-// submission (synth.preview's queue is shared and bounded) leaves submitted
-// false, and pump retries it on a later frame.
+// synth.preview's queue is shared and bounded; a refused submission is retried by pump.
 func (p *synthGraphPipeline) submit(slot graphSlot) {
 	if p.pool == nil {
 		return
@@ -204,8 +174,6 @@ func (p *synthGraphPipeline) submit(slot graphSlot) {
 	}
 }
 
-// pump resubmits every pending job whose submission was refused. Called once
-// per frame by the graph's draw.
 func (p *synthGraphPipeline) pump() {
 	for s := graphSlot(0); s < graphSlotCount; s++ {
 		p.mu.Lock()
@@ -238,8 +206,6 @@ func (p *synthGraphPipeline) pump() {
 	p.submitRelevance()
 }
 
-// measureRelevance queues the measurement of a sound's dials (no-op when it
-// is known or already queued).
 func (p *synthGraphPipeline) measureRelevance(sig uint64, id instrument.ID, doc instrument.Doc, probes []dialProbe) {
 	p.mu.Lock()
 	if _, done := p.relDone[sig]; done {
@@ -257,8 +223,6 @@ func (p *synthGraphPipeline) measureRelevance(sig uint64, id instrument.ID, doc 
 	p.submitRelevance()
 }
 
-// submitRelevance queues one probe on the worker (a refused submission is
-// retried by pump).
 func (p *synthGraphPipeline) submitRelevance() {
 	if p.pool == nil {
 		return
@@ -277,10 +241,7 @@ func (p *synthGraphPipeline) submitRelevance() {
 	}
 }
 
-// relevanceStep measures the next probe of the oldest queued sound; the last
-// probe lands the verdict. Then the next step is queued behind whatever the
-// graph asked for meanwhile. Steps never overlap (relStep), so each probe
-// lands once and each sound is finished once.
+// Steps never overlap, so each probe lands once and each sound finishes once.
 func (p *synthGraphPipeline) relevanceStep() {
 	p.relStep.Lock()
 	defer p.relStep.Unlock()
@@ -402,8 +363,6 @@ func (p *synthGraphPipeline) run(slot graphSlot, ident graphIdent, req graphReq)
 	p.dirty.Store(true)
 }
 
-// landLocked lands r on slot (when it still wants ident) and on every other
-// slot waiting for the same sound.
 func (p *synthGraphPipeline) landLocked(slot graphSlot, ident graphIdent, r *graphRender) {
 	for s := range p.slots {
 		st := &p.slots[s]
@@ -417,10 +376,7 @@ func (p *synthGraphPipeline) landLocked(slot graphSlot, ident graphIdent, r *gra
 	}
 }
 
-// cacheKey is what a render is cached under: the sound itself when the
-// request names its content (audio.GraphRenderKey: the document's sound
-// signature, the tempo, the pitch, the Sampler edit), so every slot and every
-// revision that asks for the same sound shares one render.
+// Keyed by the sound itself, so every slot and revision asking for the same sound shares one render.
 func cacheKey(id graphIdent) graphIdent {
 	if id.key != 0 {
 		return graphIdent{inst: id.inst, key: id.key}
@@ -480,8 +436,6 @@ func (p *synthGraphPipeline) pending(slot graphSlot) bool {
 	return st.wanted && (st.landed == nil || st.landedFor != st.ident) && st.pending != nil
 }
 
-// warm asks for the analyses need names on r, on the worker; ready reports
-// whether they are computed already (then nothing is scheduled).
 func (p *synthGraphPipeline) warm(r *graphRender, need soundview.Need) (ready bool) {
 	if r == nil || r.an == nil || r.an.Has(need) {
 		return true
@@ -527,15 +481,12 @@ func (p *synthGraphPipeline) takeWarm(r *graphRender) {
 // takeDirty reports (and clears) whether a render landed since the last call.
 func (p *synthGraphPipeline) takeDirty() bool { return p.dirty.Swap(false) }
 
-// renderNowSync renders slot's request on the caller goroutine (scene Setup:
-// a deterministic picture at capture time).
+// For scene Setup: a deterministic picture at capture time.
 func (p *synthGraphPipeline) renderNowSync(slot graphSlot, ident graphIdent, mk func() graphReq) {
 	p.want(slot, ident, mk)
 	p.takePending(slot)
 }
 
-// drainForTest runs every pending job (renders, then warms) on the caller
-// goroutine.
 func (p *synthGraphPipeline) drainForTest() {
 	for s := graphSlot(0); s < graphSlotCount; s++ {
 		p.takePending(s)
@@ -560,15 +511,9 @@ func (p *synthGraphPipeline) cacheLen() int {
 	return len(p.cache)
 }
 
-// synthPreviewPoolName is the Synth tab's standing render pool (CLAUDE.md
-// § standing pools): every graph render runs on it.
 const synthPreviewPoolName = "synth.preview"
 
-// newSynthPreviewPool acquires the shared 1-worker preview pool from the
-// default registry. The pipeline is created LAZILY mid-session (the Synth tab's
-// first graph), so registry-budget exhaustion must NOT crash the app: like
-// eventlogger.format and hooks.fanout, fall back to a private pool when the
-// shared budget is full.
+// Created lazily mid-session, so an exhausted registry budget must not crash the app: fall back to a private pool.
 func newSynthPreviewPool() *async.Pool {
 	opts := async.Options{MaxConcurrent: 1, QueueSize: 8, Name: synthPreviewPoolName}
 	pool, err := async.DefaultRegistry().Get(synthPreviewPoolName, opts)
@@ -579,8 +524,6 @@ func newSynthPreviewPool() *async.Pool {
 	return pool
 }
 
-// synthGraphPipe returns the DrumView's graph pipeline, created on first use
-// on the shared preview pool.
 func (dv *DrumView) synthGraphPipe() *synthGraphPipeline {
 	if dv.graphPipe == nil {
 		dv.graphPipe = newSynthGraphPipeline(newSynthPreviewPool())

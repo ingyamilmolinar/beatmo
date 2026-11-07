@@ -1,13 +1,7 @@
 package ui
 
-// synth_macro_flow.go lays out the PRODUCTION root's compact category cards
-// (spec 2026-10-24 §4.2) as a flow: each card is as wide as its dials need,
-// cards pack left to right and wrap, and every row is stretched to the full
-// width. A uniform grid gives a one-dial card the width of a four-dial card,
-// which pushed ten instruments' cards past two rows at 1280x720
-// (TestProductionCardsFitTwoRows). The rows ride the shared ControlGrid as
-// single full-width cells, so scrolling, edge fades and the scroll body work
-// exactly as on the developer root.
+// Each card is as wide as its dials need: a uniform grid gave a one-dial card a four-dial width and pushed
+// cards past two rows at 1280x720. Rows ride ControlGrid as full-width cells, so scrolling works as elsewhere.
 
 import (
 	"image"
@@ -16,9 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/synthdial"
 )
 
-// productionCardMinW is the narrowest a compact card may be for n dials and
-// its title: the dial cells side by side (capped at the row width by the
-// caller), or the title, whichever is wider.
+// The caller caps it at the row width.
 func productionCardMinW(label string, n int) int {
 	in := 2 * macroCardInset()
 	w := in + StyledTextWidth(label, RoleBody)
@@ -29,9 +21,7 @@ func productionCardMinW(label string, n int) int {
 	return w
 }
 
-// packCardRows packs widths greedily into rows no wider than avail (gap
-// between neighbours). A card wider than avail gets a row of its own. Returns
-// the index lists per row, in order.
+// A card wider than avail gets a row of its own.
 func packCardRows(widths []int, avail, gap int) [][]int {
 	var rows [][]int
 	var row []int
@@ -54,9 +44,7 @@ func packCardRows(widths []int, avail, gap int) [][]int {
 	return rows
 }
 
-// justifyRow stretches a row's card widths to fill avail exactly (the extra
-// shared in proportion to each card's width; rounding remainder to the last).
-// A row already at or over avail is clamped card by card to avail.
+// The extra is shared in proportion, the remainder to the last card; a row over avail is clamped card by card.
 func justifyRow(widths []int, avail, gap int) []int {
 	out := make([]int, len(widths))
 	total := 0

@@ -9,8 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// gameLaneSource adapts the Game to laneSource. refresh() must run once per
-// lane tick, before the lane reads it (laneTick does this).
+// refresh() runs once per lane tick, before reading.
 type gameLaneSource struct {
 	s         *playbackSlate
 	ctx       laneCtx
@@ -48,11 +47,7 @@ func laneBool(b bool) uint64 {
 	return 0
 }
 
-// GlobalKey fingerprints the inputs every row's notes read: the path
-// snapshot (pointer: rebuilt on every path change), the predictor epoch
-// (node params, rebase, paths), BPM / subdivision, the clock anchor (play,
-// seek, BPM re-anchor), solo state, the audio offset and the graph version
-// (node / group hooks).
+// Every input all rows' notes read; the path snapshot is a pointer rebuilt on every path change.
 func (src *gameLaneSource) GlobalKey() uint64 {
 	g := src.s.g
 	h := fnv.New64a()
@@ -77,8 +72,6 @@ func (src *gameLaneSource) rowNonVoiceKey(r int) uint64 {
 	return h.Sum64()
 }
 
-// RowKey fingerprints one row's own inputs: instrument, volume, mute, solo
-// and the instrument's voice revision (synth / sampler edits).
 func (src *gameLaneSource) RowKey(r int) uint64 {
 	if len(src.prevNon) != src.Rows() {
 		src.prevNon = make([]uint64, src.Rows())
@@ -94,9 +87,7 @@ func (src *gameLaneSource) VoiceRevOnly(r int) bool {
 	return r < len(src.voiceOnly) && src.voiceOnly[r]
 }
 
-// Steps maps a Time window to abs steps, widened by ONE step each side: a
-// groove nudge is at most one subdivision (nodeNudgeSecondsAt), so a nudged
-// note can never fall outside the scanned range. The lane filters by Time.
+// Widened one step each side: a groove nudge is at most one subdivision. The lane filters by Time.
 func (src *gameLaneSource) Steps(from, to float64) (int, int, bool) {
 	c := src.ctx
 	if !src.ctxOK {
@@ -127,8 +118,7 @@ func (src *gameLaneSource) VoiceReady(n laneNote) bool {
 	return true
 }
 
-// Warm asks the prewarm pool for the note's voices (never inline: the lane
-// runs on the sequencer goroutine).
+// Never inline: the lane runs on the sequencer goroutine.
 func (src *gameLaneSource) Warm(n laneNote) {
 	pw := src.s.g.voicePrewarmer
 	if pw == nil {

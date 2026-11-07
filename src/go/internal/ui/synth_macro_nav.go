@@ -2,12 +2,7 @@ package ui
 
 import "github.com/ingyamilmolinar/beatmo/internal/instrument"
 
-// synth_macro_nav.go owns the drill-down navigation state for the Synth tab's
-// category layer: what (if anything) the user has drilled into. The root shows
-// the category cards + the pipeline strip; a drilled target is either a
-// CATEGORY (its params) or a pipeline STAGE (that stage's params) — both open
-// the same drilled screen. State lives on DrumView (instEditorMacroOpen),
-// keyed by resolved instID, plus the per-target "More" expander state.
+// A drilled target is a CATEGORY or a pipeline STAGE, both opening the same screen; keyed by resolved instID.
 
 // synthDrillKind says what kind of thing is drilled into.
 type synthDrillKind int
@@ -36,8 +31,6 @@ func (t synthDrillTarget) key() string {
 	return ""
 }
 
-// synthDrillTarget returns the drilled destination for instID (kind drillNone
-// at the root).
 func (dv *DrumView) synthDrillTarget(instID instrument.ID) synthDrillTarget {
 	if dv.instEditorMacroOpen == nil {
 		return synthDrillTarget{}
@@ -45,8 +38,7 @@ func (dv *DrumView) synthDrillTarget(instID instrument.ID) synthDrillTarget {
 	return dv.instEditorMacroOpen[instID]
 }
 
-// synthMacroOpen returns the currently-drilled category id for instID ("" when
-// at the root or drilled into a stage).
+// "" at the root or when drilled into a stage.
 func (dv *DrumView) synthMacroOpen(instID instrument.ID) string {
 	t := dv.synthDrillTarget(instID)
 	if t.kind == drillCategory {
@@ -69,10 +61,7 @@ func (dv *DrumView) setSynthStageOpen(instID instrument.ID, id synthSectionID) {
 	dv.setSynthDrillTarget(instID, synthDrillTarget{kind: drillStage, stage: id})
 }
 
-// The production UI has no drilled screens (the raw knobs are developer
-// tools, devtools.go): every non-root target is refused here, the chokepoint
-// the card tap, the pipeline pills, selectSynthSection and ui-state restore
-// all reach, so the root stays open.
+// Production has no drilled screens; every non-root target is refused here, the chokepoint every route reaches.
 func (dv *DrumView) setSynthDrillTarget(instID instrument.ID, t synthDrillTarget) {
 	if t.kind != drillNone && !devToolsOn() {
 		return
@@ -83,14 +72,11 @@ func (dv *DrumView) setSynthDrillTarget(instID instrument.ID, t synthDrillTarget
 	dv.instEditorMacroOpen[instID] = t
 }
 
-// synthAtMacroRoot reports whether instID is at the root (nothing drilled in) —
-// the landing view of category cards + the pipeline strip.
 func (dv *DrumView) synthAtMacroRoot(instID instrument.ID) bool {
 	return dv.synthDrillTarget(instID).kind == drillNone
 }
 
-// synthMoreOpen reports whether the drilled target's "More" (fine-tuning)
-// params are expanded for instID. Session-only, per instrument + target.
+// Session-only, per instrument + target.
 func (dv *DrumView) synthMoreOpen(instID instrument.ID) bool {
 	if dv.instEditorMoreOpen == nil {
 		return false

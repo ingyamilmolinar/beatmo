@@ -7,21 +7,15 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// eqDBMin/eqDBMax bound the EQ band gain domain, matching eqDBSpec()'s clamp;
-// eqDBSpan is their derived width, used to map the endless knob's normalized
-// [0,1] value onto real dB units.
+// Must match eqDBSpec()'s clamp; eqDBSpan maps the knob's normalized value onto dB.
 const (
 	eqDBMin  = -12.0
 	eqDBMax  = 12.0
 	eqDBSpan = eqDBMax - eqDBMin
 )
 
-// openEQKnobWheelPopup opens the precision wheel popup for EQ band's dB gain.
-// Works on desktop AND mobile (unlike the synth/sampler wheels, which are
-// mobile-only). The wheel edits EQPanelZone.bandGainsDB — the same source of
-// truth as the curve-drag handles — via applyBandGainLive; one undo step is
-// committed on release through commitEQBand. The center-box tap re-opens the
-// inline numeric editor so text entry is preserved.
+// Desktop AND mobile (the synth/sampler wheels are mobile-only). It edits bandGainsDB, the curve handles'
+// source of truth, live; one undo step lands on release.
 func (dv *DrumView) openEQKnobWheelPopup(band int) {
 	z := dv.eqPanelZone
 	if z == nil || band < 0 || band >= len(z.bandGainsDB) || dv.eqWheelPopup == nil {
@@ -30,9 +24,7 @@ func (dv *DrumView) openEQKnobWheelPopup(band int) {
 	dv.CloseAllPopups()
 
 	badge := dv.eqWheelStepBadge
-	// Lazily restore the persisted step-resolution rung on first open, not in
-	// the ctor: the ctor may run before SetKnobStepSink installs the global
-	// sink, so an eager read there would always miss.
+	// Restored lazily on first open: the ctor may run before SetKnobStepSink installs the sink.
 	if !dv.eqWheelStepRestored {
 		if persisted, ok := dv.knobStepPref("eq_band_gain"); ok && badge != nil {
 			badge.SetStep(persisted)
@@ -41,8 +33,7 @@ func (dv *DrumView) openEQKnobWheelPopup(band int) {
 	}
 	def := audio.ParamDef{Name: "eq_band_gain", Label: eqBandLabel(band), Min: eqDBMin, Max: eqDBMax, Unit: "dB"}
 
-	// Transient knob seeded from the current gain; endless accumulation in real
-	// dB units, one StepMul (badge rung) per notch.
+	// Endless accumulation in real dB units, one StepMul (badge rung) per notch.
 	k := NewKnob((z.bandGainsDB[band] - eqDBMin) / eqDBSpan)
 	k.Scale = KnobScale{Min: eqDBMin, Max: eqDBMax}
 	k.Endless = true
@@ -70,9 +61,7 @@ func (dv *DrumView) openEQKnobWheelPopup(band int) {
 	dv.openEQWheelPortal()
 }
 
-// closeEQKnobWheelPopup closes the EQ precision wheel popup. Navigating away
-// (CloseAllPopups on tab switch / opening another control) persists the pending
-// edit — Accept commits it and closes; a no-op when the popup is already closed.
+// Navigating away keeps the pending edit: Accept commits it and closes. No-op when already closed.
 func (dv *DrumView) closeEQKnobWheelPopup() {
 	if dv.eqWheelPopup != nil {
 		dv.eqWheelPopup.Accept()
@@ -80,8 +69,6 @@ func (dv *DrumView) closeEQKnobWheelPopup() {
 	dv.closeEQWheelPortal()
 }
 
-// EQWheelPopupRect returns the screen-space rect of the EQ wheel popup (empty
-// when nil/closed). Parity with SamplerWheelPopupRect for screenshot cropping.
 func (dv *DrumView) EQWheelPopupRect() image.Rectangle {
 	if dv.eqWheelPopup == nil || !dv.eqWheelPopup.IsOpen() {
 		return image.Rectangle{}
@@ -89,11 +76,7 @@ func (dv *DrumView) EQWheelPopupRect() image.Rectangle {
 	return dv.eqWheelPopup.Rect()
 }
 
-// eqBandLabel returns a short human label for EQ band index (e.g. "1k").
-// Reuses the zone's existing per-band ISO center-frequency labels
-// (eqCenterLabels, drumview_eq_popup.go) — the same strings already drawn on
-// the readout cells and used to build the mute/dB hit-area tags — rather than
-// introducing a second table.
+// Reuses eqCenterLabels, the strings already drawn on the readout cells, rather than a second table.
 func eqBandLabel(band int) string {
 	if band >= 0 && band < len(eqCenterLabels) {
 		return eqCenterLabels[band]

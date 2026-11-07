@@ -1,19 +1,7 @@
 package ui
 
-// synth_graph_pane.go — the Synth tab's graph: which control it explains, the
-// renders it asks for, and how it is drawn and glows
-// (spec docs/superpowers/specs/2026-10-24-synth-graphs-and-devtools-design.md §4.2–4.7).
-//
-//   - Nothing focused (the root): the OVERVIEW of the note as it plays.
-//   - A focused dial: the dial's view, with the dial at 0 and 100 as ghosts
-//     (synthdial Turn endpoints — exact, independent of where it sits) and a
-//     BEFORE ghost of the sound when the gesture began.
-//   - Developer builds, drilled into raw knobs: the selected knob's view, its
-//     Min/Max as ghosts; the view picker can show any view.
-//
-// Every curve is measured from audio.RenderDocForGraph's buffer — the voice a
-// trigger plays. A trigger makes the NOW curve GLOW for as long as the note
-// actually sounds (its own envelope), never hiding the picture.
+// Every curve is measured from audio.RenderDocForGraph, the voice a trigger plays. The root shows the overview;
+// a focused dial its view, with its 0/100 ends and the gesture's BEFORE as ghosts.
 
 import (
 	"image"
@@ -39,21 +27,15 @@ type synthGraphFocusView struct {
 	picked           bool // the developer view picker chose the view
 }
 
-// graphBeforeSnap is the BEFORE ghost: the NOW render captured when a gesture
-// began on ctl. It stays until the focus moves to another control.
 type graphBeforeSnap struct {
 	inst instrument.ID
 	ctl  string
 	r    *graphRender
-	// waitFor is the NOW ident the gesture started from, when its render had
-	// not landed yet at capture: r fills in once that render exists — never
-	// with an older one (a stale BEFORE claims the wrong starting sound).
+	// Filled only with the render the gesture started from, never an older one: a stale BEFORE claims the wrong sound.
 	waitFor graphIdent
 	waiting bool
 }
 
-// synthGraphViewOverride is the developer view picker's choice for a control
-// (ctl → view); empty = the control's own view.
 type synthGraphViewOverride map[string]synthView
 
 func dialCtl(card, dial string) string { return "dial:" + card + "/" + dial }
@@ -157,8 +139,7 @@ func (p *synthPanel) drawSynthGraphPane(dst *ebiten.Image, rect image.Rectangle,
 	pipe.pump()
 	edit, hasEdit := audio.SampleEditFor(instID)
 	base := graphIdent{inst: instID, hash: p.synthParamsHash(instID), edit: edit}
-	// NOW is identified by what it sounds like, not by the revision: an undo
-	// or a dial turned back to where it was lands the render it already has.
+	// Identified by sound, not revision: an undo or a dial turned back lands the render it already has.
 	nowID := graphIdent{inst: instID, edit: edit, variant: "now", key: p.nowSoundKey(instID, base)}
 	need := synthViewNeeds(f.view)
 	pipe.want(slotNow, nowID, func() graphReq {
@@ -178,24 +159,19 @@ func (p *synthPanel) drawSynthGraphPane(dst *ebiten.Image, rect image.Rectangle,
 	}
 	lo := ghost(slotLo, ends.lo)
 	hi := ghost(slotHi, ends.hi)
-	// A dial whose named view does not move on this instrument is shown
-	// through the view that does (synth_view_choice.go), measured on the two
-	// end renders the graph already has.
+	// A dial whose named view does not move here is shown through one that does.
 	if !f.picked && f.ctl != "" && lo != nil && hi != nil {
 		if v := p.chosenDialView(f, lo, hi, rect.Dx(), rect.Dy()); v != f.view {
 			f.view = v
 			need = synthViewNeeds(v)
 		}
 	}
-	// The last landed NOW keeps drawing while a newer one renders — but only
-	// for THIS instrument: after a row switch the previous instrument's
-	// picture is never shown as this one's (no picture yet instead).
+	// The last NOW keeps drawing while a newer renders, but never across instruments.
 	now, nowFor, _ := pipe.getFor(slotNow)
 	if now != nil && nowFor.inst != instID {
 		now = nil
 	}
-	// A render this view has not analysed yet is warmed on the worker; until
-	// then the previous picture stays (no analysis on this goroutine).
+	// Analysis runs on the worker; until it lands the previous picture stays.
 	nowReady := pipe.warm(now, synthRenderNeeds(f.view, now))
 	if b := &dv.graphBefore; b.waiting && b.inst == instID {
 		if r, ok := pipe.lookup(b.waitFor); ok {
@@ -239,8 +215,6 @@ func (p *synthPanel) drawSynthGraphPane(dst *ebiten.Image, rect image.Rectangle,
 	}
 	dv.drawSynthGraphDetails(dst, rect)
 	if pipe.slow(slotNow) && now != nil {
-		// The new picture is late (a slow render worker): say so; the previous
-		// picture stays underneath.
 		txt := i18n.T(i18n.KeyGraphUpdating)
 		w := StyledTextWidth(txt, RoleMicro)
 		x := vp.plot.Max.X + rect.Min.X - w - 4
@@ -257,9 +231,7 @@ type nowSoundMemo struct {
 	key  uint64
 }
 
-// nowSoundKey is the live document's audio.GraphRenderKey, recomputed only
-// when the document revision, the tempo or the Sampler edit moves (it
-// flattens and hashes the whole document).
+// Cached because it flattens and hashes the whole document.
 func (p *synthPanel) nowSoundKey(inst instrument.ID, base graphIdent) uint64 {
 	if p.nowKey.base == base && p.nowKey.key != 0 {
 		return p.nowKey.key
@@ -281,9 +253,7 @@ type dialViewMemo struct {
 	v        synthView
 }
 
-// chosenDialView is chooseDialView for the focused control, memoized on its
-// end renders. Until the ends are analysed for every view it answers the
-// declared view (the analyses are warmed on the worker, never here).
+// Answers the declared view until the ends are analysed (on the worker, never here).
 func (p *synthPanel) chosenDialView(f synthGraphFocusView, lo, hi *graphRender, w, h int) synthView {
 	m := p.viewMemo
 	if m.ctl == f.ctl && m.lo == lo && m.hi == hi && m.declared == f.view && m.w == w && m.h == h {
@@ -304,12 +274,7 @@ func (p *synthPanel) chosenDialView(f synthGraphFocusView, lo, hi *graphRender, 
 	return remember(v)
 }
 
-// captureGraphBefore snapshots the current NOW render as the BEFORE ghost of
-// ctl (called when a gesture begins on a dial or a raw knob).
-//
-// Only the render of the CURRENT document counts: when it has not landed yet
-// (an edit just before the press), BEFORE waits for it rather than taking the
-// older picture.
+// Only the CURRENT document's render counts; if it has not landed, BEFORE waits for it.
 func (dv *DrumView) captureGraphBefore(inst instrument.ID, ctl string) {
 	if dv.graphPipe == nil {
 		return
@@ -334,10 +299,7 @@ const (
 	glowFloorDB = -40.0
 )
 
-// envelopeGlow is the trigger glow's intensity 0..1 now: full for the first
-// 100 ms, then the note's own loudness (linear, re its loudest moment) at the
-// elapsed time, until it falls 40 dB under its peak or 1.5 s pass. With no
-// render yet it falls back to a short flash.
+// Full for 100 ms, then the note's own loudness until 40 dB down or 1.5 s; a short flash with no render yet.
 func (g *synthGlow) envelopeGlow(env *soundview.Envelope) float64 {
 	if !g.glowing {
 		return 0
@@ -362,10 +324,7 @@ func (g *synthGlow) envelopeGlow(env *soundview.Envelope) float64 {
 	return math.Pow(10, db/20)
 }
 
-// synthGraphControlIdx picks the control the graph explains for instID: the
-// armed control, else the sticky selection when it is part of the drilled
-// target, else the drilled target's first essential. -1 at the root or when
-// nothing is drilled.
+// -1 at the root or when nothing is drilled.
 func (dv *DrumView) synthGraphControlIdx(instID instrument.ID) int {
 	if dv.synthAtMacroRoot(instID) {
 		return -1
@@ -389,11 +348,7 @@ func (dv *DrumView) synthGraphControlIdx(instID instrument.ID) int {
 	return order[0]
 }
 
-// settleSynthGraphNow renders, synchronously, every render the graph wants
-// for the instrument the Synth tab shows (and the renders those reveal: the
-// focused control's ends). Scene Setup calls it so a capture shows the landed
-// picture, never whichever frame the worker happened to finish by — two
-// captures of a scene must match (TestRuntimeThemeSwitchMatchesBootEveryScene).
+// For scene Setup: two captures of a scene must match, not show whichever frame the worker finished by.
 func (dv *DrumView) settleSynthGraphNow() {
 	if dv == nil || dv.eqPanelZone == nil || dv.eqPanelZone.ActiveTab() != TabSynth {
 		return
@@ -426,8 +381,6 @@ func (dv *DrumView) settleSynthGraphNow() {
 // synthGraphPickOrder is the cycle a tap on the developer view picker walks.
 var synthGraphPickOrder = []synthView{viewLoudness, viewAttack, viewPitch, viewColour, viewHarmonics, viewColourTime, viewNoise, viewWave, viewOverview}
 
-// synthGraphPane is the rect the graph draws into (desktop side pane or the
-// phone band).
 func (dv *DrumView) synthGraphPane() image.Rectangle {
 	if r := dv.instEditorPreviewRect; !r.Empty() {
 		return r
@@ -435,8 +388,6 @@ func (dv *DrumView) synthGraphPane() image.Rectangle {
 	return dv.instEditorMobileFocusRect
 }
 
-// synthGraphPickRect is the picker's tap target: the caption row's right
-// end, where the view title is drawn.
 func synthGraphPickRect(pane image.Rectangle) image.Rectangle {
 	h := viewPad/2 + StyledTextHeight(RoleMicro) + 4
 	return image.Rect(max(pane.Min.X, pane.Max.X-150), pane.Min.Y, pane.Max.X, pane.Min.Y+h)
@@ -460,8 +411,6 @@ func (p *synthPanel) synthGraphPickHitAreas(inst instrument.ID, z int) []HitArea
 	}}
 }
 
-// cycleSynthGraphView moves the focused control's view to the next one in
-// synthGraphPickOrder (developer builds).
 func (dv *DrumView) cycleSynthGraphView(inst instrument.ID) {
 	f := dv.synp().synthGraphFocus(inst)
 	if f.ctl == "" || !devToolsOn() {
@@ -505,11 +454,8 @@ type graphEndsMemo struct {
 	lo, hi graphEnd
 }
 
-// synthGraphEnds returns the focused control's end documents, rebuilt only
-// when the document revision or the control changes. Their idents carry the
-// end document's CONTENT (audio.GraphRenderKey), not the revision: turning the
-// dial changes the revision every detent but lands its ends exactly where
-// they were, so the ghosts stay cached instead of re-rendering per detent.
+// Idents carry the end document's CONTENT, not the revision: a turn changes the revision every detent but
+// leaves the ends where they were, so the ghosts stay cached.
 func (p *synthPanel) synthGraphEnds(base graphIdent, f synthGraphFocusView) graphEndsMemo {
 	if p.graphEnds.base == base && p.graphEnds.ctl == f.ctl {
 		return p.graphEnds
@@ -530,16 +476,13 @@ func (p *synthPanel) synthGraphEnds(base graphIdent, f synthGraphFocusView) grap
 	return p.graphEnds
 }
 
-// synthPreviewWidth is the horizontal slice reserved for the graph pane on
-// desktop layouts. Returns 0 on mobile (no horizontal split — the graph is a
-// band above the controls there).
+// 0 on mobile, where the graph is a band above the controls.
 func synthPreviewWidth(contentR image.Rectangle, mobile bool) int {
 	if mobile {
 		return 0
 	}
 	if !devToolsOn() {
-		// Production: the graph is the explanation of every dial, so it
-		// takes 40 % of the tab (spec 2026-10-24 §4.2), never under 320 px.
+		// The graph explains every dial in production, so it gets 40 % of the tab, never under 320 px.
 		w := max(contentR.Dx()*2/5, 320)
 		if w > contentR.Dx()*3/5 {
 			return 0

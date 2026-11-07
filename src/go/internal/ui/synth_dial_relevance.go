@@ -1,21 +1,7 @@
 package ui
 
-// synth_dial_relevance.go — which dials an instrument shows is decided by the
-// DSP (spec docs/superpowers/specs/2026-10-25-synth-dial-relevance-and-cheap-graphs-design.md §3.2).
-//
-// A dial is RELEVANT for an instrument when turning it from 0 to 100 changes
-// the rendered note audibly (soundview.CompareNotes, the one audibility
-// oracle). An irrelevant dial is hidden — there is no exception list
-// anywhere: the audio change is the source of truth.
-//
-//   - WHICH SOUND: the instrument as the Synth tab first saw it in the open
-//     circuit (the ANCHOR). Edits in the tab never re-hide or re-show a dial
-//     (no card jumps mid-session); opening a circuit re-anchors.
-//   - WHERE THE VERDICT COMES FROM, keyed by the anchor's sound signature:
-//     the generated table of every shipped sound (synth_dial_relevance.gen.json,
-//     `make gen-dial-relevance`, kept current by TestDialRelevanceTableIsCurrent),
-//     else a measurement run in the background on the graph pipeline's worker.
-//     Until a verdict lands the dial shows (config gates still apply).
+// A dial shows only when its 0→100 sweep is audible (soundview.CompareNotes) - no exception list. Judged on the
+// circuit's ANCHOR sound so edits never re-hide a dial; a verdict comes from the generated table or a background measure.
 
 import (
 	"encoding/json"
@@ -34,9 +20,7 @@ import (
 // dialKey names a dial on its card ("brightness/edge").
 func dialKey(card, dial string) string { return card + "/" + dial }
 
-// dialProbe is one dial of a sound: its key, the view it names, and the
-// document fields at its two ends (synthdial Turn to 0 and to 100 — exact,
-// the same values on every instrument).
+// The end values are the same on every instrument.
 type dialProbe struct {
 	key    string
 	view   synthView
@@ -67,11 +51,7 @@ func dialProbes(macros []macroGroup, merged audio.RecipeParams) []dialProbe {
 	return out
 }
 
-// probeRelevant renders doc with the probe's dial at 0 and at 100 and reports
-// whether the change is RELEVANT: the two notes sound different (the
-// audibility oracle) AND a graph view shows the difference (chooseDialView
-// finds one that moves visibly). A change the oracle finds only in quiet
-// cells that no picture can show is no use to anyone turning the knob.
+// Relevant = audible AND some view shows it: a change only in quiet cells no picture shows helps no one.
 func probeRelevant(id instrument.ID, doc instrument.Doc, p dialProbe, render graphRenderFunc, yield func()) (bool, error) {
 	at := func(fields map[string]float64) (*graphRender, error) {
 		d, _, err := audio.ApplyInstrumentFields(doc, fields)
@@ -109,8 +89,7 @@ func probeRelevant(id instrument.ID, doc instrument.Doc, p dialProbe, render gra
 	return px >= viewMinMovePx, nil
 }
 
-// measureDialRelevance returns the keys of the probes whose sweep is inaudible
-// (the dials to hide), sorted.
+// Sorted keys of the dials to hide.
 func measureDialRelevance(id instrument.ID, doc instrument.Doc, probes []dialProbe, render graphRenderFunc) ([]string, error) {
 	var hidden []string
 	for _, p := range probes {
@@ -128,8 +107,6 @@ func measureDialRelevance(id instrument.ID, doc instrument.Doc, probes []dialPro
 
 // --- the generated table of shipped sounds ---
 
-// dialRelevanceFile is synth_dial_relevance.gen.json: per shipped instrument,
-// its sound signature and the dials the DSP found inert on it.
 type dialRelevanceFile struct {
 	schema.Envelope
 	Instruments []dialRelevanceEntry `json:"instruments"`
@@ -139,10 +116,7 @@ type dialRelevanceEntry struct {
 	ID        instrument.ID `json:"id"`
 	Signature string        `json:"signature"` // audio.SoundSignature, hex
 	Hidden    []string      `json:"hidden,omitempty"`
-	// Source "demo": a startup-demo sound measured ahead of time (a cache —
-	// the demo is hand-edited; an edited sound is measured at runtime and
-	// nothing goes stale). Empty: a shipped instrument, kept current by
-	// TestDialRelevanceTableIsCurrent.
+	// "demo" marks a cache of startup-demo sounds (hand-edited; an edited sound is measured at runtime).
 	Source string `json:"source,omitempty"`
 }
 
@@ -173,18 +147,12 @@ func soundSignatureHex(sig uint64) string { return strconv.FormatUint(sig, 16) }
 
 // --- the anchor, per instrument and circuit ---
 
-// dialRelevanceState is the DrumView's anchors: the sound signature each
-// instrument had when the Synth tab first showed it in the open circuit.
 type dialRelevanceState struct {
 	gen     uint64
 	anchors map[instrument.ID]uint64
 }
 
-// synthDialHidden returns the dials to hide on inst (nil while no verdict is
-// known) and the anchor's signature. At the first sight of inst in this
-// circuit it anchors the current sound and, when no generated verdict knows
-// it, queues the measurement of the dials probes lists (resolved on that very
-// sound — probes is only called then).
+// nil while no verdict is known. probes is called only on first sight, on that very sound.
 func (dv *DrumView) synthDialHidden(inst instrument.ID, probes func() []dialProbe) (hidden []string, sig uint64, known bool) {
 	st := &dv.dialRelevance
 	if gen := audio.CircuitGeneration(); st.anchors == nil || st.gen != gen {
@@ -213,8 +181,7 @@ func (dv *DrumView) synthDialHidden(inst instrument.ID, probes func() []dialProb
 	return nil, sig, false
 }
 
-// withoutDials returns macros minus the dials named in hidden (the cached
-// groups are never mutated).
+// The cached groups are never mutated.
 func withoutDials(macros []macroGroup, hidden []string) []macroGroup {
 	if len(hidden) == 0 {
 		return macros

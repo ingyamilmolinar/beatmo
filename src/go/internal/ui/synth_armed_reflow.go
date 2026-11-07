@@ -1,18 +1,11 @@
 package ui
 
-// synth_armed_reflow.go — masonry placement for the armed-control grow. The armed
-// control occupies a spanCols×spanRows block; every OTHER control packs into the
-// earliest free cell in reading order, so nothing is hidden and there are no gaps.
-// Pure geometry (a cellAt callback yields each lattice cell's pixel rect), so it is
-// unit-testable without a real grid.
+// Pure geometry over a cellAt callback, so it is testable without a grid.
 
 import "image"
 
-// reflowArmed returns an index-aligned target rect per `order` entry, with
-// order[armedPos] a spanCols×spanRows block and every other control in the
-// earliest free cell (reading order). rowMax is the highest lattice row used (the
-// caller feeds rowMax+1 to ControlGrid.SetContentRows so the reflow scrolls rather
-// than clips). No rect is empty (for on-window cells); none overlap.
+// The caller feeds rowMax+1 to SetContentRows so the reflow scrolls instead of clipping. No on-window rect is
+// empty; none overlap.
 func reflowArmed(order []int, armedPos, cols, spanCols, spanRows int, cellAt func(row, col int) image.Rectangle) ([]image.Rectangle, int) {
 	if cols < 1 {
 		cols = 1
@@ -26,11 +19,7 @@ func reflowArmed(order []int, armedPos, cols, spanCols, spanRows int, cellAt fun
 	if spanRows < 1 {
 		spanRows = 1
 	}
-	// No-divider path (macro drill-down + simple stage sections): keep the armed
-	// control in its clicked cell instead of relocating the block to the earliest
-	// free slot. The phantom/divider path below keeps earliestFree placement (its
-	// full-width band needs the floor logic, and growArmedCard routes those
-	// sections to growArmedCardLegacy anyway).
+	// Without a divider the armed control stays in its clicked cell; the divider path keeps earliest-free placement.
 	hasPhantom := false
 	for _, k := range order {
 		if k < 0 {
@@ -93,9 +82,8 @@ func reflowArmed(order []int, armedPos, cols, spanCols, spanRows int, cellAt fun
 	dividerRow := -1
 	for i, k := range order {
 		if k < 0 {
-			// Advanced-tier divider phantom: it must stay a full-width band, so the
-			// run reserves its own fresh row; controls after it (advanced tier) are
-			// floored below it so they never pack back up beside the armed block.
+			// The divider stays a full-width band, so the advanced tier after it is floored below and never packs up
+			// beside the armed block.
 			if dividerRow < 0 {
 				dividerRow = fullyFreeRow()
 			}
@@ -129,26 +117,8 @@ func reflowArmed(order []int, armedPos, cols, spanCols, spanRows int, cellAt fun
 	return rects, rowMax
 }
 
-// reflowArmedAnchored keeps the armed control anchored at its CLICKED cell: the
-// spanCols×spanRows block's top-left is the armed control's resting cell (row =
-// armedPos/cols, col = armedPos%cols), clamped left so a right-edge control's
-// block grows leftward instead of dropping to the row below.
-//
-// Every other control moves DOWN ONLY, never sideways: it KEEPS ITS COLUMN. A
-// control outside the block's columns, or above the block's row, does not move at
-// all. The rest re-stack (in their original top-to-bottom order) directly below
-// the block in the same column. Nothing is hidden — the caller feeds rowMax+1 to
-// SetContentRows so the pushed-down rows are scrollable — and no cells overlap.
-//
-// This deliberately replaces an "earliest free cell in reading order" masonry.
-// That packed tighter, but a control could be reassigned to a different COLUMN,
-// and since the grow interpolates each control along a straight line between its
-// resting and reflowed rect, cross-column moves flew diagonally across the panel
-// and crossed over their stationary siblings mid-flight. Keeping the column makes
-// every path purely vertical, so cards never cross each other. The cost is that a
-// column can end shorter than its neighbours; that is the intended trade.
-//
-// rowMax is the highest lattice row used (for SetContentRows).
+// Every other control moves DOWN only and keeps its column: with column changes each card's straight-line
+// path flew diagonally across its siblings. The cost is ragged column ends.
 func reflowArmedAnchored(order []int, armedPos, cols, spanCols, spanRows int, cellAt func(row, col int) image.Rectangle) ([]image.Rectangle, int) {
 	rects := make([]image.Rectangle, len(order))
 	rowMax := 0
@@ -157,8 +127,7 @@ func reflowArmedAnchored(order []int, armedPos, cols, spanCols, spanRows int, ce
 			rowMax = r
 		}
 	}
-	// Anchor at the clicked cell; clamp the column so the block fits within cols
-	// (a last-in-row control keeps its cell as the block's RIGHT column).
+	// A last-in-row control keeps its cell as the block's RIGHT column.
 	armedRow := armedPos / cols
 	armedCol := armedPos % cols
 	if armedCol+spanCols > cols {
@@ -167,16 +136,9 @@ func reflowArmedAnchored(order []int, armedPos, cols, spanCols, spanRows int, ce
 	if armedCol < 0 {
 		armedCol = 0
 	}
-	// DOWN-ONLY growth: the block's top-left stays at the clicked cell and the card
-	// only ever grows DOWN (and right, or left at the right edge). It never shifts
-	// UP into the row above — that would move the previous control upward "into
-	// nothing" and pull the card's top edge off the point the user clicked. A block
-	// whose lower row is off-window is handled by spanRect (it unions only the
-	// on-window corners, so no giant rect) plus the caller's height stretch (grows
-	// the card down toward the pane bottom), so the anchor never needs to move up.
+	// The block only ever grows down (and sideways), never up: that would pull the card's top off the point the
+	// user clicked. An off-window lower row is handled by spanRect and the caller's height stretch.
 	mark(armedRow + spanRows - 1)
-	// Per block column, the next free row BELOW the block. Displaced controls stack
-	// here in their original order, keeping their column.
 	nextBelow := make([]int, cols)
 	for c := range nextBelow {
 		nextBelow[c] = armedRow + spanRows
@@ -184,11 +146,7 @@ func reflowArmedAnchored(order []int, armedPos, cols, spanCols, spanRows int, ce
 	inBlockCol := func(c int) bool { return c >= armedCol && c < armedCol+spanCols }
 	for i := range order {
 		if i == armedPos {
-			// Union the ON-WINDOW cells the block covers. Using all four corners
-			// (not just top-left + bottom-right) keeps the block's full width when
-			// its bottom row is off-window (visRows==1): the top row's cells define
-			// the width even though the bottom corners are empty — so the card grows
-			// to the 2-column footprint instead of collapsing to one cell.
+			// All four corners, so an off-window bottom row still yields the block's full width.
 			rects[i] = spanRect(
 				cellAt(armedRow, armedCol),
 				cellAt(armedRow, armedCol+spanCols-1),
@@ -197,9 +155,7 @@ func reflowArmedAnchored(order []int, armedPos, cols, spanCols, spanRows int, ce
 			)
 			continue
 		}
-		// Column is preserved. Only a control inside the block's columns AND at or
-		// below the block's first row is displaced; it re-stacks directly below the
-		// block. Everything else keeps its resting cell and does not move at all.
+		// Only controls inside the block's columns at or below its first row are displaced.
 		r, c := i/cols, i%cols
 		if inBlockCol(c) && r >= armedRow {
 			r = nextBelow[c]
@@ -211,13 +167,7 @@ func reflowArmedAnchored(order []int, armedPos, cols, spanCols, spanRows int, ce
 	return rects, rowMax
 }
 
-// spanRect returns the bounding box of a block's corner cells, skipping any that
-// are off-window (empty). Empties are DROPPED rather than fed to image.Rect —
-// which would normalize a {0,0} corner into a giant rect anchored at the origin.
-// Unioning every on-window corner keeps the block's full on-window extent: when
-// the bottom row is off-window the two top corners still define the width, so the
-// card grows to its 2-column footprint instead of collapsing to a single cell.
-// All corners empty → empty.
+// Empty corners are dropped: image.Rect would normalize a {0,0} corner into a giant rect at the origin.
 func spanRect(corners ...image.Rectangle) image.Rectangle {
 	var out image.Rectangle
 	for _, c := range corners {

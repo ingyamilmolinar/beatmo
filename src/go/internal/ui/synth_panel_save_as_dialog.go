@@ -11,17 +11,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// synthSaveAsDialog is the inline modal of Save As, the only save (Synth and
-// Sampler tabs alike): prefilled with the instrument's current name, its
-// confirm button says what will happen as the user types — "Save over <name>"
-// for the name of the library instrument being edited, "Save as new" for a new
-// name — and another instrument's name is refused in place. The dialog lives
-// inside the synth tab's content rect, blocks clicks behind it via its own
-// HitArea (registered at ZSendPopover + 1), and is dismissed by OK / Cancel
-// / Escape / tap-outside. The TextInput reuses the BPMBoxStyle chrome and
-// soft-keyboard wiring already used by the WAV-import naming flow
-// (drumview_portal_open.go), so mobile users get the same on-screen
-// keyboard behaviour for free.
+// The confirm button says what will happen as the user types ("Save over <name>" / "Save as new"), and
+// another instrument's name is refused in place. Its own HitArea blocks clicks behind it.
 type synthSaveAsDialog struct {
 	rect       image.Rectangle
 	textInput  *TextInput
@@ -29,8 +20,7 @@ type synthSaveAsDialog struct {
 	cancelBtn  *Button
 	instID     instrument.ID
 	suggestion string
-	// typed is the text classified last (classified once per change);
-	// verdict is what confirming it would do.
+	// Classified once per change.
 	typed   string
 	verdict saveAsVerdict
 }
@@ -41,17 +31,13 @@ const (
 	synthSaveAsDialogMaxLen = 48
 )
 
-// saveAsMobileInputID is the native-input id of the Save As name box (Synth
-// preset and Sampler sample share the dialog, never open at once).
+// The Synth and Sampler share the dialog and are never open at once.
 const saveAsMobileInputID = "save-as-name"
 
 // openSaveAsDialog opens Save As for the Synth tab's instrument.
 func (dv *DrumView) openSaveAsDialog() { dv.openSaveAsDialogFor(dv.synthTabActiveInstrument()) }
 
-// openSaveAsDialogFor opens the Save As dialog for instID, prefilled with the
-// instrument's current name — the one the header and the row show. No-op
-// without an instrument; idempotent, so a repeated call never loses
-// in-progress text.
+// Idempotent, so a repeated call never loses in-progress text.
 func (dv *DrumView) openSaveAsDialogFor(instID instrument.ID) {
 	if dv == nil || instID == "" || dv.saveAsDialog != nil {
 		return
@@ -73,8 +59,6 @@ func (dv *DrumView) openSaveAsDialogFor(instID instrument.ID) {
 	dv.saveAsDialog = dlg
 }
 
-// classify re-reads what confirming the typed name would do, when it changed,
-// and labels the confirm button with it.
 func (d *synthSaveAsDialog) classify() {
 	typed := d.textInput.Value()
 	if typed == d.typed && d.okBtn.Text != "" {
@@ -86,9 +70,7 @@ func (d *synthSaveAsDialog) classify() {
 	d.okBtn.SetRect(d.okBtnRect())
 }
 
-// ConfirmSaveAsDialog runs the save the dialog shows and closes it. A refused
-// (or empty) name keeps the dialog open. Public so the HitArea handler + tests
-// + JS bridge drive it uniformly.
+// A refused or empty name keeps the dialog open.
 func (dv *DrumView) ConfirmSaveAsDialog() {
 	if dv == nil || dv.saveAsDialog == nil {
 		return
@@ -110,12 +92,8 @@ func (dv *DrumView) CancelSaveAsDialog() {
 	dv.saveAsDialog = nil
 }
 
-// CancelActiveTextDialog cancels + closes any open inline text-input dialog
-// (Synth/Sampler "Save As"), discarding the typed value. Returns true if a
-// dialog was open. This is the seam the universal Esc handler uses so Esc
-// cancels the dialog instead of falling through to Stop. Portal-hosted text
-// inputs (rename, instrument-menu search, WAV naming) are handled by the portal
-// Esc path, not here.
+// The seam the universal Esc handler uses, so Esc cancels the dialog instead of falling through to Stop.
+// Portal-hosted inputs are handled by the portal's Esc path.
 func (dv *DrumView) CancelActiveTextDialog() bool {
 	if dv == nil {
 		return false
@@ -127,8 +105,6 @@ func (dv *DrumView) CancelActiveTextDialog() bool {
 	return false
 }
 
-// updateSaveAsDialog polls the dialog's TextInput each frame and checks for
-// Enter (confirm) / Escape (cancel). Called from DrumView.Update.
 func (dv *DrumView) updateSaveAsDialog() {
 	if dv == nil || dv.saveAsDialog == nil {
 		return
@@ -141,8 +117,7 @@ func (dv *DrumView) updateSaveAsDialog() {
 		dlg.okBtn.SetRect(dlg.okBtnRect())
 		dlg.cancelBtn.SetRect(dlg.cancelBtnRect())
 	}
-	// Mobile: the name is typed into the native <input>; mirror it so OK
-	// confirms what the user sees.
+	// Mirror the native <input> so OK confirms what the user sees.
 	if v, ok := dlg.textInput.NativeLiveValue(); ok {
 		dlg.textInput.SetText(v)
 	}
@@ -152,13 +127,9 @@ func (dv *DrumView) updateSaveAsDialog() {
 		dv.ConfirmSaveAsDialog()
 		return
 	}
-	// Esc cancel is owned by the universal handler (Game.handleEscape →
-	// CancelActiveTextDialog), so it can take priority over the Stop fallback and
-	// stay the single Esc authority. Do not re-handle Esc here.
+	// Esc is owned by the universal handler, the single Esc authority; never handle it here.
 }
 
-// drawSaveAsDialog renders the dialog above the synth tab. Background
-// panel chrome + title + TextInput + OK/Cancel buttons.
 func (dv *DrumView) drawSaveAsDialog(dst *ebiten.Image) {
 	if dv == nil || dv.saveAsDialog == nil {
 		return
@@ -178,8 +149,6 @@ func (dv *DrumView) drawSaveAsDialog(dst *ebiten.Image) {
 	dlg.cancelBtn.Draw(dst)
 }
 
-// Focused reports whether the dialog's TextInput currently has focus
-// (test-friendly accessor mirroring TextInput.Focused).
 func (d *synthSaveAsDialog) Focused() bool {
 	if d == nil || d.textInput == nil {
 		return false
@@ -187,10 +156,7 @@ func (d *synthSaveAsDialog) Focused() bool {
 	return d.textInput.Focused()
 }
 
-// ClaimsKeyboard reports whether the Save As dialog currently owns the
-// keyboard. While its text input is focused, caret/typed keys belong to it, so
-// the grid must not act on them. Part of the keyboard-ownership contract
-// (keyboard_focus.go).
+// While its input is focused, every key belongs to it.
 func (d *synthSaveAsDialog) ClaimsKeyboard() bool {
 	return d != nil && d.textInput != nil && d.textInput.Focused()
 }
@@ -203,8 +169,7 @@ func (d *synthSaveAsDialog) ConfirmLabel() string {
 	return d.verdict.label()
 }
 
-// Refused is the in-place message for a name that belongs to another
-// instrument ("" when the name can be saved).
+// "" when the name can be saved.
 func (d *synthSaveAsDialog) Refused() string {
 	if d == nil || d.verdict.kind != saveAsTaken {
 		return ""
@@ -220,8 +185,7 @@ func (d *synthSaveAsDialog) Value() string {
 	return d.textInput.Value()
 }
 
-// SetValue replaces the dialog's current text. Used by tests + the JS
-// bridge to inject a typed string without driving the keyboard plumbing.
+// Injects text without the keyboard plumbing, for tests and the JS bridge.
 func (d *synthSaveAsDialog) SetValue(s string) {
 	if d == nil || d.textInput == nil {
 		return
@@ -237,8 +201,7 @@ func (d *synthSaveAsDialog) Rect() image.Rectangle {
 	return d.rect
 }
 
-// OKRect / CancelRect expose button bounds so the browser test can click
-// at the visible centers without depending on hit-area tag plumbing.
+// So a browser test can click the visible centres without hit-area tags.
 func (d *synthSaveAsDialog) OKRect() image.Rectangle {
 	if d == nil || d.okBtn == nil {
 		return image.Rectangle{}
@@ -253,11 +216,7 @@ func (d *synthSaveAsDialog) CancelRect() image.Rectangle {
 	return d.cancelBtn.Rect()
 }
 
-// saveAsDialogHitAreas returns the OK / Cancel / frame hit areas for the open
-// Save As dialog, or nil when closed. Shared by the Synth and Sampler tabs so
-// the modal floats above either tab's content. OK/Cancel sit at zBase+1 so they
-// win over the dialog frame (which consumes stray taps so a click inside the
-// dialog but outside a control doesn't dismiss it).
+// OK/Cancel sit above the frame, which consumes stray taps so a click inside the dialog never dismisses it.
 func (dv *DrumView) saveAsDialogHitAreas(zBase int) []HitArea {
 	if dv == nil || dv.saveAsDialog == nil {
 		return nil
@@ -315,8 +274,7 @@ func (d *synthSaveAsDialog) inputRect() image.Rectangle {
 	)
 }
 
-// okBtnRect is as wide as its label ("Save over <name>" is long) and no
-// wider than the space beside Cancel.
+// "Save over <name>" is long; no wider than the room beside Cancel.
 func (d *synthSaveAsDialog) okBtnRect() image.Rectangle {
 	inset := SpaceMD
 	btnH := 32
@@ -372,10 +330,7 @@ func (v saveAsVerdict) label() string {
 	return ""
 }
 
-// classifySaveAsName says what saving editing as typed would do. Names
-// compare ignoring case and surrounding spaces, against every name an
-// instrument goes by — its current name, its library name, and a shipped
-// instrument's name in every language.
+// Case- and space-insensitive, against every name an instrument goes by, a shipped one's in every language.
 func classifySaveAsName(typed string, editing instrument.ID) saveAsVerdict {
 	key := normalizeSaveAsName(typed)
 	if key == "" {

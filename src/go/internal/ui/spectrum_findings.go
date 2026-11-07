@@ -13,27 +13,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 )
 
-// Spectrum findings — the interpretation layer behind the Spectrum tab's
-// headline sentence.
-//
-// DESIGN RULE, and the reason this file is small: a finding may only state
-// something CHECKABLE from the data. It never expresses taste. There is no
-// target curve and no "your mix should look like X", because a drum machine has
-// no correct spectrum — a bass-only circuit is a legitimate sound, not a fault.
-// Every kind below is a fact you could verify by hand from the same numbers:
-//
-//	clipping   — the row's own clip counter fired
-//	collision  — two audible rows sound their fundamental in one band
-//	pile-up    — a band is far louder than ITS OWN NEIGHBOURS (self-relative)
-//	dead range — an end of the spectrum holds essentially nothing
-//
-// Deliberately NOT here: anything needing a per-row FFT. Only the master and
-// the single selected channel carry spectra (analyzer.ChannelMetrics), so
-// per-row spectra would mean an FFT per row per analyzer tick — the exact cost
-// the Spectrum tab was just relieved of. Attribution instead comes from three
-// things that already exist and are cheap: the master FFT (where the energy
-// is), per-row RMS/clip counters (who is audible now), and each instrument's
-// sounding fundamental (which band a row occupies).
+// A finding states only what is CHECKABLE from the data, never taste: a drum machine has no correct spectrum.
+// Kinds: clipping, collision, pile-up (self-relative), dead range. No per-row FFT: only master and one channel carry spectra.
 type findingKind int
 
 const (
@@ -60,67 +41,45 @@ func (k findingKind) String() string {
 // finding is one checkable observation about the current sound.
 type finding struct {
 	Kind findingKind
-	// Band is the ISO band index the finding points at, or -1 when the finding
-	// is not band-scoped. The renderer emphasises this band so the sentence and
-	// the picture agree.
+	// -1 when not band-scoped; the renderer emphasises this band so the sentence and picture agree.
 	Band int
-	// Names lists the rows the finding can HONESTLY attribute. Empty when the
-	// data cannot name anyone — never a guess.
+	// Only rows the data can HONESTLY name; empty rather than a guess.
 	Names []string
-	// High distinguishes the two dead-range ends: true = nothing up top
-	// (sounds dull), false = nothing down low (sounds thin).
+	// true = nothing up top (dull), false = nothing down low (thin).
 	High bool
 }
 
-// rowFacts is everything the finding engine needs about one drum row. Keeping
-// it a plain value (rather than reaching into DrumRow / audio state) is what
-// makes spectrumFindings a pure function the tests can drive directly.
+// A plain value so spectrumFindings stays a pure function tests drive directly.
 type rowFacts struct {
 	Name  string
 	RMSDB float64
-	// PeakDB is the loudest sample in the same analyzer window. Carried
-	// alongside RMS because a percussive row's RMS collapses between hits
-	// (measured: Dnb Kick -25.0 dB then -38.8 dB three frames later) while its
-	// peak stays put, and judging audibility on RMS alone made the banner flip
-	// findings several times a second.
+	// A percussive row's RMS collapses between hits while its peak holds; judging on RMS alone made the banner
+	// flip findings several times a second.
 	PeakDB    float64
 	ClipCount int
-	// FundHz is the row's sounding fundamental in Hz. Meaningful only when
-	// Pitched is true.
+	// Meaningful only when Pitched.
 	FundHz  float64
 	Pitched bool
 }
 
-// Thresholds. These are judgment calls and are meant to be tuned BY EAR against
-// real circuits — they are named and gathered here so that tuning is a one-file
-// change rather than a hunt through the renderer.
+// Judgment calls, tuned by ear against real circuits; gathered here so tuning is a one-file change.
 const (
-	// findingAudibleFloorDB — a row quieter than this is not meaningfully
-	// participating in the mix, so it cannot be "fighting" anything.
+	// A row quieter than this is not in the mix, so it cannot be "fighting" anything.
 	findingAudibleFloorDB = -45.0
-	// findingPileUpDB — how far a band must stand above the mean of its
-	// immediate neighbours before it counts as piled up. Self-relative, so it
-	// carries no assumption about what the mix SHOULD look like.
+	// Above the mean of the immediate neighbours: self-relative, so no assumption about how a mix should look.
 	findingPileUpDB = 12.0
 	// findingDeadFloorDB — at or below this a band holds essentially nothing.
 	findingDeadFloorDB = -70.0
-	// findingDeadMinBands — how many contiguous empty bands at an end before
-	// it is worth mentioning. One empty band at the very top is normal.
+	// One empty band at the very top is normal.
 	findingDeadMinBands = 3
 )
 
-// spectrumFindings returns the checkable observations about the current sound,
-// most important first: clipping, then collision, then pile-up, then dead
-// range. Returning an EMPTY slice is a valid and common answer — a tab that
-// always finds a problem is noise.
-//
-// master may be nil or inactive; the row-only findings still hold.
+// Most important first. An empty slice is a valid, common answer: a tab that always finds a problem is noise.
+// master may be nil; the row-only findings still hold.
 func spectrumFindings(master *analyzer.ChannelMetrics, rows []rowFacts) []finding {
 	var out []finding
 
-	// ── Clipping ─────────────────────────────────────────────────────────
-	// Needs no spectrum at all: the mixer already counted the samples that
-	// exceeded full scale for this row.
+	// Needs no spectrum: the mixer already counted this row's samples over full scale.
 	var clipped []string
 	for _, r := range rows {
 		if r.ClipCount > 0 {
@@ -132,11 +91,7 @@ func spectrumFindings(master *analyzer.ChannelMetrics, rows []rowFacts) []findin
 		out = append(out, finding{Kind: findingClipping, Band: -1, Names: clipped})
 	}
 
-	// ── Collision ────────────────────────────────────────────────────────
-	// Two or more audible, PITCHED rows sounding their fundamental inside one
-	// ISO band are competing for the same space. Unpitched instruments (hats,
-	// claps, shaker, cymbals) have no fundamental to collide with, so they are
-	// never named — naming them would be a guess.
+	// Pitched rows only: unpitched instruments have no fundamental to collide with, and naming them would be a guess.
 	byBand := map[int][]string{}
 	for _, r := range rows {
 		if !r.Pitched || r.FundHz <= 0 || !r.audible() {
@@ -154,8 +109,7 @@ func spectrumFindings(master *analyzer.ChannelMetrics, rows []rowFacts) []findin
 		sort.Strings(names)
 		collisions = append(collisions, finding{Kind: findingCollision, Band: b, Names: names})
 	}
-	// Deterministic order: lowest band first, so the same mix always reports
-	// the same sentence rather than whichever map key came up.
+	// Lowest band first so the same mix always reports the same sentence.
 	sort.Slice(collisions, func(i, j int) bool { return collisions[i].Band < collisions[j].Band })
 	out = append(out, collisions...)
 
@@ -207,15 +161,11 @@ func spectrumFindings(master *analyzer.ChannelMetrics, rows []rowFacts) []findin
 	return out
 }
 
-// audible reports whether the row is participating in the mix right now, on
-// the steadier of the two level measures. A row silent on BOTH is genuinely
-// not sounding.
+// A row silent on BOTH level measures is genuinely not sounding.
 func (r rowFacts) audible() bool {
 	return r.RMSDB >= findingAudibleFloorDB || r.PeakDB >= findingAudibleFloorDB
 }
 
-// isoBandOf returns the ISO band index holding hz, or -1 when hz falls outside
-// the table.
 func isoBandOf(hz float64) int {
 	for b := range isoBands {
 		if hz >= isoBands[b][0] && hz < isoBands[b][1] {
@@ -225,10 +175,7 @@ func isoBandOf(hz float64) int {
 	return -1
 }
 
-// isoBandLevels averages the master FFT into the 10 ISO bands, the same
-// aggregation the bars themselves use. ok is false when there is no usable
-// spectrum, in which case the caller reports no spectral findings at all
-// rather than inventing them from an empty slice.
+// The bars' own aggregation; !ok means no spectral findings at all rather than findings from an empty slice.
 func isoBandLevels(ch *analyzer.ChannelMetrics) ([10]float64, bool) {
 	var out [10]float64
 	if ch == nil || !ch.Active || len(ch.FFTBins) == 0 || len(ch.FreqBins) != len(ch.FFTBins) {
@@ -252,14 +199,8 @@ func isoBandLevels(ch *analyzer.ChannelMetrics) ([10]float64, bool) {
 	return out, true
 }
 
-// findingSentence renders one finding as the plain-English line shown in the
-// Spectrum banner. It matches the voice already used by the tab legends
-// ("Bass on the left, treble on the right") rather than analyser jargon.
-//
-// The frequency a sentence quotes is the ISO band's own LABEL ("62", "250",
-// "4k") — the same string printed under the bars — so the sentence and the
-// picture name the place identically. Quoting a computed centre frequency
-// instead would have the banner say 63 Hz while the axis beneath it says 62.
+// Quotes the band's own label ("62", "4k"), the string under the bars, so the sentence and the axis never
+// disagree (a computed centre would say 63 above a 62).
 func findingSentence(f finding) string {
 	switch f.Kind {
 	case findingClipping:
@@ -277,8 +218,6 @@ func findingSentence(f finding) string {
 	return ""
 }
 
-// bandLabelAt returns the Hz label printed under band b ("62", "4k"), or "" for
-// a finding that is not band-scoped.
 func bandLabelAt(b int) string {
 	if b < 0 || b >= len(isoLabels) {
 		return ""
@@ -286,8 +225,7 @@ func bandLabelAt(b int) string {
 	return isoLabels[b]
 }
 
-// joinNames renders an instrument list the way a person would say it: "Kick",
-// "Kick and Organ", "Kick, Organ and Bass".
+// "Kick", "Kick and Organ", "Kick, Organ and Bass".
 func joinNames(names []string) string {
 	switch len(names) {
 	case 0:
@@ -301,26 +239,13 @@ func joinNames(names []string) string {
 	return head + " " + i18n.T(i18n.KeyAnd) + " " + names[len(names)-1]
 }
 
-// midiToHz converts a MIDI note number to its frequency. Kept next to the
-// finding engine because an octave error here would silently place an
-// instrument in the wrong band — mislabelling which rows are fighting — and
-// this codebase has been bitten by octave errors in pitch detection before.
+// An octave error here would silently place an instrument in the wrong band and misname who is fighting.
 func midiToHz(midi int) float64 {
 	return 440 * math.Pow(2, float64(midi-69)/12)
 }
 
-// spectrumRowFacts assembles the finding engine's per-row input from live
-// state: the display name and level/clip counters from the analyzer, and the
-// sounding fundamental from the instrument's own pitch info.
-//
-// The fundamental is taken at node pitch 0 — the instrument's BASE note, "where
-// this instrument lives" — rather than any single node's pitch. A row whose
-// nodes are pitched around still occupies its base register, and averaging live
-// node pitches would make the banner flicker between bands as a pattern plays.
-//
-// Rows the analyzer has no metrics for are still reported (at silence) so a
-// name is never dropped; rows whose instrument has no resolvable fundamental
-// come back Pitched=false and are never named in a collision.
+// The fundamental is the instrument's BASE note (node pitch 0): averaging live node pitches would make the
+// banner flicker between bands as a pattern plays. Rows without metrics report silence, so no name is dropped.
 func (dv *DrumView) spectrumRowFacts(st *analyzer.State) []rowFacts {
 	if dv == nil {
 		return nil

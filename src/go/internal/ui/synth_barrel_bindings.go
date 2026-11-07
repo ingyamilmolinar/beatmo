@@ -7,8 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// synthValueBinding scrolls a synth control's VALUE. Resolves the *Knob by
-// index every call (no cached pointer) so a re-layout is safe.
+// Resolves the knob on every call so a re-layout is safe.
 type synthValueBinding struct {
 	dv     *DrumView
 	idx    int
@@ -29,8 +28,7 @@ func (b synthValueBinding) def() (audio.ParamDef, bool) {
 	return b.dv.instEditorBindings[b.idx].def, true
 }
 
-// realAt returns the real-unit value `offset` detents from current, the value at
-// the center row, and the active step, without mutating the knob.
+// Without mutating the knob.
 func (b synthValueBinding) realAt(offset int) (val, cur, step float64, def audio.ParamDef, ok bool) {
 	k := b.knob()
 	def, ok = b.def()
@@ -58,26 +56,15 @@ func (b synthValueBinding) labelAt(offset int) string {
 		}
 		return def.Enum[idx]
 	}
-	// A row the wheel cannot reach must not be labelled: canStep() refuses to
-	// move past Min/Max, so an out-of-range row would advertise a value the
-	// control can never take (a "-101 c" detune, a negative attack).
+	// canStep() refuses to pass Min/Max, so an out-of-range row would advertise a value the control can never take.
 	if eps := math.Abs(step) * 1e-6; real < def.Min-eps || real > def.Max+eps {
 		return ""
 	}
 	return formatSynthParamValueStep(def, real, labelStepFor(cur, def.Min, step))
 }
 
-// labelStepFor returns the step a barrel row should be FORMATTED with, which is
-// not always the step it MOVES by. Display precision is derived from the step
-// (stepDecimals), which is right while the value sits on the step grid. A stored
-// param value is under no obligation to: park half a step off it and two rows a
-// full detent apart round to the same string — 0.005 and 0.015 both rendering
-// "0.01 s" — so the wheel looks frozen while it is in fact moving.
-//
-// Off-grid, formatting with step/10 buys exactly one more decimal, and since
-// adjacent rows differ by a whole step they then differ by ten display quanta —
-// always distinguishable, never gratuitously precise. On-grid values keep the
-// step's own precision.
+// An off-grid value would let two rows a detent apart round to the same string and the wheel look frozen;
+// step/10 buys one more decimal, so adjacent rows always differ. On-grid values keep the step's precision.
 func labelStepFor(cur, min, step float64) float64 {
 	if step <= 0 || math.IsInf(step, 0) || math.IsNaN(step) {
 		return step
@@ -118,8 +105,7 @@ func (b synthValueBinding) canStep(dir int) bool {
 	return k.Value > 0.0
 }
 
-// synthResolutionBinding scrolls a synth control's RESOLUTION rung. +1 detent =
-// coarser (higher ladder index). Nil badge (discrete param) = unavailable.
+// +1 detent = coarser. A nil badge (discrete param) means no lane.
 type synthResolutionBinding struct {
 	dv     *DrumView
 	idx    int
@@ -160,12 +146,9 @@ func (b synthResolutionBinding) stepBy(detents int) bool {
 	if bg == nil || detents == 0 {
 		return false
 	}
-	// +1 detent = coarser = higher index. AdjustResolution(+1) is FINER, so
-	// invert: coarser needs a negative AdjustResolution delta.
+	// AdjustResolution(+1) is FINER, so coarser needs a negative delta.
 	moved := bg.AdjustResolution(-detents)
 	if moved {
-		// Keep the knob's per-notch step in sync with the chosen rung and
-		// persist the choice (mirrors persistKnobStep call sites).
 		if k := (synthValueBinding{dv: b.dv, idx: b.idx, instID: b.instID}).knob(); k != nil {
 			k.StepMul = bg.Step()
 		}
