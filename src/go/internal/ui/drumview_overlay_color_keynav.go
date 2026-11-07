@@ -2,26 +2,15 @@ package ui
 
 import "image/color"
 
-// Keyboard ownership and navigation for the colour picker.
-//
-// The picker OWNS the keyboard while open (KeyboardClaimant, forwarded by
-// compPortalOverlay), so handleGlobalShortcuts yields every gated grid
-// shortcut. Blocking alone would not be enough — a surface that swallows the
-// arrows must also DO something with them, so the cursor moves through the
-// swatch grid with MenuKeyNav, the same component the note matrix and the list
-// menus use, in its grid mode (Up/Down a whole row, Left/Right one swatch).
+// The picker owns the keyboard while open; blocking alone is not enough, so the arrows move a
+// MenuKeyNav cursor through the grid (Up/Down a row, Left/Right a swatch).
 
-// ClaimsKeyboard reports whether the picker owns keyboard input.
-//
-// Without this the arrows fell through to the grid's arrow-pan: one press
-// panned the camera under an open picker and did nothing inside it.
+// Otherwise the arrows fall through to the grid and pan the camera under the open picker.
 func (c *ColorWheelComponent) ClaimsKeyboard() bool {
 	return c != nil && c.state.open
 }
 
-// colorWheelNavHost adapts the swatch grid to MenuKeyNavHost. Items are the
-// palette in row-major order, which is exactly how rebuildWheel lays the cells
-// out, so the flat index IS the swatch index.
+// Row-major, exactly as rebuildWheel lays out the cells, so the flat index is the swatch index.
 type colorWheelNavHost struct{ c *ColorWheelComponent }
 
 func (h colorWheelNavHost) MenuGridCols() int { return colorSwatchCols }
@@ -46,8 +35,7 @@ func (h colorWheelNavHost) MenuActivate(i int) {
 	h.c.applySwatch(h.c.swatches()[i].RGBA)
 }
 
-// The grid never scrolls — the whole palette is always on screen — so there is
-// nothing to reveal.
+// The whole palette is always on screen.
 func (h colorWheelNavHost) MenuScrollBehavior() *ScrollBehavior { return nil }
 
 // KeyNav is the picker's keyboard cursor, created on first use.
@@ -58,8 +46,7 @@ func (c *ColorWheelComponent) KeyNav() *MenuKeyNav {
 	return c.keyNav
 }
 
-// UpdateKeyNav pumps the keyboard cursor for one frame. Driven from the
-// portal's per-frame update so the arrows work wherever the pointer is.
+// Driven from the portal's per-frame update, so the arrows work wherever the pointer is.
 func (c *ColorWheelComponent) UpdateKeyNav() {
 	if !c.state.open {
 		if c.keyNav != nil {
@@ -70,9 +57,7 @@ func (c *ColorWheelComponent) UpdateKeyNav() {
 	c.KeyNav().Update(colorWheelNavHost{c: c})
 }
 
-// syncCursorToApplied places the cursor on the swatch currently applied, so the
-// first arrow press moves relative to the current colour and Enter straight
-// after opening confirms rather than changing anything.
+// So the first arrow moves from the current colour and an immediate Enter changes nothing.
 func (c *ColorWheelComponent) syncCursorToApplied() {
 	cur := c.currentColor()
 	if cur == nil {
@@ -92,12 +77,8 @@ func (c *ColorWheelComponent) syncCursorToApplied() {
 	}
 }
 
-// applySwatch is the ONE mutation both a swatch click and Enter go through, so
-// pointer and keyboard cannot diverge.
-//
-// SELECTING APPLIES, RE-SELECTING CONFIRMS — the same rule the note matrix
-// uses: a different colour is applied and the picker stays open; the colour
-// already applied closes it.
+// The one mutation for click and Enter. A new colour applies and keeps the picker open; the
+// applied one closes it.
 func (c *ColorWheelComponent) applySwatch(col color.RGBA) {
 	if colorsEqualRGB(c.currentColor(), col) {
 		c.Close()
@@ -111,8 +92,6 @@ func (c *ColorWheelComponent) applySwatch(col color.RGBA) {
 	c.syncCursorToApplied()
 }
 
-// KeyCursorSwatch returns the palette index under the keyboard cursor, or -1.
-// Draw uses it to render the focus ring.
 func (c *ColorWheelComponent) KeyCursorSwatch() int {
 	if !c.state.open || c.keyNav == nil {
 		return -1

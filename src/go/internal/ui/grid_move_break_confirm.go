@@ -6,9 +6,7 @@ import (
 
 const breakConfirmPortalID = "break-circuit-confirm"
 
-// breakPendingState holds an in-flight "Break the circuit?" confirmation:
-// the armed subject and the tapped destination, captured at tap time so
-// graph edits while the dialog is open cannot misplace the node.
+// Captured at tap time, so edits while the dialog is open cannot misplace the node.
 type breakPendingState struct {
 	active bool
 	node   *uiNode
@@ -17,13 +15,8 @@ type breakPendingState struct {
 
 func (g *Game) breakConfirmActive() bool { return g.breakPending.active }
 
-// breakConfirmModeObserver closes a pending break-circuit confirmation
-// whenever move mode ends for ANY reason other than the dialog's own
-// Confirm/Cancel — those clear breakPending BEFORE touching the manager, so
-// only external cancels (import, close-popups, subject deletion) ever see
-// breakPending still active here. CancelBreakCircuit only clears dialog
-// state and closes the portal; it never calls back into the manager, so the
-// GridModeObserver no-re-entrancy contract holds.
+// Confirm/Cancel clear breakPending before touching the manager, so only external cancels reach
+// this; CancelBreakCircuit never calls back into the manager.
 type breakConfirmModeObserver struct{ g *Game }
 
 func (o breakConfirmModeObserver) OnGridModeChanged(prev, next GridModeKind, _ *uiNode) {
@@ -32,15 +25,12 @@ func (o breakConfirmModeObserver) OnGridModeChanged(prev, next GridModeKind, _ *
 	}
 }
 
-// beginBreakConfirm arms the confirmation and opens the modal portal. The
-// graph is NOT mutated until ConfirmBreakCircuit; move mode stays armed.
+// Nothing changes until ConfirmBreakCircuit; move mode stays armed.
 func (g *Game) beginBreakConfirm(n *uiNode, i, j int) {
 	g.breakPending = breakPendingState{active: true, node: n, i: i, j: j}
 	g.openBreakConfirmPortal()
 }
 
-// ConfirmBreakCircuit commits the pending unhealable move: the node
-// extracts (circuit breaks), splices at the destination, mode commits.
 func (g *Game) ConfirmBreakCircuit() {
 	if !g.breakPending.active {
 		return
@@ -59,8 +49,7 @@ func (g *Game) ConfirmBreakCircuit() {
 	}
 }
 
-// CancelBreakCircuit dismisses the dialog without touching the graph.
-// Move mode STAYS ARMED — the user picks another destination or hits ESC.
+// Move mode STAYS ARMED for another destination.
 func (g *Game) CancelBreakCircuit() {
 	if !g.breakPending.active {
 		return
@@ -69,10 +58,7 @@ func (g *Game) CancelBreakCircuit() {
 	g.closeBreakConfirmPortalIfNeeded()
 }
 
-// openBreakConfirmPortal shows the modal confirmation via the shared
-// ConfirmDialog. The pending state is the source of truth; if no portal is
-// available (headless tests) the confirmation logic still works via
-// Confirm/Cancel.
+// The pending state is the truth, so Confirm/Cancel work without a portal (headless tests).
 func (g *Game) openBreakConfirmPortal() {
 	if g.drum == nil || g.drum.portal() == nil {
 		return
@@ -95,10 +81,7 @@ func (g *Game) closeBreakConfirmPortal() {
 	g.drum.portal().Close(breakConfirmPortalID)
 }
 
-// closeBreakConfirmPortalIfNeeded removes the break-confirm portal entry
-// UNLESS the dialog already flagged itself closed via its own confirm()/
-// cancel() (ShouldClose()==true) — see closePasteConfirmPortalIfNeeded in
-// node_clipboard.go for the full double-pop rationale this mirrors.
+// Not when the dialog already flagged itself closed, or the portal pops twice.
 func (g *Game) closeBreakConfirmPortalIfNeeded() {
 	alreadyClosing := g.breakConfirmDlg != nil && g.breakConfirmDlg.ShouldClose()
 	g.breakConfirmDlg = nil

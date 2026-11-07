@@ -2,11 +2,7 @@ package ui
 
 import "github.com/hajimehoshi/ebiten/v2"
 
-// gridLayer is a thin draw-only adapter: id + z + optional visibility +
-// clip flag + a draw func bound to *Game. clip=true layers receive the
-// grid-pane-bounds-clipped subimage (matching the original drawGridPane's
-// `top`); clip=false layers draw to the unclipped screen (sidebar, cursor
-// label, and node-glow-to-screen which the draw method handles internally).
+// clip=true gets the clipped subimage; clip=false the unclipped screen.
 type gridLayer struct {
 	id   string
 	z    int
@@ -26,10 +22,7 @@ func (l gridLayer) Visible() bool {
 }
 func (l gridLayer) Draw(dst *ebiten.Image) { l.draw(dst) }
 
-// registerGridTree wires the grid pane's draw-only Layers into g.gridTree
-// in ascending z-order. clip flags mirror the original drawGridPane targets:
-// content → clipped `top`; sidebar + cursor label → unclipped screen. Grid
-// input is NOT tree-routed (see GridTree doc comment); these are draw-only.
+// Draw only: grid input is not tree-routed.
 func (g *Game) registerGridTree() {
 	g.gridTree.RegisterLayer(gridLayer{id: "grid-bg", z: GZBackground, clip: true, draw: g.drawGridBackground})
 	g.gridTree.RegisterLayer(gridLayer{id: "grid-edges", z: GZEdges, clip: true, draw: g.drawGridEdges})
@@ -43,10 +36,7 @@ func (g *Game) registerGridTree() {
 	g.gridTree.RegisterLayer(gridLayer{id: "grid-mode-banner", z: GZModeBanner, clip: true, draw: g.drawGridModeBanner})
 	g.gridTree.RegisterLayer(gridLayer{id: "grid-marquee", z: GZMarquee, clip: true, vis: func() bool { return g.marquee.active }, draw: g.drawGridMarquee})
 	g.gridTree.RegisterLayer(gridLayer{id: "grid-longpress", z: GZLongPress, clip: true, vis: func() bool { return g.longPressPopup }, draw: g.drawLongPressPopup})
-	// Node sidebar: a grid-pane surface. clip:true so its node-anchored card is
-	// CLIPPED TO THE GRID PANE and can never render into the bottom drum-view
-	// panel (a separate component tree). Its layout() also clamps position to the
-	// grid pane; the clip is the structural belt-and-suspenders guarantee.
+	// Clipped to the grid pane, so it can never render into the drum view; layout() also clamps it.
 	g.gridTree.RegisterLayer(gridLayer{id: "grid-sidebar", z: GZSidebar, clip: true, vis: func() bool { return g.sidebar.IsOpen() }, draw: func(dst *ebiten.Image) { g.sidebar.Draw(dst) }})
 	g.gridTree.RegisterLayer(gridLayer{id: "grid-group-menu", z: GZGroupMenu, clip: false, vis: func() bool { return g.groupMenu.IsOpen() }, draw: func(dst *ebiten.Image) { g.groupMenu.Draw(dst) }})
 	g.gridTree.RegisterLayer(gridLayer{id: "grid-cursor-label", z: GZCursorLabel, clip: false, draw: g.drawGridCursorLabel})

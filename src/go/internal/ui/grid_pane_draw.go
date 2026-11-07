@@ -11,34 +11,16 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// grid_pane_draw.go holds the focused sub-methods that (*Game).drawGridPane
-// dispatches to. This file is a PURE MECHANICAL RELOCATION of contiguous blocks
-// formerly inlined in drawGridPane (game_draw_grid_pane.go) — no behavior change.
-// drawGridPane computes the per-frame side-effecting setup exactly once (camera
-// matrix, culling rect, edge-style params, FastPanDetect counter, draw-stat
-// reset), stashes the derived values into g.gridDrawCtx + g.gridDrawScreen, then
-// calls these methods IN THE ORIGINAL ORDER so rendered pixels stay
-// byte-identical.
-//
-// screen-vs-dst: each method receives the clipped grid subimage as its dst
-// parameter (the former `top`/`dst` local). Blocks that the original drew to the
-// UNCLIPPED screen directly (node glow blooms behind the grid, debug crosses,
-// the desktop cursor label) read g.gridDrawScreen instead — the dispatcher sets
-// that to the screen image before dispatch. The cursor-label method is the one
-// case the dispatcher passes `screen` as its dst (see drawGridPane), matching
-// the original which drew the label to screen.
+// Each method gets the clipped grid subimage as dst; blocks that must draw to the UNCLIPPED screen
+// (node glow, debug crosses) use g.gridDrawScreen, and the cursor label gets `screen` as its dst.
 
-// gridPaneDrawCtx carries the per-frame derived locals shared across the
-// drawGrid* sub-methods. Populated once by drawGridPane (and, for the phase/tile
-// fields, by drawGridBackground) before dispatch; not persistent state.
+// Filled once per frame before dispatch; not persistent state.
 type gridPaneDrawCtx struct {
 	gridRect image.Rectangle
 
 	renderSafe  bool
 	screenEdges bool
 
-	// phase/tile values produced by drawGridBackground, consumed by the FRAME
-	// trace log in drawGridPane.
 	phaseX, phaseY, tileW, tileH int
 
 	unitPx   float64
@@ -54,22 +36,14 @@ type gridPaneDrawCtx struct {
 	arrow     float64
 }
 
-// snapWorld snaps a world coordinate to the nearest screen pixel using the
-// frame's camScale. Mirrors the closure formerly local to drawGridPane.
 func (c *gridPaneDrawCtx) snapWorld(v float64) float64 {
 	return math.Round(v*c.camScale) / c.camScale
 }
 
-// drawGridBackground draws the sunset gradient backdrop and the tiled grid
-// cache. Verbatim cut of the background block (formerly ~lines 43–144).
 func (g *Game) drawGridBackground(dst *ebiten.Image) {
 	ctx := &g.gridDrawCtx
 	gridRect := ctx.gridRect
-	// Sunset backdrop: grade the graph pane from the deep background at the
-	// top down to the warm magenta-violet horizon where it meets the
-	// splitter, instead of a flat fill. Cheap (alloc-free after warmup) and
-	// the single biggest "outrun/Vice-City" mood cue. See DESIGN.md
-	// colors.grid-horizon.
+	// A graded backdrop, not a flat fill; alloc-free after warmup.
 	fillVerticalGradient(dst, gridRect, colBGTop, colGridHorizon, 40)
 
 	// Optionally disable grid drawing entirely for geometry debugging.
@@ -82,25 +56,18 @@ func (g *Game) drawGridBackground(dst *ebiten.Image) {
 	g.drawGridTiles(dst)
 }
 
-// drawGridTiles ensures the per-scale grid-line tile exists, then blits the
-// cached grid into dst — reusing the existing cache when the pan delta fits its
-// pad, otherwise rebuilding it. Split out of drawGridBackground so the reuse and
-// rebuild paths are each shallow.
 func (g *Game) drawGridTiles(dst *ebiten.Image) {
 	ctx := &g.gridDrawCtx
-	// Grid layer cache: build once per scale/subdiv, then blit with translation
-	// for small pans. This reduces per-frame tiling draw calls dramatically.
+	// Built once per scale/subdiv and blitted with a translation for small pans.
 	stepPx := g.grid.StepPixels(g.cam.Scale)
 	if envNoGridTileCache {
-		// g.gridTile aliases gridTileBacking — release the backing (the owning
-		// allocation), never g.gridTile, and force a rebuild.
+		// gridTile aliases the backing: release the backing, never gridTile.
 		releaseImage(g.gridTileBacking)
 		g.gridTileBacking = nil
 		g.gridTileBackingSize = 0
 		g.gridTile = nil
 	}
-	// Ensure the base tile exists for this scale/subdiv. buildGridTile reuses a
-	// grow-only backing, so this does not allocate per frame during a zoom.
+	// The backing is grow-only, so a zoom does not allocate per frame.
 	tg := ThemeGeneration()
 	if g.gridTile == nil || g.gridTileStepPx != stepPx || g.gridTileSubSig != g.grid.subSig || g.gridTileThemeGen != tg {
 		if g.logDrawNodes {
@@ -117,17 +84,13 @@ func (g *Game) drawGridTiles(dst *ebiten.Image) {
 	// Camera offset snapped to px for phase alignment.
 	offXInt := int(math.Round(g.cam.OffsetX))
 	offYInt := int(math.Round(g.cam.OffsetY))
-	// Tile at the logical block period (gridTileW = cells*stepPx), NOT the
-	// backing image size. The block is ≥ gridTileMinBlockPx so the rebuild
-	// blit count stays bounded when zoomed out; the backing may be larger
-	// still (next power of two) with a transparent margin that overlaps the
-	// neighbouring tile and alpha-blends to a no-op.
+	// At the logical block period, NOT the backing size; the backing's transparent margin overlaps the
+	// neighbour and blends to a no-op.
 	ctx.tileW = g.gridTileW
 	ctx.tileH = g.gridTileW
 	tileW := ctx.tileW
 	tileH := ctx.tileH
-	// Start positions so that the grid's tile origin aligns with the
-	// camera’s world→screen origin within the cache (including pad).
+	// Aligns the tile origin with the camera's world→screen origin inside the cache.
 	ctx.phaseX = ((offXInt % tileW) + tileW) % tileW
 	ctx.phaseY = (((offYInt + gridTopOffset()) % tileH) + tileH) % tileH
 	phaseX := ctx.phaseX
@@ -139,9 +102,7 @@ func (g *Game) drawGridTiles(dst *ebiten.Image) {
 	g.rebuildGridCache(dst, stepPx, tileW, tileH, phaseX, phaseY)
 }
 
-// gridCacheMatches reports whether the current grid cache was built for this
-// scale/step/subdiv and the current window+pad dimensions (so it can be shifted
-// within its pad instead of rebuilt).
+// So the cache can be shifted within its pad instead of rebuilt.
 func (g *Game) gridCacheMatches(stepPx int) bool {
 	return g.gridCache != nil &&
 		g.gridCacheW == g.split.GridW(g.winW)+2*g.gridCachePad &&
@@ -152,9 +113,7 @@ func (g *Game) gridCacheMatches(stepPx int) bool {
 		g.gridCacheThemeGen == ThemeGeneration()
 }
 
-// tryBlitGridCacheReuse blits the existing grid cache shifted by the pan delta
-// when the cache still matches and the delta fits within the pad. Returns true
-// when it reused the cache (nothing more to draw).
+// true: reused, nothing more to draw.
 func (g *Game) tryBlitGridCacheReuse(dst *ebiten.Image, stepPx int) bool {
 	if !g.gridCacheMatches(stepPx) {
 		return false
@@ -171,12 +130,8 @@ func (g *Game) tryBlitGridCacheReuse(dst *ebiten.Image, stepPx int) bool {
 	return true
 }
 
-// rebuildGridCache (re)tiles the full grid cache with an offscreen pad, aligning
-// the phase plus pad, then blits it into dst. Called when the cache can't be
-// reused via a simple pad shift.
 func (g *Game) rebuildGridCache(dst *ebiten.Image, stepPx, tileW, tileH, phaseX, phaseY int) {
-	// Adaptive grid pad: if reuse failed only because the pan delta exceeded the
-	// pad, enlarge the pad (up to a cap) to convert rebuilds into reuses next frame.
+	// A pan that only overshot the pad grows the pad, so the next frame reuses instead of rebuilding.
 	if RuntimeProf().AdaptivePanPad && g.gridCacheMatches(stepPx) {
 		dx := int(math.Round(g.cam.OffsetX - g.gridCacheOffX))
 		dy := int(math.Round(g.cam.OffsetY - g.gridCacheOffY))
@@ -187,11 +142,8 @@ func (g *Game) rebuildGridCache(dst *ebiten.Image, stepPx, tileW, tileH, phaseX,
 	// Rebuild the full grid cache with an offscreen pad to sustain pans.
 	w := g.split.GridW(g.winW) + 2*g.gridCachePad
 	h := g.split.GridH(g.winH) + 2*g.gridCachePad
-	// Reuse the existing texture when its dimensions are unchanged (a zoom
-	// changes the scale, not the size). Clear()+retile avoids a fresh GPU
-	// allocation every frame — the atlas churn that stalls the single WASM
-	// thread and starves audio. Only a size change (window resize / adaptive
-	// pad growth) allocates.
+	// Reused while the size holds (a zoom changes scale, not size): a GPU allocation per frame churns
+	// the atlas and starves audio on WASM.
 	if g.gridCache == nil || g.gridCacheW != w || g.gridCacheH != h {
 		releaseImage(g.gridCache)
 		g.gridCache = newTrackedImage("gridCache", w, h)
@@ -205,9 +157,7 @@ func (g *Game) rebuildGridCache(dst *ebiten.Image, stepPx, tileW, tileH, phaseX,
 	g.gridCacheStepPx = stepPx
 	g.gridCacheSubSig = g.grid.subSig
 	g.gridCacheThemeGen = ThemeGeneration()
-	// Tile the step tile into the cache, aligning the phase plus pad. Use modulo
-	// so startX/Y ∈ [-tileW, -1], guaranteeing the first tile covers cache pixel
-	// (0,0) regardless of how small tileW is vs the pad.
+	// Modulo puts startX/Y in [-tileW, -1], so the first tile covers pixel (0,0) however small the tile.
 	startX := (g.gridCachePad+phaseX)%tileW - tileW
 	startY := (g.gridCachePad+phaseY)%tileH - tileH
 	var op ebiten.DrawImageOptions
@@ -225,10 +175,6 @@ func (g *Game) rebuildGridCache(dst *ebiten.Image, stepPx, tileW, tileH, phaseX,
 	}
 }
 
-// drawGridEdges draws baseline edges (cached + direct), the link preview, the
-// SCREEN_EDGES debug cross-draws, and the optional ALIGN summary. Verbatim cut
-// of the edge-related blocks (formerly ~200–483, the screen-cross block ~433–450,
-// and the ALIGN summary ~1027–1051), kept together in original relative order.
 func (g *Game) drawGridEdges(dst *ebiten.Image) {
 	ctx := &g.gridDrawCtx
 	screen := g.gridDrawScreen
@@ -243,9 +189,7 @@ func (g *Game) drawGridEdges(dst *ebiten.Image) {
 	minX, maxX, minY, maxY := ctx.minX, ctx.maxX, ctx.minY, ctx.maxY
 	screenEdges := ctx.screenEdges
 
-	// edges with connection animation
-	// Detect row color changes and invalidate edge cache if needed so edge
-	// tints track row colors even when the camera doesn't move.
+	// Edge tints follow row colors even when the camera holds still.
 	curColorSig := g.rowColorSig()
 	if g.edgeCache != nil && curColorSig != g.edgeCacheColorSig {
 		g.edgesDirty = true
@@ -284,10 +228,7 @@ func (g *Game) drawGridEdges(dst *ebiten.Image) {
 			// Rebuild cache centered at current camera offset with pad margin.
 			w := g.split.GridW(g.winW) + 2*g.edgeCachePad
 			h := g.split.GridH(g.winH) + 2*g.edgeCachePad
-			// Reuse the existing texture when its dimensions are unchanged (a zoom
-			// changes the scale, not the size). Clear()+redraw avoids a fresh GPU
-			// allocation every frame — the atlas churn that stalls the single WASM
-			// thread and starves audio. Only a size change allocates.
+			// Reused while the size holds: a GPU allocation per frame churns the atlas and starves audio.
 			if g.edgeCache == nil || g.edgeCacheW != w || g.edgeCacheH != h {
 				releaseImage(g.edgeCache)
 				g.edgeCache = newTrackedImage("edgeCache", w, h)
@@ -332,8 +273,7 @@ func (g *Game) drawGridEdges(dst *ebiten.Image) {
 				}
 				ax, ay := snapWorld(e.A.X), snapWorld(e.A.Y)
 				bx, by := snapWorld(e.B.X), snapWorld(e.B.Y)
-				// Draw into the cache with an additional +pad translation so the
-				// cached content aligns when we later blit with -pad.
+				// Drawn with +pad so it aligns when blitted with -pad.
 				camCache := cam
 				camCache.Translate(float64(g.edgeCachePad), float64(g.edgeCachePad))
 				edgeStyle.Draw(g.edgeCache, ax, ay, bx, by, &camCache)
@@ -357,8 +297,6 @@ func (g *Game) drawGridEdges(dst *ebiten.Image) {
 			base := g.drum.Rows[row].Color
 			edgeStyle.Color = base
 		}
-		// Optional debug path: draw edges in screen-space to bypass any
-		// backend transform ambiguity (SCREEN_EDGES=1).
 		if envScreenEdges {
 			sx1 := e.A.X*camScale + offX
 			sy1 := e.A.Y*camScale + offY + float64(gridTopOffset())
@@ -425,8 +363,7 @@ func (g *Game) drawGridEdges(dst *ebiten.Image) {
 		if ex2 < minX || ex1 > maxX || ey2 < minY || ey1 > maxY {
 			continue
 		}
-		// When cache is disabled (or in safe mode), draw the full baseline
-		// edge directly so completed connections remain visible.
+		// Uncached, draw the full baseline edge so completed connections stay visible.
 		if disableCache {
 			ax, ay := snapWorld(e.A.X), snapWorld(e.A.Y)
 			bx, by := snapWorld(e.B.X), snapWorld(e.B.Y)
@@ -458,9 +395,7 @@ func (g *Game) drawGridEdges(dst *ebiten.Image) {
 				g.logger.Debugf("[edge-misalign] A id=%d nodeRound=(%.0f,%.0f) projRound=(%.0f,%.0f) B id=%d nodeRound=(%.0f,%.0f) projRound=(%.0f,%.0f)", e.A.ID, dcxA, dcyA, rEx0, rEy0, e.B.ID, dcxB, dcyB, rEx1, rEy1)
 			}
 		}
-		// Suppress transient edge pulses during origin selection and for a
-		// couple frames after committing an origin/node to avoid flickers
-		// in other circuits.
+		// No edge pulses during or just after origin selection, so other circuits never flicker.
 		if e.pulse >= 0 && g.pendingStartRow < 0 && g.quietFrames == 0 {
 			px := e.A.X + (e.B.X-e.A.X)*e.pulse
 			py := e.A.Y + (e.B.Y-e.A.Y)*e.pulse
@@ -550,9 +485,6 @@ func (g *Game) drawGridEdges(dst *ebiten.Image) {
 	}
 }
 
-// drawGridNodes draws node base bodies (sprite cache + fallback paths), per-frame
-// state overlays, selection halos, and firing glow. Verbatim cut of the node
-// block (formerly ~485–975, including the post-loop debug crosses ~977–992).
 func (g *Game) drawGridNodes(dst *ebiten.Image) {
 	ctx := &g.gridDrawCtx
 	screen := g.gridDrawScreen
@@ -563,8 +495,7 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 	snapWorld := ctx.snapWorld
 	minX, maxX, minY, maxY := ctx.minX, ctx.maxX, ctx.minY, ctx.maxY
 
-	// nodes
-	// Pre-compute all node radii for this frame (avoids O(n²) neighbor checks in draw loop)
+	// Once per frame, avoiding O(n²) neighbour checks in the draw loop.
 	if cap(g.nodeRadiiCache) < len(g.nodes) {
 		g.nodeRadiiCache = make([]float64, len(g.nodes))
 	} else {
@@ -578,12 +509,8 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 	g.lastNodeHLReset()
 	nodeStyle := NodeUI
 
-	// Group-membership rings: hoist the group index snapshot and the open
-	// GroupMenu's member set ONCE per frame (not per-node) — Member() is a
-	// map hit so it's fine inside the node loop, but recomputing the open
-	// menu's member set per node would be an O(n·groupSize) scan every frame.
-	// g.groupMenuMembersScratch is a reused scratch map (cleared, not
-	// reallocated) to keep this per-frame-alloc-neutral.
+	// Hoisted once per frame: the open menu's member set per node would be an O(n·groupSize) scan.
+	// The scratch map is cleared, not reallocated.
 	gi := g.groupIndexSnapshot()
 	menuMembers := g.groupMenuMembersScratch
 	if menuMembers == nil {
@@ -601,18 +528,12 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 		}
 	}
 	g.groupMenuMembersScratch = menuMembers
-	// Per-node ascending-GroupID membership list, for the up-to-3-concentric-
-	// rings rendering below (game_group_badges.go's rebuildGroupMembershipScratch).
 	membership := g.rebuildGroupMembershipScratch()
-	// Part-B external highlight target (hovered badge OR the open menu's
-	// group) — hoisted ONCE per frame, not per node (game_group_badges.go's
-	// groupExternalHighlightGid).
+	// Hoisted once per frame, not per node.
 	highlightGid, hasHighlight := g.groupExternalHighlightGid()
 
-	// Static node layer cache: during playback, most nodes stay in their
-	// default (non-highlighted) state. Cache all base-state nodes into a
-	// layer and only overdraw highlighted/selected nodes per frame,
-	// reducing DrawImage calls from ~58 to ~2-9.
+	// Most nodes stay in their base state while playing, so cache those and overdraw only the
+	// highlighted ones.
 	useNodeLayer := !envRenderSafe && !envNoSpriteNodes && !g.logDrawNodes
 	if useNodeLayer {
 		nodeGraphSig := g.computeNodeGraphSig()
@@ -691,10 +612,7 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 		// Blit static node layer.
 		dst.DrawImage(g.nodeLayer, nil)
 
-		// Per-frame node-state overlays: Muted / Silent / Invisible get a
-		// distinct token-driven treatment painted over (Invisible: in place of)
-		// the cached base body. Drawn for every node so Invisible nodes — which
-		// are skipped by the static layer — still appear ghosted.
+		// For every node: the static layer skips Invisible nodes, which still render ghosted.
 		g.drawNodeStateOverlays(dst, minX, maxX, minY, maxY, gridW, gridH)
 
 		// Per-frame overlay: highlighted nodes, glow, selection boxes.
@@ -708,9 +626,7 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 				rowOK = false
 				rowIdx = -1
 			}
-			// Highlight/hover/fire in the node's OWN color (row instrument color,
-			// or the node border color for structural/mute/silent nodes) — never
-			// a flat white, so every halo matches the node it highlights.
+			// Every halo in the node's own color, never a flat white.
 			highlightCol := g.nodeOwnHighlightColor(rowIdx, rowOK)
 			aLevel := 0.0
 			if g.pendingStartRow < 0 && g.quietFrames == 0 {
@@ -732,9 +648,7 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 			isNeighbor := g.pendingStartRow < 0 && g.selNeighbors != nil && g.selNeighbors[n]
 			isGroupMember := gi.Member(n.ID)
 			isMenuGroupMember := menuMembers[n.ID]
-			// Cursor-over halo (desktop): the eased hover fade renders a
-			// quiet bloom in the node's own color — the same hover language
-			// as every button lift, at data-canvas intensity.
+			// The same hover language as every button, at data-canvas intensity.
 			hoverGlow := 0.0
 			if g.hoverGlowNode == n && g.pendingStartRow < 0 {
 				hoverGlow = g.hoverGlowP
@@ -751,10 +665,8 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 				continue
 			}
 			if hoverGlow > 0 && aLevel <= 0 && !RuntimeProf().DisableNodeGlow {
-				// Hover cue in the node's OWN color via the shared, shape-agnostic
-				// drawRectHoverGlow — the SAME primitive the EQ handles and sampler
-				// trim lines use, conforming to the node's actual rect. (The tuned
-				// neon FIRING bloom below keeps drawNodeBloom, intentionally.)
+				// The same rect-conforming primitive as the EQ handles; the firing bloom below keeps drawNodeBloom
+				// on purpose.
 				if rPx := int(math.Round((sx2 - sx1) * 0.5)); rPx >= 1 {
 					icx := int(math.Round((sx1 + sx2) * 0.5))
 					icy := int(math.Round((sy1 + sy2) * 0.5))
@@ -778,17 +690,8 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 					}
 					borderCol = highlightCol
 				}
-				// Neon bloom for firing nodes: a soft multi-ring halo in the
-				// node's own instrument color. Drawn to `screen` (not the grid
-				// subimage) — same target the prior glow used — so it composites
-				// behind the node sprite (which is drawn to dst, a subimage that
-				// shares screen's backing buffer in production) and remains
-				// pixel-visible in the ebitenstub. Outer rings are gated on
-				// rPx >= 8 so tiny zoomed-out nodes don't over-bloom; intensity
-				// (aLevel) scales alpha + spread so the most-recently-fired node
-				// carries the brightest, widest bloom and it decays as the fire
-				// animation decays. Even magenta reads because the inner ring
-				// lands at AlphaStrong.
+				// To `screen`, so it composites behind the sprite (dst shares screen's buffer) and stays visible in
+				// the stub. Outer rings need rPx >= 8; intensity scales with the fire animation.
 				if rPx >= 2 && !RuntimeProf().DisableNodeGlow {
 					icx := int(math.Round((sx1 + sx2) * 0.5))
 					icy := int(math.Round((sy1 + sy2) * 0.5))
@@ -866,13 +769,7 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 				DrawLineCam(dst, x2, y2, x1, y2, &idm, hl, float64(genGeomHighlightBorderThickness))
 				DrawLineCam(dst, x1, y2, x1, y1, &idm, hl, float64(genGeomHighlightBorderThickness))
 			}
-			// Group-membership rings: up to groupRingMaxCount concentric
-			// rings (ascending GroupID), one per group this node belongs
-			// to, each colored by that group's own color (groupColor) and
-			// grown one extra radius step outward per ring so they nest
-			// without overlapping. The currently OPEN GroupMenu's group
-			// draws strong; every other membership draws faint
-			// (groupRingColor).
+			// Up to groupRingMaxCount nested rings, one per group in its own color; the open menu's draws strong.
 			if isGroupMember || isMenuGroupMember {
 				gids := membership[n.ID]
 				count := len(gids)
@@ -913,15 +810,11 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 			}
 
 			style := nodeStyle
-			// Highlight triggered nodes by tinting border; keep instrument-based fill.
-			// Suppress during origin selection and shortly after committing it to
-			// avoid any cross-circuit flickers.
+			// Not during or just after origin selection, so other circuits never flicker.
 			aLevel := 0.0
 			if g.pendingStartRow < 0 && g.quietFrames == 0 {
 				if a := g.nodeAnimGet(n.ID); a > 0 {
-					// When a time-based highlight window exists, defer to it:
-					// the sequencer sets nodeAnim=1 immediately but the window
-					// may not have started yet (lookahead scheduling).
+					// A highlight window wins: nodeAnim is set at once, but the window may not have started yet.
 					if _, _, hasWindow := g.nodeHighlightUntil(n.ID); !hasWindow {
 						style.Border = highlightCol
 						aLevel = a
@@ -995,8 +888,6 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 				style.Draw(dst, snapWorld(n.X), snapWorld(n.Y), &cam)
 				g.lastDrawNodes++
 			} else {
-				// Draw node via cached screen-space sprite to reduce draw calls.
-				// Compute screen-space rect and radius in pixels.
 				rPx := int(math.Round((sx2 - sx1) * 0.5))
 				if rPx < 1 {
 					rPx = 1
@@ -1017,11 +908,7 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 						borderCol = highlightCol
 					}
 				}
-				// Neon bloom for firing nodes (drawn behind the sprite). Same soft
-				// multi-ring treatment as the cached-layer path. Outer rings gated
-				// on rPx >= 8 so tiny zoomed-out nodes don't over-bloom; intensity
-				// (aLevel) scales alpha + spread for natural decay + latest-hit
-				// emphasis.
+				// Same treatment as the cached path.
 				if aLevel > 0 && rPx >= 2 && !RuntimeProf().DisableNodeGlow {
 					icx := int(math.Round((sx1 + sx2) * 0.5))
 					icy := int(math.Round((sy1 + sy2) * 0.5))
@@ -1112,8 +999,7 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 				DrawLineCam(dst, x2, y2, x1, y2, &id, hl, float64(genGeomHighlightBorderThickness))
 				DrawLineCam(dst, x1, y2, x1, y1, &id, hl, float64(genGeomHighlightBorderThickness))
 			}
-			// Group-membership rings (fallback debug-mode path — mirrors the
-			// node-layer path's multi-ring rendering above).
+			// Mirrors the node-layer path.
 			if isGrp, isMenuGrp := gi.Member(n.ID), menuMembers[n.ID]; isGrp || isMenuGrp {
 				gids := membership[n.ID]
 				count := len(gids)
@@ -1130,9 +1016,7 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 				}
 			}
 		}
-		// Node-state overlays for the fallback path (RENDER_SAFE / NO_SPRITE_NODES /
-		// logDrawNodes). Drawn after node bodies so Muted/Silent overlay correctly,
-		// and Invisible nodes — skipped by the loop above — still render ghosted.
+		// After the bodies, so Muted/Silent overlay correctly and Invisible nodes still render ghosted.
 		g.drawNodeStateOverlays(dst, minX, maxX, minY, maxY, g.split.GridW(g.winW), g.split.GridH(g.winH))
 	} // end useNodeLayer else
 
@@ -1154,8 +1038,6 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 	}
 }
 
-// drawGridPulses draws active edge pulse signals. Verbatim cut of the pulse
-// block (formerly ~1001–1025).
 func (g *Game) drawGridPulses(dst *ebiten.Image) {
 	ctx := &g.gridDrawCtx
 	cam := ctx.cam
@@ -1168,8 +1050,7 @@ func (g *Game) drawGridPulses(dst *ebiten.Image) {
 	// pulses
 	g.renderedPulsesCount = 0
 	for _, p := range g.activePulses {
-		// Suppress transient pulse visuals while selecting an origin or just
-		// after committing one to guarantee other circuits never flicker.
+		// Never while selecting an origin or just after, so other circuits never flicker.
 		if g.pendingStartRow >= 0 || g.quietFrames > 0 {
 			continue
 		}
@@ -1192,26 +1073,15 @@ func (g *Game) drawGridPulses(dst *ebiten.Image) {
 	}
 }
 
-// coordBadgeText formats a node's grid position for the coordinate badge. It
-// routes both axes through Grid.BeatAxisLabel — the SAME beat/subdivision
-// formatter the desktop cursor label uses (grid_pane_draw.go
-// drawGridCursorLabel) — so the badge and the cursor readout always speak the
-// one coordinate language the user learns: beats and subdivisions ("0:1/2"),
-// never raw whole subdivision indices. This matters most on mobile, where the
-// badge is the primary coordinate display (the cursor label is desktop-only).
+// Both axes through Grid.BeatAxisLabel, like the cursor label, so the badge speaks beats and
+// subdivisions ("0:1/2"), never raw indices.
 func (g *Game) coordBadgeText(n *uiNode) string {
 	if n == nil {
 		return ""
 	}
 	coords := fmt.Sprintf("(%s, %s)", g.grid.BeatAxisLabel(n.I), g.grid.BeatAxisLabel(n.J))
-	// Lead with the musical note the node sounds. On mobile this badge is the
-	// only node readout while the sidebar is closed, so a pitch shift was
-	// otherwise invisible without opening the sidebar.
-	//
-	// nodeNoteLabel returns "" for percussion and for a node with no resolvable
-	// row; in both cases a note would be misinformation, so the badge keeps its
-	// original plain-coordinate form. It caches nothing, so the label tracks
-	// pitch, group-pitch, synth and sampler edits with no invalidation here.
+	// Leads with the note: on mobile this is the only node readout with the sidebar closed. No note for
+	// percussion or an unresolvable row; nothing is cached, so edits show at once.
 	if mn, ok := g.graph.GetNodeByID(n.ID); ok {
 		if mn.Type == model.NodeTypeChord {
 			return g.nodeChordLabel(n.ID) + " · " + coords
@@ -1223,28 +1093,14 @@ func (g *Game) coordBadgeText(n *uiNode) string {
 	return coords
 }
 
-// coordBadgePillPadX is the horizontal padding inside the coordinate badge
-// pill: 4px each side, matching the DrawTextAt inset used when drawing it.
 const coordBadgePillPadX = 8
 
-// coordBadgePillWidth sizes the badge pill to its text.
-//
-// This used to be len(text)*7 + 8 — a fixed per-character estimate against a
-// PROPORTIONAL font. It happened to be survivable for the old short "(i, j)"
-// string and drifts further the longer the text gets, which is exactly what
-// prepending a note name does. TextWidth is the metric DrawTextAt renders
-// with, so measuring with it is the only way the pill and its text agree.
+// Measured with TextWidth, the metric DrawTextAt renders with, so pill and text always agree.
 func coordBadgePillWidth(text string) int {
 	return TextWidth(text) + coordBadgePillPadX
 }
 
-// coordBadgePillRect positions the badge pill: centred over the node, then
-// clamped to stay on screen.
-//
-// The pill was only ever clamped vertically, so a node near the left or right
-// edge pushed half the readout off-screen. That is more likely now the text
-// carries a note name as well as coordinates. screenW <= 0 (an unlaid-out
-// Game) clamps the left edge only, since there is no known right edge.
+// Centred over the node, clamped on screen on both axes; screenW <= 0 clamps only the left edge.
 func coordBadgePillRect(cx, top, w, screenW int) image.Rectangle {
 	const margin = 2
 	x0 := cx - w/2
@@ -1257,21 +1113,15 @@ func coordBadgePillRect(cx, top, w, screenW int) image.Rectangle {
 	return image.Rect(x0, top-1, x0+w, top+13)
 }
 
-// drawGridCoordBadge draws the (i,j) coordinate badge above the selected node.
-// Verbatim cut of the badge block (formerly ~1053–1080).
 func (g *Game) drawGridCoordBadge(dst *ebiten.Image) {
 	// Coordinate badge above selected node
 	if g.coordBadgeNode != nil {
 		showBadge := false
 		if Profile().IsMobile() {
-			// Mobile: show while node is selected, but not when popup is open
-			// (the badge renders on top of the popup since it draws after it).
+			// Hidden while the popup is open: it draws after it and would cover it.
 			showBadge = (g.sel == g.coordBadgeNode) && !g.sidebar.IsOpen()
 		} else {
-			// Desktop: persist while this node stays selected and its pop-up
-			// menu (the node sidebar) is open. No auto-hide timer — the badge
-			// only goes away when the user selects a different node (which
-			// re-arms the badge for the new node) or closes the menu.
+			// No timer: it stays while the node is selected and its menu is open.
 			showBadge = (g.sel == g.coordBadgeNode) && g.sidebar.IsOpen()
 		}
 		if !showBadge {
@@ -1292,22 +1142,14 @@ func (g *Game) drawGridCoordBadge(dst *ebiten.Image) {
 	}
 }
 
-// drawGridMoveMode draws the move-mode subject outline/blink and the ghost
-// placement indicator shared with copy mode (no outline/blink for copy — its
-// subject node is not going anywhere). The armed-mode banner itself is drawn
-// once for all three modes (move/copy/connect) by drawGridModeBanner (Task 9)
-// — this function no longer draws a banner.
-// Verbatim cut of the move-mode block (~1082–1121), extended for copy mode
-// in Task 7.
+// Copy mode gets no outline or blink: its subject stays put.
 func (g *Game) drawGridMoveMode(dst *ebiten.Image) {
 	ctx := &g.gridDrawCtx
 	unitPx := ctx.unitPx
 
 	switch {
 	case g.modes.Is(GridModeMove):
-		// Pulsing outline + blinking body on the subject node: the blink
-		// (Update-ticked, gridModeBlinkHalfPeriod) signals "this node is
-		// about to move" while every other behavior stays live.
+		// The blink says "this node is about to move" while everything else stays live.
 		n := g.modes.Subject()
 		mx1, my1, mx2, my2 := g.nodeScreenRect(n)
 		hlCol := WithAlpha(genColorVizGlow, 255)
@@ -1321,18 +1163,12 @@ func (g *Game) drawGridMoveMode(dst *ebiten.Image) {
 			drawRect(dst, blinkRect, WithAlpha(genColorVizGlow, genAlphaMedium), true)
 		}
 	case g.modes.Is(GridModeCopy):
-		// No outline/blink for copy mode — its subject node is not going
-		// anywhere. Falls through to the shared ghost indicator below.
 	default:
 		return
 	}
 
-	// Ghost indicator at cursor position (snapped to grid), shared by both
-	// modes. Move validity = interior point on an existing edge; copy
-	// validity = a free cell. Valid = filled glow ghost; invalid = faint
-	// outline only, signalling release-here-cancels (move) / no-op (copy is
-	// always a legal target, but the occupied case routes to the overwrite
-	// confirm instead of this ghost's "invalid" visual).
+	// Move is valid on an edge interior, copy on a free cell; an occupied copy target goes to the
+	// overwrite confirm instead.
 	cmx, cmy := cursorPosition()
 	if g.split.InGridPane(cmx, cmy) && cmy >= gridTopOffset() {
 		gt := g.guideTargetCached(cmx, cmy)
@@ -1358,9 +1194,6 @@ func (g *Game) drawGridMoveMode(dst *ebiten.Image) {
 	}
 }
 
-// drawGridCursorLabel draws the desktop cursor coordinate label. Verbatim cut of
-// the cursor-label block (~1148–1169). The original drew to the UNCLIPPED screen;
-// the dispatcher passes `screen` as this method's dst to preserve that.
 func (g *Game) drawGridCursorLabel(dst *ebiten.Image) {
 	// cursor coordinate label (hidden on mobile)
 	mx, my := cursorPosition()
@@ -1369,9 +1202,7 @@ func (g *Game) drawGridCursorLabel(dst *ebiten.Image) {
 		showFraction := false
 		var t GuideTarget
 		if g.linkDrag.active || g.marquee.active {
-			// A connect/marquee gesture owns the pointer: show the classic
-			// raw-snap readout (matching the helper arrow's tip), never the
-			// guide's node/fraction snapping.
+			// A connect or marquee owns the pointer: the raw snap that matches the helper arrow, not the guide.
 			wx := (float64(mx) - g.cam.OffsetX) / g.cam.Scale
 			wy := (float64(my-gridTopOffset()) - g.cam.OffsetY) / g.cam.Scale
 			_, _, ti, tj = g.grid.Snap(wx, wy)
@@ -1398,8 +1229,6 @@ func (g *Game) drawGridCursorLabel(dst *ebiten.Image) {
 	}
 }
 
-// drawGridHelpButton renders the settings gear button in the grid pane's
-// top-right corner (both desktop and mobile). Reuses the shared Button widget.
 func (g *Game) drawGridHelpButton(dst *ebiten.Image) {
 	if g.gridHelpBtn == nil {
 		return
@@ -1416,54 +1245,31 @@ func (g *Game) drawGridHelpButton(dst *ebiten.Image) {
 	}
 }
 
-// drawGridToast paints the transient status toast (error alert or sticky task
-// progress). Its own layer at GZToast — BELOW the top-right button cluster
-// (GZGridHelpButton), not above: the settings-gear protected zone is a
-// pre-existing, deliberate invariant (TestSettingsGearIsTopmostGridLayer)
-// that nothing may draw at or above the gear, so on the rare wide-toast
-// overlap the buttons win — the user must still be able to reach settings
-// mid-load. The toast is top-CENTRE and the button cluster is top-RIGHT, so
-// they only collide when the toast is unusually wide. Before this had its
-// own layer at all, the toast was painted from inside drawGridHelpButton, so
-// this z (below the buttons) is no worse than where it started.
+// Below the button cluster: nothing may draw at or above the settings gear, so settings stay
+// reachable mid-load. They only collide on an unusually wide toast.
 func (g *Game) drawGridToast(dst *ebiten.Image) {
 	if g.drum == nil {
 		return
 	}
 	if !g.drum.gridPaneVisibleForToast() {
-		// Mobile, non-Pads view mode: the grid pane isn't the surface the
-		// user is looking at. DrumToastLayer (layer_drum_toast.go) paints
-		// the toast into the drum pane instead — don't double-draw it here.
+		// The drum pane draws it instead.
 		return
 	}
 	g.drum.logsToast.draw(dst, g.toastHostRect())
 }
 
-// toastHostRect picks the surface the status toast renders into.
-//
-// Desktop, and mobile while the grid pane is the active view (Pads):
-// the grid pane, top-centre — the historical position, zero new layout.
-//
-// Mobile in a non-grid view mode (EQ / Wave / Spectrum / Levels / Chain /
-// Synth / Sampler): the drum pane instead, so the toast stays visible on
-// the surface the bottom nav just switched the user to. One toast object,
-// one draw method (logsToast.draw), two host rects.
+// The grid pane, unless a mobile view mode put the user on the drum pane; then there, so the toast
+// stays visible. One toast, two hosts.
 func (g *Game) toastHostRect() image.Rectangle {
 	gridRect := g.split.GridRect(g.winW, g.winH)
 	if g.drum == nil || g.drum.gridPaneVisibleForToast() {
 		return gridRect
 	}
-	// Below the transport header, not the full drum pane: the raw Bounds'
-	// top edge IS the transport/BPM/lock row, and a top-centred toast there
-	// would sit directly over the Play/Stop/Record cluster it's reporting
-	// on (see BelowHeaderRect).
+	// Below the header, or it would sit over the transport it reports on.
 	return g.drum.BelowHeaderRect()
 }
 
-// drawLogsBadge paints a small unread-count bubble straddling the top-right of
-// the grid Logs button. The bubble turns red when any unread entry is an error;
-// opening the panel clears it (markSeen). Nothing is drawn when there is no
-// unread activity.
+// Red when any unread entry is an error.
 func (g *Game) drawLogsBadge(dst *ebiten.Image) {
 	if g.drum == nil {
 		return

@@ -6,11 +6,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// Grid-local z-index conventions for the GridTree draw stack. These are
-// independent of the drum-pane Z* constants in drumview_tree.go — the two
-// trees own disjoint screen rects. Ascending z = drawn later = composites on
-// top. The coordinate badge sits BELOW every popup/sidebar so it can never
-// overpaint them (the bug this stack fixes structurally).
+// Independent of the drum-pane Z constants (the trees own disjoint rects). Higher z composites on
+// top; the coordinate badge sits below every popup so it can never overpaint them.
 const (
 	GZBackground     = 0
 	GZEdges          = 10
@@ -31,30 +28,14 @@ const (
 	GZGridHelpButton = 80
 )
 
-// GridTree is the grid pane's draw-ordered Layer stack — a slim sibling to
-// DrumViewTree that owns ONLY z-ordered compositing for the top grid pane.
-//
-// It deliberately does NOT carry the drum pane's input machinery
-// (HitIndex/Zone dispatch, capture/suppress lifecycle, OverlayPortal, keyboard
-// focus). Grid pointer input still runs through the legacy path in
-// Game.Update, which already has working z-prioritization (inputDispatcher +
-// handleTapInGrid + cam.HandleMouse). The single job here is "draw the grid
-// participants in ascending z so overlays composite OVER the badge" — the
-// structural fix for the coordinate-badge-over-popup bug.
-//
-// If grid input is ever migrated into a tree (the deferred Phase 3 in
-// docs/superpowers/plans/2026-06-12-grid-tree-zaxis.md), the Zone/HitIndex
-// half is reintroduced deliberately — it is intentionally absent here rather
-// than carried dormant, so there is no tested-but-unwired input code to rot.
+// Draw ordering only, by design: grid input keeps its own path in Game.Update, which already has
+// working z-priority. A Zone/HitIndex half would be added deliberately, never carried dormant.
 type GridTree struct {
 	layers []Layer
 
 	bounds image.Rectangle
 
-	// Cached sub-image for ClipToBounds layers — one shared wrapper for the
-	// whole bounds rect, reused across frames to avoid per-frame SubImage
-	// allocation (WASM-OOM concern). Mirrors the original drawGridPane's
-	// cached `top` subimage.
+	// One shared wrapper reused across frames: a SubImage per frame was a WASM OOM source.
 	boundsSubParent *ebiten.Image
 	boundsSubClip   image.Rectangle
 	boundsSub       *ebiten.Image
@@ -63,8 +44,7 @@ type GridTree struct {
 // NewGridTree creates an empty draw stack.
 func NewGridTree() *GridTree { return &GridTree{} }
 
-// RegisterLayer inserts a draw-only Layer, keeping t.layers sorted ascending
-// by ZIndex (stable for equal z by insertion order).
+// Stable for equal z.
 func (t *GridTree) RegisterLayer(l Layer) {
 	z := l.ZIndex()
 	idx := len(t.layers)
@@ -79,9 +59,7 @@ func (t *GridTree) RegisterLayer(l Layer) {
 	t.layers[idx] = l
 }
 
-// LayersForTest returns a snapshot of the draw slice in render order.
-// Production code MUST NOT call this — iterating the real slice from outside
-// the tree breaks the render-pipeline encapsulation the discipline test enforces.
+// Production code must not iterate the real slice from outside the tree.
 func (t *GridTree) LayersForTest() []Layer {
 	out := make([]Layer, len(t.layers))
 	copy(out, t.layers)
@@ -90,10 +68,8 @@ func (t *GridTree) LayersForTest() []Layer {
 
 func (t *GridTree) SetBounds(r image.Rectangle) { t.bounds = r }
 
-// Draw renders the registered layers in ascending z. A layer that reports
-// ClipToBounds()==true is drawn into a cached bounds-clipped subimage (== the
-// original `top = screen.SubImage(gridRect)`); every other layer draws to the
-// unclipped screen and self-clips (sidebar, cursor label).
+// ClipToBounds layers draw into a cached clipped subimage; the rest get the unclipped screen and
+// self-clip.
 func (t *GridTree) Draw(screen *ebiten.Image) {
 	for _, layer := range t.layers {
 		if !layer.Visible() {
@@ -115,9 +91,7 @@ func (t *GridTree) Draw(screen *ebiten.Image) {
 	}
 }
 
-// boundsSubImage returns a cached SubImage of screen clipped to clip, reused
-// while (screen, clip) are unchanged. Shared by all ClipToBounds layers so the
-// whole grid-content set allocates at most one wrapper/frame.
+// At most one wrapper per frame for the whole grid-content set.
 func (t *GridTree) boundsSubImage(screen *ebiten.Image, clip image.Rectangle) *ebiten.Image {
 	if t.boundsSubParent == screen && t.boundsSubClip == clip && t.boundsSub != nil {
 		return t.boundsSub

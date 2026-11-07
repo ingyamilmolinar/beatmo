@@ -16,8 +16,7 @@ func (s *playbackSlate) refreshDrumRow() {
 		g.drumBeatInfos = nil
 		return
 	}
-	// Freeze the cells the playhead has passed before a pending SetPaths below
-	// can change what they would show.
+	// Before a pending SetPaths can change what they show.
 	g.freezePlayedThroughPlayhead()
 	// Mark render state as rebuilding so parity checks ignore in-flight buffers.
 	g.renderReady = false
@@ -31,24 +30,17 @@ func (s *playbackSlate) refreshDrumRow() {
 		g.drumBeatInfos[i] = g.beatInfoAtRow(0, g.drum.Offset+i)
 	}
 	horizon := g.drum.Offset + g.drum.Length
-	// If paths changed since the last refresh, push the latest beatInfos into
-	// the engine predictor before we render so VisibleAt/TriggeredAt reflect
-	// newly added/deleted nodes immediately.
+	// Before rendering, so VisibleAt/TriggeredAt see new or deleted nodes at once.
 	if g.engine != nil && g.engine.Predictor != nil && g.pathsDirty {
 		g.engine.Predictor.SetPaths(g.beatInfosByRow, g.isLoopByRow, g.loopStartByRow, g.graph.Nodes)
 		g.pathsDirty = false
-		// Predictor reset invalidates every row's reconciliation watermark —
-		// the freeze-vs-predictor consistency check must rerun after a path
-		// change, even for previously reconciled abs.
+		// A path change invalidates every row's reconciliation watermark.
 		g.invalidateReconciledAll()
 	}
 	// Ensure horizon covers the rendered window (must run after SetPaths since it resets buffers).
 	if g.engine != nil && g.engine.Predictor != nil {
-		// Anchor the retained window's lower edge to the currently visible
-		// region BEFORE Ensure so the slide clamp inside Ensure can honor it.
-		// Without this the long-playback grey-grid bug reappears: after
-		// pause/resume the predictor's windowStart may already have advanced
-		// past drum.Offset, and Ensure would only ever extend forward.
+		// Before Ensure, so its slide clamp honours the visible region; otherwise after pause/resume the
+		// window may have advanced past drum.Offset and only extends forward (grey grid).
 		g.engine.Predictor.SetVisibleMinAbs(g.drum.Offset)
 		g.engine.Predictor.Ensure(horizon)
 	}
@@ -114,8 +106,6 @@ func (s *playbackSlate) refreshDrumRow() {
 				return
 			}
 			limit := freezeLimit
-			// Only scan the currently rendered window; reconcile additional
-			// frozen history when the window reaches it.
 			windowEnd := windowStart + g.drum.Length - 1
 			if g.drum.Length <= 0 {
 				windowEnd = windowStart - 1
@@ -126,10 +116,7 @@ func (s *playbackSlate) refreshDrumRow() {
 			if limit < futureReleaseStart {
 				return
 			}
-			// Resume from one past the last reconciled abs for this row.
-			// reconciledUpToByRow caps each refresh's scan to the count of
-			// newly frozen abs since the last refresh — typically 0–4 during
-			// playback, vs. O(freezeLimit) under the original full-range scan.
+			// Resume past the last reconciled abs, so each refresh scans only the newly frozen cells.
 			start := futureReleaseStart
 			if rowIdx < len(g.reconciledUpToByRow) {
 				if r := g.reconciledUpToByRow[rowIdx]; r >= start {
@@ -148,14 +135,11 @@ func (s *playbackSlate) refreshDrumRow() {
 					}
 					want := predictAt(abs, bi)
 					if want != v {
-						// Immutable playback/import history should never be trimmed. Keep
-						// the commit and render/drain from predictor instead.
+						// Immutable history is never trimmed.
 						if kind == timeline.CommitKindPlayback || kind == timeline.CommitKindImport {
 							continue
 						}
-						// Mutable seeds/gap pads: reconcile in place to the predictor
-						// value so history matches playback without dropping later
-						// immutable commits.
+						// Mutable seeds and gap pads reconcile in place, without dropping later immutable commits.
 						inPast := abs < g.rowPastExclusive(rowIdx)
 						switch kind {
 						case timeline.CommitKindSeeded, timeline.CommitKindGapPad:
@@ -175,9 +159,7 @@ func (s *playbackSlate) refreshDrumRow() {
 								g.timelineReplaceCommit(rowIdx, abs, want, bi.NodeType, timeline.CommitKindReleased)
 							}
 						case timeline.CommitKindReleased:
-							// Released commits are bookkeeping and should never be rewritten.
-							// If a released entry leaks into a frozen future range, shrink the
-							// freeze limit so upcoming beats can follow the predictor again.
+							// Released commits are never rewritten; one leaking into the frozen future shrinks the freeze limit.
 							if !inPast {
 								g.clampRowFreeze(rowIdx, abs-1)
 								if traceRow {
@@ -205,10 +187,7 @@ func (s *playbackSlate) refreshDrumRow() {
 				}
 			}
 			syncFreezeLimit()
-			// Record the reconciliation high-water mark so the next refresh
-			// resumes from limit+1 (skipping the just-validated range). limit
-			// reflects post-clamp value if the loop broke early; either way
-			// every abs in [start, limit] was inspected and is consistent.
+			// Every abs in [start, limit] was inspected, so the next refresh starts at limit+1.
 			if rowIdx >= len(g.reconciledUpToByRow) {
 				oldLen := len(g.reconciledUpToByRow)
 				g.reconciledUpToByRow = append(g.reconciledUpToByRow, make([]int, rowIdx+1-oldLen)...)
@@ -225,10 +204,8 @@ func (s *playbackSlate) refreshDrumRow() {
 		if reconcileElapsed > 10*time.Millisecond {
 			g.logger.Warnf("[refresh] row=%d reconcileFrozen slow elapsed=%v freezeLimit=%d futureReleaseStart=%d", rowIdx, reconcileElapsed, freezeLimit, futureReleaseStart)
 		}
-		// If the sequencer advanced past this window before the timeline
-		// recorded commits (e.g., during short play bursts in tests), ensure
-		// every subdivision strictly before the next-beat index is frozen as
-		// immutable playback so later edits cannot mutate the rendered past.
+		// If the sequencer ran past this window before the timeline committed, freeze everything before
+		// the next-beat index so later edits cannot rewrite the past.
 		if g.Playing() {
 			next := g.rowPastExclusive(rowIdx)
 			if next > 0 {
@@ -251,16 +228,8 @@ func (s *playbackSlate) refreshDrumRow() {
 					if rowIdx < len(g.pathChangeBeatByRow) {
 						pathChangeBeat = g.pathChangeBeatByRow[rowIdx]
 					}
-					// Bound the back-fill to the predictor's retained window.
-					// Indices below windowStart are already immutable past AND
-					// evicted from the predictor (predictAt returns a meaningless
-					// "not computed" false there); indices at/above the horizon
-					// have no prediction yet — so freezing either is pointless.
-					// Without this bound, resume (which resets frozenUpToByRow to
-					// -1) re-froze the ENTIRE elapsed history [0, playhead] in one
-					// UI frame, per row: O(session-length) work that stalled the
-					// app for seconds before audio restarted after a long pause.
-					// Mirrors the window guard in syncUIToTime (game_sync_ui.go).
+					// Bounded to the predictor window: below it prediction is meaningless, above it absent. Unbounded,
+					// a resume re-froze the whole session in one frame and stalled for seconds.
 					lo := upTo + 1
 					predWinEnd := target + 1
 					if g.engine != nil && g.engine.Predictor != nil {
@@ -272,8 +241,7 @@ func (s *playbackSlate) refreshDrumRow() {
 					for j := lo; j <= target && j < predWinEnd; j++ {
 						g.freezeBackfillIters++
 						if pathChangeBeat >= 0 && j < pathChangeBeat {
-							// Preserve pre-change history; avoid rewriting commits that predate
-							// the last path mutation to keep earlier playback immutable.
+							// Commits before the last path change stay immutable.
 							continue
 						}
 						if _, _, kind, ok := g.timelineCommittedWithKind(rowIdx, j); ok {
@@ -283,13 +251,8 @@ func (s *playbackSlate) refreshDrumRow() {
 						}
 						bi := g.beatInfoAtRow(rowIdx, j)
 						val := predictAt(j, bi)
-						// CommitKindReleased — NOT Playback. The audio thread's
-						// applySequencerHighlight is the sole authoritative source
-						// of immutable playback commits. This safety-net loop only
-						// fills gaps for the slate builder; if it speculates wrong
-						// (transient predictor state during a runtime mutation),
-						// the next refresh's reconcile pass can correct it without
-						// the timeline immutability rule fighting the predictor.
+						// Released, NOT Playback: applySequencerHighlight is the only source of immutable playback commits,
+						// so a wrong speculation here can still be corrected by the next reconcile.
 						g.recordTimelineCommitKind(rowIdx, j, val, bi.NodeType, timeline.CommitKindReleased)
 					}
 					g.frozenUpToByRow[rowIdx] = target
@@ -297,9 +260,7 @@ func (s *playbackSlate) refreshDrumRow() {
 				}
 			}
 		}
-		// Demote any leaked immutable commits that fall at/after the row's current
-		// "next" index so upcoming edits/re-adds can reflect immediately. Preserve
-		// the recorded value/type; only relax immutability for the future window.
+		// Relax immutability only for the future window, so re-adds show at once; value and type stay.
 		nextIdx := g.rowPastExclusive(rowIdx)
 		if nextIdx > 0 {
 			end := windowStart + g.drum.Length
@@ -345,15 +306,11 @@ func (s *playbackSlate) refreshDrumRow() {
 			g.rowTypesScratch[rowIdx] = oldTypes
 		}
 
-		// When paused, make sure speculative timeline entries track the current
-		// predictor so stale seeds from earlier highlights do not drift away
-		// from the rendered DrumView and trip parity checks once logging runs.
+		// Paused: keep speculative entries on the predictor so stale seeds cannot trip parity.
 		if !g.Playing() && freezeLimit < 0 {
 			g.reconcileMutableTimeline(rowIdx, windowStart, g.drum.Length, predictAt)
 		}
 
-		// Capture timeline vs predictor mismatches so parity can flag stale
-		// commits or missed predictor updates (e.g., delete/re-add flows).
 		if scanTimeline && (parityFatalEnabled.Load() || g.parityWatch != parityWatchOff || (timelineTrace && rowIdx == timelineTraceRow)) {
 			if mismatches := g.diffPredictorTimeline(rowIdx, windowStart, g.drum.Length, freezeLimit); len(mismatches) > 0 {
 				indices := make([]int, 0, len(mismatches))
@@ -369,8 +326,7 @@ func (s *playbackSlate) refreshDrumRow() {
 			}
 		}
 
-		// Publish timeline segments for instrumentation/debug. (DrumView caches
-		// render strictly from Steps/CellTypes; timeline segments are auxiliary.)
+		// Auxiliary: the caches render from Steps/CellTypes only.
 		windowLen := g.drum.Length
 		capacity := windowLen
 		g.timelineService().UpdateRowSegments(rowIdx, windowStart, windowLen, capacity, r.Steps, func(view timeline.SegmentsView) {
@@ -401,8 +357,7 @@ func (s *playbackSlate) refreshDrumRow() {
 				if softDirty {
 					g.drum.markRowShiftDirty(rowIdx)
 				} else if g.Playing() && len(r.Steps) == len(prevSteps) {
-					// Playback with stationary window: count cell diffs to allow
-					// the cheap cell-patch path instead of full row rebuilds.
+					// A few changed cells take the cheap patch path instead of a full rebuild.
 					diff := countCellDiffs(prevSteps, prevTypes, r.Steps, r.CellTypes)
 					if diff > 0 {
 						g.drum.markRowCellsDirty(rowIdx)
@@ -418,8 +373,7 @@ func (s *playbackSlate) refreshDrumRow() {
 			g.logger.Warnf("[refresh] row=%d total slow elapsed=%v", rowIdx, rowElapsed)
 		}
 	}
-	// Remember the offset for the next refresh so past cell types can be
-	// preserved when the window remains stationary.
+	// So past cell types survive while the window stays put.
 	g.lastStepsOffset = g.drum.Offset
 	g.lastCellTypesOffset = g.drum.Offset
 	g.renderOffset = g.drum.Offset
@@ -449,8 +403,7 @@ type rowWindowConfig struct {
 	reuseTypes      []model.NodeType
 }
 
-// countCellDiffs returns the number of cell positions where Steps or CellTypes
-// differ between prev and next. Assumes equal-length slices.
+// Equal-length slices.
 func countCellDiffs(prevSteps []bool, prevTypes []model.NodeType, nextSteps []bool, nextTypes []model.NodeType) int {
 	n := len(nextSteps)
 	diff := 0

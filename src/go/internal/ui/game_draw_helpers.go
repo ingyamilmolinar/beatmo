@@ -9,30 +9,16 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// drawDivider renders the grid↔drum splitter — an azure "horizon line" plus a
-// pill that highlights on hover to make it discoverable as draggable. The
-// line+pill draw and the glow+grow hover animation are owned by the shared
-// SplitterHandle (also used by the EQ-boundary divider).
 func (g *Game) drawDivider(screen *ebiten.Image) {
-	// The divider handle is drawn last (above both panes), so suppress it while
-	// a full-screen modal overlay (e.g. the settings overlay) is up — the
-	// pill must not poke through the overlay's scrim.
+	// Drawn above both panes, so it must hide while a full-screen modal is up or it pokes
+	// through the scrim.
 	if g.drum != nil && g.drum.tree != nil && g.drum.portal() != nil &&
 		g.drum.portal().Has(settingsOverlayID) {
 		return
 	}
 	mX, mY := cursorPosition()
-	// Hover only when the cursor is on the visible pill handle (plus the
-	// standard SpaceSM forgiveness), NOT anywhere along the full-width divider
-	// line. The bare line is not draggable, so lighting it up on a mere Y/X
-	// crossing was an invasive affordance.
-	//
-	// Build the pill rect from g.winW/g.winH — the exact coordinates the pill is
-	// DRAWN at below (DrawHorizontalDivider centres it at (g.winW/2, g.split.Y);
-	// the vertical form at (g.split.X, g.winH/2)). HandleRect() derives the
-	// centre from s.winW/s.totalH instead, which only equals g.winW/g.winH after
-	// UpdateResize has run this frame — so using the draw coordinates keeps the
-	// glow aligned with the pixels regardless of update ordering.
+	// Hover only on the visible pill: the bare line is not draggable. Built from the draw
+	// coordinates (g.winW/g.winH), which are current regardless of update order.
 	var pill image.Rectangle
 	if g.split.horizontal {
 		pill = SplitterHandleRect(g.winW/2, g.split.Y, true)
@@ -40,8 +26,6 @@ func (g *Game) drawDivider(screen *ebiten.Image) {
 		pill = SplitterHandleRect(g.split.X, g.winH/2, false)
 	}
 	hover := image.Pt(mX, mY).In(pill.Inset(-SpaceSM))
-	// dividerHover/dividerThick remain published for the highlight regression
-	// test; the visual thickness is carried by the handle's bloom + pill.
 	g.dividerHover = hover
 	g.dividerThick = 2.0
 	if hover {
@@ -73,41 +57,24 @@ func idOrNil(n *uiNode) any {
 	return n.ID
 }
 
-// buildGridTile creates a stepPx×stepPx image that contains all visible grid
-// subdivision lines for the current grid configuration. The tile can be
-// repeated across the grid pane by translating it according to camera offset.
-// gridTileMinBlockPx is the minimum physical size of the grid tile. The grid
-// cache is built by tiling this image; tiling a tile smaller than this would
-// blow up the per-rebuild blit count (~area/tileW²) when zoomed out. 64px caps a
-// full-screen rebuild at a few hundred blits across the whole zoom range.
+// Tiling a tile smaller than this makes a rebuild cost ~area/tileW² blits when zoomed out;
+// 64 px keeps it to a few hundred.
 const gridTileMinBlockPx = 64
 
 func (g *Game) buildGridTile(stepPx int) *ebiten.Image {
 	if stepPx <= 0 {
 		return nil
 	}
-	// Multi-cell block tile. Tiling a stepPx-sized tile across the screen costs
-	// ~area/stepPx² DrawImage blits — quadratic as the camera zooms OUT (stepPx
-	// shrinks): tens of thousands of blits per frame at full zoom-out, which
-	// blocks Draw on the single WASM thread long enough to starve the sequencer
-	// goroutine (audio degrades, worse the further out). We build a block of
-	// `cells` grid cells so the physical tile is at least gridTileMinBlockPx wide;
-	// the caller tiles at this block period, capping the blit count at
-	// ~area/gridTileMinBlockPx² regardless of zoom. The rendered lattice is
-	// pixel-identical (the block is the same periodic lattice, pre-repeated).
+	// A block of several cells, so the blit count stays ~area/gridTileMinBlockPx² at any zoom;
+	// per-cell tiling when zoomed out blocks the WASM thread and starves the sequencer.
 	cells := 1
 	if stepPx < gridTileMinBlockPx {
 		cells = (gridTileMinBlockPx + stepPx - 1) / stepPx // ceil
 	}
 	tileW := cells * stepPx
 	g.gridTileW = tileW
-	// Grow-only backing texture: reuse the existing backing when it is large
-	// enough (Clear()+redraw), growing to the next power of two ≥ tileW. A
-	// continuous zoom changes tileW; reusing the backing keeps per-frame
-	// allocations at zero (atlas churn on the single WASM thread also starves
-	// audio). The backing may be larger than tileW with a transparent margin; the
-	// caller tiles at step = tileW so the margin overlaps the neighbouring tile
-	// and alpha-blends to a no-op (pixel-identical to a freshly-sized tile).
+	// Grow-only backing: a continuous zoom changes tileW every frame, and reallocating churns the
+	// atlas. The transparent margin overlaps the neighbour and blends to a no-op.
 	if g.gridTileBacking == nil || g.gridTileBackingSize < tileW {
 		sz := 1
 		for sz < tileW {
@@ -117,23 +84,15 @@ func (g *Game) buildGridTile(stepPx int) *ebiten.Image {
 		g.gridTileBacking = newTrackedImage("gridTile", sz, sz)
 		g.gridTileBackingSize = sz
 	} else {
-		// Clear the whole backing so stale pixels from a previous (larger) tile
-		// don't bleed through the transparent margin of the new one.
+		// Clear it all, or a previous larger tile bleeds through the margin.
 		g.gridTileBacking.Clear()
 	}
 	img := g.gridTileBacking
 	if g.logDrawNodes {
 		g.logger.Tracef("[draw/grid] buildGridTile: stepPx=%d cells=%d tileW=%d subs=%d backing=%d", stepPx, cells, tileW, len(g.grid.Subs), g.gridTileBackingSize)
 	}
-	// Draw the lattice across [0,tileW)²: lines repeat with period stepPx, each
-	// spanning the full block extent so tiling the block is seamless. Line
-	// positions use the same per-cell rounding as a single-cell tile —
-	// round(j·stepPx/div) == m·stepPx + round(k·stepPx/div) for j = m·div+k — so
-	// the result is pixel-identical to the old stepPx tiling.
+	// Same per-cell rounding as a single-cell tile, so tiling the block is seamless and pixel-identical.
 	for _, sub := range g.grid.Subs {
-		// Minimum pixel spacing: use rounded per-line positions rather than
-		// integer division so rounding error is evenly distributed and aligns
-		// with world-to-screen math.
 		minPx := float64(stepPx) / float64(sub.Div)
 		if minPx < float64(sub.MinPx) {
 			continue
@@ -184,10 +143,8 @@ func (g *Game) buildGridTile(stepPx int) *ebiten.Image {
 }
 
 func (g *Game) drawDrumPane(dst *ebiten.Image) {
-	// Keep DrumView's seconds-per-beat in sync with the engine/app-lied BPM for
-	// timeline counters without overriding the user-edited BPM control value.
-	// This avoids a race where UI changes are undone by the draw loop before
-	// Game.Update() can propagate them to the engine.
+	// Sync seconds-per-beat from the applied BPM without touching the edited control, or the draw
+	// loop would undo a UI change before Update propagates it.
 	bpm := g.AppliedBPM()
 	if bpm <= 0 {
 		bpm = g.bpm
@@ -195,9 +152,7 @@ func (g *Game) drawDrumPane(dst *ebiten.Image) {
 	if bpm > 0 {
 		g.drum.secPerBeat = 60.0 / float64(bpm)
 	}
-	// Use a smooth, non-quantized beat value for timeline counters to avoid
-	// jitter in the displayed timers, while highlights and steps remain
-	// quantized via internal counters.
+	// Smooth, unquantized beats for the timers; highlights and steps stay quantized.
 	g.drum.simpleDraw = g.simpleDraw
 	g.drum.perfDrawLite = false // EQ visualizer always enabled - already optimized with early exits
 	g.drum.Draw(dst, g.highlightSnapshotByRow(len(g.drum.Rows)), g.frame, g.drumBeatInfos, g.displayBeat())

@@ -17,15 +17,8 @@ type TouchPoint struct {
 	PrevX     int       // previous frame position
 	PrevY     int       // previous frame position
 
-	// movedBeyondTap latches true once the touch has ever moved farther than
-	// tapMaxMovePx from its start. A drag disqualifies the touch from ever being
-	// (re)classified as a long-press — otherwise a SLOW single-finger drag (finger
-	// still within tapMaxMovePx of start when the 500 ms long-press timer elapses,
-	// which happens whenever the game loop is throttled/starved on mobile) fires a
-	// spurious long-press mid-pan. That opens the quick-action popup, flips panOK
-	// false, and freezes camera panning for the rest of the gesture. The instantaneous
-	// dx/dy check alone is not enough because at the instant the timer crosses 500 ms
-	// the finger can still read <=tapMaxMovePx away; latching makes it order-independent.
+	// Latched once the touch moves past the tap threshold, so a slow drag cannot become a long-press
+	// when a starved loop lets the 500 ms timer elapse mid-pan.
 	movedBeyondTap bool
 }
 
@@ -45,18 +38,12 @@ type TouchState struct {
 	// Long-press one-shot tracking: ensures long-press fires exactly once per touch
 	longPressFired bool
 
-	// Multi-touch cooldown: after a two-finger gesture ends, suppress
-	// single-touch override and tap detection for a few frames to prevent
-	// accidental node creation when one finger lifts before the other.
+	// So the finger that lifts last after a two-finger gesture cannot create a node.
 	multiTouchCooldown int
 }
 
-// multiTouchCooldownFrames is the number of frames after a multi-touch gesture
-// ends during which single-touch override and tap detection are suppressed.
 const multiTouchCooldownFrames = 10
 
-// RecentMultiTouch returns true if a multi-touch gesture ended recently
-// and the cooldown has not yet expired.
 func (ts *TouchState) RecentMultiTouch() bool {
 	return ts.multiTouchCooldown > 0
 }
@@ -274,8 +261,7 @@ func ClearTouchEventLog() {
 	globalTouchDebugLog.lastGestureTime = time.Time{}
 }
 
-// getDevicePixelRatio returns the device pixel ratio (implemented per platform).
-// This is a placeholder that will be overridden on WASM.
+// Overridden on WASM.
 var getDevicePixelRatio = func() float64 {
 	return 1.0
 }
@@ -314,8 +300,7 @@ func (ts *TouchState) AllTouches() []*TouchPoint {
 	return result
 }
 
-// Update polls the current touch state from Ebiten and returns detected gesture
-// events. Must be called once per frame.
+// Once per frame.
 func (ts *TouchState) Update() *GestureEvent {
 	ids := touchIDs()
 	now := time.Now()
@@ -341,8 +326,6 @@ func (ts *TouchState) Update() *GestureEvent {
 		}
 	}
 
-	// Start multi-touch cooldown when a two-finger gesture ends
-	// (fingers dropping from 2+ to <2).
 	if ts.twoFingerStarted && len(ts.points) < 2 && len(endedTouches) > 0 {
 		ts.multiTouchCooldown = multiTouchCooldownFrames
 	}
@@ -362,11 +345,7 @@ func (ts *TouchState) Update() *GestureEvent {
 			}
 			pt.PrevX, pt.PrevY = pt.X, pt.Y
 			pt.X, pt.Y = x, y
-			// Latch once the finger has moved at least the tap threshold so a drag
-			// can never later be (mis)read as a long-press (see movedBeyondTap). Uses
-			// >= (not >) so a finger sitting exactly at the tap boundary when the 500 ms
-			// timer elapses — the worst case for a throttled loop that samples the drag
-			// coarsely — is still disqualified.
+			// >= (not >), so a finger sitting exactly on the boundary when the timer elapses is still disqualified.
 			if abs(x-pt.StartX) >= tapMaxMovePx || abs(y-pt.StartY) >= tapMaxMovePx {
 				pt.movedBeyondTap = true
 			}
@@ -405,11 +384,8 @@ func (ts *TouchState) Reset() {
 	ts.multiTouchCooldown = 0
 }
 
-// ─── Touch-to-mouse override ────────────────────────────────────────────────
-// These variables let a single active touch transparently override
-// cursorPosition() and isMouseButtonPressed() so that ALL existing
-// mouse-based handlers (DrumView, Splitter, Camera, Editor, etc.)
-// work automatically with touch input.
+// A single active touch overrides cursorPosition() and isMouseButtonPressed(), so every mouse
+// handler works with touch.
 
 var (
 	touchOverrideActive bool
@@ -417,30 +393,21 @@ var (
 	touchOverrideY      int
 	touchOverrideLeft   bool
 
-	// Last seen single-touch position while the override was active. Held
-	// across the frame the touch ends so updateTouchOverride can publish one
-	// final override frame at the lift coords with touchOverrideLeft=false.
-	// Without this hold, the dispatcher's release branch reads (0,0) from
-	// the underlying Ebiten cursor on the same frame globalTouchState removes
-	// the ended touch, and any OnRelease handler that uses the coords
-	// (e.g. a Slider mid-drag) snaps to an extreme.
+	// Held for the lift frame, so release handlers get the lift coords instead of the cursor's (0,0)
+	// (a mid-drag slider would snap to an extreme).
 	lastSingleTouchX    int
 	lastSingleTouchY    int
 	lastSingleTouchHeld bool // true when the next frame should publish the held lift coords
 	pendingTouchRelease bool // true *during* the held release frame; cleared on the frame after
 
-	// Tap injection: when a tap gesture fires (touch already ended),
-	// we inject a 2-frame press-then-release cycle so mouse handlers
-	// see a click.
+	// A tap fires after the touch ended, so a 2-frame press/release is injected for mouse handlers.
 	touchTapInjected bool
 	touchTapFrame    int // 0 = press frame, 1 = release frame
 	touchTapX        int
 	touchTapY        int
 )
 
-// updateTouchOverride sets the frame-level touch override state.
-// Must be called once per frame, after globalTouchState.Update() and
-// before any code reads cursorPosition/isMouseButtonPressed.
+// Once per frame, after globalTouchState.Update() and before any cursor read.
 func updateTouchOverride() {
 	// Never interfere with test mocks.
 	if inputForTestActive {
@@ -450,8 +417,6 @@ func updateTouchOverride() {
 		return
 	}
 
-	// Tap injection takes priority (touch already ended but we need
-	// to synthesize a press+release for mouse handlers).
 	if touchTapInjected {
 		touchOverrideActive = true
 		touchOverrideX = touchTapX
@@ -471,9 +436,7 @@ func updateTouchOverride() {
 		return
 	}
 
-	// Single active touch maps to mouse — but not if a multi-touch gesture
-	// just ended (cooldown prevents the trailing single finger from looking
-	// like a fresh click to the editor).
+	// Not during the multi-touch cooldown, or the trailing finger looks like a fresh click.
 	if globalTouchState.ActiveTouchCount() == 1 && !globalTouchState.RecentMultiTouch() {
 		if pt := globalTouchState.PrimaryTouch(); pt != nil {
 			touchOverrideActive = true
@@ -488,10 +451,7 @@ func updateTouchOverride() {
 		}
 	}
 
-	// One-frame release hold: the previous frame had a single touch active
-	// and this frame has zero. Publish the last lift coords with the button
-	// reported as released so the dispatcher's release branch (drumview_tree
-	// handleInput) hands the correct coords to OnRelease.
+	// Publish the lift coords as released, so OnRelease gets the right position.
 	if lastSingleTouchHeld {
 		touchOverrideActive = true
 		touchOverrideX = lastSingleTouchX
@@ -507,16 +467,8 @@ func updateTouchOverride() {
 	touchOverrideActive = false
 }
 
-// injectTouchTap starts a 2-frame tap injection cycle at (x, y).
-//
-// Why: taps fire after the touch has already ended (ActiveTouchCount==0), so the
-// single-touch override can't see them. This function synthesizes:
-//
-//	Frame 0: position=(x,y), left=true  (press)
-//	Frame 1: position=(x,y), left=false (release)
-//
-// Must NOT be called during multi-touch — only for single-finger taps in the
-// drum area where the touch has ended before the gesture detector reports it.
+// Taps fire after the touch ended, which the override cannot see: frame 0 press, frame 1 release at
+// (x, y). Never during multi-touch.
 func injectTouchTap(x, y int) {
 	touchTapInjected = true
 	touchTapFrame = 0
@@ -524,22 +476,14 @@ func injectTouchTap(x, y int) {
 	touchTapY = y
 }
 
-// isTouchTapInjecting returns true when a 2-frame tap injection cycle is active.
-// Used to prevent the row touch scroller from recapturing an injected tap as a
-// new scroll gesture (the gesture detector already confirmed this is a tap).
+// Keeps the row scroller from recapturing an injected tap as a new scroll.
 func isTouchTapInjecting() bool { return touchTapInjected }
 
 // SetTouchTapInjectedForTest allows tests to simulate the tap injection state.
 func SetTouchTapInjectedForTest(v bool) { touchTapInjected = v }
 
-// SetTouchOverrideActiveForTest allows tests to simulate the touch override
-// being active, indicating that the current frame's input originates from
-// a hardware touch rather than a mouse.
 func SetTouchOverrideActiveForTest(v bool) { touchOverrideActive = v }
 
-// SetTouchOverrideXYForTest allows tests to set the touch override coordinates.
-// Used with SetTouchOverrideActiveForTest to place the simulated touch at a
-// specific position (e.g., inside the row scroll area for dead zone tests).
 func SetTouchOverrideXYForTest(x, y int) {
 	touchOverrideX = x
 	touchOverrideY = y

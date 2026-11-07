@@ -1,7 +1,5 @@
 package ui
 
-// healClass classifies how extracting a node from its current position
-// affects circuit connectivity (see the circuit-healing design spec).
 type healClass int
 
 const (
@@ -9,8 +7,7 @@ const (
 	healSilent healClass = iota
 	// healPassThrough: exactly Np→N→Nn with Np,Nn orthogonal — heal Np→Nn.
 	healPassThrough
-	// healUnhealable: corner / junction / double-in / double-out / 2-cycle —
-	// extraction breaks the circuit; interactive callers must confirm.
+	// Extraction breaks the circuit; interactive callers must confirm.
 	healUnhealable
 )
 
@@ -21,16 +18,13 @@ type healPlan struct {
 	to    *uiNode // Nn (healPassThrough only)
 }
 
-// moveHealPlan classifies n's current edges. Pure — no mutation. Edges are
-// directed: an incoming edge is e.B==n, an outgoing edge is e.A==n.
+// Pure. Incoming: e.B == n; outgoing: e.A == n.
 func (g *Game) moveHealPlan(n *uiNode) healPlan {
 	var ins, outs []*uiNode
 	for i := range g.edges {
 		e := &g.edges[i]
 		if e.A.ID == n.ID && e.B.ID == n.ID {
-			// Self-loop (reachable via import JSON, which doesn't guard
-			// from==to): counts as neither in nor out — it moves with the
-			// node and never participates in healing.
+			// Import can create a self-loop: it moves with the node and never heals.
 			continue
 		}
 		switch {
@@ -52,9 +46,7 @@ func (g *Game) moveHealPlan(n *uiNode) healPlan {
 	return healPlan{class: healUnhealable}
 }
 
-// nodesOnSpan returns the nodes lying strictly between a and b on their
-// shared row/column (empty for non-orthogonal pairs). Callers stitch each
-// so a healed edge stays split node-to-node.
+// Callers stitch each, so a healed edge stays split node to node.
 func (g *Game) nodesOnSpan(a, b *uiNode) []*uiNode {
 	var out []*uiNode
 	switch {

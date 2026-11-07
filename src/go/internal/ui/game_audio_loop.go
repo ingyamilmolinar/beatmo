@@ -9,9 +9,7 @@ import (
 func (g *Game) audioLoop() {
 	defer g.bgWG.Done()
 	for {
-		// Terminate on Close() via audioQuit. audioCh is never closed (this
-		// loop writes back into it through the opportunistic seqScheduleTime
-		// drive below), so closing it would panic that send.
+		// audioCh is never closed: this loop sends into it through the seqScheduleTime drive below.
 		select {
 		case <-g.audioQuit:
 			return
@@ -36,13 +34,8 @@ func (g *Game) audioLoop() {
 			continue
 		}
 
-		// Gather a small batch to reduce Go→JS crossings on WASM.
-		// Reuse scratch buffers across iterations so steady-state
-		// playback does not allocate ~3 KB of soundReq + a BatchParam
-		// slice per drain cycle. On WASM the peak working set between
-		// GC cycles drives committed linear memory; this churn was a
-		// contributor to long-session OOMs (see plan
-		// hey-please-debug-and-cached-aurora.md Phase 4).
+		// Batched to cut Go→JS crossings; scratch buffers are reused because on WASM per-drain
+		// allocations grow committed linear memory.
 		maxBatch := RuntimeProf().AudioBatchMax
 		reqCap := 32
 		if reqCap > maxBatch {
@@ -73,8 +66,6 @@ func (g *Game) audioLoop() {
 				drain = false
 			}
 		}
-		// Persist any grow that append may have done so the next
-		// iteration sees the larger capacity.
 		g.audioLoopReqs = reqs
 
 		if cap(g.audioLoopBatch) < len(reqs) {
@@ -87,19 +78,15 @@ func (g *Game) audioLoop() {
 		audioNow := audio.Now()
 		logged := false
 		for _, req := range reqs {
-			// Drop sequencer-scheduled events from a previous transport generation
-			// (e.g. Stop -> replay) so stale audio does not desync parity/highlights.
+			// Drop events from a previous transport generation so stale audio cannot desync parity.
 			if req.row >= 0 {
 				curGen := g.audioGen.Load()
 				if req.gen != curGen {
 					g.logger.Debugf("[audio] drop stale scheduled id=%s row=%d abs=%d gen=%d curGen=%d", req.id, req.row, req.abs, req.gen, curGen)
 					continue
 				}
-				// Per-row structural gate: drop only beats belonging to a row
-				// whose path changed after this beat was scheduled. Unchanged
-				// rows keep their in-flight beats (no gap on a node placement
-				// elsewhere); the edited row's stale beats are dropped here and
-				// rescheduled by the seqNextIdxs rewind.
+				// Only the edited row's stale beats are dropped (and rescheduled); other rows keep theirs, so a
+				// placement elsewhere leaves no gap.
 				if curRowGen := g.rowStructGenLoad(req.row); req.rowGen != curRowGen {
 					g.logger.Debugf("[audio] drop stale-row scheduled id=%s row=%d abs=%d rowGen=%d curRowGen=%d", req.id, req.row, req.abs, req.rowGen, curRowGen)
 					continue
@@ -114,42 +101,16 @@ func (g *Game) audioLoop() {
 				g.logger.Debugf("[audio] dispatch id=%s vol=%.3f pitch=%.3f dur=%.3f when=%v", req.id, req.vol, req.pitch, req.dur, req.when)
 			}
 			qlat := time.Since(req.enqAt)
-			// Stage B observation: raw enqueue→dispatch latency, before the
-			// lookahead subtraction that follows. The subtraction below
-			// (qlat -= leadDur) is for the AudioQLatAvg metric, which folds
-			// in the scheduling cushion; the 3-stage view wants the raw
-			// goroutine handoff latency uncontaminated by lookahead.
-			//
-			// Grace-filter the observation itself (design §3.4: universal
-			// suppression across all stages), not just the downstream
-			// parityTimingCheck: a live edit can stall the sequencer
-			// goroutine long enough to produce a bridge-latency spike here
-			// that latches into schedMetrics' session-monotonic bridgeMax
-			// and would otherwise survive the grace window to panic the
-			// next check.
+			// Raw handoff latency, before the lookahead subtraction. Grace-filtered here too: an edit stall
+			// would otherwise latch into the session-monotonic bridgeMax and fail the next check.
 			if !g.parityInGrace() {
 				g.schedMetrics.ObserveBridge(qlat.Seconds())
 			}
-			// Dispatch-time floor: never let a sequencer-scheduled req.when
-			// slip into the past or the small-lead danger zone. This is the
-			// last safety net before the audio buffer is scheduled; clamping
-			// here is the only place where audio.Now() is the same clock the
-			// audio engine reads on .start(). It exists ONLY to survive the
-			// Go→JS PlayBatch crossing on WASM (MinDispatchLeadSec > 0, ~12ms:
-			// the Go-side ~8ms cushion plus the ~4ms bridge per-event drift)
-			// so the JS observer's minLead stays positive after the bridge
-			// delay. It is disabled on desktop (MinDispatchLeadSec == 0),
-			// where there is no bridge and groove "rush" can legitimately
-			// schedule before the grid boundary. It applies only to
-			// sequencer-scheduled events (row >= 0): fire-and-forget UI sounds
-			// (row < 0, queued via queueSoundParams) are enqueued with
-			// when=audio.Now() ("play now") and must dispatch immediately, not
-			// be bumped into the future.
+			// The last safety net before scheduling, on the clock .start() reads. WASM only (desktop has no
+			// bridge, and groove rush may schedule early), and only for sequencer events; UI sounds play now.
 			minDispatchLead := RuntimeProf().MinDispatchLeadSec
-			// requested is the scheduler's start time BEFORE the floor clamp.
-			// Stage C observes it, not the clamped value: observing after the
-			// clamp made a late note read as lead=+12ms, so on WASM `overdue`
-			// could never fire and every lateness gate built on it was blind.
+			// Observed BEFORE the floor clamp: after it, a late note read as early and the lateness gates
+			// could never fire.
 			requested := req.when
 			if req.hasWhen && audioNow > 0 {
 				if minDispatchLead > 0 && req.row >= 0 {
@@ -157,12 +118,7 @@ func (g *Game) audioLoop() {
 						req.when = floor
 					}
 				}
-				// Grace-filter the observation itself (design §3.4), not just
-				// the downstream check: an edit-induced scheduling stall can
-				// dispatch this beat far overdue and latch into schedMetrics'
-				// session-monotonic maxLag. The lead/lag computation used for
-				// AudioQLat below must still run unconditionally — only the
-				// schedMetrics.Observe call is guarded.
+				// Only Observe is grace-filtered (an edit stall would latch maxLag); lead/lag below always runs.
 				if !g.parityInGrace() {
 					g.schedMetrics.Observe(audioNow, requested)
 				}
@@ -219,16 +175,8 @@ func (g *Game) audioLoop() {
 			callDur /= time.Duration(n)
 		}
 		g.perf.onAudioDeq(avgQLat, callDur)
-		// Opportunistic sequencer drive: PlayBatch yields to JS, which is a
-		// natural goroutine scheduling point. Pulling seqScheduleTime here
-		// guarantees a fire whenever the audio pipeline is moving, even if
-		// the UI frame-end drive hasn't run for the last few ms. This
-		// supplements the background sequencerLoop goroutine, so it is gated
-		// to production: under go test that goroutine is never started and
-		// scheduling is driven deterministically from Update() (game_new.go) —
-		// driving it here too would race the UI's highlight advance and write
-		// seqNextIdxs concurrently. closing stops the drive during teardown so
-		// audioCh drains and the audioQuit select wins.
+		// PlayBatch yields to JS, so drive the sequencer here too while audio moves. Production only:
+		// under go test scheduling is deterministic from Update, and this would race it.
 		if g.Playing() && !g.closing.Load() && !runningUnderGoTest() {
 			g.seqScheduleTime()
 		}

@@ -23,29 +23,24 @@ func (g *Game) nodeByID(id model.NodeID) *uiNode {
 }
 
 func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
-	// One atomic undo step: a click that auto-stitches a node into an existing
-	// edge emits an edge-delete + two edge-adds + the node-add; they must
-	// collapse into a single "add node" step.
+	// One undo step: an auto-stitch emits an edge delete, two edge adds and the node add.
 	beginUndoGroup("add node")
 	defer endUndoGroup()
-	// Remember whether we're in origin-selection mode for this placement so
-	// we can avoid side effects (like auto-stitching other circuits).
+	// Origin selection must not auto-stitch other circuits.
 	selectingOrigin := (g.pendingStartRow >= 0)
 	importing := g.importing
 	if selectingOrigin {
 		g.logger.Debugf("[origin] placing node at grid=(%d,%d) nodeType=%v pendingRow=%d", i, j, nodeType, g.pendingStartRow)
 	}
 	if n := g.nodeAt(i, j); n != nil {
-		// If there's an invisible node here and we want a regular node,
-		// upgrade the existing node rather than blocking the placement.
+		// Upgrade an invisible node here rather than blocking the placement.
 		if nodeType.Fires() {
 			if g.pendingStartRow >= 0 {
 				row := g.pendingStartRow
 				if other, ok := g.nodeRows[n.ID]; ok && other != row {
 					// Only disallow if other circuit is currently audible during playback.
 					if g.Playing() && g.rowIsAudible(other) {
-						// Keep the pending selection active so the user can click
-						// a node within the intended circuit without toggling off.
+						// Keep the pending selection so a click inside the intended circuit does not toggle it off.
 						return n
 					}
 				}
@@ -65,8 +60,7 @@ func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
 						g.updateBeatInfos()
 					}
 				}
-				// Finalize origin selection and suppress transient visuals
-				// for a couple of frames to avoid any cross-circuit pulses.
+				// Suppress transient visuals briefly so no pulse crosses circuits.
 				g.pendingStartRow = -1
 				g.quietFrames = 2
 			} else if node, ok := g.graph.GetNodeByID(n.ID); ok && node.Type == model.NodeTypeInvisible {
@@ -111,8 +105,7 @@ func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
 					g.graph.StartNodeID = n.ID
 				}
 			}
-			// Finalize origin selection and suppress transient visuals
-			// for a couple of frames to avoid any cross-circuit pulses.
+			// Suppress transient visuals briefly so no pulse crosses circuits.
 			g.pendingStartRow = -1
 			g.quietFrames = 2
 		} else if g.start == nil {
@@ -144,12 +137,9 @@ func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
 		g.coordBadgeNode = n
 		g.coordBadgeFrame = g.frame
 	}
-	// Auto-stitch only during normal editing. When placing a node as part of
-	// origin selection, never alter other circuits.
+	// Origin selection never alters other circuits.
 	if !selectingOrigin && !importing {
-		// Auto-stitch: if this new node lies along an existing edge (orthogonal),
-		// split that edge into two edges that terminate at the new node. This
-		// makes inserting nodes into existing circuits a one-click operation.
+		// A node on an existing edge splits it, so inserting into a circuit is one click.
 		g.stitchEdgesAt(n)
 	}
 	if selectingOrigin {
@@ -162,8 +152,6 @@ func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
 	return n
 }
 
-// stitchEdgesAt finds UI edges that pass through the given node's grid
-// coordinate and replaces each such edge A-B with A-n and n-B.
 func (g *Game) stitchEdgesAt(n *uiNode) {
 	if n == nil {
 		return
@@ -224,11 +212,7 @@ func (g *Game) deleteNode(n *uiNode) {
 }
 
 func (g *Game) deleteNodeInternal(n *uiNode, updateBeatInfos bool) {
-	// One atomic undo step for the whole delete: node removal, dropped edges,
-	// cascaded row deletion, and neighbour reconnection all collapse into a
-	// single step (see UndoManager.beginGroup). Without this, deleting a
-	// mid-circuit node recorded several steps and a single Ctrl+Z left a
-	// partial graph (a node stranded in a different position).
+	// One undo step for the whole delete, or one Ctrl+Z leaves a partial graph.
 	beginUndoGroup("delete node")
 	defer endUndoGroup()
 	// Capture predecessors and successors before removal for potential reconnection.
@@ -277,8 +261,7 @@ func (g *Game) deleteNodeInternal(n *uiNode, updateBeatInfos bool) {
 	if g.graph.StartNodeID == n.ID {
 		g.graph.StartNodeID = model.InvalidNodeID
 	}
-	// Delete any drum row that used this node as its origin to avoid confusing
-	// stale references. Do this in reverse to keep indices stable.
+	// In reverse, so indices stay stable.
 	toDel := []int{}
 	for i := range g.drum.Rows {
 		if g.drum.Rows[i].Origin == n.ID {
@@ -289,8 +272,7 @@ func (g *Game) deleteNodeInternal(n *uiNode, updateBeatInfos bool) {
 		g.drum.DeleteRow(toDel[i])
 	}
 
-	// Reconnect preds -> succs when aligned on the same row or column, to
-	// preserve straight paths across deleted in-between nodes.
+	// Reconnect aligned neighbours so straight paths survive a deleted middle node.
 	for _, p := range preds {
 		for _, s := range succs {
 			if p == nil || s == nil || p.ID == s.ID {
@@ -324,17 +306,8 @@ func (g *Game) deleteNodeInternal(n *uiNode, updateBeatInfos bool) {
 	}
 }
 
-// pruneDanglingNodeRefs ties transient node-scoped UI to the lifecycle of the
-// nodes themselves: any reference to a node that is no longer in the graph is
-// repointed to the live node with the same id, or dropped — and an open node
-// menu (sidebar) for a vanished node is closed.
-//
-// Per-node delete hooks (deleteNodeInternal) clear these refs by pointer, but a
-// graph REBUILD (Import, which the undo/redo restore rides) replaces every node
-// wholesale without running those hooks, so a deleted/undone node would
-// otherwise leave its coordinate badge drawing and its menu open against a node
-// that no longer exists. Called at the end of Import and once per frame, so the
-// invariant holds regardless of HOW a node left the graph.
+// A rebuild (Import, and so undo/redo) replaces every node without the per-node delete hooks, so
+// this repoints or drops node-scoped UI refs. Runs per frame, whatever removed the node.
 func (g *Game) pruneDanglingNodeRefs() {
 	if g.coordBadgeNode != nil {
 		if live, ok := g.nodesByID[g.coordBadgeNode.ID]; ok {
@@ -360,22 +333,17 @@ func (g *Game) pruneDanglingNodeRefs() {
 	}
 }
 
-// moveNode moves a node to a new grid position, preserving its NodeID.
-// Returns false if the destination is occupied.
+// Keeps its NodeID; false if the destination is occupied.
 func (g *Game) moveNode(n *uiNode, newI, newJ int) bool {
 	// Check destination is empty
 	if existing := g.nodeAt(newI, newJ); existing != nil && existing.ID != n.ID {
 		return false
 	}
 
-	// One atomic undo step: the edge teardown, the move, and the heal/splice all
-	// collapse into a single "move node" step.
 	beginUndoGroup("move node")
 	defer endUndoGroup()
 
-	// Extraction: classify BEFORE touching edges, then remove ALL of n's
-	// edges — the chain closes behind the node (heal below); n reconnects
-	// only via the destination splice.
+	// Classify before touching edges; n reconnects only through the destination splice.
 	plan := g.moveHealPlan(n)
 	type edgeRef struct{ from, to *uiNode }
 	var touching []edgeRef
@@ -399,11 +367,8 @@ func (g *Game) moveNode(n *uiNode, newI, newJ int) bool {
 	n.X = float64(newI) * unit
 	n.Y = float64(newJ) * unit
 
-	// Heal: close the chain behind a pass-through node, direction preserved,
-	// splitting the healed edge through any node on its span (which includes
-	// n itself when the destination lies on the healed span — that re-splice
-	// is exactly the move-along-own-chain case). AFTER the coords update so
-	// n's OLD cell no longer splits the heal.
+	// After the coords update, so n's old cell no longer splits the heal (moving along its own chain
+	// re-splices it).
 	if plan.class == healPassThrough {
 		if g.addEdgeNoRefresh(plan.from, plan.to) {
 			for _, m := range g.nodesOnSpan(plan.from, plan.to) {
@@ -412,11 +377,7 @@ func (g *Game) moveNode(n *uiNode, newI, newJ int) bool {
 		}
 	}
 
-	// Splice into any edge passing through the destination cell — same
-	// semantics as add/paste (tryAddNode/pasteNodeFrom → stitchEdgesAt):
-	// edge A–B through the new cell becomes A–n + n–B, so a node dropped
-	// onto an edge joins the traversal path there. Own edges (terminating
-	// at n) are never split. Inside the same "move node" undo group.
+	// Same as add/paste: a node dropped on an edge joins the path there; its own edges never split.
 	if !g.importing {
 		g.stitchEdgesAt(n)
 	}

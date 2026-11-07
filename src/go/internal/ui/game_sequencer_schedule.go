@@ -7,8 +7,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// seqScheduleTime schedules audio for all rows based on wall-clock time,
-// independent of UI rendering, at subdivision resolution.
 func (s *playbackSlate) seqScheduleTime() {
 	g := s.g
 	if g == nil {
@@ -24,19 +22,14 @@ func (s *playbackSlate) seqScheduleTime() {
 		g.logger.Tracef("[seqschedule] releasing seqMu")
 		g.seqMu.Unlock()
 	}()
-	// The audio lane ticks on every pass — including the early returns below —
-	// still under seqMu (deferred after the unlock, so it runs first). Cells the
-	// UI lane reached before the lane committed them are observed AFTER that
-	// tick (defers run LIFO: laneTick, then observePendingLaneCells, then unlock).
+	// The lane ticks every pass, early returns included, still under seqMu; defers run LIFO, so
+	// cells the UI lane reached first are observed after laneTick.
 	defer g.observePendingLaneCells()
 	defer s.laneTick()
 
 	parityEnabled := !runningUnderGoTest() || g.parityWatch != parityWatchOff
 
-	// Skip entire tick when the audio channel is near-full. The audioLoop
-	// goroutine hasn't drained pending events yet; computing more would
-	// waste CPU since sendLatest will drop them. The 4ms ticker retries
-	// shortly, and no seqNextIdxs are advanced, so no beats are lost.
+	// Skip the whole tick while audioCh is near full: nothing advances, so no beat is lost.
 	if g.audioChNearFull() {
 		return
 	}
@@ -48,10 +41,7 @@ func (s *playbackSlate) seqScheduleTime() {
 	if div <= 0 {
 		return
 	}
-	// Structural row edits (add/delete) can temporarily leave row-indexed state
-	// (paths, counters, gates) out of sync while the UI thread reconciles the
-	// change. Skip scheduling/parity in that window to avoid false panics from
-	// mismatched row mappings.
+	// Mid row edit, row-indexed state can be out of sync with the rows; skip to avoid false panics.
 	rows := len(g.drum.Rows)
 	if rows == 0 {
 		return
@@ -63,9 +53,7 @@ func (s *playbackSlate) seqScheduleTime() {
 	if len(snap.beatInfosByRow) != rows || len(snap.isLoopByRow) != rows || len(snap.loopStartByRow) != rows || len(g.nextBeatIdxs) != rows {
 		return
 	}
-	// Drive scheduling from the applied BPM to keep audio tightly aligned to
-	// the engine/audio layer. Fall back to UI BPM only if no applied value is
-	// available yet (e.g., just started).
+	// The applied BPM keeps audio aligned with the engine; the UI value only until one exists.
 	bpm := g.state.AppliedBPM()
 	if bpm <= 0 {
 		bpm = g.bpm
@@ -84,20 +72,13 @@ func (s *playbackSlate) seqScheduleTime() {
 			g.seqNextIdxs[row] = next
 		}
 		g.prevBPM = bpm
-		// A live BPM change re-anchors seqNextIdxs from nextBeatIdxs, which
-		// can produce the same catch-up-burst shape as a structural edit
-		// (C1 fix). The normal UI BPM path (DrumView.SetBPM ->
-		// onStructuralMutation("bpm-change") -> bumpParityGen) already
-		// resets peaks at input time; this is a second line of defense for
-		// the async bpmLoop applied-BPM re-anchor detected here, which can
-		// lag behind that first grace window and fire independently of it.
+		// A BPM re-anchor from the async bpmLoop can lag the input-time reset, so reset peaks here too.
 		g.schedMetrics.ResetPeaks()
 	}
 	if bpm <= 0 {
 		return
 	}
-	// Compute target absolute subdivision index since playStart.
-	// Single clock snapshot for this tick — used for both target and lateness.
+	// One clock sample per tick, for both target and lateness.
 	now := time.Now()
 	audioNow := audio.Now()
 	dtSec, ok := g.state.DtSince(now, audioNow)
@@ -105,21 +86,13 @@ func (s *playbackSlate) seqScheduleTime() {
 		return
 	}
 	target, _ := g.state.TargetStep(now, audioNow, bpm, div)
-	// Ensure counters align to row count. Row add/delete operations can change
-	// g.drum.Rows length while the background sequencer is running; never reset
-	// counters back to zero in that case or we'll "rewind" scheduling and trip
-	// parity/highlight logic.
+	// Rows can change under the running sequencer; never reset counters to zero, which would rewind.
 	if len(g.seqNextIdxs) != len(g.drum.Rows) {
 		old := g.seqNextIdxs
 		n := len(g.drum.Rows)
 		g.seqNextIdxs = make([]int, n)
-		// When counters are uninitialized (common on a fresh start and in tests),
-		// begin scheduling from zero so idx=0 can fire immediately. Do not clamp
-		// to nextBeatIdxs in this case: updateBeatInfos may prime nextBeatIdxs to
-		// offset+1 on path changes even before playback advances.
-		//
-		// When rows are added/removed mid-playback, keep the default baseline at
-		// target+1 to avoid "rewinding" and re-scheduling past beats.
+		// Uninitialized counters start at zero, so idx 0 fires at once (not clamped to nextBeatIdxs,
+		// which path changes may prime ahead); rows added mid-play start at target+1.
 		if len(old) == 0 {
 			for row := 0; row < n; row++ {
 				g.seqNextIdxs[row] = 0
@@ -148,8 +121,7 @@ func (s *playbackSlate) seqScheduleTime() {
 		ensureHorizon = 0
 	}
 	ensured := false
-	// Schedule up to a small burst per row to catch up to target
-	// without introducing audible jitter at high BPM/short segments.
+	// A small per-row burst catches up without audible jitter.
 	for row := range g.drum.Rows {
 		if row >= len(g.drum.Rows) {
 			break
@@ -160,19 +132,14 @@ func (s *playbackSlate) seqScheduleTime() {
 				break
 			}
 		}
-		// If the UI playhead has advanced past the sequencer counters (e.g.,
-		// syncUIToTime re-anchored while the sequencer fell behind), do not
-		// attempt to "catch up" by scheduling already-past beats. Doing so
-		// produces a burst of late audio that parity intentionally ignores
-		// (beats older than the current playhead).
+		// Never catch up by scheduling beats the UI playhead already passed: a burst of late audio.
 		if g.Playing() && row < len(g.nextBeatIdxs) {
 			floor := g.nextBeatIdxs[row] - 1 // current beat
 			if floor < 0 {
 				floor = 0
 			}
 			if target >= 0 && floor > target {
-				// nextBeatIdxs may be primed by offset/path bookkeeping; never
-				// clamp past the wall-clock target or we'll starve scheduling.
+				// Never past the wall-clock target, or scheduling starves.
 				floor = target
 			}
 			if g.seqNextIdxs[row] < floor {
@@ -180,12 +147,8 @@ func (s *playbackSlate) seqScheduleTime() {
 			}
 		}
 		burst := 0
-		// Per-beat ideal audio time replaces the prior per-burst baseNow
-		// (audio.Now() snapped once per row). Using the beat's ideal moment
-		// as the schedule base means scheduler lateness (Stage A) does
-		// NOT propagate into audio lateness — it just reduces Stage C
-		// lead. Without this, a 24ms scheduler stall pushed audio to
-		// ideal+64ms instead of ideal+40ms.
+		// Each beat's ideal time is the schedule base, so scheduler lateness only shrinks the lead and
+		// never reaches the audio.
 		baseNow := -1.0
 		if pred != nil && !ensured && g.seqNextIdxs[row] <= target {
 			pred.Ensure(ensureHorizon)
@@ -195,29 +158,13 @@ func (s *playbackSlate) seqScheduleTime() {
 			if row >= len(g.drum.Rows) {
 				break
 			}
-			// Burst limit. Originally 8; raised to 32 so a single tick can
-			// fully catch up after a goroutine starvation stall of up to
-			// ~750ms at 320 BPM. The lower limit forced multi-tick catchup
-			// walks that left Stage A P99 stuck at 100-200ms even with the
-			// per-frame sync drive in Update().
+			// 32 lets one tick fully catch up after a stall of ~750 ms at 320 BPM.
 			if burst >= 32 {
 				break
 			}
 			idx := g.seqNextIdxs[row]
-			// Stage A — observe how late the scheduler is firing this
-			// beat relative to its ideal wall-clock moment. The ideal
-			// moment expressed in dtSec terms is
-			//   beatDtSec = (idx/div - baseBeats) * 60 / bpm
-			// dtSec is the current elapsed-since-playStart; subtract.
-			// Grace-filter the observation itself, not just the downstream
-			// check: a live circuit/rule edit or BPM re-anchor can stall
-			// scheduling and produce a catch-up burst here whose lateness has
-			// nothing to do with steady-state audio health. Without this guard
-			// the burst latches into schedMetrics' session-monotonic
-			// seqFireMax and can panic the NEXT parityTimingCheck after grace
-			// expires (design §3.4: "universal suppression across all
-			// stages" — this observation sat outside that spine before the
-			// fix).
+			// Grace-filtered: an edit or re-anchor can stall scheduling, and the catch-up burst would latch
+			// into the session-monotonic seqFireMax and fail the next check after grace.
 			if g.Playing() && !g.parityInGrace() {
 				beatDtSec := g.state.DtOfStep(idx, div, bpm)
 				if late := dtSec - beatDtSec; late >= 0 {
@@ -246,9 +193,7 @@ func (s *playbackSlate) seqScheduleTime() {
 				if row < len(g.muteUntilByRow) && idx+1 > g.muteUntilByRow[row] {
 					g.muteUntilByRow[row] = idx + 1
 				}
-				// Lane mode: the lane committed this mute as a timed StopLaneAt
-				// (sparing notes after it); an immediate Stop here would cut
-				// voices the lane already scheduled ahead.
+				// The lane committed this mute as a timed stop; stopping now would cut voices it scheduled ahead.
 				if !g.audioLaneOn() {
 					audio.Stop(inst)
 				}
@@ -352,8 +297,7 @@ func (s *playbackSlate) seqScheduleTime() {
 						}
 					}
 					if g.audioLaneOn() {
-						// Audio was committed ahead by the audio lane; the UI lane
-						// only observes it (parity) and drives the visuals.
+						// The lane already committed the audio; the UI lane only observes and drives the visuals.
 						g.observeLaneCell(row, idx)
 						g.scheduleSoundUI(row, idx, info, inst, pitch, dur, g.state.AudioTimeOfStep(idx, div, bpm)+RuntimeProf().AudioOffsetSec)
 					} else if runningUnderGoTest() && g.playFn != nil && g.scheduleHook == nil {
@@ -366,17 +310,11 @@ func (s *playbackSlate) seqScheduleTime() {
 						} else {
 							g.playFn(inst, vol)
 						}
-						// The test-only direct-play path bypasses audioLoop; still record
-						// a parity audio event so parityScan's audio_missing check reflects
-						// what was dispatched, and mark the decision enqueued to keep the
-						// Audible⟹Enqueued invariant honest on this path too.
+						// The test-only direct path skips audioLoop, so record the event and keep Audible ⟹ Enqueued.
 						g.markSeqAudioEnqueued(row, idx)
 						g.recordParityAudio(row, idx, audio.Now(), inst, vol, pitch, dur, g.audioGen.Load(), g.parityGen.Load())
 					} else {
-						// Ideal audio time for this beat: anchored to
-						// audioStart + beat's position on the timeline (via the
-						// clock authority). Falls back to audio.Now() if no
-						// audioStart is available (very early playback, edge case).
+						// audio.Now() until an audio start is known.
 						beatIdealAudio := g.state.AudioTimeOfStep(idx, div, bpm)
 						if !(beatIdealAudio > 0) {
 							if baseNow < 0 {
@@ -402,10 +340,7 @@ func (s *playbackSlate) seqScheduleTime() {
 							info     model.BeatInfo
 						}{row: row, idx: idx, info: info}:
 						default:
-							// hlCh full: this beat's highlight is dropped and the
-							// UI will never paint it. Record the drop so parity
-							// exempts it from highlight_vs_audio (cosmetic loss
-							// under load, not an audio/UI desync).
+							// Parity exempts a highlight the full hlCh dropped.
 							g.markHighlightDropped(row, idx)
 						}
 					}

@@ -6,30 +6,16 @@ import (
 )
 
 const (
-	// popupGripSize is the drag-grip glyph box. The visible affordance stays
-	// this size on every platform; only the HIT rect grows on touch (HitRect),
-	// mirroring the HitArea.Touch/ClipRect pattern used by the zone tree —
-	// enlarging the visible box instead would push the card title around.
+	// Only the HIT rect grows on touch; growing the visible box would push the title around.
 	popupGripSize = 16
-	// popupGripInset is the grip's offset from the card's top-left corner. It
-	// matches sidebarPad so the glyph lines up with the header band both menus
-	// already inset by that amount.
+	// Matches sidebarPad, so the glyph lines up with the header band.
 	popupGripInset = sidebarPad
-	// popupGripDragDeadzone is how far the pointer must travel before a press
-	// on the grip counts as a drag. Below it the gesture is a tap and the card
-	// stays in auto mode — otherwise a stray tap (or a mobile touch wobble)
-	// would silently pin a card the user never meant to move.
+	// Below this a press is a tap and the card stays in auto mode, so a stray touch never pins it.
 	popupGripDragDeadzone = 3
 )
 
-// PopupDragHandle is the shared drag state for a grid-pane menu card whose
-// position is otherwise derived every frame (node pop-up, group menu). The
-// zero value is "auto": Place passes the caller's auto-anchored rect through
-// untouched, so embedding the handle changes nothing until the user drags it.
-//
-// Once dragged, the handle is PINNED: it holds an absolute grid-pane origin
-// and stops tracking the node/group/camera. Reset() (called from each menu's
-// Open/Close) returns it to auto, so a pin never survives a reopen.
+// Zero value = auto: Place passes the anchored rect through. A drag PINS an absolute origin that
+// stops tracking the node and camera; Reset() on Open/Close returns to auto.
 type PopupDragHandle struct {
 	pinned   bool
 	origin   image.Point // pinned top-left, grid-pane space
@@ -48,23 +34,8 @@ func (h *PopupDragHandle) GripRect(panel image.Rectangle) image.Rectangle {
 	return image.Rect(x, y, x+popupGripSize, y+popupGripSize)
 }
 
-// HitRect is the pressable area: the glyph on desktop, grown around the same
-// center to the platform touch minimum on mobile (ExpandHitArea), then
-// translated (never shrunk) back inside panel.
-//
-// Translate, not clip: callers gate input dispatch on point-in-panel before
-// doing any internal hit-testing (input_dispatch.go's Dispatch only calls
-// HandleInput for points inside InputBounds, which is the bare panel rect
-// for these menus — game_group_menu.go), so a hit rect that pokes outside
-// panel is dead space the user can never actually press. popupGripInset (10,
-// sidebarPad) sits closer to the card's corner than half the touch-min
-// growth (14 at (44-16)/2 in DensitySpacious), so the grown box always
-// overhangs the top-left corner before this adjustment. Sliding it back
-// inside panel keeps the full touch target reachable AND fully contained —
-// e.g. a 44px target anchored at panel's top-left corner, still containing
-// the 16px glyph. Only shrinks (via the final Intersect) in the degenerate
-// case where panel itself is smaller than the touch minimum on an axis —
-// there translating can't fully fit it either.
+// Grown to the touch minimum on mobile, then translated (never shrunk) back inside the panel:
+// dispatch only reaches points inside the panel, so any overhang would be dead space.
 func (h *PopupDragHandle) HitRect(panel image.Rectangle) image.Rectangle {
 	grip := h.GripRect(panel)
 	if grip.Empty() {
@@ -93,8 +64,6 @@ func (h *PopupDragHandle) HitRect(panel image.Rectangle) image.Rectangle {
 	return hit.Intersect(panel)
 }
 
-// Dragging reports whether a grip drag is in flight (feeds Capturing() and the
-// camera-pan gate).
 func (h *PopupDragHandle) Dragging() bool { return h.dragging }
 
 // Pinned reports whether the user has moved this card off its auto position.
@@ -109,17 +78,14 @@ func (h *PopupDragHandle) Reset() {
 	h.pressPt = image.Point{}
 }
 
-// Begin starts a drag from a press at pt inside panel. It records the grab
-// offset so the card does not jump to put its corner under the cursor. It does
-// NOT pin — see MoveTo's deadzone.
+// Records the grab offset so the card does not jump; does NOT pin (MoveTo's deadzone does).
 func (h *PopupDragHandle) Begin(pt image.Point, panel image.Rectangle) {
 	h.dragging = true
 	h.grab = pt.Sub(panel.Min)
 	h.pressPt = pt
 }
 
-// MoveTo advances an in-flight drag to pt. Past the deadzone it pins the card
-// at pt−grab, clamped by clampPopupOrigin. size is the card's CURRENT size.
+// size is the card's CURRENT size.
 func (h *PopupDragHandle) MoveTo(pt image.Point, pane, reserved image.Rectangle, size image.Point) {
 	if !h.dragging {
 		return
@@ -135,19 +101,13 @@ func (h *PopupDragHandle) MoveTo(pt image.Point, pane, reserved image.Rectangle,
 // End finishes the drag, keeping the pin.
 func (h *PopupDragHandle) End() { h.dragging = false }
 
-// Hold pins the card at its current top-left, as if the user had dragged it
-// there: a control that changes the card's height (the node type cycle) must
-// not make the card re-anchor and slide out from under the pointer.
+// A control that changes the card's height must not make it re-anchor out from under the pointer.
 func (h *PopupDragHandle) Hold(origin image.Point) {
 	h.pinned = true
 	h.origin = origin
 }
 
-// Place is the chokepoint every consumer calls at the end of its layout: auto
-// is the rect the menu's own anchoring produced this frame. In auto mode it is
-// returned verbatim (zero behavior change); pinned, the stored origin is
-// re-clamped against the CURRENT size — so a card that grew a section still
-// ends up fully inside the pane.
+// Auto: returned verbatim. Pinned: re-clamped to the current size, so a card that grew still fits.
 func (h *PopupDragHandle) Place(auto, pane, reserved image.Rectangle) image.Rectangle {
 	if !h.pinned {
 		return auto
@@ -158,15 +118,8 @@ func (h *PopupDragHandle) Place(auto, pane, reserved image.Rectangle) image.Rect
 	return image.Rect(o.X, o.Y, o.X+size.X, o.Y+size.Y)
 }
 
-// clampPopupOrigin enforces the two placement rules from the design:
-//  1. a size-sized card at the returned origin sits fully inside pane;
-//  2. its grip hit rect does not overlap reserved (the gear/file/logs cluster,
-//     which sits at a higher z and would swallow presses) — the escape
-//     guarantee that keeps a parked card draggable.
-//
-// Rule 2 resolves by the SMALLEST axis-aligned push that clears the cluster
-// and still satisfies rule 1, so the card slides the short way out rather than
-// teleporting across the pane.
+// The card stays inside the pane, and its grip never overlaps the higher-z button cluster (so a
+// parked card stays draggable), by the SMALLEST axis-aligned push.
 func clampPopupOrigin(origin, size image.Point, pane, reserved image.Rectangle) image.Point {
 	o := clampOriginInPane(origin, size, pane)
 	if reserved.Empty() {
@@ -200,15 +153,12 @@ func clampPopupOrigin(origin, size image.Point, pane, reserved image.Rectangle) 
 		}
 	}
 	if !haveBest {
-		// Pane too small for any escape (tiny window): keep rule 1 and accept
-		// the overlap — Esc and tap-away still dismiss the card.
+		// No escape fits a tiny window: keep it in the pane; Esc and tap-away still dismiss.
 		return o
 	}
 	return best
 }
 
-// popupGripTint is the grip's three-state tint: resting (dim, same treatment
-// as the bottom-sheet drag handle), hovered, and dragging.
 func popupGripTint(dragging, hovered bool) color.Color {
 	switch {
 	case dragging:
@@ -216,18 +166,13 @@ func popupGripTint(dragging, hovered bool) color.Color {
 	case hovered:
 		return colTextSecondary
 	default:
-		// AlphaStrong at rest, NOT the bottom-sheet handle's alpha-40: this grip
-		// is a DISCOVERY affordance — it is the only cue that the card can be
-		// moved at all — where the sheet handle merely decorates a gesture the
-		// user already knows. Screenshot-verified at alpha 40 the dots read as
-		// panel noise on both platforms, so the affordance failed silently.
+		// Stronger than the sheet handle: this grip is the only cue the card can move, and at the sheet's
+		// alpha it read as panel noise.
 		return WithAlpha(genColorBorder, AlphaStrong)
 	}
 }
 
-// clampOriginInPane slides a size-sized card so it lies inside pane. A card
-// larger than the pane on an axis is pinned to the pane's min on that axis
-// (the menus already cap their own size to the pane, so this is a guard).
+// A guard: the menus already cap their size to the pane.
 func clampOriginInPane(origin, size image.Point, pane image.Rectangle) image.Point {
 	o := origin
 	if max := pane.Max.X - size.X; o.X > max {

@@ -1,8 +1,6 @@
 package ui
 
-// game_uistate_setters.go exposes thin wrappers used by the uistate
-// subpackage to apply declarative -ui-state config. They live here (not
-// in uistate/) so they can touch the unexported Game fields directly.
+// Here, not in uistate/, so they can touch unexported Game fields.
 
 // SetCameraOffsetX sets the camera horizontal offset in screen pixels.
 func (g *Game) SetCameraOffsetX(x float64) {
@@ -27,8 +25,7 @@ func (g *Game) SetCameraScale(s float64) {
 	}
 }
 
-// CenterCamera resets the camera to the centered default. Used by
-// scene boot to ensure deterministic framing across captures.
+// Deterministic framing across captures.
 func (g *Game) CenterCamera() {
 	if g.cam == nil {
 		return
@@ -36,8 +33,7 @@ func (g *Game) CenterCamera() {
 	g.centered = false
 }
 
-// SetSplitterFrac sets the splitter divider as a fraction of the relevant
-// dimension (0..1). Marks userSet so the layout pass preserves it.
+// Marks userSet so layout keeps it.
 func (g *Game) SetSplitterFrac(frac float64) {
 	if g.split == nil {
 		return
@@ -49,24 +45,17 @@ func (g *Game) SetSplitterFrac(frac float64) {
 		frac = 0.95
 	}
 	if g.split.Horizontal() {
-		// Y/winH; use a sensible default totalH that the next UpdateResize
-		// pass will refine. The userSet flag preserves the ratio.
+		// The next UpdateResize refines this from the ratio.
 		g.split.Y = int(frac * 720)
 	} else {
 		g.split.X = int(frac * 1280)
 	}
-	// UpdateResize re-derives Y/X from ratio while userSet holds, so the
-	// ratio IS the persisted value; setting only Y was undone on the next
-	// resize pass.
+	// UpdateResize re-derives Y from the ratio, so the ratio is the persisted value.
 	g.split.ratio = frac
 	g.split.userSet = true
 }
 
-// SetViewMode toggles between Rows and Audio (mobile EQ/Wave) view.
-// audio=true switches to the audio view. Routes through SetMobileEQMode
-// (which itself routes through setViewMode) so the segmented control,
-// tab state, tree visibility gate, and layout invalidation all happen
-// in the canonical entry point — never set currentViewMode directly here.
+// Through setViewMode, never currentViewMode directly.
 func (g *Game) SetViewMode(audio bool) {
 	if g.drum == nil {
 		return
@@ -81,9 +70,7 @@ func (g *Game) SetMobileEQCollapsed(b bool) {
 	}
 }
 
-// CameraOffsets returns the current camera offset as (x, y). Read
-// counterpart to SetCameraOffsetX/Y; returns (0, 0) when the camera is
-// not yet initialized.
+// (0, 0) before the camera exists.
 func (g *Game) CameraOffsets() (float64, float64) {
 	if g.cam == nil {
 		return 0, 0
@@ -91,8 +78,7 @@ func (g *Game) CameraOffsets() (float64, float64) {
 	return g.cam.OffsetX, g.cam.OffsetY
 }
 
-// CameraScale returns the current camera zoom scale. Read counterpart
-// to SetCameraScale; returns 0 when the camera is not yet initialized.
+// 0 before the camera exists.
 func (g *Game) CameraScale() float64 {
 	if g.cam == nil {
 		return 0
@@ -100,15 +86,11 @@ func (g *Game) CameraScale() float64 {
 	return g.cam.Scale
 }
 
-// SidebarOpen reports whether the node parameter sidebar is currently
-// visible. Read counterpart to OpenSidebarForNodeID.
 func (g *Game) SidebarOpen() bool {
 	return g.sidebar != nil && g.sidebar.IsOpen()
 }
 
-// OpenSidebarForNodeID opens the node parameter sidebar for the node with
-// the given ID (the same numeric ID exposed via JS exports / import JSON).
-// No-op if the node is not in the current graph.
+// No-op if the node is not in the graph.
 func (g *Game) OpenSidebarForNodeID(id int) {
 	if g.sidebar == nil {
 		return

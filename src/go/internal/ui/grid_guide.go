@@ -25,16 +25,11 @@ type GuideTarget struct {
 	I, J int     // commit cell (always valid)
 	Node *uiNode // set when Kind == GuideNode
 	Edge *uiEdge // set when Kind == GuideEdge
-	// Num/Den is the reduced fraction of the A→B span at the commit cell
-	// (GuideEdge only): a node placed here sits Num/Den of the way from
-	// Edge.A to Edge.B.
+	// GuideEdge only: a node here sits Num/Den of the way from Edge.A to Edge.B.
 	Num, Den int
 }
 
-// guideSnapRadiusWorld converts the screen-pixel snap radius (density token)
-// to world units at the current zoom. Screen-space definition makes snapping
-// zoom-proportional: zoomed out the radius spans many cells (coarse musical
-// snapping), zoomed in it spans less than one cell (exact placement).
+// Defined in screen pixels so snapping scales with zoom: coarse when zoomed out, exact when in.
 func (g *Game) guideSnapRadiusWorld() float64 {
 	if g.cam.Scale <= 0 {
 		return 0
@@ -42,9 +37,8 @@ func (g *Game) guideSnapRadiusWorld() float64 {
 	return float64(Profile().DensityValues().GuideSnapRadius) / g.cam.Scale
 }
 
-// guideTargetAt resolves the guide target for a screen-space cursor position:
-// the nearest node within the snap radius, else the best interior cell on the
-// nearest edge within the radius, else the free cell under the cursor.
+// The nearest node in the snap radius, else the best interior cell on the nearest edge, else the
+// free cell.
 func (g *Game) guideTargetAt(mx, my int) GuideTarget {
 	wx := (float64(mx) - g.cam.OffsetX) / g.cam.Scale
 	wy := (float64(my-gridTopOffset()) - g.cam.OffsetY) / g.cam.Scale
@@ -69,21 +63,9 @@ func (g *Game) guideTargetAt(mx, my int) GuideTarget {
 	return GuideTarget{Kind: GuideCell, I: i, J: j}
 }
 
-// guideTargetCached memoizes guideTargetAt per (draw pass, cursor) so the
-// crosshair layer and the cursor label share one node/edge scan per draw.
-// The memo key is g.frame, but g.frame only advances while Playing() (see
-// game_update.go), so it cannot by itself detect "a new draw pass happened
-// while stopped". drawGridPane resets g.guideMemoFrame to -1 at the start of
-// every draw pass (before any drawGrid* method — including this one's callers
-// — runs), which forces the first guideTargetCached call each pass to
-// recompute regardless of whether g.frame changed; the second call within the
-// same pass then hits the cache since g.frame is stable across both calls.
-// g.frame is a monotonically non-decreasing int64 that starts at 0, so -1 is
-// never a value it legitimately takes — it's safe as a "not computed this
-// pass" sentinel.
-// DRAW-ONLY: input paths must keep calling guideTargetAt directly — they run
-// during Update, before camera pan/zoom mutate the transform for this frame,
-// so a memo taken there would go stale by draw time.
+// One scan per draw, shared by the crosshair and the label. g.frame only advances while playing,
+// so drawGridPane resets the memo to -1 each pass. DRAW-ONLY: input runs before this frame's camera
+// changes, so a memo taken there would be stale.
 func (g *Game) guideTargetCached(mx, my int) GuideTarget {
 	if g.guideMemoFrame == g.frame && g.guideMemoX == mx && g.guideMemoY == my {
 		return g.guideMemo
@@ -94,12 +76,8 @@ func (g *Game) guideTargetCached(mx, my int) GuideTarget {
 	return t
 }
 
-// guideEdgeTarget finds the nearest edge within radius (perpendicular distance
-// to the axis-aligned segment; ties broken by smaller span) and picks the
-// interior cell whose reduced fraction of the span has the smallest
-// denominator among the cells within radius of the cursor's along-axis
-// position (nearest wins denominator ties). Edges are orthogonal-only, so all
-// geometry is axis-aligned.
+// Nearest edge by perpendicular distance (smaller span on ties), then the in-radius cell with the
+// smallest reduced denominator (nearest on ties). Edges are axis-aligned.
 func (g *Game) guideEdgeTarget(wx, wy, radius float64) (GuideTarget, bool) {
 	unit := g.grid.Unit()
 	if unit <= 0 {
@@ -184,13 +162,8 @@ func (g *Game) guideEdgeTarget(wx, wy, radius float64) (GuideTarget, bool) {
 	return GuideTarget{Kind: GuideEdge, I: ci, J: cj, Edge: best, Num: off / gcd, Den: span / gcd}, true
 }
 
-// guideAimState tracks the mobile aiming crosshair: a touch that starts within
-// the guide snap radius of a node/edge shows the aim crosshair + coordinate
-// label while it stays stationary, so a precise tap can be lined up. It is
-// visual only — it neither suppresses camera pan nor places a node; the moment
-// the finger moves past the tap slop the aim clears and the drag pans, and
-// placement happens solely on a stationary tap (handleTapInGrid). Desktop mouse
-// input never arms it (touch-originated input only).
+// Visual only: a stationary touch near a circuit element shows the crosshair and label for a
+// precise tap; a move past the slop pans, and only a stationary tap places. Touch input only.
 type guideAimState struct {
 	active   bool
 	prevLeft bool
@@ -198,27 +171,19 @@ type guideAimState struct {
 	startY   int
 }
 
-// guideAimTouchForTest stands in for touchOverrideActive in functional tests:
-// SetInputForTest forces the real touch override off (updateTouchOverride),
-// so tests arm this seam instead.
+// SetInputForTest forces the real touch override off, so tests arm this instead.
 var guideAimTouchForTest bool
 
-// SetGuideAimTouchForTest simulates touch-originated input for the aiming
-// gesture. Returns a restore func.
 func SetGuideAimTouchForTest(v bool) func() {
 	old := guideAimTouchForTest
 	guideAimTouchForTest = v
 	return func() { guideAimTouchForTest = old }
 }
 
-// guideAimTouchActive reports whether this frame's pointer input comes from a
-// touch (the aiming gesture is touch-only; desktop pans on plain drags).
+// Touch only; desktop pans on plain drags.
 func guideAimTouchActive() bool { return touchOverrideActive || guideAimTouchForTest }
 
-// updateGuideAim runs once per frame from Game.Update, before pan gating.
-// Press edge near a circuit element arms aiming; movement past the tap slop
-// marks it a drag; release commits the guide target (a short tap instead
-// resolves through GestureTap → handleTapInGrid on the same frame).
+// Before pan gating.
 func (g *Game) updateGuideAim(mx, my int, left bool) {
 	prev := g.guideAim.prevLeft
 	g.guideAim.prevLeft = left
@@ -233,11 +198,7 @@ func (g *Game) updateGuideAim(mx, my int, left bool) {
 		return
 	}
 	if left && !prev {
-		// Press edge: arm the visual aim (crosshair + coordinate label) when the
-		// press lands on a circuit element, so a user lining up a precise tap can
-		// see where the node would land. This is VISUAL ONLY — placement happens
-		// exclusively on a stationary GestureTap (handleTapInGrid). A drag never
-		// places; it pans (the camera owns pan, gated by its tap-slop deadzone).
+		// Visual only: placement happens solely on a stationary GestureTap, and a drag pans.
 		if my >= gridTopOffset() && g.split.InGridPane(mx, my) && !g.blocksAt(mx, my) {
 			if t := g.guideTargetAt(mx, my); t.Kind != GuideCell {
 				g.guideAim = guideAimState{active: true, prevLeft: true, startX: mx, startY: my}
@@ -249,21 +210,16 @@ func (g *Game) updateGuideAim(mx, my int, left bool) {
 		return
 	}
 	if left {
-		// Moved past the tap slop → this gesture is a pan, not a precise tap.
-		// Drop the visual aim so the crosshair/label stops tracking; the camera
-		// takes over the pan. Nothing is placed.
+		// Past the slop it is a pan: drop the aim, place nothing.
 		if abs(mx-g.guideAim.startX) >= tapMaxMovePx || abs(my-g.guideAim.startY) >= tapMaxMovePx {
 			g.guideAim.active = false
 		}
 		return
 	}
-	// Release edge: clear. A stationary release is a tap — GestureTap →
-	// handleTapInGrid owns placement; there is nothing to commit here.
+	// A stationary release is a GestureTap, which owns placement.
 	g.guideAim.active = false
 }
 
-// commitGuideTarget places/selects at the guide target — shared by the aiming
-// gesture's release and handleTapInGrid's empty-space branch.
 func (g *Game) commitGuideTarget(x, y int) {
 	t := g.guideTargetAt(x, y)
 	if t.Kind == GuideNode {

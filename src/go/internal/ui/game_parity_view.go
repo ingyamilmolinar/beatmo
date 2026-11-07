@@ -1,8 +1,6 @@
 package ui
 
-// parityViewState returns the rendered slate value for (row, abs) along with
-// the window used to render it. It prefers the cached row sprite (final rendered
-// state) when available, and falls back to the current DrumView slate.
+// Prefers the cached row sprite (what was really rendered).
 func (g *Game) parityViewState(row, abs int) (slate bool, inWindow bool, offset int, length int, source string) {
 	if g == nil || g.drum == nil || row < 0 || row >= len(g.drum.Rows) {
 		return false, false, 0, 0, ""
@@ -18,8 +16,7 @@ func (g *Game) parityViewState(row, abs int) (slate bool, inWindow bool, offset 
 			if rel >= 0 && rel < len(g.drum.Rows[row].Steps) {
 				return g.drum.Rows[row].Steps[rel], true, offset, length, "steps"
 			}
-			// Cache window is known but sampling failed; skip parity rather than
-			// guessing from a potentially inconsistent slate.
+			// Skip rather than guess from a possibly inconsistent slate.
 			return false, false, offset, length, "cache"
 		}
 		return false, inWindow, offset, length, "cache"

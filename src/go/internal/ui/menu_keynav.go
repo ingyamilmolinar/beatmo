@@ -2,92 +2,50 @@ package ui
 
 import "github.com/hajimehoshi/ebiten/v2"
 
-// menu_keynav.go — the shared keyboard navigation for every list menu.
-//
-// Extracted from InstrumentMenuComponent, which was the only menu with arrow
-// support (kbMoveDown/kbMoveUp/kbConfirm/kbPageUp/kbPageDown/kbHome/kbEnd +
-// scrollToSelection). Every other menu was mouse-only. Rather than copy that
-// code six times — the parallel-implementations pattern that produced the
-// platform wheel bug — all six menus now drive this one component.
-//
-// Keys are read in each menu's existing per-frame portal update hook, so this
-// needs NO changes to DrumViewTree's dispatch, commonKeys, or HandleKey. The
-// one cross-cutting requirement is that a menu using this claims the keyboard
-// while open (see keyboard_focus.go), otherwise arrows also pan the grid.
+// One keyboard navigation for every list menu, read in each menu's per-frame portal hook, so
+// DrumViewTree dispatch is untouched. A menu using it must claim the keyboard while open, or the arrows
+// also pan the grid.
 
-// MenuKeyNavHost is what a menu exposes to gain keyboard navigation.
-//
-// The list is addressed by the menu's OWN row indices, including rows that are
-// not choices. MenuItemSelectable is what lets a menu interleave group headers
-// and pinned chrome with its real rows: the Templates menu's item list is
-// [title][search][Back][group header][template]... so "the next item" is
-// emphatically not "the next index".
+// Addressed by the menu's OWN row indices, non-choices included; MenuItemSelectable lets a menu
+// interleave headers and pinned chrome, so "next item" is not "next index".
 type MenuKeyNavHost interface {
 	// MenuItemCount is the total number of rows, selectable or not.
 	MenuItemCount() int
-	// MenuItemSelectable reports whether row i can hold the cursor.
 	// Headers, separators and pinned search rows return false.
 	MenuItemSelectable(i int) bool
 	// MenuActivate performs row i's action (what a click would do).
 	MenuActivate(i int)
-	// MenuScrollBehavior is the menu's scroll state, used to reveal the cursor
-	// when it moves off the visible page. Nil for menus that never scroll.
-	//
-	// This is *ScrollBehavior rather than *MenuScroll because it is the common
-	// denominator: MenuScroll-based menus hand over their ScrollBehavior(),
-	// while the context menu owns a bare ScrollBehavior with no MenuScroll.
+	// nil for menus that never scroll. *ScrollBehavior, the common denominator: the context menu has
+	// no MenuScroll.
 	MenuScrollBehavior() *ScrollBehavior
 }
 
-// MenuKeyNavGrid is an OPTIONAL host interface. A host that lays its items out
-// in a grid reports its column count, and the cursor then moves the way the
-// grid looks: Up/Down by a whole row, Left/Right by one cell. Hosts that do not
-// implement it keep the plain list behaviour unchanged.
+// A grid host moves Up/Down by a row and Left/Right by a cell, matching what the user sees.
 type MenuKeyNavGrid interface {
 	// MenuGridCols is the number of columns; <= 1 means "treat me as a list".
 	MenuGridCols() int
 }
 
-// MenuKeyNavRevealer is an OPTIONAL host interface for hosts whose scroll unit
-// is not the item index.
-//
-// reveal's default maths compares the cursor index against VS.First/Visible,
-// which is only right when one scroll step == one item. A grid scrolls by ROWS
-// while its cursor counts CELLS, so it places its own cursor in view instead.
+// For hosts whose scroll unit is not the item index (a grid scrolls rows while the cursor counts cells).
 type MenuKeyNavRevealer interface {
 	MenuRevealItem(i int)
 }
 
-// MenuKeyNavSecondary is an OPTIONAL host interface for a menu whose rows carry
-// a SECOND action alongside "pick this one" — the instrument menu's ★ favourite
-// toggle. Shift+Enter fires it on the cursor row.
-//
-// A host that does not implement it is unaffected: Shift+Enter falls back to
-// MenuActivate, so the chord never becomes a dead key in the menus that have
-// nothing to bind it to.
+// Shift+Enter fires a row's second action (the ★ toggle); without it Shift+Enter falls back to
+// MenuActivate, never a dead key.
 type MenuKeyNavSecondary interface {
 	MenuSecondary(i int)
 }
 
-// MenuKeyNavNoSelection is the cursor value meaning "nothing is highlighted".
-// A menu opens in this state: highlighting a row the moment a menu appears
-// would imply a default action the user never chose, and Enter would then fire
-// an arbitrary row.
+// Menus open with nothing highlighted: a highlight on appearance implies a default the user never chose.
 const MenuKeyNavNoSelection = -1
 
-// MenuKeyNav owns one menu's highlighted row.
-//
-// There is exactly ONE highlight per menu, shared with the mouse: hovering a
-// row calls SetSelected, so the pointer takes the cursor over rather than
-// lighting a second row. Enter therefore always acts on what the user can see
-// is highlighted, whichever input moved it there.
-//
-// Not safe for concurrent use; each menu owns its own.
+// ONE highlight per menu, shared with the mouse (hover calls SetSelected), so Enter always acts on
+// the row the user sees highlighted. Not concurrent-safe; one per menu.
 type MenuKeyNav struct {
 	sel     int
 	keyHold map[ebiten.Key]keyHoldState
-	// host lets SetSelected reject non-selectable rows without every hover site
-	// having to re-derive selectability. Bound by BindHost or the first Update.
+	// Lets SetSelected reject non-selectable rows; bound by BindHost or the first Update.
 	host MenuKeyNavHost
 }
 
@@ -96,26 +54,20 @@ func NewMenuKeyNav() *MenuKeyNav {
 	return &MenuKeyNav{sel: MenuKeyNavNoSelection, keyHold: map[ebiten.Key]keyHoldState{}}
 }
 
-// keyHoldState is one edge slot's hold bookkeeping: how many consecutive frames
-// it has been down, and the held-count on which it last fired. Both are needed —
-// held alone cannot express "a full interval has passed since the last repeat",
-// which is what keeps the cadence monotonic (see repeatCurve.dueSince).
+// held alone cannot express "a full interval passed since the last repeat", which keeps the
+// cadence monotonic.
 type keyHoldState struct {
 	held      int
 	lastFired int
 }
 
-// BindHost associates the menu so SetSelected can consult MenuItemSelectable.
-// Update binds automatically; call this explicitly when hover may run before
-// the first Update of a newly opened menu.
+// Call explicitly when hover may run before a fresh menu's first Update.
 func (n *MenuKeyNav) BindHost(h MenuKeyNavHost) { n.host = h }
 
 // Selected returns the highlighted row index, or MenuKeyNavNoSelection.
 func (n *MenuKeyNav) Selected() int { return n.sel }
 
-// SetSelected moves the cursor, typically because the pointer hovered row i.
-// Non-selectable rows (headers, chrome) are ignored so hovering a group header
-// does not blank the highlight.
+// Non-selectable rows are ignored, so hovering a header does not blank the highlight.
 func (n *MenuKeyNav) SetSelected(i int) {
 	if i == MenuKeyNavNoSelection {
 		n.sel = i
@@ -129,13 +81,8 @@ func (n *MenuKeyNav) SetSelected(i int) {
 	n.sel = i
 }
 
-// Reset clears the highlight — call when the menu closes or its list changes
-// shape (e.g. a new search query), so a stale index cannot activate the wrong
-// row after the list underneath it moved.
-//
-// It also forgets every held key. A menu that closes and reopens while an arrow
-// is still physically down would otherwise resume the slot mid-hold: no press
-// edge, and repeats firing from the first frame with no initial delay.
+// Call when the menu closes or its list changes shape, so a stale index cannot activate the wrong
+// row. Also forgets held keys, or a reopen mid-hold repeats with no initial delay.
 func (n *MenuKeyNav) Reset() {
 	n.sel = MenuKeyNavNoSelection
 	for k := range n.keyHold {
@@ -143,11 +90,7 @@ func (n *MenuKeyNav) Reset() {
 	}
 }
 
-// Update reads this frame's keys and moves/activates accordingly.
-// Call once per frame while the menu is open.
-//
-// Movement is rising-edge: a held arrow moves one row per press, not one per
-// frame, which would race through the list at 60 rows/second.
+// Once per frame while open. Rising-edge, so a held arrow cannot race through 60 rows a second.
 func (n *MenuKeyNav) Update(h MenuKeyNavHost) {
 	if h == nil {
 		return
@@ -161,16 +104,9 @@ func (n *MenuKeyNav) Update(h MenuKeyNavHost) {
 		n.sel = MenuKeyNavNoSelection
 	}
 
-	// Both arrow spellings are accepted. Real Ebiten ALIASES them
-	// (KeyDown == KeyArrowDown, keys.go), but the -tags test ebitestub declares
-	// KeyUp/KeyDown/KeyArrowUp/KeyArrowDown as four DISTINCT constants. Binding
-	// only one spelling therefore works in production yet silently does nothing
-	// under the stub for callers using the other — which is exactly how this
-	// first shipped broken. onEdgeAny folds the aliases into ONE edge slot so
-	// the real build (where they are the same key) cannot double-fire.
-	// A grid host moves by a whole row vertically and one cell horizontally, so
-	// the cursor tracks what the user sees. Both arrow spellings are bound for
-	// the horizontal keys too, for the same ebitestub-alias reason as above.
+	// Both arrow spellings: real Ebiten aliases them, the test stub declares four distinct keys.
+	// onEdgeAny folds aliases into ONE slot so the real build cannot double-fire. Grid hosts move a row
+	// vertically and a cell horizontally.
 	if cols := menuKeyNavCols(h); cols > 1 {
 		n.onHeldAny(func() { n.stepBy(h, +cols, +1) }, ebiten.KeyArrowDown, ebiten.KeyDown)
 		n.onHeldAny(func() { n.stepBy(h, -cols, -1) }, ebiten.KeyArrowUp, ebiten.KeyUp)
@@ -189,14 +125,8 @@ func (n *MenuKeyNav) Update(h MenuKeyNavHost) {
 		if n.sel < 0 || n.sel >= h.MenuItemCount() || !h.MenuItemSelectable(n.sel) {
 			return
 		}
-		// Shift+Enter runs the row's secondary action when it has one.
-		//
-		// Shift is read as the two SIDES, never as ebiten.KeyShift. Real Ebiten
-		// does have KeyShift and resolves it to "left OR right"
-		// (internal/ui/input.go), so binding it would work in production — but
-		// the -tags test ebitestub declares ONLY KeyShiftLeft/KeyShiftRight and
-		// no KeyShift at all, so that binding would be dead under every test.
-		// Checking both sides is the one spelling that works on both.
+		// Shift as its two sides, never ebiten.KeyShift: the test stub has no KeyShift, so that binding
+		// would be dead under every test.
 		if menuKeyNavShiftHeld() {
 			if s, ok := h.(MenuKeyNavSecondary); ok {
 				s.MenuSecondary(n.sel)
@@ -207,19 +137,8 @@ func (n *MenuKeyNav) Update(h MenuKeyNavHost) {
 	}, ebiten.KeyEnter)
 }
 
-// onEdgeOrRepeat runs fn on the frame ANY of keys transitions from up to down,
-// and — when repeat is set — again on each tick of the menuRepeat curve while
-// the key stays down.
-//
-// keys[0] is the shared slot, so aliases of the same physical key are debounced
-// AND counted together rather than each holding its own state. That matters
-// twice over now: under real Ebiten KeyDown and KeyArrowDown are the same key,
-// so separate slots would advance the hold counter twice per frame and repeat
-// at double speed.
-//
-// repeat is false for Enter, Home and End. A repeating Enter would preview,
-// confirm and close a menu in a single held gesture; Home and End are absolute
-// jumps with nowhere to repeat to.
+// Aliases share keys[0]'s slot, or real Ebiten (where they are one key) would repeat at double speed.
+// No repeat for Enter (it would preview, confirm and close in one hold) or Home/End (absolute jumps).
 func (n *MenuKeyNav) onEdgeOrRepeat(fn func(), repeat bool, keys ...ebiten.Key) {
 	if len(keys) == 0 {
 		return
@@ -246,8 +165,7 @@ func (n *MenuKeyNav) onEdgeOrRepeat(fn func(), repeat bool, keys ...ebiten.Key) 
 	if fire {
 		st.lastFired = st.held
 	}
-	// Record BEFORE running fn: fn can close the menu and reset this nav, and
-	// writing afterwards would resurrect the slot it just cleared.
+	// Record BEFORE fn: fn can close the menu and reset the nav, and a later write would resurrect it.
 	n.keyHold[slot] = st
 	if fire {
 		fn()
@@ -264,13 +182,8 @@ func (n *MenuKeyNav) onHeldAny(fn func(), keys ...ebiten.Key) {
 	n.onEdgeOrRepeat(fn, true, keys...)
 }
 
-// step moves the cursor one selectable row in dir (+1 down, -1 up).
-//
-// From "nothing selected", Down enters at the first row and Up at the last —
-// the direction the user asked to travel decides which end they start from.
-// Movement clamps rather than wraps: wrapping makes a held arrow loop the list
-// silently, and gives no feedback that an end was reached.
-// menuKeyNavShiftHeld reports whether either Shift key is down this frame.
+// From no selection, Down enters at the first row and Up at the last. Clamps rather than wraps,
+// which would loop a held arrow silently.
 func menuKeyNavShiftHeld() bool {
 	return isKeyPressed(ebiten.KeyShiftLeft) || isKeyPressed(ebiten.KeyShiftRight)
 }
@@ -283,8 +196,7 @@ func menuKeyNavCols(h MenuKeyNavHost) int {
 	return 0
 }
 
-// stepBy moves the cursor by delta, then scans in scanDir for the nearest
-// selectable cell. Used by grid hosts, where a vertical move is a whole row.
+// For grid hosts, where a vertical move is a whole row.
 func (n *MenuKeyNav) stepBy(h MenuKeyNavHost, delta, scanDir int) {
 	if h.MenuItemCount() == 0 {
 		return
@@ -335,9 +247,7 @@ func (n *MenuKeyNav) page(h MenuKeyNavHost, dir int) {
 	}
 	start := n.sel
 	if start == MenuKeyNavNoSelection {
-		// No cursor yet: page the LIST itself and land on the new page's first
-		// row. Entering at row 0 instead would make the first PageDown a no-op
-		// on an already-scrolled menu.
+		// No cursor: page the list itself, or the first PageDown on a scrolled menu does nothing.
 		if sb := h.MenuScrollBehavior(); sb != nil && sb.VS.Visible > 0 {
 			sb.VS.First += dir * span
 			sb.VS.Clamp()
@@ -356,10 +266,8 @@ func (n *MenuKeyNav) page(h MenuKeyNavHost, dir int) {
 	n.selectFrom(h, start, dir)
 }
 
-// selectFrom scans from i in direction dir for the first selectable row and
-// takes it. If the scan runs off that end, the cursor stays where it was
-// (clamping); if it had no position, it takes the nearest selectable row in
-// the OPPOSITE direction so a page/jump past the end still lands somewhere.
+// Clamps at the end; with no position, takes the nearest selectable row the other way so a jump
+// past the end still lands.
 func (n *MenuKeyNav) selectFrom(h MenuKeyNavHost, i, dir int) {
 	count := h.MenuItemCount()
 	if dir == 0 {
@@ -377,8 +285,6 @@ func (n *MenuKeyNav) selectFrom(h MenuKeyNavHost, i, dir int) {
 			return
 		}
 	}
-	// Nothing that way (e.g. trailing headers): try back the other way so a
-	// page/End that overshoots still settles on a real row.
 	for j := i; j >= 0 && j < count; j -= dir {
 		if h.MenuItemSelectable(j) {
 			n.sel = j
@@ -388,13 +294,8 @@ func (n *MenuKeyNav) selectFrom(h MenuKeyNavHost, i, dir int) {
 	}
 }
 
-// Reveal scrolls the menu so the CURRENT cursor is inside the visible page.
-//
-// Arrow movement reveals as it goes, but SetSelected deliberately does not: it
-// is the hover entry point, where the row is visible by definition. A caller
-// that places the cursor programmatically — a screenshot scene, a test, an
-// "open on the current item" — must call this, or the cursor sits off-screen
-// drawing nothing with no keystroke available to bring it back.
+// Programmatic placement must call this (SetSelected does not reveal: it is the hover path), or the
+// cursor sits off-screen with no key to bring it back.
 func (n *MenuKeyNav) Reveal(h MenuKeyNavHost) {
 	if h == nil {
 		return
@@ -403,8 +304,6 @@ func (n *MenuKeyNav) Reveal(h MenuKeyNavHost) {
 	n.reveal(h)
 }
 
-// reveal scrolls the menu so the cursor is inside the visible page. Without it
-// the highlight walks off-screen and the user is steering something invisible.
 func (n *MenuKeyNav) reveal(h MenuKeyNavHost) {
 	if n.sel < 0 {
 		return
@@ -432,8 +331,7 @@ func (n *MenuKeyNav) reveal(h MenuKeyNavHost) {
 	sb.VS.Clamp()
 }
 
-// MenuItemCountForTest reports the bound host's row count, or 0 when unbound.
-// Lets a table-driven test skip menus too short to observe a repeat.
+// Lets a table test skip menus too short to repeat.
 func (n *MenuKeyNav) MenuItemCountForTest() int {
 	if n == nil || n.host == nil {
 		return 0

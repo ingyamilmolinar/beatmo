@@ -15,16 +15,11 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// benchJSONFormat is the machine-readable bench line consumed by
-// scripts/bench-desktop.sh (which greps stdout for "[bench_json] "). Hoisted
-// to a constant so bench_json_metrics_test.go can pin its key set — a key
-// vanishing here breaks regression tracking silently otherwise.
+// bench-desktop.sh greps stdout for "[bench_json] "; a constant so a test can pin the key set.
 const benchJSONFormat = `[bench_json] {"bpm":%d,"frames":%d,"fps":%.2f,"updateAvgMS":%.3f,"updateMaxMS":%.3f,"drawAvgMS":%.3f,"drawMaxMS":%.3f,"audioEnq":%d,"audioDeq":%d,"audioQLatAvgMS":%.3f,"audioQLatMaxMS":%.3f,"audioCallAvgMS":%.3f,"audioCallMaxMS":%.3f,"schedCount":%d,"schedOverdue":%d,"schedMinLeadMS":%s,"schedMaxLeadMS":%s,"schedAvgLeadMS":%s,"schedAvgLagMS":%s,"schedMaxLagMS":%s,"schedLagP90MS":%s,"schedLagP99MS":%s,"schedSmallLeadCount":%d,"heapAllocKB":%d,"heapSysKB":%d,"heapObjects":%d,"goroutines":%d,"gcCycles":%d,"gcForced":%d,"gcPauses":%d,"gcPauseP50MS":%.3f,"gcPauseP99MS":%.3f,"gcPauseMaxMS":%.3f,"gcHeapHighKB":%d,"parityScans":%d,"parityAvgMS":%.3f,"parityMaxMS":%.3f,"liveImages":%d,"imagesAllocatedTotal":%d,"imagesByTag":"%s","renderCacheHits":%d,"renderCacheMisses":%d,"renderDispatchRenders":%d,"renderPrewarmRenders":%d,"renderAvgMS":%.3f,"renderMaxMS":%.3f` +
 	`,"renderStalePlays":%d,"warmSetSize":%d,"warmSkippedCached":%d,"warmMS":%.3f` +
 	`,"stormScenario":%q,"stormPushes":%d}` + "\n"
 
-// benchFmtMS formats a seconds value as milliseconds for human-readable
-// log output, returning "N/A" for NaN/Inf.
 func benchFmtMS(sec float64) string {
 	if math.IsNaN(sec) || math.IsInf(sec, 0) {
 		return "N/A"
@@ -32,8 +27,7 @@ func benchFmtMS(sec float64) string {
 	return fmt.Sprintf("%.2f", sec*1000)
 }
 
-// benchJsonMS formats a seconds value as milliseconds for JSON output,
-// returning "null" for NaN/Inf to produce valid JSON.
+// "null" for NaN/Inf keeps the JSON valid.
 func benchJsonMS(sec float64) string {
 	if math.IsNaN(sec) || math.IsInf(sec, 0) {
 		return "null"
@@ -87,11 +81,8 @@ func (g *Game) Update() error {
 	g.syncHeldInstruments()
 	g.checkWarmupSampleRate() // trip the gate if the observed sample rate rotated
 	g.warmup.Tick(0)          // nil-safe; enforces the readiness deadline
-	// Per-frame undo bracket: every recorded mutation produced by this frame's
-	// single user gesture (a click that adds + auto-stitches, a drag release,
-	// etc.) collapses into ONE atomic undo step. endGroup is a cheap no-op when
-	// nothing was recorded (it never calls capture on an idle frame). This is the
-	// safety net beneath the per-operation groups in game_graph_nodes.go.
+	// Every mutation from this frame's one gesture collapses into ONE undo step; a no-op on idle
+	// frames. The safety net under the per-operation groups.
 	if g.undoManager != nil {
 		g.undoManager.beginGroup("")
 		defer g.undoManager.endGroup()
@@ -124,8 +115,7 @@ func (g *Game) Update() error {
 				g.startBenchRecording()
 			}
 		} else if g.benchStarted && time.Since(g.benchStart) < g.benchDuration {
-			// Mid-measure-window tick: drive the opt-in synth param-mutation
-			// storm (off by default — leaves existing bench output unchanged).
+			// Opt-in; off leaves bench output unchanged.
 			if g.benchStorm != benchStormOff && g.benchStormInst != "" {
 				for _, m := range benchStormMutationsForTick(g.benchStorm, g.benchStormTick) {
 					audio.SetInstrumentParam(g.benchStormInst, m.Param, m.Value)
@@ -155,14 +145,9 @@ func (g *Game) Update() error {
 				float64(rl.RenderAvgNS)/1e6, float64(rl.RenderMaxNS)/1e6)
 			pAvg, pMax, pCount := g.parityScanStats()
 			g.logger.Infof("[bench] Parity: scans=%d avg=%.3fms max=%.3fms", pCount, pAvg, pMax)
-			// Machine-readable JSON line for scripts/bench-desktop.sh.
-			// Uses benchJsonMS() to emit "null" for NaN values (valid JSON).
 			jm := benchJsonMS
-			// Emit the machine-readable line to stdout (NOT the logger): the
-			// logger runs at -log INFO during benches and this tag is pinned to
-			// DEBUG by the log-level contract (forbidden_at_info_test), so a
-			// logger call would be silently suppressed. bench-desktop.sh greps
-			// stdout for "[bench_json] " — see scripts/bench-desktop.sh.
+			// To stdout, not the logger: benches run at -log INFO and this tag is DEBUG by contract, so a
+			// logger call would be suppressed.
 			warmSize, warmSkipped, warmMS := 0, 0, 0.0
 			if g.warmup != nil {
 				warmSize, warmSkipped, warmMS = g.warmup.BenchStats()
@@ -215,9 +200,7 @@ func (g *Game) Update() error {
 	startNext := g.startNextBuf
 	fastPath := g.perfMode.FastPathEnabled()
 
-	// Detect node parameter edits (e.g., probability changes) and rebase
-	// prediction contexts at the current position to avoid phase drift.
-	// This applies to the engine-backed predictor path used in WASM/desktop.
+	// Rebase at the current position after a node-param edit to avoid phase drift.
 	if g.engine != nil && g.engine.Predictor != nil && g.paramsDirty {
 		base := g.elapsedBeats
 		if len(g.nextBeatIdxs) > 0 {
@@ -238,9 +221,7 @@ func (g *Game) Update() error {
 		g.pathsDirty = true
 		g.paramsDirty = false
 	}
-	// Process engine events without blocking. If playback is stopped,
-	// drain any pending ticks without advancing the timeline so beat and
-	// time counters freeze immediately when the user hits Stop.
+	// Stopped: drain ticks without advancing, so counters freeze the moment the user hits Stop.
 	for {
 		select {
 		case evt := <-g.engine.Events:
@@ -262,72 +243,33 @@ eventsDone:
 		g.drum.SetChainVisible(true)
 		g.scopeApplied = true
 	}
-	// splitter (resize only - input handled via dispatcher)
-	// UpdateResize must run here (before the dispatcher) so the splitter's
-	// winW/totalH are current for in-drag clamping. The drum bounds are
-	// propagated *after* the dispatcher moves the divider — see SetBounds below.
+	// Before the dispatcher, so in-drag clamping sees current sizes; the drum bounds follow AFTER it
+	// moves the divider.
 	g.split.UpdateResize(g.winH, g.winW)
 
-	// Decay popup-close guard so taps that closed a popup on a prior frame
-	// don't create nodes underneath (touch-to-mouse / gesture dual processing).
-	// Only decrement when no touch is active: globalTouchState.Update() hasn't
-	// run yet at this point, so ActiveTouchCount() still reflects the previous
-	// frame. This freezes the guard while the finger is down, preventing it
-	// from expiring before the GestureTap fires on the frame the touch ends.
-	// Desktop is unaffected (ActiveTouchCount is always 0).
+	// Frozen while a finger is down (ActiveTouchCount is last frame's here), so the guard cannot expire
+	// before the GestureTap fires on the lift frame.
 	if g.sidebar.ClosedGuard() > 0 && globalTouchState.ActiveTouchCount() == 0 {
 		g.sidebar.DecrementClosedGuard()
 	}
-	// Per-frame sidebar scroll momentum (must run even when cursor is away
-	// from the sidebar so momentum decays after touch ends).
+	// Every frame, so momentum decays after the touch ends.
 	if g.sidebar.IsOpen() {
 		g.sidebar.UpdateScroll()
 	}
-	// Tie node-scoped UI (coordinate badge, open node menu) to node lifecycle:
-	// drop anything pointing at a node that has left the graph, whatever the
-	// cause (undo/redo restore, direct delete, import).
+	// Whatever removed the node (undo, delete, import).
 	g.pruneDanglingNodeRefs()
 
-	// === TOUCH INPUT ===
-	// Poll touch state FIRST (before any cursor reads) so that the
-	// touch-to-mouse override is set for the rest of the frame.
+	// FIRST, before any cursor read, so the touch-to-mouse override holds for the whole frame.
 	gesture := globalTouchState.Update()
 	touchHandled := false
 
-	// Inject a 2-frame tap for drum-area taps (where touch has already
-	// ended by the time the gesture fires, so the override won't see it).
-	// Skip if a multi-touch gesture just ended — the tap is spurious.
-	//
-	// CRUCIAL: only inject when the real touch-DOWN was NOT already dispatched
-	// and consumed. The injection exists solely to replay a tap the mobile dead
-	// zone BLOCKED from dispatch during the hold (rows scroll area). Outside the
-	// dead zone (transport, EQ/synth panel, portal overlays) the single-touch
-	// override already published the hold-press, so the tree dispatched the
-	// touch-down live — replaying it a second time double-processes the gesture.
-	// That double-processing is the "opens then closes / opens another element"
-	// bug: a tap on a synth card opens its popup on the DOWN, then the injected
-	// replay re-fires on the same point; a tap OUTSIDE an open popup closes it on
-	// the DOWN (overlay click-outside), then the injected replay lands on the now-
-	// exposed element beneath and opens IT. suppressClicksUntilRelease is true
-	// exactly when the down was consumed (a handler returned InputConsumed, or the
-	// overlay's click-outside dismissed a popup) — so gating on it confines the
-	// injection to its original purpose (dead-zone replay, where nothing consumed
-	// the blocked down) and kills both leaks at the source.
-	// Regression: TestTapOutsidePopupDoesNotOpenElementBeneath,
-	// TestSynthCardTapViaRealPipelineStaysOpen, TestKebabTapOverlapScrollerActive,
-	// TestMobileTapDebounceDropsSameSpotDoubleTap.
-	//
-	// CAVEAT: the row-scroll dead zone ALSO sets suppress (it defers the click to
-	// distinguish tap from scroll) even though the down was NOT consumed — which is
-	// exactly the case injection exists for. So a dead-zone tap ALWAYS injects;
-	// everywhere else the tap injects only when the down was not consumed.
+	// Inject only when the real touch-down was NOT consumed: the injection replays a tap the dead zone
+	// blocked, and replaying a consumed one double-processes it (a popup opens then closes, or a tap
+	// outside one opens what was beneath). A dead-zone tap always injects.
 	if gesture != nil && gesture.Kind == GestureTap && !g.split.InGridPane(gesture.X, gesture.Y) && g.drum != nil && !globalTouchState.RecentMultiTouch() &&
 		(g.drum.tapInScrollDeadZone(gesture.X, gesture.Y) || !suppressClicksUntilRelease) && g.drum.tapGate.accept(gesture.X, gesture.Y) {
 		injectTouchTap(gesture.X, gesture.Y)
-		// Reset the tree's wasPressed so it sees the injected tap as a
-		// fresh press. Without this, wasPressed carries over from the
-		// touch-override hold (where touchDeadZone blocked dispatch),
-		// and the tree never dispatches the tap injection.
+		// Reset wasPressed, which the blocked hold left set, so the tree sees the injection as a press.
 		if g.drum.tree != nil {
 			g.drum.tree.wasPressed = false
 		}
@@ -339,50 +281,33 @@ eventsDone:
 		}
 	}
 
-	// Set frame-level touch override so cursorPosition() and
-	// isMouseButtonPressed() return touch data for all existing handlers.
 	updateTouchOverride()
 
-	// Mobile landscape is unsupported (a rotate-to-portrait notice is shown
-	// instead of the layout). Clear the touch override so every override-driven
-	// handler — the input dispatcher, drum.Update(), the camera — observes a
-	// clean no-press/released state this frame (a valid transition, never a
-	// skip), and the multi-touch gesture block below is gated too. Rotating back
-	// to portrait simply stops blocking, so the transition stays seamless.
+	// Clear the override so every handler sees a clean released state (a valid transition, never a
+	// skip); rotating back simply stops blocking.
 	blockLandscapeInput := g.landscapeUnsupported()
 	if blockLandscapeInput {
 		touchOverrideActive = false
 	}
 
-	// === SINGLE INPUT ENTRY POINT ===
-	// ALWAYS poll input - input state transitions cannot be skipped or state corrupts.
-	// This is critical for WASM where fastPath is enabled by default.
+	// ALWAYS poll: input transitions cannot be skipped without corrupting state.
 	mx, my := cursorPosition()
 	left := isMouseButtonPressed(ebiten.MouseButtonLeft)
 
-	// Global undo/redo shortcuts are dispatched here, unconditionally, BEFORE any
-	// editor/dispatcher/popup gating. Ctrl/Cmd+Z must work everywhere — including
-	// while a popup or dropdown is open, during a drag capture, or with the mouse
-	// held over a panel — not only when the cursor happens to be over the grid.
+	// Unconditional and before all gating, so Ctrl/Cmd+Z works over popups, during drags and anywhere.
 	g.handleUndoRedoKeys()
 	g.handleGlobalShortcuts()
 
-	// Mobile aiming gesture: a touch starting near a node/edge aims the grid
-	// guide instead of panning; release commits. Must run before panOK below.
+	// Before panOK below.
 	g.updateGuideAim(mx, my, left)
 
-	// Handle gestures that are NOT mappable to mouse (multi-touch + grid tap/long-press).
-	// Single-finger drag is now handled by the override → cam.HandleMouse / DrumView.Update.
+	// Single-finger drag goes through the mouse override instead.
 	if gesture != nil && !blockLandscapeInput {
 		switch gesture.Kind {
 		case GestureTap:
 			if gesture.Y >= gridTopOffset() && g.split.InGridPane(gesture.X, gesture.Y) && !globalTouchState.RecentMultiTouch() {
-				// Grid area tap — direct handler (node create/select) — but
-				// only when the canvas owns this gesture. A control drawn over
-				// the grid that took the press edge (a top-right button, the
-				// group menu, the splitter) owns the whole gesture: the tap is
-				// reported at the LIFT point, which a drifting finger can carry
-				// off the control, and must not also act on the grid beneath.
+				// Only when the canvas owns the gesture: a control that took the press owns it all, and the tap
+				// arrives at the lift point, which a drifting finger can carry off the control.
 				if !g.inputDispatcher.GestureOwnedByHandler() {
 					g.handleTapInGrid(gesture.X, gesture.Y)
 				}
@@ -390,8 +315,7 @@ eventsDone:
 			}
 			// Drum-area taps are injected above and handled via dispatcher.
 		case GestureLongPress:
-			// Same ownership rule: a long-press that began on an overlay
-			// control must not delete the node under it.
+			// A long-press that began on an overlay control must not delete the node under it.
 			if !g.inputDispatcher.GestureOwnedByHandler() {
 				g.handleTouchLongPress(gesture.X, gesture.Y)
 			}
@@ -407,14 +331,9 @@ eventsDone:
 			g.handleTouchTwoFingerPan(gesture.DeltaX, gesture.DeltaY, gesture.CenterX, gesture.CenterY)
 			touchHandled = true
 		}
-		// GestureSingleFingerDrag is intentionally NOT handled here —
-		// the touch override maps it to mouse, so cam.HandleMouse()
-		// and DrumView.Update() process it automatically.
 	}
 
-	// Reset pinch baseline when fingers lift (not just when gesture is nil,
-	// since CDP touch events arrive asynchronously and there may be frames
-	// between touchMove events where gesture detection returns nil).
+	// On finger count, not nil gesture: CDP touches arrive asynchronously with nil frames between moves.
 	if globalTouchState.ActiveTouchCount() < 2 {
 		g.pinchBaseScale = 0
 		g.pinchBaseGestureScale = 0
@@ -425,16 +344,12 @@ eventsDone:
 
 	g.modes.Tick()
 
-	// Long-press popup intercept: when visible, it exclusively handles input
-	// so no other dispatch runs.
 	if g.longPressPopup {
 		g.updateLongPressPopup(mx, my, left)
 		g.leftPrev = left
 		g.inputDispatcher.SkipFrame(left)
 	} else {
-		// Set/decay splitter guard: while the drum view is capturing,
-		// keep a 3-frame cooldown that prevents the splitter from
-		// initiating a new drag (covers mobile touch flicker).
+		// A 3-frame cooldown covers mobile touch flicker.
 		if g.drum != nil && g.drum.Capturing() {
 			g.split.guardFrames = 3
 		} else if g.split.guardFrames > 0 {
@@ -449,19 +364,12 @@ eventsDone:
 			g.lastDispatcherSidebarOpen = sidebarOpen
 			g.lastDispatcherGroupMenuOpen = groupMenuOpen
 			g.inputDispatcher.Clear()
-			// Top-right button cluster (gear / folder / logs / theme): ONE
-			// opaque handler at the TOP z (gridCornerButtonsInputZ=300), routed
-			// on the buttons' touch targets, so a press anywhere in the cluster
-			// wins over the grid on every platform (desktop mouse, mobile touch,
-			// mobile pointer/click all arrive here via the override coords).
+			// One opaque handler at the top z, so a press anywhere in the cluster beats the grid on every platform.
 			if g.gridHelpBtn != nil {
 				g.inputDispatcher.Register(gridCornerButtonsHandler{g: g})
 			}
-			// Tap-outside-a-menu: while any menu / pop-up is open, a grid
-			// press outside it only closes it (popup_outside_press.go).
+			// While a menu is open, a grid press outside it only closes it.
 			g.inputDispatcher.Register(popupOutsidePressHandler{g: g})
-			// Node sidebar input flows through the grid dispatcher; it renders via the
-			// grid pane's GridTree (grid-sidebar layer, clipped to the grid pane).
 			if sidebarOpen {
 				g.inputDispatcher.Register(g.sidebar)
 			}
@@ -475,9 +383,7 @@ eventsDone:
 			g.inputDispatcher.Sort()
 		}
 
-		// gridCornerButtonsHandler sets gridHelpCapturing during Dispatch when a
-		// corner button consumes the press; reset it BEFORE dispatch so the flag
-		// reflects only this frame.
+		// Reset before dispatch so the flag reflects only this frame.
 		g.gridHelpCapturing = false
 
 		// Skip normal input dispatch if touch gesture was fully handled
@@ -489,21 +395,12 @@ eventsDone:
 			g.inputDispatcher.SkipFrame(left)
 		}
 
-		// (Removed: the legacy BPM-box focus-nudge. The BPM readout is now a
-		// display-only box; tapping it opens the shared ParamValueEditor via
-		// bpmOpenAdapter through the tree dispatcher — it must never be focused.)
-		// Only handle editor if input not consumed by dispatcher
-		// The function has internal guards for blocking conditions (splitter, menus, bounds).
+		// Only when the dispatcher did not consume the input; handleEditor guards the rest.
 		if !inputHandled && !g.blocksAt(mx, my) {
 			g.handleEditor()
 		} else {
-			// A marquee drag whose release frame is consumed by an overlay
-			// (GroupMenu, sidebar, settings gear, ...) never reaches
-			// handleEditor's own release/out-of-pane cancel paths. Left
-			// dangling, g.marquee.active stays true forever — panOK gates
-			// camera pan on it, so panning goes dead — and the next plain
-			// grid click would replay the stale start/cur rect into a
-			// phantom group. Cancel only: never create a group here.
+			// An overlay may consume a marquee's release frame, leaving it active forever (dead panning, then a
+			// phantom group on the next click). Cancel only.
 			if g.marquee.active {
 				g.marquee = marqueeDrag{}
 			}
@@ -511,20 +408,10 @@ eventsDone:
 		}
 	}
 
-	// Keep the top-right grid buttons (settings / file / logs) honest: their
-	// active look tracks whether their menu is actually open, and any press whose
-	// release the menu swallowed is healed while the pointer is up. Runs every
-	// frame (independent of the dispatch branch above) so a menu closing for ANY
-	// reason — re-tap, click-outside, Esc, or a failed/cancelled system action
-	// like the file picker — resets the button instead of leaving it stuck.
+	// Every frame, so a menu closing for any reason resets its button.
 	g.reconcileGridButtonToggles(left)
 
-	// Grid-node hover is a desktop-pointer affordance (the same "everything
-	// clickable hovers" doctrine as the button-hover glow, which keys off
-	// Profile().IsMobile()). Compute it whenever the input class is a mouse —
-	// NOT gated on the perf fast-path. Keying it off fastPath (the WASM/browser
-	// default) silently disabled node hover in the browser even for desktop
-	// mice. Touch/mobile has no persistent pointer, so it never latches a hover.
+	// Desktop pointer only, never gated on the perf fast path, which is on by default in the browser.
 	if !Profile().IsMobile() && my >= gridTopOffset() && !g.blocksAt(mx, my) {
 		g.hover = g.nodeAtScreen(mx, my)
 	} else {
@@ -532,13 +419,8 @@ eventsDone:
 	}
 	g.advanceNodeHoverGlow()
 
-	// Propagate the (possibly just-dragged) splitter position to the drum pane
-	// *after* the dispatcher has moved the divider this frame. The grid pane
-	// reads the splitter live at draw time, so baking the drum bounds from an
-	// earlier (pre-dispatch) splitter Y left the drum one frame behind — an
-	// uncovered "dark band" trailing the divider during a fast resize drag.
-	// SetBounds is gated on an actual rect change, so a non-resize frame no-ops;
-	// the cascade still runs at most once per frame while dragging.
+	// AFTER the dispatcher moved the divider, or the drum pane trails it by a frame (a dark band).
+	// SetBounds no-ops without a rect change.
 	g.drum.SetBounds(g.split.DrumRect(g.winW, g.winH))
 
 	// Run drum view logic before evaluating panning so it can capture drags.
@@ -546,29 +428,17 @@ eventsDone:
 	prevPaused := g.Paused()
 	prevLen := g.drum.Length
 	pendingSubdiv := 0
-	// ── Concurrency: seqMu protects structural edits ──
-	// Game.Update() holds seqMu while calling drum.Update(). Any callback
-	// from DrumView that calls back into Game code requiring seqMu will
-	// DEADLOCK — Go's sync.Mutex is NOT reentrant.
-	//
-	// Pattern: onImport queues data to pendingImportData; actual import
-	// runs after seqMu.Unlock() (see below). lastTriggeredByRow is also
-	// mutex-protected — never read/write it directly in tests; use the
-	// thread-safe test helpers (setLastTriggeredForTest, etc.).
+	// drum.Update runs under seqMu, which is not reentrant: a DrumView callback that needs it deadlocks.
+	// So imports queue and run after Unlock.
 	g.seqMu.Lock()
-	// Tell the drum view whether another component holds the dispatcher's
-	// capture so it can avoid starting new interactions (e.g. touch scroll)
-	// when the splitter or another handler owns the input.
+	// So the drum view starts nothing new while another handler owns the input.
 	if g.drum != nil && g.inputDispatcher != nil {
-		// gridHelpCapturing: while the grid "?" button holds the press, defer the
-		// tree so its click-outside doesn't close the overlay the button just opened.
+		// While a grid button holds the press, defer the tree so it does not close the menu just opened.
 		g.drum.inputCapturedExternally = g.inputDispatcher.HasCaptureOtherThan(g.drum) || g.gridHelpCapturing
 	}
 	// Must always process input to maintain correct state transitions.
 	g.drum.Update()
-	// Keep grid subdivisions in sync with the drum view selection even if the
-	// callback was skipped (e.g., in test harnesses where layout rebuilt after
-	// wiring). Apply only while stopped to honor runtime safety.
+	// Only while stopped; covers harnesses that rebuilt layout after wiring.
 	if !g.Playing() && g.grid != nil && g.drum != nil {
 		if units := g.drum.timelineUnitsPerBeat; units > 0 && units != g.grid.MaxDiv() {
 			pendingSubdiv = units
@@ -592,8 +462,7 @@ eventsDone:
 				g.notifyPredictorNode(dr.origin)
 			}
 		}
-		// nextBeatIdxs (and every other per-row store) was already shifted
-		// synchronously by onDrumRowRemoved when the row was spliced out.
+		// onDrumRowRemoved already shifted every per-row store.
 		if dr.index < len(g.nextIdxSticky) {
 			g.nextIdxSticky = append(g.nextIdxSticky[:dr.index], g.nextIdxSticky[dr.index+1:]...)
 		}
@@ -630,10 +499,7 @@ eventsDone:
 	}
 	g.seqMu.Unlock()
 
-	// Drain notifications queued by hook subscribers running on the
-	// hooks fan-out pool (e.g., audio.RecordStopPayload). DrumView's
-	// notify funcs touch UI state, so we forward them on the game-thread
-	// goroutine, mirroring the pendingImportData pattern.
+	// Subscribers run on the hooks pool; notify touches UI state, so forward here.
 	g.pendingNotifyMu.Lock()
 	pend := g.pendingNotifs
 	g.pendingNotifs = nil
@@ -649,14 +515,10 @@ eventsDone:
 		}
 	}
 
-	// Drain externally queued actions (e.g. JS-driven openers via QueueAction).
-	// Runs after seqMu.Unlock so handlers that touch UI/predictor state cannot
-	// reenter the per-frame lock. Mirrors the pendingImportData pattern below.
+	// After seqMu.Unlock, so handlers cannot re-enter the frame's lock.
 	g.drainPendingActions()
 
-	// Process pending import after seqMu is released to avoid recursive locking.
-	// The import callback from drum.Update() queues data here; we process it now
-	// that the lock is free.
+	// After seqMu is released.
 	if g.pendingImportData != nil {
 		data := g.pendingImportData
 		source := g.pendingImportSource
@@ -670,9 +532,7 @@ eventsDone:
 				g.drum.notifyErrorKey(i18n.KeyNotifErrLoadJSON, err.Error())
 			}
 		} else if g.drum != nil {
-			// Name the loaded source (filename / template) + its node/row counts
-			// so the toast is concrete; fall back to the generic key when the
-			// source is unknown (e.g. a JS path that surfaced no filename).
+			// The generic key when the source is unknown.
 			if source != "" {
 				g.drum.notifyInfoKey(i18n.KeyNotifImportedNamed, importSourceName(source),
 					strconv.Itoa(len(g.graph.Nodes)), strconv.Itoa(len(g.drum.Rows)))
@@ -710,21 +570,13 @@ eventsDone:
 		}
 	}
 
-	// Camera panning always runs - essential for grid interaction on all platforms.
-	// Not guarded by fastPath since it's just mouse delta math (not expensive).
+	// Always: it is cheap delta math.
 	shift := isKeyPressed(ebiten.KeyShiftLeft) || isKeyPressed(ebiten.KeyShiftRight)
-	// NOTE: g.guideAim.active is deliberately NOT in this gate. The mobile
-	// aiming gesture is now visual-only (it shows the crosshair/coordinate label
-	// while the finger is stationary over a circuit element, for a precise tap);
-	// it no longer suppresses panning or places a node on a moved release. A drag
-	// anywhere — including over nodes/edges — pans, gated solely by the camera's
-	// tap-slop deadzone. Only a stationary tap creates a node. Blocking pan on
-	// guideAim.active here would double the slop over circuit content (aim slop +
-	// camera slop) and make panning feel dead near nodes.
+	// guideAim is deliberately absent: aiming is visual only, and a drag anywhere pans (gated only by
+	// the camera's tap slop). Adding it would double the slop near nodes.
 	panOK := !g.linkDrag.active && !g.marquee.active && !g.split.dragging && !shift && !pt(mx, my, g.drum.Bounds) && !g.drum.Capturing() && !g.menuHit(mx, my) && !g.gridMenuDragging() && !g.longPressPopup && !g.modalOverlayActive() && !blockLandscapeInput
 
-	// Diagnostic: log why panOK is false for grid touches on mobile.
-	// Throttled to once per 60 frames to avoid log spam.
+	// Throttled to once per 60 frames.
 	if !panOK && left && g.split.InGridPane(mx, my) && touchOverrideActive && g.frame%60 == 0 {
 		g.logger.Debugf("[pan] panOK=false grid touch at (%d,%d) "+
 			"linkDrag=%v splitDrag=%v shift=%v inDrum=%v capturing=%v menuHit=%v popup=%v",
@@ -733,15 +585,12 @@ eventsDone:
 		g.drum.logCapturingState()
 	}
 
-	// Dispatch wheel to registered handlers (sidebar, drumview) first.
-	// If consumed, skip camera zoom so scrolling doesn't also zoom.
+	// A consumed wheel skips camera zoom.
 	wheelHandled := false
 	if steps := wheelScrollSteps(); steps != 0 {
 		wheelHandled = g.inputDispatcher.DispatchWheel(mx, my, steps)
 	}
 
-	// Handle wheel zoom with debug logs. Read the wheel delta here so we can
-	// log it and then let Camera.HandleMouse process drag only.
 	var drag bool
 	if panOK && !wheelHandled {
 		if dz := wheelZoomDelta(); dz != 0 {
@@ -749,8 +598,7 @@ eventsDone:
 			g.logger.Debugf("[zoom] wheel dz=%.4f at (%d,%d) scale=%.3f", dz, mx, my, g.cam.Scale)
 			// Apply a stronger, anchored zoom immediately.
 			g.zoomAtScreen(float64(mx), float64(my), dz*8.0)
-			// Prevent a second tiny zoom this frame but keep panning disabled
-			// only for this event; camera drag resumes when no wheel.
+			// No second tiny zoom this frame.
 			drag = g.cam.HandleMouse(false)
 		} else {
 			drag = g.cam.HandleMouse(panOK)
@@ -792,12 +640,10 @@ eventsDone:
 	if g.Playing() {
 		g.frame++
 		if g.activePulse == nil && len(g.activePulses) > 0 {
-			// Ensure legacy tests that reference activePulse directly can
-			// observe the current primary-row pulse.
+			// Some tests read activePulse directly.
 			g.activePulse = g.activePulses[0]
 		}
-		// Allow tests to force segment completion by setting p.t=1 and
-		// calling Update() without waiting for an engine tick.
+		// Tests force completion with p.t=1 and Update(), without an engine tick.
 		for i := 0; i < len(g.activePulses); {
 			p := g.activePulses[i]
 			advanced := false
@@ -829,9 +675,7 @@ eventsDone:
 		if g.activePulse == nil && len(g.activePulses) > 0 {
 			g.activePulse = g.activePulses[0]
 		}
-		// After any pulse advancement, align to current timeline so UI
-		// reflects playback precisely even under heavy UI work. Skip the very
-		// first frame after resuming to avoid visual jumps.
+		// Not on the first frame after resuming, which would jump.
 		if !g.JustResumed() {
 			g.syncUIToTime()
 		}
@@ -841,9 +685,7 @@ eventsDone:
 		}
 	}
 
-	// In unit tests, the background sequencer goroutine is disabled by default
-	// to avoid racy concurrent writes to UI state. Drive scheduling here so
-	// audio/parity counters still advance deterministically.
+	// Under go test the background sequencer is off, so drive scheduling here deterministically.
 	if runningUnderGoTest() && !g.sequencerRunning && !g.sequencerStopped && g.Playing() {
 		g.seqScheduleTime()
 	}
@@ -854,10 +696,8 @@ eventsDone:
 
 	if g.drum.PlayPressed() {
 		if !g.playbackReady() {
-			// Consume the press and ignore it: the progress toast already
-			// explains why, and the button renders disabled. Never queue the
-			// press — a play that fires seconds later, unprompted, is worse
-			// than one that did not fire.
+			// Consume and ignore: the toast explains why and the button reads disabled. Never queue it: a play
+			// that fires seconds later, unprompted, is worse.
 			done, total := g.warmup.Progress()
 			g.logger.Debugf("[warmup] play ignored while warming (%d/%d)", done, total)
 		} else if g.Playing() {
@@ -890,10 +730,8 @@ eventsDone:
 			g.resetHighlights()
 			g.activePulses = nil
 			g.activePulse = nil
-			// Treat any non-zero seek position as a resume-from-offset so the
-			// counters re-anchor even when the paused flag was cleared (e.g.,
-			// sequencing without prior Pause). This keeps displayBeat aligned
-			// after manual scrubs before resuming.
+			// A non-zero position resumes from offset even without a prior Pause, so displayBeat stays aligned
+			// after a scrub.
 			resumeFromOffset := (resumeKind == gamestate.ResumeKindResume) || g.elapsedBeats > 0
 			if resumeFromOffset {
 				for row := range g.drum.Rows {
@@ -949,8 +787,7 @@ eventsDone:
 		g.audioGen.Add(1)
 		g.resetAudioLane() // stop: cancel every lane voice not started yet
 		g.setPrimaryStep(0)
-		// Ensure any paused playback visuals (pulses/highlights) are cleared even
-		// when the playing flag doesn't transition (paused -> stopped).
+		// Even when the playing flag does not transition (paused → stopped).
 		g.activePulses = nil
 		g.activePulse = nil
 		g.resetHighlights()
@@ -965,17 +802,8 @@ eventsDone:
 			g.timelineClearRow(row)
 		}
 		g.playedGraveyard = nil
-		// Reset playback-derived state so the next Play starts from a clean
-		// baseline. pathChangeBeatByRow stores elapsedBeats at the moment a
-		// mid-play edit happened; carrying that watermark across Stop makes
-		// refreshDrumRow's safety-net commit loop skip every freshly-played
-		// cell on replay (j < pathChangeBeat ⇒ continue), which leaves the
-		// drum row slate all-grey and hides highlight follow-through.
-		// lastTriggeredByRow holds per-row/per-node "did this fire last time"
-		// state used by highlightVisual; stale entries from the previous run
-		// can suppress the highlight fallback for nodes whose lastTriggered=false.
-		// lastFiredNodeByRow / lastHLIdxByRow are cheap dedupe caches that
-		// must also start fresh.
+		// Clean baseline for the next Play: a stale pathChangeBeatByRow makes the commit loop skip every
+		// replayed cell (all grey), and stale lastTriggered entries suppress highlights.
 		for i := range g.pathChangeBeatByRow {
 			g.pathChangeBeatByRow[i] = -1
 		}
@@ -999,10 +827,7 @@ eventsDone:
 	if g.drum.RecordPressed() {
 		if audio.IsRecording() {
 			g.logger.Debugf("[game] record stop pressed")
-			// StopRecording returns immediately; the actual file flush
-			// + close + session.json write happens on the recording
-			// lifecycle pool. The "Recording saved" toast fires from
-			// the EventRecordStop subscriber wired in game_new.go.
+			// Returns at once; the flush runs on the lifecycle pool and the toast comes from EventRecordStop.
 			result, err := audio.StopRecording()
 			g.drum.SetRecording(false)
 			if err != nil {
@@ -1039,10 +864,7 @@ eventsDone:
 			}
 		}
 	}
-	// Detect BPM changes from the UI and re-anchor the timebase so that
-	// playback position remains continuous without a jump. We must compute
-	// the current absolute beat using the previous BPM, then reset the base
-	// to "now" so future scheduling with the new BPM continues seamlessly.
+	// Compute the position at the old BPM, then re-anchor to now, so playback continues without a jump.
 	prevUI := g.bpm
 	newBPM := g.drum.BPM()
 	if newBPM != prevUI && g.Playing() {
@@ -1051,22 +873,14 @@ eventsDone:
 		if prev > 0 {
 			now := time.Now()
 			audioNow := audio.Now()
-			// If Playing() was toggled without ever anchoring a clock (e.g. a
-			// caller that sets playing state directly instead of going
-			// through the Play button), start the clock now so
-			// AnchorForBPMChange has a valid anchor: its DtSince guard
-			// otherwise no-ops (dt unknown), which would leave PlayStart
-			// zero forever and stall syncUIToTime's per-frame progress on
-			// every subsequent Update(). This mirrors the prior inline
-			// formula's implicit dt=0 fallback + unconditional PlayStart
-			// reset for the "no clock yet" case.
+			// Playing set without ever anchoring a clock: start it, or AnchorForBPMChange no-ops and PlayStart
+			// stays zero, stalling syncUIToTime forever.
 			if g.state.PlayStart().IsZero() && g.state.AudioStart() <= 0 {
 				g.state.StartClock(now, audioNow)
 			}
 			// Re-anchor base to preserve continuity and reset the clock.
 			g.state.AnchorForBPMChange(prev, now, audioNow)
-			// Align sequencer counters with current next-beat indices to avoid
-			// any catch-up burst the next time scheduling runs.
+			// So the next scheduling pass has no catch-up burst.
 			if len(g.seqNextIdxs) != len(g.drum.Rows) {
 				g.seqNextIdxs = make([]int, len(g.drum.Rows))
 			}
@@ -1101,8 +915,7 @@ eventsDone:
 	}
 
 	g.handlePlaybackTransition(prevPlaying, prevPaused)
-	// Defensive cleanup: certain UI operations/tests can leave pulses allocated
-	// while transport is fully stopped. Clear them without touching transport.
+	// Some operations and tests leave pulses while fully stopped.
 	if !g.Playing() && !g.Paused() && (len(g.activePulses) > 0 || g.activePulse != nil) {
 		g.activePulses = nil
 		g.activePulse = nil
@@ -1123,8 +936,6 @@ eventsDone:
 		needRefresh = true
 		g.pathsDirty = false
 	}
-	// Keep preview window fresh while playing so DrumView reflects the live
-	// sequencer progression without lag after freezes/highlights.
 	if g.Playing() {
 		needRefresh = true
 	}
@@ -1158,8 +969,7 @@ eventsDone:
 		refreshDur = time.Since(start)
 	}
 	g.lastRefreshMS = float64(refreshDur) / 1e6
-	// If we just paused, re-assert the current visual highlight locations so
-	// the marker does not jump forward within this frame due to earlier sync.
+	// So the marker does not jump forward within this frame.
 	if g.state.JustPaused() {
 		// Freeze highlights per row to their last subdivision index.
 		for row := range g.drum.Rows {
@@ -1180,37 +990,20 @@ eventsDone:
 	if g.state.JustResumed() {
 		g.state.ClearJustResumed()
 	}
-	// Decay transient-visuals suppression after all state updates so the
-	// next frame resumes normal rendering.
+	// After all state updates, so the next frame renders normally.
 	if g.quietFrames > 0 {
 		g.quietFrames--
 	}
 	g.updateCursorShape()
-	// Synchronously drive the sequencer once per frame. The background
-	// sequencer goroutine cannot run while Update() executes (WASM is
-	// single-threaded cooperative), so the goroutine-driven 4ms ticker is
-	// starved across long frames and Stage A latency spikes into the
-	// hundreds of milliseconds (see webaudio_three_stage_latency).
-	// Driving here caps the worst-case sequencer-fire latency at one
-	// frame. The 4ms ticker still runs and catches sub-frame slots
-	// whenever goroutines actually get scheduled.
-	//
-	// Production-only: under go test the background sequencer goroutine is
-	// never started and scheduling is driven deterministically by the
-	// earlier in-frame drive (see the runningUnderGoTest() block above),
-	// which runs BEFORE drainAndDecayHighlights so seqNextIdxs and the UI
-	// highlight indices stay in lockstep. A second drive here would advance
-	// seqNextIdxs past the highlights already drained this frame, breaking
-	// that parity (TestHighlightAudioSync25ms).
+	// WASM is single-threaded, so the sequencer goroutine starves during long frames; driving it here
+	// caps fire latency at one frame. Production only: under go test the earlier drive runs before the
+	// highlight drain, and a second one would break their lockstep.
 	if g.Playing() && !runningUnderGoTest() {
 		g.seqScheduleTime()
 	}
 	return nil
 }
 
-// updateCursorShape sets the mouse cursor to a resize arrow when hovering
-// over a splitter pill handle, or restores the default cursor otherwise.
-// Skipped on mobile where cursor shapes are irrelevant.
 func (g *Game) updateCursorShape() {
 	if Profile().IsMobile() {
 		return

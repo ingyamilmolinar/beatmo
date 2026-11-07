@@ -7,8 +7,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// rowsLayerMaybeRebuild composes all visible row sprites into a cached layer
-// image. It excludes dynamic overlays (highlights) and UI controls.
 func (dv *DrumView) rowsLayerMaybeRebuild() {
 	w := dv.Bounds.Dx()
 	h := dv.Bounds.Dy()
@@ -25,10 +23,7 @@ func (dv *DrumView) rowsLayerMaybeRebuild() {
 	if rowWidth > 0 && dv.Length > 0 {
 		dxPx = int(math.Round(float64(offsetDelta) * float64(rowWidth) / float64(max1(dv.Length))))
 	}
-	// Lightweight adaptive pad: when under heavy horizontal pan (dx > pad),
-	// transiently widen the pad to turn full rebuilds into partial shifts +
-	// narrow fills. Decay back toward default when movement calms. Browser
-	// only by default; gated by RuntimeProf().AdaptivePanPad.
+	// Under a heavy horizontal pan, widen the pad so full rebuilds become partial shifts.
 	if RuntimeProf().AdaptivePanPad {
 		if canReuse && rowWidth > 0 && dv.Length > 0 {
 			if abs(dxPx) > padPx {
@@ -62,12 +57,8 @@ func (dv *DrumView) rowsLayerMaybeRebuild() {
 		}
 	}
 
-	// Invalidate on size changes, scroll changes, base alignment, timeline-rect
-	// width changes (right-side controls resize), step-count changes (Length
-	// mutation), or explicit dirty flag. The rowWidth/Length checks are
-	// load-bearing for the shift-and-fill path: without them the leftmost
-	// pixels survive across cell-pitch changes and produce the mixed-pitch
-	// artifact users see after long sessions.
+	// The width and Length checks are load-bearing for shift-and-fill: without them the leftmost
+	// pixels survive a cell-pitch change and mix two pitches.
 	needFull := dv.rowsLayer == nil || dv.rowsLayerW != w || dv.rowsLayerH != h || dv.rowsLayerRowOff != dv.rowOffset || dv.rowsLayerDirty || dv.rowsLayerBaseX != baseX || dv.rowsLayerRowWidth != rowWidth || dv.rowsLayerLength != dv.Length
 	smallShift := canReuse && dxPx != 0 && abs(dxPx) <= padPx && rowWidth > 0 && dv.Length > 0
 	// If any row needs rebuild, ensure we rebuild row sprites first and mark layer dirty.
@@ -89,9 +80,7 @@ func (dv *DrumView) rowsLayerMaybeRebuild() {
 			}
 		}
 	}
-	// When all rebuilt rows only patched cells in-place, overdraw them onto
-	// the existing layer instead of a full recomposite. Row sprites are fully
-	// opaque (background fill first), so overdraw replaces old pixels correctly.
+	// Row sprites are opaque, so overdrawing patched rows onto the layer replaces the old pixels.
 	if anyRebuilt && allPatches && !needFull && !smallShift && dv.rowsLayer != nil {
 		for i := dv.rowOffset; i < dv.rowOffset+vis && i < len(dv.Rows); i++ {
 			if i < 0 || i >= len(dv.rowCache) || dv.rowCache[i] == nil {

@@ -1,18 +1,7 @@
 package ui
 
-// ─── Parity Verification Defaults ───────────────────────────────────────────
-//
-// Parity checks ensure the UI slate matches predictor/scheduler state.
-//
-// Platform defaults:
-//   WASM:    parity stays log-only unless PARITY_WASM_FATAL=1|true|panic
-//   Desktop: honors PARITY_WATCH (log|panic) and PARITY_FATAL (0|false to disable)
-//
-// During imports: g.importing disables parity scans and clears buffers to
-// prevent false positives while the graph is being rebuilt.
-//
-// Grace periods prevent false positives during tight loops where the scheduler
-// has committed a beat but the UI hasn't refreshed yet.
+// WASM is log-only unless PARITY_WASM_FATAL is set; desktop honours PARITY_WATCH/PARITY_FATAL.
+// Imports disable scans; grace periods cover a beat committed before the UI refreshed.
 
 import (
 	"fmt"
@@ -35,8 +24,7 @@ func (g *Game) ClearParityMismatches() {
 	g.parityRing.clear()
 }
 
-// clearParityState drops parity buffers (audio events, seq decisions, highlights)
-// so a stop/restart cycle does not compare fresh playback against stale events.
+// So a restart never compares fresh playback against stale events.
 func (g *Game) clearParityState() {
 	g.parityMu.Lock()
 	g.parityAudio = nil
@@ -50,60 +38,21 @@ func (g *Game) clearParityState() {
 	g.ClearParityMismatches()
 }
 
-// parityOnSeek retires every parity observation of the pass a seek leaves
-// behind. A seek is a transport discontinuity like Stop→Play: cells at/after a
-// backward seek's target are about to be REPLAYED, so their recorded audio
-// events, seq decisions and timing traces describe a superseded pass — and the
-// highlights they were matched against are wiped here too. Wiping only the
-// highlights (as SeekSteps used to) left "audio fired, no highlight" for every
-// replayed cell until the playhead re-passed it: the highlight_vs_audio storm
-// after each rewind / go-to. Advancing parityGen retires the old pass through
-// the same generation filter every comparison already applies — including
-// events still in flight in audioCh, which carry the generation they were
-// scheduled under. Not a structural mutation: no freeze, no grace.
+// A seek is a transport discontinuity: the pass it leaves behind is superseded. Advancing
+// parityGen retires its events, in-flight ones included. Not a structural mutation: no freeze, no grace.
 func (g *Game) parityOnSeek() {
 	g.parityGen.Add(1)
 	g.resetHighlights()
 }
 
-// clearParityStateForGenBump drops only the parity comparator buffers whose
-// entries do NOT carry a generation stamp via natural production code paths
-// (highlightedBeats — a UI-rendering aid, not a parity input). It deliberately
-// leaves parityAudio, paritySeqDecisions, and highlightedBeats untouched:
-//
-//   - parityAudio entries carry ParityGen; parityScan drops events whose
-//     ParityGen != current (game_parity_diff_scan.go, audio-events loop).
-//   - paritySeqDecisions entries carry ParityGen; parityScan applies the same
-//     filter symmetrically when copying decisions (seqCopy loop). Both sides
-//     of every comparison are therefore guaranteed same-generation.
-//   - highlightedBeats is genuine past UI state (one expiration frame per
-//     beat key) — clearing it while the audio thread still has fresh events
-//     in flight creates spurious highlight_vs_audio mismatches.
-//
-// Called from bumpParityGen after the parity generation advances. Because the
-// scan's ParityGen filter (above) already excludes prior-generation entries
-// from every comparison, clearing here is pure memory hygiene and is left to
-// parityPrune's abs-window bound; the function stays a no-op seam so future
-// pruning policies have an obvious place to land.
+// A no-op seam: the generation filter already excludes old entries, and clearing highlightedBeats
+// while audio is in flight would cause spurious mismatches.
 func (g *Game) clearParityStateForGenBump() {
 	// Intentionally empty. See doc comment above.
 }
 
-// parityInGrace reports whether the post-mutation grace window is active.
-// During grace, parityScan/parityCheck downgrade mismatches to log-only so
-// the predictor / timeline / scheduler / audio buffers can reach coherence
-// after a structural mutation without tripping the watchdog.
-//
-// The grace window protects against real-time races between the audio thread
-// and the UI thread on a live system. Fast-path Go tests serialize all state
-// synchronously and rely on strict immediate parity, so grace is bypassed
-// under `go test`. Tests that explicitly want to verify grace behavior can
-// opt in via SetParityGraceForceForTest and inspect g.parityGraceUntilNS
-// directly.
-//
-// parityGraceForceForTest, when true, makes parityInGrace honor the real
-// parityGraceUntilNS deadline even under `go test`. Default false preserves
-// the historical test bypass (most tests want grace OFF for determinism).
+// Grace is bypassed under go test, which serializes state and needs strict immediate parity;
+// set this to honour the real deadline in a test.
 var parityGraceForceForTest atomic.Bool
 
 // SetParityGraceForceForTest opts a test into real grace-window behavior.
@@ -113,23 +62,11 @@ func SetParityGraceForceForTest(on bool) (restore func()) {
 	return func() { parityGraceForceForTest.Store(prev) }
 }
 
-// parityRecordNow is the wall clock consulted by the RecordedAt "freshly
-// recorded" grace in parityScan (the audio_missing and highlight_vs_audio
-// checks). It is a package var so tests can pin it: a raw time.Since on a
-// just-stamped RecordedAt is racy against real elapsed time — a scan landing
-// more than 120ms after the event is stamped (a GC pause, a CPU-saturated CI
-// running other packages in parallel) flips a genuinely fresh event to
-// "expired" and fires a spurious mismatch. Unlike parityGraceUntilNS this
-// window is NOT bypassed under `go test`, so a fresh-grace test must pin the
-// clock to stay deterministic. Production leaves it as time.Now.
+// A package var so tests can pin it: unlike parityGraceUntilNS this grace is not bypassed under
+// go test, and a GC pause past 120 ms would expire a fresh event.
 var parityRecordNow = time.Now
 
-// SetParityRecordNowForTest pins the RecordedAt-grace wall clock so a test can
-// deterministically place an event inside (or outside) the 120ms freshness
-// window regardless of how long the surrounding setup takes. Returns a restore
-// func. Safe for these fast-path tests: parityScan is called synchronously on
-// the test goroutine (its only production caller is refreshDrumRow on the UI
-// thread), so there is no concurrent reader to race the assignment.
+// Safe: parityScan runs synchronously on the test goroutine.
 func SetParityRecordNowForTest(now func() time.Time) (restore func()) {
 	prev := parityRecordNow
 	parityRecordNow = now
@@ -150,9 +87,7 @@ func (g *Game) parityInGrace() bool {
 	return time.Now().UnixNano() < until
 }
 
-// startImportDialog temporarily disables parity fatals/watch while the file
-// picker is open, avoiding scheduler/UI parity panics during the blocking
-// dialog. It is idempotent and safe to call multiple times.
+// Idempotent; the blocking file dialog would otherwise trip parity panics.
 func (g *Game) startImportDialog() {
 	g.importDialog = true
 	g.importPrevParityFatal = parityFatalEnabled.Load()
@@ -171,11 +106,8 @@ func (g *Game) endImportDialog() {
 	g.importDialog = false
 }
 
-// recordParityAudio logs a parity audio event. parityGen is the parity
-// generation captured when the sound was SCHEDULED (not now): audio may be
-// recorded after a structural mutation advanced g.parityGen, and stamping the
-// current generation would desync it from its (older-generation) seq decision.
-// See soundReq.parityGen for the full rationale.
+// parityGen is the generation at SCHEDULING time, so it matches its seq decision even after a
+// mutation advanced g.parityGen.
 func (g *Game) recordParityAudio(row, abs int, when float64, inst instrument.ID, vol, pitch, dur float64, gen uint64, parityGen uint64) {
 	if g == nil {
 		return
@@ -227,10 +159,7 @@ func (g *Game) recordSeqDecision(row, abs int, audible bool, typ model.NodeType,
 	if g.parityWatch == parityWatchOff && !parityFatalEnabled.Load() {
 		return
 	}
-	// Record view truth (VisibleAt) separately from audio truth (AudibleAt).
-	// The seq_vs_view parity check compares scheduled view state against the
-	// DrumView slate, not audio state, to avoid false positives when mute
-	// gates make nodes inaudible but still visible.
+	// View truth apart from audio truth: mute gates make nodes silent but still visible.
 	visible := false
 	if g.engine != nil && g.engine.Predictor != nil {
 		if typ == model.NodeTypeMute {
@@ -256,22 +185,12 @@ func (g *Game) recordSeqDecision(row, abs int, audible bool, typ model.NodeType,
 		ParityGen:  g.parityGen.Load(),
 		RecordedAt: time.Now(),
 	}
-	// Defense-in-depth: parityPruneAroundPlayhead runs deferred inside
-	// parityScan, but the sequencer goroutine writes here independently. If
-	// the UI thread stalls (slow draw) or parityScan stops being called, the
-	// map could grow unbounded between prunes. Mirror parityAudioMax (line 150)
-	// with a per-row sliding window keyed by abs.
-	//
-	// abs advances monotonically in the sequencer, so the entry that just fell
-	// out of the retention window is exactly abs-paritySeqDecisionsPerRowMax —
-	// drop it in O(1) rather than scanning the whole map on every write (that
-	// scan is O(map) per call once the cap is reached, i.e. O(abs·max) over a
-	// session, which starves the sequencer goroutine).
+	// Bounded here too, since the sequencer writes independently of the UI's prune. abs advances
+	// monotonically, so drop the entry that just left the window in O(1); a full scan starves the sequencer.
 	if old := abs - paritySeqDecisionsPerRowMax; old >= 0 {
 		delete(m, old)
 	}
-	// Fallback: if abs ever arrives non-contiguously (gaps/jumps), the O(1)
-	// delete above can't guarantee the bound, so scan once to re-clamp.
+	// Non-contiguous abs defeats the O(1) delete, so re-clamp once.
 	if len(m) > paritySeqDecisionsPerRowMax {
 		minKeep := abs - paritySeqDecisionsPerRowMax + 1
 		for k := range m {
@@ -282,13 +201,7 @@ func (g *Game) recordSeqDecision(row, abs int, audible bool, typ model.NodeType,
 	}
 }
 
-// markSeqAudioEnqueued records that the scheduler handed (row, abs)'s audio to
-// the audio pipeline (queued into audioCh). It is called from the sequencer
-// audio-enqueue chokepoints immediately after recordSeqDecision, on the same
-// goroutine and the same seqMu critical section, so the decision is already in
-// the map. The flag lets parityScan's audio_missing check tell genuine
-// scheduler bugs (audible but never enqueued) from audio that is merely still
-// in-flight or was dropped downstream. See paritySeqDecision.Enqueued.
+// Same goroutine and seqMu section as recordSeqDecision, so the decision is already in the map.
 func (g *Game) markSeqAudioEnqueued(row, abs int) {
 	if g == nil || row < 0 {
 		return
@@ -308,10 +221,7 @@ func (g *Game) markSeqAudioEnqueued(row, abs int) {
 	}
 }
 
-// paritySeqDecisionsPerRowMax mirrors parityAudioMax (1024) at the parity-
-// seq-decisions side. Both maps are keyed by absolute beat index and grow
-// monotonically during playback; this constant is the per-row retention
-// ceiling enforced inline in recordSeqDecision.
+// Per-row retention ceiling, like parityAudioMax.
 const paritySeqDecisionsPerRowMax = 1024
 
 func (g *Game) parityPrune(minAbs int) {
@@ -359,9 +269,7 @@ func (g *Game) parityReport(entry mismatchEntry) {
 	if entry.GenAtScan == 0 {
 		entry.GenAtScan = g.parityGen.Load()
 	}
-	// Within the post-mutation grace window, demote everything to log-only.
-	// Real bugs that survive across the window (typically 80ms) will keep
-	// firing after grace expires.
+	// Real bugs outlast the window and fire after it.
 	if g.parityInGrace() {
 		g.parityRing.add(entry)
 		if g.logger != nil {
@@ -407,9 +315,7 @@ func (g *Game) emitParityFatal(e mismatchEntry) {
 	panic("scheduler/drumview parity mismatch")
 }
 
-// buildParityFatalDump builds the full debug-context string emitted by
-// emitParityFatal. Extracted so tests can assert on the dump contents
-// without triggering the panic.
+// Separate so tests can assert the dump without the panic.
 func (g *Game) buildParityFatalDump(e mismatchEntry) string {
 	builder := &strings.Builder{}
 	builder.WriteString("[PARITY] scheduler vs DrumView mismatch\n")
@@ -532,14 +438,12 @@ func (g *Game) resetParityPerf() {
 	g.parityScanCount = 0
 }
 
-// LastImmutableAbs exposes the newest playback/import commit for diagnostics
-// and tests. Returns -1 when none exist.
+// -1 when none.
 func (g *Game) LastImmutableAbs(row int) int {
 	return g.lastImmutableCommit(row)
 }
 
-// lastImmutableCommit returns the newest playback/import commit for the row.
-// Seeded/gap/released entries are ignored to keep immutable history intact.
+// Seeded, gap and released entries are ignored.
 func (g *Game) lastImmutableCommit(row int) int {
 	if g == nil {
 		return -1

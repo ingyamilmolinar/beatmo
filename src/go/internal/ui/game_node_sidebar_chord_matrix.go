@@ -8,11 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Glue between the node sidebar and the chord matrix — the chord node's
-// counterpart of game_node_sidebar_note_matrix.go, wired the same way: the
-// sidebar owns the picker (it renders through GridTree, not the portal), the
-// cells are real sidebar Buttons, the keyboard cursor is a MenuKeyNav in
-// grid mode, and SELECTING APPLIES, RE-SELECTING CONFIRMS.
+// Wired like the note matrix: the sidebar owns the picker (GridTree, not the portal), cells are
+// real sidebar Buttons, and selecting applies while re-selecting confirms.
 
 // chordMatrixCellPrefix spells a chord-picker cell in sbID.String.
 const chordMatrixCellPrefix = "chordcell:"
@@ -29,9 +26,7 @@ func (sb *NodeSidebar) closeChordMatrix() {
 	}
 }
 
-// openPicker is whichever grid picker is open (note or chord), or nil. The
-// sidebar's routing (hit region, wheel, keyboard claim, overPicker) asks
-// this rather than naming a picker.
+// Routing asks this rather than naming a picker.
 func (sb *NodeSidebar) openPicker() *GridPickerComponent {
 	switch {
 	case sb.noteMatrixIsOpen():
@@ -42,8 +37,6 @@ func (sb *NodeSidebar) openPicker() *GridPickerComponent {
 	return nil
 }
 
-// openChordMatrix opens the chord picker anchored to the chip that opened it
-// ("chname" in the Chord section, or the Pitch row's "pitnote").
 func (sb *NodeSidebar) openChordMatrix(anchor sbID) {
 	if sb.node == nil || sb.game == nil {
 		return
@@ -68,10 +61,8 @@ func (sb *NodeSidebar) openChordMatrix(anchor sbID) {
 	sb.reseatChordMatrixCursor()
 }
 
-// reseatChordMatrixCursor puts the keyboard cursor on the current chord when
-// the visible page holds it, and clears it otherwise. A cursor carried across
-// a page switch at the same (col, row) wore the focus tint on a chord the node
-// was NOT playing ("Gm" on Triads for a Gmaj7 node) and read as the selection.
+// A cursor carried across a page switch at the same (col, row) tinted a chord the node was not
+// playing and read as the selection.
 func (sb *NodeSidebar) reseatChordMatrixCursor() {
 	if !sb.chordMatrixIsOpen() {
 		return
@@ -109,9 +100,7 @@ func (sb *NodeSidebar) chordMatrixCellAt(x, y int) (sbID, bool) {
 	return sbID{}, false
 }
 
-// handleChordMatrixInput gives the open chord picker first refusal on
-// pointer input, except presses on a cell (the cell Button fires them) and
-// on the anchor chip (which toggles the picker shut).
+// Cells and the anchor chip pass through: their Buttons fire them.
 func (sb *NodeSidebar) handleChordMatrixInput(x, y int, pressed bool) InputResult {
 	if !sb.chordMatrixIsOpen() {
 		return InputIgnored
@@ -170,8 +159,6 @@ func (sb *NodeSidebar) layoutChordMatrixCells() {
 	}
 }
 
-// wireChordMatrixCells registers one Button per visible cell through the
-// sidebar's own mk().
 func (sb *NodeSidebar) wireChordMatrixCells(mk func(id sbID, label string, onClick func())) {
 	if !sb.chordMatrixIsOpen() || sb.node == nil || sb.game == nil {
 		return
@@ -183,17 +170,14 @@ func (sb *NodeSidebar) wireChordMatrixCells(mk func(id sbID, label string, onCli
 		col, row := c.Col, c.Row
 		id := sbChordCell(col, row)
 		mk(id, c.Label, func() { sb.applyChordMatrixPick(col, row) })
-		// A name too wide for the cell at body size ("C#m(add9)") drops to
-		// caption size; measured, not counted, so "C°" and "Emaj9" stay large.
+		// Measured, not counted, so "C°" and "Emaj9" stay large.
 		if b := sb.btns[id]; b != nil && StyledTextWidth(c.Label, RoleBody) > c.Rect.Dx()-8 {
 			b.SetTextRole(RoleCaption)
 		}
 	}
 }
 
-// drawChordMatrix paints the chord picker: chrome, cell Buttons with the
-// current-chord and keyboard-cursor tints ON TOP (a tint under an opaque
-// keycap is invisible), then the scrollbar and close button.
+// Tints ON TOP of the cells: under an opaque keycap they are invisible.
 func (sb *NodeSidebar) drawChordMatrix(dst *ebiten.Image) {
 	if !sb.chordMatrixIsOpen() {
 		return
@@ -218,9 +202,8 @@ func (sb *NodeSidebar) drawChordMatrix(dst *ebiten.Image) {
 	sb.chordMatrix.DrawOverlay(dst)
 }
 
-// applyChordMatrixPick is the ONE mutation a cell click and Enter share.
-// A different chord applies (root + spec in ONE SetNodeParams = one undo
-// step) and keeps the picker open; the chord already current closes it.
+// The one mutation for click and Enter: root + spec in ONE SetNodeParams (one undo step); the
+// current chord closes the picker.
 func (sb *NodeSidebar) applyChordMatrixPick(col, row int) {
 	if sb.node == nil || sb.game == nil || !sb.chordMatrixIsOpen() {
 		return
@@ -256,8 +239,6 @@ func (sb *NodeSidebar) applyChordMatrixPick(col, row int) {
 
 // ─── Keyboard navigation ───────────────────────────────────────────────────
 
-// chordMatrixNavHost adapts the chord picker to MenuKeyNav's grid mode
-// (index = row*cols + col; every cell is selectable).
 type chordMatrixNavHost struct{ sb *NodeSidebar }
 
 func (h chordMatrixNavHost) cols() int {
@@ -294,8 +275,7 @@ func (sb *NodeSidebar) chordMatrixNav() *MenuKeyNav {
 	return sb.chordMatrixKeyNav
 }
 
-// updateChordMatrixKeyNav pumps the keyboard cursor for one frame, plus the
-// page keys: Tab = next page, Shift+Tab = previous.
+// Tab = next page, Shift+Tab = previous.
 func (sb *NodeSidebar) updateChordMatrixKeyNav() {
 	if !sb.chordMatrixIsOpen() {
 		if sb.chordMatrixKeyNav != nil {
@@ -303,8 +283,7 @@ func (sb *NodeSidebar) updateChordMatrixKeyNav() {
 		}
 		return
 	}
-	// Edge-detected on isKeyPressed with our own held flag, like MenuKeyNav,
-	// so a held Tab turns one page.
+	// Our own held flag, so a held Tab turns one page.
 	tab := isKeyPressed(ebiten.KeyTab)
 	if tab && !sb.chordTabHeld {
 		step := 1

@@ -35,10 +35,7 @@ func (g *Game) currentBeat() float64 {
 	return q
 }
 
-// displayBeat returns a smooth beat position suitable for UI timers. It
-// combines the completed subdivision steps with the scheduler's fractional
-// progress and clamps minor regressions for jitter-free display. It never
-// lags behind the last completed subdivision within the current beat.
+// Never lags the last completed subdivision; minor regressions are clamped so the timer is smooth.
 func (g *Game) displayBeat() float64 {
 	div := g.grid.MaxDiv()
 	if div <= 0 {

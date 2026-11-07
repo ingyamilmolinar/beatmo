@@ -9,8 +9,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// showLongPressPopup opens the three-button quick-action popup above the given
-// node. It's triggered by a long-press gesture on all platforms.
 func (g *Game) showLongPressPopup(node *uiNode, touchX, touchY int) {
 	// Guard: skip if already in a modal mode.
 	if g.modes.Active() != GridModeNone || g.longPressPopup {
@@ -26,16 +24,13 @@ func (g *Game) showLongPressPopup(node *uiNode, touchX, touchY int) {
 	g.longPressPopupHover = ""
 	g.longPressPopupLastHover = ""
 
-	// Button dimensions — sourced from density tokens and spacing constants.
-	// btnW is widened from the text-only ideal so an icon (IconSizeMD) fits
-	// above the label; btnH grows to fit an icon row + label row.
+	// Wide and tall enough for an icon above the label.
 	btnW := 88
 	btnH := Profile().DensityValues().PopupBtnH + IconSizeMD + SpaceXS // icon row + label row
 	gap := SpaceSM
 	pad := SpaceMD
 	gridW := g.split.GridW(g.winW)
-	// Four keycaps must fit narrow mobile panes: shrink from the ideal 80px
-	// down to whatever the grid pane allows.
+	// Four keycaps must fit a narrow mobile pane.
 	if maxBtnW := (gridW - 2*pad - 3*gap) / 4; maxBtnW < btnW {
 		btnW = maxBtnW
 	}
@@ -84,8 +79,7 @@ func (g *Game) showLongPressPopup(node *uiNode, touchX, touchY int) {
 	emitPopupOpened(longPressPopupID)
 }
 
-// updateLongPressPopup handles per-frame input while the popup is visible.
-// The user slides their finger to hover over a button and releases to activate.
+// Slide to a button and release to activate.
 func (g *Game) updateLongPressPopup(mx, my int, left bool) {
 	if !g.longPressPopup {
 		return
@@ -104,17 +98,12 @@ func (g *Game) updateLongPressPopup(mx, my int, left bool) {
 		g.longPressPopupHover = ""
 	}
 
-	// Track last-known hover while finger is still down.
-	// On touch release, coordinates may become stale (0,0) because the
-	// touch override deactivates when the touch ends. By remembering the
-	// hover from the previous frame we can still activate the correct button.
+	// On release the touch override is gone and coordinates may read (0,0), so remember the hover.
 	if left {
 		g.longPressPopupLastHover = g.longPressPopupHover
 	}
 
-	// Click-outside contract: a NEW press (down-edge) that lands outside the
-	// panel dismisses the popup, matching every other pop-up. The slide-release
-	// path below still handles the hold-slide-release gesture.
+	// A new press outside dismisses it, like every pop-up.
 	pressEdge := left && !g.leftPrev
 	if pressEdge && !pt.In(g.longPressPopupRect) {
 		g.dismissLongPressPopup("outside-press")
@@ -155,13 +144,9 @@ func (g *Game) updateLongPressPopup(mx, my int, left bool) {
 	}
 }
 
-// longPressPopupID is the popup-lifecycle telemetry surface id for the node
-// long-press quick-action popup (see hooks.PopupPayload).
 const longPressPopupID = "node-longpress"
 
-// dismissLongPressPopup clears all popup state, emitting popup.closed with
-// reason (only when the popup was actually open — repeated/no-op dismiss
-// calls, e.g. from closeAllPopups when nothing is showing, must not double-emit).
+// Emits only when the popup was open, so repeated dismisses never double-emit.
 func (g *Game) dismissLongPressPopup(reason string) {
 	if !g.longPressPopup {
 		return
@@ -178,16 +163,10 @@ func (g *Game) dismissLongPressPopup(reason string) {
 	g.longPressPopupLastHover = ""
 }
 
-// longPressConnectHoverColor returns the azure accent color used for the
-// Connect button hover text. Extracted as a function so tests can assert the
-// single-chrome-accent invariant (cyan is reserved for viz data only).
+// The chrome accent: cyan is reserved for data.
 func longPressConnectHoverColor() color.Color { return colAccent }
 
-// drawLongPressPopup renders the three-button quick-action popup.
-// longPressPopupAccent returns the accent color for the node long-press popup:
-// the owning row's instrument color so the popup's hover highlights match the
-// instrument the node belongs to. Falls back to the azure chrome accent when
-// the node has no resolvable row.
+// The row's instrument color, so the hover matches the node's instrument.
 func (g *Game) longPressPopupAccent() color.Color {
 	if g.longPressPopupNode != nil {
 		if row := g.rowIndexForNode(g.longPressPopupNode.ID); row >= 0 && row < len(g.drum.Rows) {
@@ -199,18 +178,10 @@ func (g *Game) longPressPopupAccent() color.Color {
 	return colAccent
 }
 
-// longPressDeleteTextColor is the Delete keycap's label tint: the filled
-// destructive (neon) body takes a dark label per the DESIGN.md dark-on-neon
-// contrast rule and the `button-destructive.textColor` component token. A
-// near-white label on the saturated ember fill read as a glossy highlight
-// and broke the filled-control pattern.
+// A dark label on the filled destructive body (dark-on-neon contrast rule).
 func longPressDeleteTextColor() color.Color { return genColorBackground }
 
-// drawPopupActionCap renders one quick-action chip: shared flat-tonal chrome,
-// a leading/top icon, and a centered label. tint colors BOTH icon and label
-// (instrument accent on hover); delete overrides via its own fill/label.
-// The border parameter is retained for call-site compatibility but unused —
-// the flat-tonal system draws no border at rest.
+// tint colors both icon and label; border is unused (flat tonal: no border at rest).
 func drawPopupActionCap(dst *ebiten.Image, rect image.Rectangle, icon IconID, label string, fill, border, tint color.Color, hovered bool) {
 	_ = border
 	capRect := drawFlatPanelButton(dst, rect, fill, hovered)

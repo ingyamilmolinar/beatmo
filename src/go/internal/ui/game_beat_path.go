@@ -21,13 +21,9 @@ func loopSegmentLen(path []model.BeatInfo, start int) int {
 	return len(path) - start
 }
 
-// rawBeatLen returns the length of the non-expanded beat path. When the graph
-// requests a beat row with a large beat length, the loop segment is repeated to
-// fill that length. This helper strips the repeated portion so callers obtain
-// the actual traversal length regardless of the current beatLength setting.
+// Strips the repeated loop segment, so callers get the real traversal length.
 func rawBeatLen(path []model.BeatInfo, isLoop bool, loopStart int) int {
-	// For non-loops, the unbounded path already includes any synthesized
-	// intermediate (invisible) steps between endpoints; keep the full length.
+	// A non-loop's path already holds its synthesized steps.
 	if !isLoop {
 		return len(path)
 	}

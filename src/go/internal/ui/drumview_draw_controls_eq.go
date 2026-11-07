@@ -14,8 +14,6 @@ func (dv *DrumView) markRowControlsDirty() {
 	}
 }
 
-// computeRowControlsBounds returns the bounding rectangle for all visible row controls.
-// Delegates to RowRackZone when available.
 func (dv *DrumView) computeRowControlsBounds() image.Rectangle {
 	if dv.rowRackZone != nil {
 		return dv.rowRackZone.computeControlsBounds()

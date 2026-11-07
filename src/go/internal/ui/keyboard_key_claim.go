@@ -2,42 +2,19 @@ package ui
 
 import "github.com/hajimehoshi/ebiten/v2"
 
-// keyboard_key_claim.go — the PARTIAL (per-key) half of the keyboard-ownership
-// contract.
-//
-// keyboard_focus.go answers "does a surface own the WHOLE keyboard?" — the right
-// question for a focused text field, where every keystroke is typed text. A
-// value control that pops up over a tab (the Sampler/EQ precision wheel, a
-// volume slider, an armed Synth control) owns something much narrower: it wants
-// the arrows and nothing else. Space must still play, [ ] must still zoom.
-//
-// A partial claimant therefore declares the keys it consumes THIS FRAME and
-// handles them; the router suppresses exactly those keys for the gated grid /
-// transport / audio-panel shortcut nodes and lets everything else through
-// untouched.
-//
-// Claiming and handling are ONE interface on purpose. The two halves drifting
-// apart is the bug this file exists to prevent: the Sampler wheel popup handled
-// no arrow keys AND claimed none, so opening the Pitch control and pressing Up
-// panned the camera instead of moving the value.
+// The PARTIAL half of keyboard ownership: a value control over a tab wants the arrows and nothing
+// else (Space must still play). It declares the keys it consumes this frame and handles them; claim
+// and handle are ONE interface so they cannot drift apart.
 
-// KeyboardKeyClaimant is implemented by a surface that owns only SPECIFIC keys
-// while it is open. Implementations MUST be nil-safe on the receiver and MUST
-// report nil keys once closed.
+// MUST be nil-safe on the receiver and report nil once closed.
 type KeyboardKeyClaimant interface {
-	// ClaimedKeys returns the keys this surface consumes for the current frame,
-	// or nil when it owns none. Arrow keys must be declared in BOTH spellings
-	// (KeyArrowUp *and* KeyUp): real Ebiten aliases them, but the -tags test
-	// ebitestub declares them as distinct constants.
+	// nil when it owns none. Arrows in BOTH spellings (KeyArrowUp and KeyUp): real Ebiten aliases
+	// them, the test stub does not.
 	ClaimedKeys() []ebiten.Key
-	// HandleClaimedKeys acts on those keys for the current frame and reports
-	// whether anything changed.
 	HandleClaimedKeys() bool
 }
 
-// Shared arrow-key spellings for partial claimants. Both spellings are listed
-// for the ebitestub-alias reason above (see menu_keynav.go's onEdgeAny, which
-// hit the same hazard).
+// Both spellings, for the stub-alias reason above.
 var (
 	keysStepUp    = []ebiten.Key{ebiten.KeyArrowUp, ebiten.KeyUp}
 	keysStepDown  = []ebiten.Key{ebiten.KeyArrowDown, ebiten.KeyDown}
@@ -45,9 +22,7 @@ var (
 	keysStepRight = []ebiten.Key{ebiten.KeyArrowRight, ebiten.KeyRight}
 )
 
-// The two standing claim sets, precomputed: ClaimedKeys runs every frame a
-// control is open, so it returns these shared slices rather than building one.
-// Callers MUST treat them as read-only.
+// Precomputed because ClaimedKeys runs every frame; read-only.
 var (
 	keysValueStep              = concatKeys(keysStepUp, keysStepDown)
 	keysValueAndResolutionStep = concatKeys(keysStepUp, keysStepDown, keysStepLeft, keysStepRight)
@@ -64,12 +39,10 @@ func concatKeys(sets ...[]ebiten.Key) []ebiten.Key {
 // valueStepKeys is the claim of a control whose value steps on Up/Down only.
 func valueStepKeys() []ebiten.Key { return keysValueStep }
 
-// valueAndResolutionStepKeys is the claim of a control whose value steps on
-// Up/Down and whose step RESOLUTION changes on Left/Right.
+// Up/Down step the value; Left/Right change the step resolution.
 func valueAndResolutionStepKeys() []ebiten.Key { return keysValueAndResolutionStep }
 
-// anyKeyJustPressed reports whether ANY of keys had a press edge this frame.
-// Used to fold the arrow-key alias spellings into one test.
+// Folds the alias spellings into one test.
 func anyKeyJustPressed(keys ...ebiten.Key) bool {
 	for _, k := range keys {
 		if isKeyJustPressed(k) {
@@ -79,10 +52,7 @@ func anyKeyJustPressed(keys ...ebiten.Key) bool {
 	return false
 }
 
-// KeyClaimants appends every partial claimant in this portal's stack, TOP first.
-// The whole stack is scanned for the same reason ClaimsKeyboard scans it: a
-// tooltip or notification landing on top must not silently hand the arrows back
-// to the camera while the claiming control is still open and visible.
+// TOP first; the whole stack is scanned so a tooltip on top cannot hand the arrows back to the camera.
 func (p *OverlayPortal) KeyClaimants(out []KeyboardKeyClaimant) []KeyboardKeyClaimant {
 	if p == nil {
 		return out
@@ -103,12 +73,7 @@ func (t *DrumViewTree) KeyClaimants(out []KeyboardKeyClaimant) []KeyboardKeyClai
 	return t.portal.KeyClaimants(out)
 }
 
-// KeyClaimants appends every partial claimant reachable from the bottom panel:
-// the three overlay subtrees plus the inline armed Synth/Sampler control (which
-// is not portal-hosted).
-//
-// Add new per-key surfaces HERE (or to Game.KeyClaimants for grid-pane ones) —
-// never as an inline isKeyPressed check at the control's own update site.
+// Add new per-key surfaces here, never as an inline isKeyPressed check at the control.
 func (dv *DrumView) KeyClaimants(out []KeyboardKeyClaimant) []KeyboardKeyClaimant {
 	if dv == nil {
 		return out
@@ -130,17 +95,8 @@ func (g *Game) KeyClaimants() []KeyboardKeyClaimant {
 	return g.drum.KeyClaimants(nil)
 }
 
-// dispatchClaimedKeys lets the TOPMOST open partial claimant act on the keys it
-// owns and returns the UNION of every open claimant's keys, so the gated
-// shortcut router can suppress them. Returns nil when nothing claims, which is
-// the zero-cost common case.
-//
-// Top-most ACTS, whole stack BLOCKS — the same split ClaimsKeyboard uses. Only
-// one value control is open at a time in practice (CloseAllPopups, one armed
-// control per tab), but if that ever stopped holding, two controls both stepping
-// on one arrow press is a much worse failure than one of them going inert, and
-// a lower claimant whose control is still on screen must never hand the arrows
-// back to the camera.
+// The topmost claimant acts; the whole stack blocks. Two controls stepping on one press is worse
+// than one going inert, and a lower visible claimant must never hand the arrows back. nil = nothing claims.
 func (g *Game) dispatchClaimedKeys() map[ebiten.Key]bool {
 	claimants := g.KeyClaimants()
 	if len(claimants) == 0 {

@@ -2,9 +2,7 @@ package ui
 
 import "sync/atomic"
 
-// sendLatest writes v to ch, dropping an existing item if the buffer is full.
-// It never blocks and will silently discard v if the channel remains full.
-// If drops is non-nil, it is incremented each time an item is dropped.
+// Never blocks; drops the oldest item when full.
 func sendLatest[T any](ch chan T, v T, drops *atomic.Int64) {
 	select {
 	case ch <- v:
@@ -24,10 +22,7 @@ func sendLatest[T any](ch chan T, v T, drops *atomic.Int64) {
 	}
 }
 
-// sendLatestBPM aggressively ensures v is left in the channel by dropping
-// existing items until a non-blocking send succeeds. This is used for BPM
-// updates where only the most recent value matters and tests expect that the
-// final requested BPM is applied even if the audio layer was busy.
+// Only the newest BPM matters, so keep dropping until it is in the channel.
 func sendLatestBPM(ch chan int, v int) {
 	for i := 0; i < 8; i++ { // bounded attempts to avoid long spins
 		select {

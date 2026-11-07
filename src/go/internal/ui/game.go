@@ -9,9 +9,7 @@ import (
 
 const desktopTopOffset = 40
 
-// gridTopOffset returns the transport-bar offset for the grid pane.
-// On mobile (small screen), the transport bar lives in the drum pane,
-// so no offset is needed. On desktop, reserves 40px at the top.
+// Mobile keeps the transport in the drum pane, so no offset.
 func gridTopOffset() int {
 	if Profile().IsMobile() {
 		return 0
@@ -98,10 +96,7 @@ var parityWatchDefault parityWatchMode
 
 func init() {
 	parityWatchDefault = parityWatchOff
-	// Every go test binary — `-tags test` and the real-Ebiten `make test-real`
-	// build alike — runs parity in panic mode, so a desync can never pass a
-	// test silently. (testutil_test.go's testParityWatchDefault re-asserts it
-	// per test for the -tags test suite.)
+	// Every go test binary runs parity in panic mode, so a desync never passes silently.
 	if runningUnderGoTest() {
 		parityWatchDefault = parityWatchPanic
 	}
@@ -117,9 +112,8 @@ func init() {
 	}
 }
 
-// On WASM/Playwright runs we prefer logging over panicking so a transient
-// parity mismatch does not terminate the Go runtime and break browser tests.
-// Opt back into fatal behaviour with PARITY_WASM_FATAL=1|true|panic.
+// Browser runs log instead of panicking, so a transient mismatch cannot kill the Go runtime;
+// PARITY_WASM_FATAL=1 opts back in.
 func init() {
 	if !RuntimeProf().IsBrowser || runningUnderGoTest() {
 		return

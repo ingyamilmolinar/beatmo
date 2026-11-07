@@ -10,9 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// parityTimingFatalEnabled gates whether a timing-gate breach panics.
-// Default ON (desktop/test), forced OFF on browser unless PARITY_TIMING_FATAL
-// arms it — mirrors parityFatalEnabled.
+// On by default; off in the browser unless PARITY_TIMING_FATAL arms it.
 var parityTimingFatalEnabled atomic.Bool
 
 // parityTimingWatchDefault is the initial watch mode for the timing gate.
@@ -20,11 +18,8 @@ var parityTimingWatchDefault parityWatchMode
 
 func SetParityTimingFatal(enabled bool) { parityTimingFatalEnabled.Store(enabled) }
 
-// resolveParityTimingActivation computes (watch, fatal) from the seed defaults,
-// the PARITY_TIMING / PARITY_TIMING_FATAL env values, and whether this is a
-// browser runtime. On browser, fatal is forced OFF (watch=log) unless
-// PARITY_TIMING_FATAL explicitly arms it — mirroring game.go's PARITY_WASM_FATAL
-// safety net so a leaked PARITY_TIMING=panic cannot crash WASM/Playwright runs.
+// In the browser fatal is off unless PARITY_TIMING_FATAL arms it, so a leaked PARITY_TIMING=panic
+// cannot crash WASM runs.
 func resolveParityTimingActivation(seedWatch parityWatchMode, seedFatal bool, isBrowser bool, timingEnv, timingFatalEnv string) (watch parityWatchMode, fatal bool) {
 	watch, fatal = seedWatch, seedFatal
 	switch strings.ToLower(strings.TrimSpace(timingEnv)) {
@@ -56,44 +51,16 @@ func init() {
 	w, f := resolveParityTimingActivation(tb.WatchDefault, tb.FatalDefault, RuntimeProf().IsBrowser, os.Getenv("PARITY_TIMING"), os.Getenv("PARITY_TIMING_FATAL"))
 	parityTimingWatchDefault = w
 	parityTimingFatalEnabled.Store(f)
-	// Armed under `go test` like the logical checker: every test Game panics
-	// on a timing breach. (It used to stay dormant on the theory that tests
-	// which backdate PlayStart to fast-forward the scheduler would produce
-	// synthetic Stage-A/B/D breaches; armed across the whole ui suite —
-	// 5294 tests, run 6-way parallel on a loaded machine — none did: the only
-	// breaches were the timing tests' own injected ones.)
+	// Armed under go test like the logical checker: every test Game panics on a timing breach.
 	if runningUnderGoTest() {
 		parityTimingFatalEnabled.Store(true)
 		parityTimingWatchDefault = parityWatchPanic
 	}
 }
 
-// parityTimingCheck evaluates the four-stage timing gate against the live
-// schedule-metrics window. It runs on the UI thread at parity-scan cadence.
-// Suppressed while stopped/paused, during the parity grace window (so live
-// circuit/rule edits never false-trigger), and until each stage's window has
-// RuntimeProf().Timing.MinSamples samples.
-//
-// IMPORTANT: only Stage C (schedMetrics.Observe) applies the internal
-// schedWarmupSec warmup. Stages A/B/D (ObserveSeqFireLate/ObserveBridge/
-// ObserveEmitDrift) do NOT — see schedule_metrics.go. Cold-start spikes on
-// those stages during the first instants of playback could otherwise
-// false-panic, so this function adds its own explicit settle guard: it
-// suppresses the whole gate until at least schedWarmupSec of wall-clock time
-// has elapsed since PlayStart. PlayStart (gamestate.State.playStart) is the
-// existing wall-clock play-start timestamp already tracked for beat-display
-// sync (see syncUIToTime); reusing it avoids inventing a parallel clock.
-// Under `go test`, syncUIToTime deliberately never sets PlayStart (see its
-// runningUnderGoTest() guard), so PlayStart stays zero for tests that flip
-// Playing via SetPlaying/SetPlayingForTest without driving a real Update()
-// loop — the zero-value check below treats "no recorded play-start" as
-// "settle not applicable" so those tests exercise the gate immediately and
-// deterministically, independent of wall-clock. Tests that want to verify
-// settle suppression itself should call SetPlayStartForTest with a recent
-// timestamp.
-//
-// On breach it routes through the same watch/fatal policy as the logical
-// checker.
+// Suppressed while stopped, during grace, and until each stage has MinSamples. Only Stage C has a
+// built-in warmup, so the whole gate also waits schedWarmupSec after PlayStart; a zero PlayStart (tests
+// that never ran Update) means no settle, so those tests check immediately.
 func (g *Game) parityTimingCheck() {
 	tb := RuntimeProf().Timing
 	if !tb.Enabled {
@@ -109,30 +76,15 @@ func (g *Game) parityTimingCheck() {
 		return
 	}
 	if ps := g.PlayStart(); !ps.IsZero() && time.Since(ps).Seconds() < schedWarmupSec {
-		// Cold-start sibling of the C1 fix (see parity_timing_liveedit_test.go).
-		// The settle guard suppresses the CHECK during warmup, but Stages A/B/D
-		// record OBSERVATIONS unconditionally. A genuine cold-start spike —
-		// audio-device warmup, first synth renders (50-85ms), GC, goroutine
-		// contention — would otherwise outlive the guard and trip the gate the
-		// instant it lifts. A FULL Reset (not just ResetPeaks) is required:
-		// clearing only the four monotonic MAX fields leaves the warmup spikes
-		// in the percentile reservoirs, where they polluted mean/p99/stddev for
-		// the rest of the metrics window (observed as emit.p99=83ms with
-		// emit.absMax=11.5ms — the p99 outlasting a cleared max — and ~10s of
-		// stale WarnOnly dumps after every play start). When the guard lifts,
-		// every statistic reflects only post-warmup observations. See design
-		// §3.4 ("universal suppression across all stages").
+		// A FULL Reset after the settle: stages A/B/D observe during warmup, and resetting only the peaks
+		// leaves cold-start spikes in the percentile reservoirs for the rest of the window.
 		g.schedMetrics.Reset()
 		return
 	}
 	snap := g.schedMetrics.Snapshot()
 
-	// emit reports a breach and returns true when the scan should STOP. A
-	// WarnOnly stage (bridge, emitdrift) logs its dump and falls through so a
-	// later fatal stage (overdue) in the same scan is still evaluated — a warn
-	// proxy must never mask a genuine audible-lateness panic. A fatal-capable
-	// stage stops the scan (it either panics inside emitTimingFatal, or — in
-	// global log-only mode — logs once, preserving first-breach-wins).
+	// true stops the scan. A WarnOnly stage logs and falls through, so a warn proxy never masks a
+	// later fatal stage in the same scan.
 	emit := func(br *timingBreach) bool {
 		if br == nil {
 			return false
@@ -141,11 +93,8 @@ func (g *Game) parityTimingCheck() {
 		return !br.WarnOnly
 	}
 
-	// Stage A is an audio stage only while the sequencer dispatches audio. With
-	// the audio lane on, notes were committed up to the horizon ahead, so a late
-	// sequencer pass moves a highlight, not a sound (one WASM frame stall put
-	// its p99 over the bound and dumped mid-playback with every audio stage
-	// clean). The lane's audio timing is Stages C and D, gated below.
+	// With the lane on, notes were committed ahead, so a late sequencer pass moves a highlight, not a
+	// sound; the lane's audio timing is stages C and D.
 	if !g.audioLaneOn() && emit(evalTimingStage("seqfire", tb.SeqFire, snap.SeqFireCount, snap.SeqFireAvg, snap.SeqFireP99, snap.SeqFireStdDev, snap.SeqFireMax, tb.MinSamples)) {
 		return
 	}
@@ -154,16 +103,8 @@ func (g *Game) parityTimingCheck() {
 	}
 	// Stage C — overdue/lag. mean=AvgLag, p99=LagP99, absmax=MaxLag; no stddev.
 	if br := evalTimingStage("overdue", tb.Overdue, snap.Count, snap.AvgLag, snap.LagP99, 0, snap.MaxLag, tb.MinSamples); br != nil {
-		// Cross-check Stage C (a scheduling-LEAD metric: dispatched with `when`
-		// in the past) against Stage D (the ACTUAL sample emission). An overdue
-		// breach panics ONLY on POSITIVE evidence of audible lateness — the
-		// emission also drifted at least OverdueEmitFatalSec late. A transient
-		// scheduling blip (a UI action briefly stalling the audioLoop, a GC
-		// pause) that still emitted on-time downgrades to a WARN. EmitAbsMax is 0
-		// when no emission drift has been observed (or was just ResetPeaks'd by a
-		// mutation), so absence of evidence -> WARN, matching the intent "don't
-		// crash unless the audio actually came out late." See the 3rd
-		// overdue-crash investigation (solo/un-solo: overdue 41ms, emit 5ms).
+		// Overdue panics only on POSITIVE evidence the emission itself came out late (Stage D); a
+		// scheduling blip that still emitted on time is a WARN. EmitAbsMax 0 = no evidence = WARN.
 		if tb.OverdueEmitFatalSec > 0 && snap.EmitAbsMax < tb.OverdueEmitFatalSec {
 			br.WarnOnly = true
 		}
@@ -176,19 +117,11 @@ func (g *Game) parityTimingCheck() {
 	}
 }
 
-// schedMetricsWindow is the rolling-window length for the timing gate's
-// schedule metrics. Long enough that the statistical stages (MinSamples=64)
-// go live at normal tempos (~20 observations/s on the startup demo → ~3s to
-// 64 samples), short enough that the gate reflects recent health rather than
-// a session-lifetime average.
+// Long enough for MinSamples at normal tempos, short enough to reflect recent health.
 const schedMetricsWindow = 10 * time.Second
 
-// maybeResetSchedMetricsWindow resets schedMetrics when the rolling window
-// expires. Runs unconditionally at frame end — NOT inside the PERF_LOG block.
-// The old placement coupled the gate's window to the 2s perf-log cadence:
-// under run-debug the window never reached MinSamples=64 at normal tempos
-// (silently reducing the 4-stage gate to its single-sample absmax checks),
-// and without PERF_LOG the metrics were never reset at all.
+// At frame end, never tied to the PERF_LOG cadence, which kept the window from ever reaching
+// MinSamples (or never reset it at all).
 func (g *Game) maybeResetSchedMetricsWindow(now time.Time) {
 	if g.schedMetricsNextReset.IsZero() {
 		g.schedMetricsNextReset = now.Add(schedMetricsWindow)
@@ -202,9 +135,6 @@ func (g *Game) maybeResetSchedMetricsWindow(now time.Time) {
 	}
 }
 
-// buildTimingFatalDump reuses the logical parity dump and appends a timing
-// section: the offending stage/statistic, the full three-stage snapshot, and
-// (desktop) the device-clock anchor.
 func (g *Game) buildTimingFatalDump(br timingBreach, snap ScheduleMetricsSnapshot) string {
 	base := g.buildParityFatalDump(mismatchEntry{
 		Row: -1, Abs: -1, Source: "timing", Kind: "timing_" + br.Stage,
@@ -233,9 +163,7 @@ func (g *Game) buildTimingFatalDump(br timingBreach, snap ScheduleMetricsSnapsho
 	fmtTimingF(b, "emit.absMax", snap.EmitAbsMax)
 	fmtTimingF(b, "emit.stdDev", snap.EmitStdDev)
 	fmtTimingF(b, "e2eP99", snap.E2EP99)
-	// Desktop device-clock anchor (see engine_clock_probe.go). No-op elsewhere.
-	// deviceClockSnapshot is a package var (below) reassigned to
-	// audio.DeviceClockSnapshot by the desktop build in Task 3.1.
+	// Desktop only; a no-op elsewhere.
 	if dp, dw, ok := deviceClockSnapshot(); ok {
 		fmtTimingI(b, "device.pos", dp)
 		fmtTimingF(b, "device.wallSec", dw)
@@ -244,17 +172,14 @@ func (g *Game) buildTimingFatalDump(br timingBreach, snap ScheduleMetricsSnapsho
 }
 
 func (g *Game) emitTimingFatal(br timingBreach, snap ScheduleMetricsSnapshot) {
-	// A WarnOnly stage never panics, even when the global gate is fatal: its
-	// breach is downgraded to a WARN dump. See timingStageBounds.WarnOnly.
+	// A WarnOnly stage never panics, even when the gate is fatal.
 	fatal := parityTimingFatalEnabled.Load() && !br.WarnOnly
 	if g.parityTimingWatch == parityWatchOff && !fatal {
 		return
 	}
 	if !fatal {
-		// Dedup non-fatal dumps to one per (stage, stat) per metrics window:
-		// parityTimingCheck runs every frame and a latched breach otherwise
-		// re-dumps at ~60 lines/s until the window resets (4788 dumps in a 90s
-		// bench). Cleared in maybeResetSchedMetricsWindow; UI-goroutine only.
+		// One dump per (stage, stat) per window: the check runs every frame and a latched breach would
+		// re-dump at 60 lines/s. UI goroutine only.
 		key := br.Stage + "/" + br.Stat
 		if _, dup := g.timingWarnedThisWindow[key]; dup {
 			return
@@ -284,26 +209,15 @@ func fmtTimingLine(b *strings.Builder, k, v string)      { fmt.Fprintf(b, " %s=%
 func fmtTimingF(b *strings.Builder, k string, v float64) { fmt.Fprintf(b, " %s=%.6f\n", k, v) }
 func fmtTimingI(b *strings.Builder, k string, v int64)   { fmt.Fprintf(b, " %s=%d\n", k, v) }
 
-// deviceClockSnapshot reports (devPos, wallSec, ok). Phase 2 stub returned
-// unavailable; Task 3.1 reassigns it to audio.DeviceClockSnapshot below —
-// the stubs added to stub.go (test build) and engine_wasm.go (js build) make
-// audio.DeviceClockSnapshot resolve to an always-unavailable no-op on those
-// platforms, so this init is safe under every build tag.
+// A no-op on test and js builds, so this is safe under every build tag.
 var deviceClockSnapshot = func() (int64, float64, bool) { return 0, 0, false }
 
 func init() { deviceClockSnapshot = audio.DeviceClockSnapshot }
 
-// timingTraceKey packs (row, abs) into a single map key. abs is masked through
-// uint32 (NOT int32) so its bits stay in the low 32 and can never sign-extend
-// into and clobber the row bits — a negative abs would otherwise collide row=r
-// with row=-1. Traces are only opened for row>=0 with non-negative abs today,
-// but this keeps the encoding collision-free for any (row, abs) pair.
+// abs goes through uint32, so a negative abs can never sign-extend into the row bits.
 func timingTraceKey(row, abs int) int64 { return int64(row)<<32 | int64(uint32(abs)) }
 
-// openTimingTrace records the ideal-when for a beat at schedule time. gen/
-// parityGen pin the generation so closeTimingTrace can drop a stale report
-// (one that lands after a live circuit/rule edit) rather than feed it into
-// Stage-D drift.
+// gen/parityGen let closeTimingTrace drop a report that lands after a live edit.
 func (g *Game) openTimingTrace(row, abs int, idealWhen float64, gen, parityGen uint64) {
 	if row < 0 {
 		return
@@ -312,10 +226,7 @@ func (g *Game) openTimingTrace(row, abs int, idealWhen float64, gen, parityGen u
 		return
 	}
 	g.parityMu.Lock()
-	// Lazy-init: NewGame allocates this map, but hand-built *Game test stubs
-	// (and any future construction path that skips the constructor) leave it
-	// nil; writing to a nil map panics. Guard here so openTimingTrace is safe
-	// from every scheduleSound caller regardless of how the Game was built.
+	// Hand-built test Games leave the map nil, and writing to it would panic.
 	if g.timingTraces == nil {
 		g.timingTraces = make(map[int64]timingTrace)
 	}
@@ -333,10 +244,7 @@ func (g *Game) openTimingTrace(row, abs int, idealWhen float64, gen, parityGen u
 	g.parityMu.Unlock()
 }
 
-// closeTimingTrace matches an emission to its open trace, feeds Stage-D drift,
-// and removes the trace. Stale-generation reports are dropped (mirrors the
-// audio-parity gen filter) so a report that lands after a live edit does not
-// pollute the drift window.
+// Stale-generation reports are dropped, like the audio-parity filter.
 func (g *Game) closeTimingTrace(row, abs int, emittedWallSec float64) {
 	g.parityMu.Lock()
 	key := timingTraceKey(row, abs)

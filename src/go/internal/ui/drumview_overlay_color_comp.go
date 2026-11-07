@@ -11,27 +11,18 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// ColorWheelProps contains the external state passed to the color picker.
-//
-// Despite the legacy "Wheel" naming (kept so the portal wiring and every
-// caller continue to compile), the picker is now a SWATCH GRID restricted to
-// the curated instrument palette (SuggestedInstrumentSwatches). The product
-// requirement is that circuit colors come from a known set, so the free
-// HSV hue-wheel was removed.
+// The "Wheel" name stays for the wiring; it is a swatch grid because circuit colors must come
+// from the palette.
 type ColorWheelProps struct {
 	// AnchorRect is the button that opens the picker (used for positioning).
 	AnchorRect image.Rectangle
 	// Bounds is the container bounds for clamping the picker position.
 	Bounds image.Rectangle
 	// RowHeight is used for calculating picker size.
-	RowHeight int
-	// CurrentColor is the row's currently-applied color. When it matches a
-	// palette swatch, that swatch renders a selected ring. Optional.
+	RowHeight    int
 	CurrentColor color.Color
-	// CurrentColorFn, when set, supersedes CurrentColor with a LIVE read, so
-	// the selected ring follows a value that changes while the picker is
-	// open (the Theme editor's category swatch under an external theme
-	// change — undo, a circuit load) instead of the value seeded at open.
+	// A live read, so the ring follows a value that changes while the picker is open (an external
+	// theme change).
 	CurrentColorFn func() color.Color
 	// OnColorPick is called when a swatch is picked.
 	OnColorPick func(c color.Color)
@@ -44,14 +35,9 @@ type ColorWheelState struct {
 	open   bool
 	hold   bool // Capture flag (set when opened, released on mouse-up)
 	picked bool // Set when the CONFIRM gesture fires; defers Close() until mouse release
-	// pressing is true while a pick-press is in flight (applied but not yet
-	// released), so Capturing() keeps reporting ownership for the whole
-	// gesture even when the press did not close the picker.
+	// Set while a pick-press is held, so Capturing() covers the whole gesture.
 	pressing bool
-	// applied is the colour picked during this session, which supersedes
-	// props.CurrentColor. Props are seeded once at open time, so without this
-	// the selected ring and the confirm check would both go stale the moment
-	// the user picks anything.
+	// Props are seeded once at open, so without this the ring and confirm check go stale after a pick.
 	applied color.Color
 }
 
@@ -61,15 +47,11 @@ type swatchCell struct {
 	col  color.RGBA
 }
 
-// ColorWheelComponent is a self-contained swatch-grid color picker restricted
-// to the curated instrument palette.
 type ColorWheelComponent struct {
 	overlayBase
 	props ColorWheelProps
 	state ColorWheelState
-	// card is the shared MenuCard frame (panel, title band, close ×); the
-	// picker is the frame's REFERENCE aesthetic, so the card's bands equal the
-	// picker's own solveSwatchGrid bands (TestMenuCardReproducesSwatchPickerFrame).
+	// The picker is the frame's reference look: the card's bands equal solveSwatchGrid's.
 	card     *MenuCard
 	closeBtn *Button // alias of card.CloseBtn() kept for existing call/test sites
 
@@ -81,15 +63,10 @@ type ColorWheelComponent struct {
 	cellW     int             // cell width (for gap-tolerant hit mapping)
 	cellH     int             // cell height
 
-	// keyNav is the keyboard cursor over the swatch grid — the same MenuKeyNav
-	// the note matrix and the list menus use.
 	keyNav *MenuKeyNav
 }
 
-// Grid layout tuning. 5 columns (shades, light→deep) × 7 rows (hue families)
-// lays out the 35-swatch Vice City palette into a tall, finger-friendly panel.
-// A left gutter reserves room for family-name labels. The cell size adapts to
-// the panel width and is floored at the touch minimum on mobile.
+// 5 shades × 7 hue families; cells adapt to the width, floored at the touch minimum on mobile.
 const (
 	colorSwatchCols    = 5
 	colorSwatchRows    = 7
@@ -102,19 +79,13 @@ const (
 	colorShadeHintH    = 15 // height of the "Light … Deep" shade-direction caption band
 )
 
-// colorShadeHintLeft / colorShadeHintRight are the end captions of the
-// shade-direction hint drawn above the swatch columns (columns run light→deep,
-// left→right). Words, not arrow glyphs (→ is a forbidden glyph in internal/ui).
+// Words, not arrow glyphs, which are forbidden in this package.
 const (
 	colorShadeHintLeft  = "Light"
 	colorShadeHintRight = "Deep"
 )
 
-// labelGutterW returns the width of the left family-name gutter, sized to the
-// widest short family label at RoleCaption plus a fixed pad. Deriving the gutter
-// from the measured labels (instead of a fixed constant) guarantees every label
-// fits fully and never collides with the first swatch column, while keeping the
-// gutter as narrow as the names allow. Guard: TestColorPickerFamilyLabelsFitGutter.
+// Measured from the labels, so every one fits without touching the first column.
 func (c *ColorWheelComponent) labelGutterW() int {
 	sw := c.swatches()
 	maxW := 0
@@ -148,10 +119,8 @@ func (c *ColorWheelComponent) SetProps(p ColorWheelProps) {
 // Props returns the current props.
 func (c *ColorWheelComponent) Props() ColorWheelProps { return c.props }
 
-// Open opens the color picker.
-// Note: hold is NOT set here because the portal tree's capture system
-// prevents double-dispatch of the opening press. Setting hold would block
-// all subsequent input until a mouse release clears it.
+// No hold: the portal's capture already prevents the opening press from double-dispatching,
+// and a hold would block input until the next release.
 func (c *ColorWheelComponent) Open() {
 	c.state.open = true
 	c.state.applied = nil
@@ -186,8 +155,6 @@ func (c *ColorWheelComponent) IsOpen() bool {
 	return c.state.open
 }
 
-// currentColor is the colour currently applied to the row: whatever was picked
-// in this session, else the value the picker was opened with.
 func (c *ColorWheelComponent) currentColor() color.Color {
 	if c.state.applied != nil {
 		return c.state.applied
@@ -203,12 +170,7 @@ func (c *ColorWheelComponent) swatches() []GenInstrumentSwatch {
 	return SuggestedInstrumentSwatches
 }
 
-// rebuildWheel recomputes the panel rect and the swatch-cell layout.
-//
-// The panel is sized to comfortably fit a colorSwatchCols × colorSwatchRows
-// grid of touch-friendly cells plus a header band, then clamped to stay inside
-// Bounds. On mobile the panel widens toward the container so cells meet the
-// 44 px touch minimum.
+// Clamped to Bounds; on mobile it widens so cells meet the 44 px touch minimum.
 func (c *ColorWheelComponent) rebuildWheel() {
 	c.cells = c.cells[:0]
 	if c.props.AnchorRect.Empty() || c.props.Bounds.Empty() {
@@ -218,8 +180,6 @@ func (c *ColorWheelComponent) rebuildWheel() {
 		return
 	}
 
-	// Shared with the note-matrix picker — see swatch_grid_geometry.go for the
-	// cell-solve / touch-min floor / clamp / re-derive sequence.
 	lay := solveSwatchGrid(swatchGridSpec{
 		Anchor:      c.props.AnchorRect,
 		Bounds:      c.props.Bounds,
@@ -241,8 +201,6 @@ func (c *ColorWheelComponent) rebuildWheel() {
 	c.cellW, c.cellH = lay.CellW, lay.CellH
 	cw, ch := lay.CellW, lay.CellH
 
-	// Lay out the swatch cells over the cell region (row-major: family per row,
-	// shade light→deep per column).
 	sw := c.swatches()
 	for i, s := range sw {
 		col := i % colorSwatchCols
@@ -256,17 +214,13 @@ func (c *ColorWheelComponent) rebuildWheel() {
 		c.cells = append(c.cells, swatchCell{rect: cellRect, col: s.RGBA})
 	}
 
-	// Frame via the shared MenuCard: panel + title band + close × (desktop
-	// only, per desktopCloseVisible). Rebuilt with the layout so a profile
-	// flip re-evaluates the close-× policy. The title/chip are refreshed at
-	// draw time (cardSpec) because the pick changes them without a relayout.
+	// Rebuilt with the layout so a profile flip re-evaluates the close-× policy; the title comes
+	// from cardSpec at draw because a pick changes it without a relayout.
 	c.card = NewMenuCard(func() { c.Close() })
 	c.card.Layout(lay.Panel, c.cardSpec())
 	c.closeBtn = c.card.CloseBtn()
 }
 
-// cardSpec is the picker's frame content: the current swatch's canonical
-// name + chip when the applied color is on the palette, else "Color".
 func (c *ColorWheelComponent) cardSpec() MenuCardSpec {
 	title := i18n.T(i18n.KeyMenuColor)
 	var chip color.Color
@@ -276,10 +230,8 @@ func (c *ColorWheelComponent) cardSpec() MenuCardSpec {
 	return MenuCardSpec{Title: title, Swatch: chip}
 }
 
-// pickColorAt returns the palette color for the point (x, y). A direct cell
-// hit wins; otherwise, a point inside the grid body maps to the nearest cell
-// by stride so inter-cell gap pixels still resolve to a swatch (no dead
-// gutters). Returns nil only when the point is outside the grid body entirely.
+// A point in the gaps maps to the nearest cell, so there are no dead gutters; nil only outside
+// the grid body.
 func (c *ColorWheelComponent) pickColorAt(x, y int) color.Color {
 	pt := image.Pt(x, y)
 	for _, cell := range c.cells {
@@ -287,9 +239,7 @@ func (c *ColorWheelComponent) pickColorAt(x, y int) color.Color {
 			return cell.col
 		}
 	}
-	// Gap-tolerant fallback: map any point inside the cell region to a cell.
-	// Hit-testing uses cellsRect (NOT gridRect) so the left label gutter is not
-	// a hit area and the stride math agrees with rebuildWheel's cell layout.
+	// cellsRect, not gridRect: the label gutter is not a hit area.
 	if pt.In(c.cellsRect) {
 		strideX := c.cellW + colorSwatchGap
 		strideY := c.cellH + colorSwatchGap
@@ -341,32 +291,22 @@ func (c *ColorWheelComponent) HandleInput(x, y int, pressed bool) InputResult {
 
 	pt := image.Pt(x, y)
 
-	// Pressed on a swatch cell.
-	//
-	// SELECTING APPLIES, RE-SELECTING CONFIRMS: a different colour is applied
-	// immediately and the picker stays OPEN, so several can be tried without
-	// reopening it; pressing the colour already applied is the confirm gesture
-	// and closes (deferred to the release so the press cannot fall through).
-	// The note-matrix picker follows the same rule.
+	// Selecting applies and keeps the picker open, so colours can be tried; re-pressing the applied
+	// one confirms and closes (on release, so the press cannot fall through).
 	if pressed {
 		if col := c.pickColorAt(x, y); col != nil {
-			// Cells store color.RGBA; the assertion is total in practice and
-			// falls back to "not equal" (a plain apply) if it ever is not.
 			rgba, _ := col.(color.RGBA)
 			if colorsEqualRGB(c.currentColor(), rgba) {
 				c.state.picked = true // confirm → close on release
 				return InputCaptured
 			}
 			c.state.pressing = true
-			// Shared with the keyboard path (applySwatch), so pointer and
-			// Enter cannot diverge.
+			// Shared with Enter, so pointer and keyboard cannot diverge.
 			c.applySwatch(rgba)
 			return InputCaptured
 		}
 	}
 
-	// Release after an apply-press: the picker stays open, ready for the next
-	// audition or the confirm re-press.
 	if !pressed && c.state.pressing {
 		c.state.pressing = false
 		return InputConsumed
@@ -391,8 +331,6 @@ func (c *ColorWheelComponent) HandleInput(x, y int, pressed bool) InputResult {
 	return InputIgnored
 }
 
-// stripShadeSuffix removes a trailing "-NNN" shade suffix from a swatch name,
-// yielding the hue-family key: "hot-pink-300" → "hot-pink".
 func stripShadeSuffix(name string) string {
 	if i := strings.LastIndex(name, "-"); i >= 0 {
 		if suffix := name[i+1:]; suffix != "" && isAllDigits(suffix) {
@@ -402,9 +340,6 @@ func stripShadeSuffix(name string) string {
 	return name
 }
 
-// familyLabelFromSwatchName derives a human-readable hue-family label from a
-// ramp swatch name by stripping the trailing "-NNN" shade suffix and
-// Title-Casing the hyphen-separated words: "hot-pink-300" → "Hot Pink".
 func familyLabelFromSwatchName(name string) string {
 	name = stripShadeSuffix(name)
 	words := strings.Split(name, "-")
@@ -419,13 +354,7 @@ func familyLabelFromSwatchName(name string) string {
 	return strings.Join(words, " ")
 }
 
-// colorFamilyShortLabels maps each hue-family key (the swatch name minus its
-// "-NNN" shade suffix) to a short, plain color name for the picker's left
-// gutter. Short names keep the gutter narrow — so it never wastes horizontal
-// space that belongs to the swatches — while staying instantly recognizable
-// (and kid-readable). Families absent here fall back to the Title-Cased derived
-// label (familyLabelFromSwatchName). Keep every value <= 6 runes; the fit is
-// guarded by TestColorPickerFamilyLabels{FitGutter,AreShort}.
+// Short names keep the gutter narrow; at most 6 runes each.
 var colorFamilyShortLabels = map[string]string{
 	"sunset-gold":   "Gold",
 	"tangerine":     "Orange",
@@ -436,9 +365,6 @@ var colorFamilyShortLabels = map[string]string{
 	"mint":          "Mint",
 }
 
-// colorFamilyDisplayLabel returns the short label drawn in the left gutter for a
-// hue family, falling back to the Title-Cased derived name for any family not in
-// colorFamilyShortLabels.
 func colorFamilyDisplayLabel(swatchName string) string {
 	if short, ok := colorFamilyShortLabels[stripShadeSuffix(swatchName)]; ok {
 		return short
@@ -446,11 +372,7 @@ func colorFamilyDisplayLabel(swatchName string) string {
 	return familyLabelFromSwatchName(swatchName)
 }
 
-// canonicalSwatchNames maps each palette swatch (family + shade) to a canonical
-// human color name — the closest well-known name for that hue+shade. Surfaced in
-// the header readout so the user sees "Rose", not "#FF2D9E". Keyed by the full
-// swatch name; keep in sync with the palette (genInstrumentSwatches). Guard:
-// TestCanonicalColorNameForEverySwatch.
+// The header names the applied color ("Rose"), never a hex code; keep in sync with the palette.
 var canonicalSwatchNames = map[string]string{
 	// Sunset Gold ramp (light → deep).
 	"sunset-gold-100": "Pale Gold", "sunset-gold-200": "Gold", "sunset-gold-300": "Amber", "sunset-gold-400": "Marigold", "sunset-gold-500": "Ochre",
@@ -468,10 +390,6 @@ var canonicalSwatchNames = map[string]string{
 	"mint-100": "Mint", "mint-200": "Spring Green", "mint-300": "Emerald", "mint-400": "Green", "mint-500": "Forest Green",
 }
 
-// canonicalColorName returns a canonical, human color name for a specific swatch
-// (family + shade), e.g. "hot-pink-300" → "Rose". This is the name surfaced in
-// the header readout when that color is applied — a plain human name, never a
-// hex code. Swatches absent from the table fall back to the short family label.
 func canonicalColorName(swatchName string) string {
 	if n, ok := canonicalSwatchNames[swatchName]; ok {
 		return n
@@ -488,9 +406,6 @@ func isAllDigits(s string) bool {
 	return true
 }
 
-// selectedSwatchName returns the canonical name and color of the palette swatch
-// matching the row's currently-applied color, plus ok=false when the current
-// color is off-palette (or unset). Drives the header readout.
 func (c *ColorWheelComponent) selectedSwatchName() (string, color.Color, bool) {
 	if c.currentColor() == nil {
 		return "", nil, false
@@ -522,16 +437,11 @@ func (c *ColorWheelComponent) Draw(dst *ebiten.Image) {
 		return
 	}
 
-	// Frame (panel + title band + close ×) through the shared MenuCard. When
-	// the row's current color is on the palette, the title reads it back as a
-	// canonical name ("Rose") with a chip of that color — never a hex code.
 	if c.card != nil {
 		c.card.Layout(r, c.cardSpec())
 		c.card.Draw(dst)
 	}
 
-	// Shade-direction hint above the columns: "Light" at the light end (left),
-	// "Deep" at the deep end (right). Skipped when the band was suppressed.
 	if !c.hintRect.Empty() {
 		hh := StyledTextHeight(RoleMicro)
 		hy := c.hintRect.Min.Y + (c.hintRect.Dy()-hh)/2
@@ -554,9 +464,7 @@ func (c *ColorWheelComponent) Draw(dst *ebiten.Image) {
 		DrawTextStyled(dst, label, c.gridRect.Min.X, ly, RoleCaption, colTextSecondary)
 	}
 
-	// Swatches are small controls — control role, bounded by each rect's own
-	// size. The selection ring insets outward/inward, so it is bounded
-	// separately rather than reusing the swatch's radius.
+	// The ring insets beyond the swatch, so it is bounded separately from the swatch's radius.
 	cursor := c.KeyCursorSwatch()
 	for i, cell := range c.cells {
 		radius := fitRadius(RadiusControl, cell.rect)
@@ -570,9 +478,7 @@ func (c *ColorWheelComponent) Draw(dst *ebiten.Image) {
 			drawRoundedRect(dst, ring, genColorFocusRing, fitRadius(RadiusControl, ring), false)
 			drawRoundedRect(dst, inner, colTextPrimary, fitRadius(RadiusControl, inner), false)
 		}
-		// Keyboard cursor: a bright inset outline. A swatch IS its colour, so
-		// this cannot be a tint the way the note matrix highlights a keycap —
-		// an outline is the only mark that does not misrepresent the swatch.
+		// An outline, not a tint: a swatch IS its colour, and a tint would misrepresent it.
 		if i == cursor {
 			in := cell.rect.Inset(3)
 			drawRoundedRect(dst, in, colTextPrimary, fitRadius(RadiusControl, in), false)
@@ -603,19 +509,12 @@ func (c *ColorWheelComponent) WheelRect() image.Rectangle {
 	return c.bounds
 }
 
-// ShadeHintRect returns the shade-direction caption band rect (empty when the
-// panel is too short to host it). Test accessor.
 func (c *ColorWheelComponent) ShadeHintRect() image.Rectangle { return c.hintRect }
 
-// LabelGutterWidth returns the pixel width of the left family-name gutter (the
-// span between the grid body's left edge and the first swatch column). Test
-// accessor mirroring the geometry Draw uses to place labels.
 func (c *ColorWheelComponent) LabelGutterWidth() int {
 	return c.cellsRect.Min.X - c.gridRect.Min.X
 }
 
-// FamilyDisplayLabels returns the short family label drawn in the left gutter
-// for each visible ramp row (top→bottom). Test accessor.
 func (c *ColorWheelComponent) FamilyDisplayLabels() []string {
 	sw := c.swatches()
 	var out []string

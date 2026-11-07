@@ -4,40 +4,22 @@ import (
 	"time"
 )
 
-// parityMutationGraceDefault is the default grace window granted to the parity
-// comparator after a runtime structural mutation. 80 ms is one full frame at
-// 60 Hz with margin, plus enough slack to drain a typical scheduler horizon.
+// One 60 Hz frame with margin, plus slack to drain a scheduler horizon.
 const parityMutationGraceDefault = 80 * time.Millisecond
 
-// structuralMutationOptions tunes mutateStructural behavior for specific call
-// sites. Zero value selects sensible defaults: gen bump + grace + buffer
-// hygiene + path-dirty flag.
 type structuralMutationOptions struct {
-	// HoldSeqMu makes mutateStructural acquire g.seqMu around fn. Set to false
-	// when the caller already holds the lock (e.g. when invoked from a
-	// sequencer-thread callback).
+	// false when the caller already holds seqMu.
 	HoldSeqMu bool
-	// SkipPathsDirty leaves g.pathsDirty untouched. Default behavior marks it
-	// true so the next refresh recomputes per-row path data; mutations that
-	// don't affect the predictor (pure audio-mixer / EQ tweaks) can opt out.
+	// For mutations that cannot affect the predictor (pure mixer/EQ).
 	SkipPathsDirty bool
-	// SkipPathChangeMark leaves pathChangeBeatByRow alone. Default marks every
-	// row at the current elapsed beat so the freeze loop does not commit
-	// pre-mutation past beats with the post-mutation predictor view.
+	// The default marker keeps the freeze loop from committing pre-mutation beats with the new view.
 	SkipPathChangeMark bool
-	// SkipBufferClear keeps the parity audio/seq/highlight buffers around.
-	// The gen filter alone is sufficient for correctness; clearing is a
-	// memory-bounding hygiene step. Tests sometimes need to inspect the
-	// buffers across a mutation so this lets them opt out.
+	// The gen filter alone is correct; clearing only bounds memory, and tests may need the buffers.
 	SkipBufferClear bool
-	// Grace overrides the grace-window duration. Zero = parityMutationGraceDefault.
-	// Tests use a small or zero value to make assertions deterministic.
+	// 0 = parityMutationGraceDefault.
 	Grace time.Duration
 }
 
-// defaultStructuralMutationOptions returns the production defaults: hold
-// seqMu, mark paths dirty, mark per-row path change, clear buffers,
-// 80ms grace.
 func defaultStructuralMutationOptions() structuralMutationOptions {
 	return structuralMutationOptions{
 		HoldSeqMu: true,
@@ -45,17 +27,8 @@ func defaultStructuralMutationOptions() structuralMutationOptions {
 	}
 }
 
-// mutateStructural is the single choke-point for any runtime mutation that
-// could disturb predictor / scheduler / audio-channel state during playback.
-// It bumps the parity generation, grants a grace window, optionally marks
-// pathChangeBeatByRow for every row, optionally clears parity buffers, and
-// then runs fn.
-//
-// Every UI-level mutation in the (G2) list (instrument change, EQ, BPM,
-// length, graph edit, row add/del, etc.) routes through this. Audio-only
-// mutations whose state cannot affect parity (pure DSP-graph edits with no
-// scheduler observable) may still wrap themselves for symmetry — the cost
-// of a gen bump is a single atomic store plus map allocation.
+// The single chokepoint for runtime mutations that could disturb predictor, scheduler or channel
+// state during playback.
 func (g *Game) mutateStructural(reason string, fn func(), opts structuralMutationOptions) {
 	if g == nil {
 		if fn != nil {
@@ -76,12 +49,7 @@ func (g *Game) mutateStructural(reason string, fn func(), opts structuralMutatio
 	}
 }
 
-// bumpParityGen performs only the parity-coordination side-effects of a
-// structural mutation: gen bump, grace window, buffer hygiene, path-dirty
-// flag, cross-row pathChange marker. It does NOT acquire seqMu. Use when
-// the caller is already holding the lock (e.g. invoked transitively from
-// Game.Update) or when no lock coordination is needed (read-modify-write
-// of audio-only state).
+// Does NOT take seqMu: for callers that already hold it.
 func (g *Game) bumpParityGen(reason string, opts structuralMutationOptions) {
 	if g == nil {
 		return
@@ -89,25 +57,15 @@ func (g *Game) bumpParityGen(reason string, opts structuralMutationOptions) {
 	if opts.Grace == 0 {
 		opts.Grace = parityMutationGraceDefault
 	}
-	// Every structural mutation (solo/mute, row delete, instrument, graph,
-	// BPM, …) routes through here: freeze the played past before it can change.
+	// Freeze the played past before anything can change it.
 	g.freezePlayedThroughPlayhead()
 	g.parityGen.Add(1)
-	// C1 fix (part b): clear any session-monotonic timing-gate peak
-	// (seqFireMax/maxLag/bridgeMax/emitAbsMax) latched by an edit-induced
-	// scheduling stall — pre-edit, or slipping through during the edit
-	// before the grace-window observation guards apply. Without this the
-	// gen bump + grace window below only suppress the CHECK, not the
-	// latched statistic, and evalTimingStage's absMax dropout check (fires
-	// regardless of MinSamples) can panic the first parityTimingCheck after
-	// grace expires even though the edit itself was benign. Every
-	// structural mutation routes through this method, so every edit clears
-	// the peaks. See schedule_metrics.go's ResetPeaks doc and design §3.4.
+	// Clear the session-monotonic timing peaks too: the grace window only suppresses the check, and a
+	// peak latched by an edit stall would fail the first check after grace.
 	g.schedMetrics.ResetPeaks()
 	if opts.Grace > 0 {
 		deadline := time.Now().Add(opts.Grace).UnixNano()
-		// Extend, never shrink — back-to-back mutations should leave the
-		// later (longer) grace in effect.
+		// Extend, never shrink, so back-to-back mutations keep the longer grace.
 		for {
 			cur := g.parityGraceUntilNS.Load()
 			if cur >= deadline {
@@ -132,11 +90,7 @@ func (g *Game) bumpParityGen(reason string, opts structuralMutationOptions) {
 	}
 }
 
-// markAllRowsPathChangedAt sets pathChangeBeatByRow[row] = beat for every row.
-// The freeze loop in refreshDrumRow respects this marker and skips committing
-// pre-marker beats — exactly the protection needed when a runtime mutation
-// has cross-row impact (e.g. instrument change on row 4 affecting row 2's
-// predictor view).
+// The freeze loop skips committing pre-marker beats, which a cross-row mutation needs.
 func (g *Game) markAllRowsPathChangedAt(beat int) {
 	if g == nil || g.drum == nil {
 		return
@@ -152,8 +106,7 @@ func (g *Game) markAllRowsPathChangedAt(beat int) {
 		g.pathChangeBeatByRow = next
 	}
 	for i := range g.pathChangeBeatByRow {
-		// Use max so a freshly-marked row that already carries a later marker
-		// retains it.
+		// max: keep a later marker.
 		if beat > g.pathChangeBeatByRow[i] {
 			g.pathChangeBeatByRow[i] = beat
 		}

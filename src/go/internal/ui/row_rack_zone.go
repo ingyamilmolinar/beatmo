@@ -11,9 +11,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// hasActiveEffects reports whether the slot list contains any enabled effect.
-// The FX button highlights only when at least one slot is enabled — disabled
-// slots do not contribute to the audio chain and must not light the button.
+// Disabled slots are not in the audio chain, so they must not light the button.
 func hasActiveEffects(slots []audio.EffectSlot) bool {
 	for _, s := range slots {
 		if s.Enabled {
@@ -34,16 +32,11 @@ func activeEffectsCount(slots []audio.EffectSlot) int {
 	return n
 }
 
-// fxCountMaxDots caps the FX chip's count gauge; more enabled effects than
-// this still show this many dots (the FX panel lists them all).
+// The FX panel lists them all.
 const fxCountMaxDots = 4
 
-// drawFXBadge marks how many effects a row has enabled: one small dot per
-// effect along the FX chip's bottom inner edge — the DESIGN.md "gauge"
-// affordance in its discrete-dot form, the same strip position the volume
-// gauge uses. It used to be a corner badge that, once the chip carried the
-// "FX" letters, covered the X. Dots are drawn in the chip's letter color so
-// they contrast with the active (full-hue) fill on any instrument color.
+// One dot per enabled effect along the chip's bottom edge, in the letter color so it contrasts with
+// any fill; a corner badge covered the X.
 func drawFXBadge(dst *ebiten.Image, btnRect image.Rectangle, count int, instColor color.Color) {
 	if count <= 0 || btnRect.Empty() {
 		return
@@ -67,13 +60,8 @@ func drawFXBadge(dst *ebiten.Image, btnRect image.Rectangle, count int, instColo
 	}
 }
 
-// addRowButtonStyle is the ButtonVisual for the add-row ghost row: the
-// neutral row-control body (the same tone as a row label, so it reads as
-// "one more row") carrying a "+" in the swatch slot and a muted "Add
-// instrument" label, left-aligned exactly like the row names above it. No
-// dashed outline: DESIGN.md Rule 1 forbids borders at rest — the old dashed
-// hairline over a bed-colored fill was the only thing marking the control,
-// which is why it read as invisible.
+// The neutral row body with a "+" swatch and a muted label, aligned like the rows above. No dashed
+// outline: borders at rest are forbidden.
 type addRowButtonStyle struct{}
 
 // addRowBtnKey identifies a cached add-row button sprite.
@@ -86,9 +74,7 @@ type addRowBtnKey struct {
 
 var addRowBtnCache = map[addRowBtnKey]*ebiten.Image{}
 
-// invalidateAddRowBtnCache drops the add-row sprites; the key carries no
-// color, so a theme change must clear it or the row keeps the old body
-// (Game.OnThemeChanged).
+// The key carries no color, so a theme change must clear it.
 func invalidateAddRowBtnCache() { addRowBtnCache = map[addRowBtnKey]*ebiten.Image{} }
 
 func (addRowButtonStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed, hovered bool) {
@@ -123,8 +109,6 @@ func (addRowButtonStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed, hov
 	dst.DrawImage(spr, &op)
 }
 
-// drawDashedRoundedBorder draws a dashed border (4px on, 4px off) on a rounded rect.
-// It draws straight edges with dashes and solid rounded corners.
 func drawDashedRoundedBorder(dst *ebiten.Image, r image.Rectangle, c color.Color, radius int) {
 	if r.Empty() {
 		return
@@ -178,9 +162,7 @@ func drawDashedRoundedBorder(dst *ebiten.Image, r image.Rectangle, c color.Color
 	}
 }
 
-// newRowToggleButton builds a per-row M / S / FX toggle: a letter on the
-// neutral row-control body, crisp through the styled text role. Its on/off
-// visual is applied per draw by applyRowToggle.
+// The on/off visual is applied per draw by applyRowToggle.
 func newRowToggleButton(letter string) *Button {
 	b := NewButton(letter, rowToggleStyle(nil, roleMute, false), nil)
 	b.SetTextRole(RoleBody)
@@ -188,9 +170,7 @@ func newRowToggleButton(letter string) *Button {
 	return b
 }
 
-// fitRowToggleRole sets a toggle letter's text role to body, stepping down to
-// caption when the chip is too narrow for it (an 18 px mobile chip cannot fit
-// a body-size "FX", and a clipped "..." is not a label).
+// An 18 px mobile chip cannot fit a body-size "FX", and a clipped "..." is not a label.
 func fitRowToggleRole(b *Button) {
 	if b == nil {
 		return
@@ -204,8 +184,7 @@ func fitRowToggleRole(b *Button) {
 	}
 }
 
-// rowIdentityColor is the color of a row's identity swatch — the instrument
-// color, or the rack fallback for rows built without one (headless tests).
+// The rack fallback for rows built without a color (headless tests).
 func rowIdentityColor(c color.Color) color.Color {
 	if c == nil {
 		return genColorRowRackColorFallback
@@ -213,8 +192,7 @@ func rowIdentityColor(c color.Color) color.Color {
 	return c
 }
 
-// RowRackCallbacks contains callbacks for the RowRackZone to communicate
-// with the DrumView. Zones don't reference Game or each other directly.
+// Zones never reference Game or each other directly.
 type RowRackCallbacks struct {
 	OnMuteToggle   func(row int)
 	OnSoloToggle   func(row int)
@@ -261,9 +239,6 @@ type rowEntry struct {
 	group     RowButtonGroup
 }
 
-// RowRackZone implements the Zone interface for the instrument row rack.
-// It owns per-row buttons/sliders, the add-row button, row scrolling,
-// and the row volume slider group.
 type RowRackZone struct {
 	rect         image.Rectangle
 	screenBounds image.Rectangle // full screen bounds for FAB positioning
@@ -276,11 +251,7 @@ type RowRackZone struct {
 	rowVolGroup *SliderGroup
 	rowScroll   *ScrollBehavior
 
-	// addRowRightReserve is the width (px) the addRowBtn must leave
-	// unoccupied on its right edge — used by drumview_layout.go to host
-	// the row-zoom +/- chips inline with the addRowBtn at the bottom of
-	// the rack column. Set via SetAddRowRightReserve before Layout runs.
-	// Zero means full-width addRowBtn (legacy behavior).
+	// Set before Layout; 0 = full width.
 	addRowRightReserve int
 
 	rowOffset       int
@@ -293,14 +264,9 @@ type RowRackZone struct {
 	controlsCacheRowOff int
 	controlsCacheVis    int
 	controlsCacheRect   image.Rectangle
-	// Test-only: counts how many times drawRowControlsToCache has been
-	// invoked. Each rebuild allocates many vector.Path objects via the icon
-	// renderer; a soak test asserts this stays close to zero during
-	// steady-state playback.
+	// Each rebuild allocates many vector.Paths; a soak test asserts it stays near zero while playing.
 	controlsCacheRebuilds int64
-	// Test-only invalidation reason counters. Each Draw that finds the
-	// cache invalid increments exactly one of these so a regression test
-	// can say *why* the cache rebuilt.
+	// One increments per invalid Draw, so a test can say why the cache rebuilt.
 	cacheInvalidNil        int64
 	cacheInvalidDirty      int64
 	cacheInvalidRowOff     int64
@@ -362,29 +328,14 @@ func (z *RowRackZone) Layout(rect image.Rectangle) {
 	z.lastLayoutRectInitialized = true
 	z.rect = rect
 	z.needLayout = false
-	// Re-clamp the scroll offset against the (possibly changed) visible-row
-	// count. When the bottom panel is resized larger the rack gains vertical
-	// space, so VisibleRows() grows and a previously-scrolled offset can point
-	// past the last valid window. The scrollbar-draw path only reconciles the
-	// offset while content overflows, so without this the scrollbar correctly
-	// disappears but a stale offset keeps the first rows hidden. Clamp before
-	// rebuildEntries/rebuildHitAreas consume z.rowOffset.
+	// A taller rack can leave a scrolled offset past the last valid window; the scrollbar path only
+	// fixes it while content overflows, so the first rows would stay hidden.
 	z.clampRowOffset()
-	// Profile-driven scrollbar appearance: re-derive every Layout so a
-	// mobile↔desktop transition correctly retheme the row scrollbar (mobile
-	// uses a wider thumb / larger min-thumb height for touch ergonomics).
+	// Every Layout, so a mobile↔desktop switch re-themes the scrollbar.
 	if z.rowScroll != nil {
 		want := ScrollbarStyleForPlatform()
-		// Row-rack-specific: the kit can hold more instruments than fit the
-		// (EQ-panel-squeezed) rack, so the scrollbar is the only cue that the
-		// hidden rows exist. The shared desktop thumb at alpha 40 reads as
-		// invisible against the dark rack — users couldn't tell the kit
-		// scrolled and reported instruments as unreachable (screenshot
-		// review). Bump the rack thumb to a high-alpha sunset-gold accent
-		// (the shared scrollbar hue) over a neutral hairline track so it is
-		// clearly visible, while keeping the pinned narrow width
-		// (TestScrollbarWidthDesktop); discoverability comes from contrast,
-		// not width.
+		// The scrollbar is the only cue that hidden rows exist, and the shared faint thumb was invisible on
+		// the dark rack; contrast, not width, makes it discoverable.
 		want.ThumbColor = WithAlpha(genColorPrimary, genAlphaStrong)
 		want.TrackColor = WithAlpha(genColorBorder, genAlphaMedium)
 		if z.rowScroll.Style != want {
@@ -395,10 +346,7 @@ func (z *RowRackZone) Layout(rect image.Rectangle) {
 	z.rebuildHitAreas()
 }
 
-// applyRowLabelTypography unconditionally writes the profile-correct
-// TextScale and TextColor onto a row label button. Idempotent. Called from
-// rebuildEntries (cold path) and indirectly via applyRowLabelTypographyIfChanged
-// from repositionEntries (hot path).
+// Idempotent.
 func applyRowLabelTypography(b *Button) {
 	if b == nil {
 		return
@@ -412,10 +360,7 @@ func applyRowLabelTypography(b *Button) {
 	}
 }
 
-// applyRowLabelTypographyIfChanged updates the label typography to match
-// the current profile and returns true iff anything actually changed. Used
-// by repositionEntries to gate cache invalidation — re-applying identical
-// values must NOT trigger a controls-cache rebuild (the WASM OOM hot path).
+// true only on a real change: re-applying identical values must not rebuild the controls cache.
 func applyRowLabelTypographyIfChanged(b *Button) bool {
 	if b == nil {
 		return false
@@ -438,9 +383,7 @@ func applyRowLabelTypographyIfChanged(b *Button) bool {
 	return changed
 }
 
-// colorEqualOrBothNil handles nil-vs-concrete interface comparison for
-// color.Color. Used by applyRowLabelTypographyIfChanged to avoid spurious
-// cache invalidation when the typography is unchanged.
+// Avoids spurious invalidation from nil-vs-concrete interface comparison.
 func colorEqualOrBothNil(a, b color.Color) bool {
 	if a == nil && b == nil {
 		return true
@@ -459,8 +402,7 @@ func (z *RowRackZone) Update() {
 	if len(rows) != len(z.entries) {
 		z.needLayout = true
 	}
-	// Tick the wheel/step cooldown once per frame so the stepped scrollbar
-	// re-arms (see WheelStep). Cheap no-op when nothing is pending.
+	// Re-arms the stepped scrollbar; a no-op when nothing is pending.
 	z.rowScroll.TickStep()
 	// Scroll momentum.
 	if z.rowScroll.HasMomentum() {
@@ -677,9 +619,7 @@ func (z *RowRackZone) isMobileEQMode() bool {
 	return false
 }
 
-// rebuildEntries creates rowEntry per row with button closures.
-// When the row count hasn't changed, it repositions existing widgets
-// instead of recreating them (preserving slider capture state).
+// An unchanged row count repositions instead of recreating, preserving slider capture.
 func (z *RowRackZone) rebuildEntries() {
 	rows := z.rows()
 	vis := z.VisibleRows()
@@ -706,21 +646,14 @@ func (z *RowRackZone) rebuildEntries() {
 		idx := i
 
 		lbl := NewButton(r.Name, style, nil)
-		// Mobile typography upgrade (larger TextScale + on-surface TextColor)
-		// is applied unconditionally every Layout via applyRowLabelTypography,
-		// so a mobile↔desktop transition retints in real time without relying
-		// on construction-time profile sampling.
+		// Every Layout, so a viewport switch retints without construction-time sampling.
 		applyRowLabelTypography(lbl)
 		lbl.OnClick = func() {
 			// Skip if rename is active for this row.
 			if z.callbacks.RenameRow != nil && z.callbacks.RenameRow() == idx {
 				return
 			}
-			// Tapping the instrument-name label opens the instrument picker on
-			// EVERY platform. The ellipsis (⋯) overflow button owns the rest of
-			// the row actions (Rename / Origin / Delete). The picker renders as a
-			// bottom sheet on mobile via Profile().UseBottomSheet, so no
-			// platform branch is needed here.
+			// On every platform; the picker becomes a bottom sheet through the profile.
 			if z.callbacks.OnInstMenuOpen != nil {
 				z.callbacks.OnInstMenuOpen(idx)
 			}
@@ -835,16 +768,8 @@ func (z *RowRackZone) rebuildEntries() {
 	z.controlsCacheDirty = true
 }
 
-// repositionEntries updates widget rects for existing entries without
-// recreating button/slider instances. This preserves capture state
-// (e.g., active slider drags) across Layout() calls.
-//
-// Cache invalidation is *conditional*: a re-position with no observable
-// change (same rects, same label text/style, same volume) leaves the
-// controls cache valid. updateRowRects (drumview_cache_background.go) calls
-// us every Draw as a layout safety net; without conditional invalidation
-// the cache would rebuild every frame, allocating ~30 vector.Path objects
-// per visible row × len(rows) — the production WASM OOM hot path.
+// Invalidation is conditional: this runs every Draw as a safety net, and an unconditional rebuild
+// allocated ~30 vector.Paths per row per frame (the WASM OOM hot path).
 func (z *RowRackZone) repositionEntries(rows []*DrumRow, vis int, panelRect image.Rectangle) {
 	z.repositionInvocations++
 	dirty := false
@@ -866,10 +791,7 @@ func (z *RowRackZone) repositionEntries(rows []*DrumRow, vis int, panelRect imag
 				e.label.Style = style
 				dirty = true
 			}
-			// Profile-driven typography: mobile labels bump TextScale and
-			// override TextColor so kits parse at glance; desktop uses the
-			// Button defaults. Re-applied every reposition so a viewport
-			// transition retints in real time.
+			// Re-applied every reposition so a viewport switch retints live.
 			if applyRowLabelTypographyIfChanged(e.label) {
 				dirty = true
 			}
@@ -879,9 +801,7 @@ func (z *RowRackZone) repositionEntries(rows []*DrumRow, vis int, panelRect imag
 			}
 		}
 
-		// Snapshot the widget rects before repositioning so we can detect
-		// whether positionRowWidgets actually moved anything. The rect set
-		// here mirrors the rects positionRowWidgets writes.
+		// Snapshot to tell whether positionRowWidgets moved anything.
 		e := &z.entries[i]
 		before := [10]image.Rectangle{
 			e.label.Rect(), e.muteBtn.Rect(), e.soloBtn.Rect(),
@@ -941,22 +861,8 @@ func (z *RowRackZone) rowRectForIndex(i, rowsTop, vis int, panelRect image.Recta
 	return image.Rect(panelRect.Min.X, y, panelRect.Max.X, y+rh)
 }
 
-// positionRowWidgets sets rects for all per-row controls at index i.
-//
-// Layout (identical on desktop and mobile):
-//
-//	[ Label …… flexes …… ] [ Vol ] [ M ] [ S ] [ FX ] [ ⋯ ]
-//
-// The control cluster is right-anchored at fixed widths (RowControlBtnSize per
-// button, double that for the volume cell) so every control renders at a
-// comfortable, non-cramped size on both platforms — including the ⋯ overflow
-// button, which used to get a sliver of a weighted grid on desktop and was
-// hidden entirely on mobile. The label takes whatever space remains on the
-// left, never collapsing below a readable minimum (narrow-row clamp).
-//
-// Edit/save/color/origin/delete are hidden on both profiles — they live in the
-// overflow / bottom-sheet context menu, reached via the ⋯ button (and, on
-// mobile, also by tapping the label).
+// [Label … flexes] [Vol] [M] [S] [FX] [⋯] on both platforms: the cluster is right-anchored at fixed
+// widths and the label takes what remains, down to a readable minimum. Other actions live in the ⋯ menu.
 func (z *RowRackZone) positionRowWidgets(i int, rowRect image.Rectangle) {
 	if i >= len(z.entries) {
 		return
@@ -973,11 +879,7 @@ func (z *RowRackZone) positionRowWidgets(i int, rowRect image.Rectangle) {
 	z.layoutRowControls(e, rowRect)
 }
 
-// rowControlBand returns the one vertical band every control in a rack row
-// occupies — the row rect inset by the hairline breathing gap top and bottom.
-// Label, volume and every toggle share it exactly (DESIGN.md "Cluster
-// alignment"): the label/volume used to be inset while the toggles were a
-// smaller centered square, so one row held three heights and three gutters.
+// Every control in the row shares one band, so a row never holds several heights.
 func rowControlBand(rowRect image.Rectangle) (top, bottom int) {
 	top, bottom = rowRect.Min.Y+SpaceXS, rowRect.Max.Y-SpaceXS
 	if bottom-top < 1 {
@@ -986,23 +888,15 @@ func rowControlBand(rowRect image.Rectangle) (top, bottom int) {
 	return top, bottom
 }
 
-// rowGroupGap is the gutter between the row's three groups (label | volume |
-// M S FX ⋯); controls INSIDE the toggle group sit ControlGap apart. Two gaps,
-// each with one meaning — the rhythm reads as "name, level, switches".
+// Two gaps, each with one meaning: name, level, switches.
 func rowGroupGap() int { return SpaceSM }
 
-// rowContentSpan returns the horizontal extent the row's controls span:
-// from the left breathing margin to the right edge of the toggle group
-// (inside the scrollbar reserve). The add-row ghost row shares it so its
-// edges line up with the rows above it.
+// Shared by the add-row row so its edges line up.
 func (z *RowRackZone) rowContentSpan(r image.Rectangle) (minX, maxX int) {
 	return r.Min.X + SpaceXS, r.Max.X - SpaceXS - z.scrollReserve()
 }
 
-// scrollReserve is the width kept free at the rack's right edge for the row
-// scrollbar, so the right-anchored ⋯ chip never renders under the thumb.
-// Reserved unconditionally so control positions stay stable whether or not
-// the scrollbar is currently visible; the lane is painted as rack bed.
+// Reserved always, so controls stay put whether or not the scrollbar shows.
 func (z *RowRackZone) scrollReserve() int {
 	if z.rowScroll == nil || z.rowScroll.Style.Width <= 0 {
 		return 0
@@ -1014,10 +908,7 @@ func (z *RowRackZone) scrollReserve() int {
 	return z.rowScroll.Style.Width + gap
 }
 
-// FixedControlsWidth is the width a row needs right of its label: the
-// label→volume gutter, the volume cell, the group gutter, four toggles with
-// their gaps, both breathing margins and the scrollbar lane. DrumView sizes
-// the rack column to labelW + this, so the column is exactly its content.
+// DrumView sizes the rack column to labelW + this, so the column is exactly its content.
 func (z *RowRackZone) FixedControlsWidth() int {
 	btnW := RowControlBtnSize()
 	volW := btnW * 2
@@ -1031,9 +922,6 @@ func (z *RowRackZone) FixedControlsWidth() int {
 	return 2*SpaceXS + rowGroupGap() + volW + rowGroupGap() + 4*btnW + 3*gap + z.scrollReserve()
 }
 
-// layoutRowControls right-anchors the fixed-width control cluster (volume +
-// mute/solo/fx/menu) and flexes the label to fill the remaining left space.
-// Every control shares the row's control band (rowControlBand).
 func (z *RowRackZone) layoutRowControls(e *rowEntry, rowRect image.Rectangle) {
 	btnW := RowControlBtnSize()
 	volW := btnW * 2
@@ -1043,11 +931,7 @@ func (z *RowRackZone) layoutRowControls(e *rowEntry, rowRect image.Rectangle) {
 	}
 	groupGap := rowGroupGap()
 	labelMinW := btnW * 2
-	// Mobile: the per-row volume renders as a compact speaker icon, not a wide
-	// draggable track (precise control lives in the tap-to-open volume popup),
-	// so the default 2×-button-width reservation is dead space that the
-	// narrow-row clamp pays for by shrinking the mute/solo/fx/⋯ keys. Right-size
-	// it to a single key width so the four primary controls win that space.
+	// On mobile the volume is a compact icon (precision lives in the popup), so one key width is enough.
 	if Profile().IsMobile() {
 		volW = btnW
 	}
@@ -1057,8 +941,7 @@ func (z *RowRackZone) layoutRowControls(e *rowEntry, rowRect image.Rectangle) {
 	clusterW := volW + groupGap + btnW*4 + gap*3
 	avail := right - left
 
-	// Narrow-row clamp: if there isn't room for the cluster plus a readable
-	// label, shrink the control widths proportionally so the label survives.
+	// Shrink the controls proportionally rather than lose the label.
 	if labelMinW+groupGap+clusterW > avail && clusterW > 0 {
 		space := avail - labelMinW - groupGap
 		if space < btnW {
@@ -1096,23 +979,11 @@ func (z *RowRackZone) layoutRowControls(e *rowEntry, rowRect image.Rectangle) {
 	e.label.SetRect(image.Rect(left, top, right, bottom))
 }
 
-// positionAddRowBtn sets the add-row ghost row's rect.
-//
-// **Anchoring contract:** the ghost row sits directly UNDER the last visible
-// row — one more slot of the same list, sharing the rows' content span and
-// control band, so its edges line up with every row above it. When the rows
-// overflow the rack (scrolling), the slot below the last row is off the
-// bottom, so it pins to the rack bottom instead, where ReserveAddRowSpace
-// kept one row height free for it (desktop).
-//
-// It used to ALWAYS pin to the rack bottom on the promise that the rack rect
-// was contracted to `rows + 1` slots; whenever the drum pane was taller than
-// that (a user-dragged splitter, few rows) the promise broke and an empty
-// rack-bed strip opened between the last row and a floating "+".
+// Directly UNDER the last visible row, sharing its span and band; when rows overflow, pinned to the
+// rack bottom where one row height was kept free. Always pinning left a gap when the pane was taller.
 func (z *RowRackZone) positionAddRowBtn(rowsTop int, panelRect image.Rectangle) {
 	rh := z.rowHeight()
-	// Mobile EQ mode hides the rack entirely; suppress the button so it does
-	// not render through the bottom sheet.
+	// The rack is hidden there, so it would render through the bottom sheet.
 	if Profile().IsMobile() && z.isMobileEQMode() {
 		z.addRowBtn.SetRect(image.Rectangle{})
 		return
@@ -1146,10 +1017,7 @@ func (z *RowRackZone) positionAddRowBtn(rowsTop int, panelRect image.Rectangle) 
 	z.addRowBtn.SetRect(image.Rect(minX, top, maxX, bottom))
 }
 
-// SetAddRowRightReserve declares how many pixels the addRow button must
-// leave free on its right edge. Drumview_layout.go uses this to inline
-// the row-zoom +/- chips beside the addRow button so they stop
-// overlapping the FX cells of the topmost rows. Pass 0 to disable.
+// 0 disables.
 func (z *RowRackZone) SetAddRowRightReserve(px int) {
 	if z.addRowRightReserve == px {
 		return
@@ -1158,10 +1026,6 @@ func (z *RowRackZone) SetAddRowRightReserve(px int) {
 	z.needLayout = true
 }
 
-// AddRowBtnRect returns the current rect of the add-row button. Used by
-// drumview_layout.go to position the row-zoom +/- chips inline with the
-// addRow button on mobile (Theme 3 fix — row-zoom chips no longer
-// overlap the FX cells of rows 0/1).
 func (z *RowRackZone) AddRowBtnRect() image.Rectangle {
 	if z.addRowBtn == nil {
 		return image.Rectangle{}
@@ -1171,9 +1035,7 @@ func (z *RowRackZone) AddRowBtnRect() image.Rectangle {
 
 // --- Scroll helpers ---
 
-// clampRowOffset keeps z.rowOffset within [0, max(0, total-visible)] for the
-// current rect/visible-row count. Idempotent; sets needLayout only when it
-// actually moves the offset so callers already inside Layout don't re-loop.
+// Sets needLayout only when it moves, so callers inside Layout do not re-loop.
 func (z *RowRackZone) clampRowOffset() {
 	maxOffset := len(z.rows()) - z.VisibleRows()
 	if maxOffset < 0 {
@@ -1231,8 +1093,7 @@ func (z *RowRackZone) rebuildHitAreas() {
 			renameRow = z.callbacks.RenameRow()
 		}
 
-		// Button hit areas for each row control.
-		// Skip label when rename is active for this row (text input overlaps).
+		// No label hit while renaming: the text input overlaps it.
 		var labelBtn *Button
 		if renameRow != i {
 			labelBtn = e.label
@@ -1283,9 +1144,7 @@ func (z *RowRackZone) rebuildHitAreas() {
 		}
 	}
 
-	// Row volume slider group — z+1 so sliders get first dispatch over
-	// label buttons at the same z. Fall-through ensures clicks outside
-	// the slider track still reach the label.
+	// z+1 so sliders win over the label; clicks off the track still reach the label.
 	if z.rowVolGroup != nil {
 		groupBounds := z.rowVolGroup.InputBounds()
 		if !groupBounds.Empty() {
@@ -1351,9 +1210,7 @@ func (z *RowRackZone) rebuildHitAreas() {
 
 // --- Hit handler adapters ---
 
-// rowVolIconHitAdapter handles the mobile per-row volume icon click.
-// OnPress opens the popup and returns InputCaptured so that subsequent
-// drag/release events are routed here, enabling tap-and-slide in one gesture.
+// InputCaptured, so tap-and-slide works in one gesture.
 type rowVolIconHitAdapter struct {
 	onClick func()
 	popup   *SliderPopup
@@ -1379,12 +1236,8 @@ func (h *rowVolIconHitAdapter) OnRelease(x, y int) {
 }
 func (h *rowVolIconHitAdapter) OnWheel(x, y, steps int) InputResult { return InputIgnored }
 
-// ScrollByWheel advances the rack by one row per wheel notch, throttled by the
-// step cooldown so a spun wheel can't fly through the list. This is the single
-// canonical wheel-scroll behavior: both the row-rack scroll surface (dragging /
-// scrolling up-down directly over the instrument labels) AND the drum cell-grid
-// vertical scroll route through here, so the two never drift. Returns true when
-// the offset changed.
+// The single wheel-scroll behaviour for both the rack and the cell grid, so they cannot drift.
+// Throttled so a spun wheel cannot fly through the list.
 func (z *RowRackZone) ScrollByWheel(steps int) bool {
 	if steps == 0 {
 		return false
@@ -1413,8 +1266,7 @@ func (h *rowRackScrollHitAdapter) OnWheel(x, y, steps int) InputResult {
 	if steps == 0 {
 		return InputIgnored
 	}
-	// Consume regardless so the wheel never leaks past the rack while the
-	// cursor is over it.
+	// Always consumed, so the wheel never leaks past the rack.
 	h.zone.ScrollByWheel(steps)
 	return InputConsumed
 }
@@ -1579,10 +1431,7 @@ func (z *RowRackZone) drawRowControlsToCache(cache *ebiten.Image, offsetX, offse
 				drawRect(cache, zebraR, WithAlpha(genColorBorder, genAlphaRowRackZebra), true)
 			}
 		}
-		// The row's identity at rest: a leading swatch beside the name (the
-		// instrument menu's swatch + text row). The swatch is painted by the
-		// label itself so it sits ON the body — the old wash + accent stripe
-		// were drawn first and the opaque label body covered both.
+		// Painted by the label itself, so it sits on the opaque body.
 		e.label.LeadSwatch = rowIdentityColor(rows[i].Color)
 		if renameRow != i {
 			drawBtnOff(cache, e.label, offsetX, offsetY)
@@ -1603,12 +1452,7 @@ func (z *RowRackZone) drawRowControlsToCache(cache *ebiten.Image, offsetX, offse
 			drawBtnOff(cache, e.soloBtn, offsetX, offsetY)
 		}
 		if !e.fxBtn.Rect().Empty() {
-			// Highlight only when at least one effect is *enabled*; a slot list
-			// of all-disabled effects must render inactive. We tag pressed with
-			// the active flag so controlsCacheValid() can detect state flips and
-			// rebuild the cache in real time when the user toggles or removes
-			// effects. The FX chip is a shade of the row's instrument color:
-			// full hue when active, dim tint when off.
+			// Only enabled effects light it; pressed carries the state so the cache rebuilds on a toggle.
 			active := (audio.ActiveInsertEffectCount(rows[i].Instrument) > 0)
 			applyRowToggle(e.fxBtn, rows[i].Color, roleFX, active)
 			drawBtnOff(cache, e.fxBtn, offsetX, offsetY)
@@ -1619,8 +1463,7 @@ func (z *RowRackZone) drawRowControlsToCache(cache *ebiten.Image, offsetX, offse
 		}
 		drawBtnOff(cache, e.originBtn, offsetX, offsetY)
 		if deleteConfirmRow == i && (frame-deleteConfirmFrame) < 120 {
-			// Stateful confirm: show "!!" as a warning glyph (text) so it
-			// reads as distinct from the resting close-icon state.
+			// A text warning glyph, distinct from the resting close icon.
 			e.deleteBtn.Text = "!!"
 			e.deleteBtn.Icon = ""
 			e.deleteBtn.Style = DeleteConfirmButtonStyle
@@ -1693,8 +1536,7 @@ func (z *RowRackZone) drawRowControlsDirect(dst *ebiten.Image) {
 		}
 		e.originBtn.Draw(dst)
 		if deleteConfirmRow == i && (frame-deleteConfirmFrame) < 120 {
-			// Stateful confirm: show "!!" as a warning glyph (text) so it
-			// reads as distinct from the resting close-icon state.
+			// A text warning glyph, distinct from the resting close icon.
 			e.deleteBtn.Text = "!!"
 			e.deleteBtn.Icon = ""
 			e.deleteBtn.Style = DeleteConfirmButtonStyle
@@ -1724,11 +1566,7 @@ func (z *RowRackZone) drawRowControlsDirect(dst *ebiten.Image) {
 	}
 }
 
-// drawVolIcon renders a per-row volume button into dst. Thin wrapper around
-// drawVolumeButton — the canonical, shared volume-button component used by
-// both per-row volume cells AND the master volume button. Differences from
-// master are limited to channel wiring (the slider's value source) and the
-// optional row-color tint.
+// The same volume button as master; only the wiring and tint differ.
 func drawVolIcon(dst *ebiten.Image, s *Slider, vol float64, muted bool, rowColor color.Color) {
 	drawVolumeButton(dst, s.Rect(), vol, muted, rowColor)
 }
@@ -1742,13 +1580,7 @@ func drawVolIconOff(cache *ebiten.Image, s *Slider, vol float64, offsetX, offset
 	drawVolumeButton(cache, r.Sub(image.Pt(offsetX, offsetY)), vol, muted, rowColor)
 }
 
-// volIconColor returns the appropriate color for a volume icon.
-// When volume > 0 and not muted it returns the instrument color EXACTLY as the
-// grid nodes draw it — DrumRow.Color at full opacity (grid_pane_draw.go uses
-// `fillCol = base` for a regular node). DrumRow.Color is the single source of
-// truth both surfaces read live, so a color edit propagates to nodes and the
-// slider together. No alpha dimming here, or the slider would read as a paler
-// shade than the nodes it belongs to. colTextDisabled when muted/silent.
+// Exactly the row color the grid nodes use (DrumRow.Color, full opacity), so slider and nodes match.
 func volIconColor(vol float64, muted bool, rowColor color.Color) color.Color {
 	if vol <= 0 || muted {
 		return colTextDisabled
@@ -1759,10 +1591,7 @@ func volIconColor(vol float64, muted bool, rowColor color.Color) color.Color {
 	return colVolumeIconOn
 }
 
-// drawVolCell draws the volume cell: speaker glyph + thin level underline.
-// The underline is drawn by drawVolIcon via drawSliderLevelIndicator, so the
-// at-a-glance level reading is consistent across mobile and desktop and
-// across per-row and master volume controls.
+// The same level underline on every platform and for master too.
 func drawVolCell(dst *ebiten.Image, s *Slider, vol float64, rowColor color.Color, muted bool) {
 	drawVolIcon(dst, s, vol, muted, rowColor)
 }

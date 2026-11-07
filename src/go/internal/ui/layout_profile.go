@@ -5,11 +5,7 @@ import (
 	"os"
 )
 
-// debugLayoutGuidesEnabled reports whether BEATMO_DEBUG_LAYOUT is set to a
-// truthy value. Layout guides (column/row dividers + splitter pills) are
-// developer-only chrome — enabled by default would leak 1-px ticks into the
-// gaps between widget surfaces (visible as "garbage" at the top edge of the
-// drum pane). Production builds keep them off.
+// Developer-only chrome: on by default it leaks 1-px ticks into the gaps between surfaces.
 func debugLayoutGuidesEnabled() bool {
 	switch os.Getenv("BEATMO_DEBUG_LAYOUT") {
 	case "1", "true", "TRUE", "yes", "on":
@@ -26,9 +22,7 @@ const (
 	ScreenMobile
 )
 
-// LayoutProfile centralises every mobile-vs-desktop decision into a single
-// configuration object. Call UpdateProfile() whenever the screen size changes;
-// all sizing/style/behavior functions read from the active profile.
+// Every mobile-vs-desktop decision in one place; call UpdateProfile() when the screen size changes.
 type LayoutProfile struct {
 	Class ScreenSizeClass
 
@@ -105,8 +99,6 @@ type LayoutProfile struct {
 	EQHandleRadius int // desktop: eqHandleRadius+7 (12), mobile: touchMinTargetPx/2 (22)
 	EQDBInputH     int // desktop: 14, mobile: 20
 
-	// SynthHeaderH is the synth/sampler tab header strip height — layout-tied
-	// (desktop 48 / mobile 38), sourced from profileOverrides.synthHeaderH.
 	SynthHeaderH int
 
 	// ── Sizing: Slider ─────────────────────────────────────
@@ -146,20 +138,10 @@ type LayoutProfile struct {
 	DrawToolbarSep     bool // desktop: false, mobile: true
 	DrawMasterVolIcon  bool // desktop: false, mobile: true
 
-	// ChainModeSegmented renders the Chain tab's three display modes
-	// (OVR / SPL / DIF) as one always-visible contiguous segmented control
-	// on its own row below the chrome strip, instead of three separate
-	// pills in the chrome row. Used on narrow viewports so all three modes
-	// stay visible and touch-min without a hidden dropdown. The canonical
-	// example of the layout vs density split — pill width is density-tied,
-	// but the segmented-vs-separate choice is layout-tied (a tablet at
-	// desktop layout keeps three separate pills even at Spacious density).
+	// Layout-tied, not density-tied: narrow viewports show all three modes as one segmented control.
 	ChainModeSegmented bool // desktop: false, mobile: true
 
-	// ── Timeline defaults ──────────────────────────────────
-	// DefaultTimelineBeats caps the initial visible drum-view window
-	// (in beats) when updateBeatInfos auto-grows it to fit the circuit.
-	// 0 means no cap (desktop default: show the full circuit).
+	// Caps the initial visible window when updateBeatInfos auto-grows it; 0 = no cap.
 	DefaultTimelineBeats int
 
 	// ── Behavior flags ──────────────────────────────────────
@@ -169,21 +151,14 @@ type LayoutProfile struct {
 // activeProfile is the lazily-initialised singleton.
 var activeProfile *LayoutProfile
 
-// Profile returns the current layout profile. It auto-syncs with the
-// current screen detection so callers never see a stale profile — this
-// avoids the need to sprinkle UpdateProfile() into every test site that
-// sets forceSmallScreenForTest.
+// Auto-syncs with screen detection, so callers never see a stale profile.
 func Profile() *LayoutProfile {
 	want := detectSmallScreen()
 	if activeProfile == nil ||
 		(want && activeProfile.Class != ScreenMobile) ||
 		(!want && activeProfile.Class != ScreenDesktop) {
-		// Phase 0 audio-panel redesign: density is derived from class
-		// at rebuild time via densityForClass() — no global mutation.
-		// SetDensityForTest's override (densityOverride pointer) wins
-		// when set, otherwise defaultDensityFor(class). The non-
-		// mutating contract is load-bearing: it prevents class flips
-		// in one test from leaking a stale density into the next.
+		// Density is derived from the class at rebuild, never by global mutation, so a class flip in one
+		// test cannot leak a stale density into the next. SetDensityForTest's override wins.
 		if want {
 			activeProfile = mobileProfile()
 		} else {
@@ -193,8 +168,7 @@ func Profile() *LayoutProfile {
 	return activeProfile
 }
 
-// UpdateProfile re-evaluates the screen size and rebuilds the active profile.
-// Call this after SetTouchScreenSize and after mobile↔desktop transitions.
+// Call after SetTouchScreenSize and mobile↔desktop transitions.
 func UpdateProfile() {
 	if detectSmallScreen() {
 		activeProfile = mobileProfile()
@@ -209,14 +183,8 @@ func (p *LayoutProfile) IsMobile() bool { return p.Class == ScreenMobile }
 // ── Builders ────────────────────────────────────────────────────────────────
 
 func desktopProfile() *LayoutProfile {
-	// Phase 5a + audio-panel Phase 0: layout-arrangement fields come
-	// from design_profile.gen.go (DESIGN.md `profileOverrides.desktop`).
-	// **Density-tied** fields come from densityValuesFor(activeDensity)
-	// — see design_density.gen.go. Hand-coded fields are now limited to:
-	//   - float scales (PopupTextScale family — fractional)
-	//   - color references (PlayIconColor family)
-	//   - bool feature flags (DrawTopEdgeHighlight, …)
-	//   - ButtonVisual style references (PlayBtnStyle family)
+	// Layout fields come from design_profile.gen.go and density fields from the density tables; only
+	// float scales, color refs, bool flags and style refs are hand-coded.
 	g := genDesktopProfile
 	dv := densityValuesFor(densityForClass(ScreenDesktop))
 	return &LayoutProfile{
@@ -258,29 +226,16 @@ func desktopProfile() *LayoutProfile {
 		HeaderMaxH:   dv.HeaderMaxH,
 		TimelineBarH: dv.TimelineBarH,
 
-		// Widget weights. Column 0 hosts the per-row control cluster AND the
-		// instrument-name label (the label flexes to fill whatever col0 width
-		// is left of the right-anchored cluster — see layoutRowControls). At the
-		// old {1,3} (25%) the label was squeezed to ~110px, clipping all but the
-		// shortest names. Widening col0 to 40% ({2,3}) roughly triples the label
-		// area so instrument names render fully with room for renamed/long ones.
-		// controlsW absorbs the slack (leftW-labelW), so needW == col0W and the
-		// "tighten to content" pass in drumview_geometry.go leaves col0 intact.
+		// Column 0 holds the controls and the instrument label; 40 % gives names room to render fully.
 		ColWeights: []float64{2, 3},
 		RowWeights: []float64{3, 3, 3},
 
 		// Scrollbar
 		ScrollbarStyle: DefaultScrollbarStyle,
 
-		// Button styles — unified neutral transport look. Play/stop/record
-		// used to be stoplight green/red; they're now Surface2 with subtle
-		// borders like every other button, with the icon carrying the
-		// semantics (red for record, neutral for play/stop).
+		// Neutral like every button; the icon carries the meaning.
 		PlayBtnStyle: TransportPlayStyle,
-		// Home-row idle icons read as the calmer on-surface-muted grey (matching
-		// the instrument-row labels' feel) rather than glaring near-white
-		// on-surface. Record keeps its semantic red; the playing state still
-		// swaps to colAccent (see SetPlaying).
+		// Muted idle icons; record stays red and playing swaps to the accent.
 		PlayIconColor:  colTextSecondary,
 		StopBtnStyle:   TransportStopStyle,
 		StopIconColor:  colTextSecondary,
@@ -288,12 +243,7 @@ func desktopProfile() *LayoutProfile {
 		BPMIncBtnStyle: TransportIncStyle,
 		BPMIconColor:   colTextSecondary,
 		SubdivBtnStyle: InstButtonStyle,
-		// TrackBtnStyle uses TimelineKeycapStyle on both profiles: the play/stop
-		// chrome (ComponentButtonSecondary) with the control radius, like the
-		// beat counter keycap beside it.
-		// State is expressed via icon glyph + IconColor (see syncTrackBtnVisual),
-		// not a fill-style swap — mirroring how SetPlaying flips the play
-		// button's icon and tint while keeping its frame fixed.
+		// State shows through the icon glyph and color, never a fill swap, like the play button.
 		TrackBtnStyle:   TimelineKeycapStyle,
 		ViewSwitchStyle: InstButtonStyle,
 		OverflowStyle:   DropdownStyle,
@@ -362,10 +312,6 @@ func desktopProfile() *LayoutProfile {
 }
 
 func mobileProfile() *LayoutProfile {
-	// Phase 5a (extended): all dimensional fields come from
-	// design_profile.gen.go (DESIGN.md `profileOverrides.mobile`).
-	// See desktopProfile() for the list of fields still hand-coded
-	// (color refs, bool flags, ButtonVisual style refs).
 	g := genMobileProfile
 	dv := densityValuesFor(densityForClass(ScreenMobile))
 	return &LayoutProfile{
@@ -429,9 +375,7 @@ func mobileProfile() *LayoutProfile {
 		TransportMisc:   TransportMiscStyle,
 		RowLabelStyle:   MobileRowLabelStyle,
 
-		// Drawing — density-tied stripe + close, layout-tied corner radius.
-		// Top-edge depth highlight renders on BOTH platforms: visual styling
-		// must not diverge by screen class (only layout & density may).
+		// On both platforms: visual styling must not diverge by screen class.
 		DrawTopEdgeHighlight: true,
 		AccentStripeWidth:    dv.AccentStripeWidth,
 		AccentStripeInsetY:   dv.AccentStripeInsetY,

@@ -14,20 +14,13 @@ func (s *playbackSlate) updateBeatInfos() {
 	start := time.Now()
 	defer func() { g.logger.Debugf("[update_beat_infos] total=%v", time.Since(start)) }()
 
-	// Freeze everything the playhead has passed BEFORE the paths (and then the
-	// predictor) are rebuilt from the edited graph: those cells have played.
+	// Before the paths are rebuilt: those cells have played.
 	g.freezePlayedThroughPlayhead()
 
 	g.rebuildNodeCache()
 	g.logger.Debugf("[update_beat_infos] rebuildNodeCache elapsed=%v", time.Since(start))
 
-	// Use a generously large beat length so CalculateBeatRow returns the
-	// complete path even when disconnected nodes exist elsewhere in the
-	// graph. We'll shrink the beat length back to the actual traversal size
-	// after computing the raw path length.
-	// Build unbounded path so we capture all intermediate steps without
-	// relying on Graph.BeatLength. This avoids truncation now that invisible
-	// steps are synthesized on-the-fly instead of stored as nodes.
+	// An unbounded path, so disconnected nodes or synthesized invisible steps never truncate it.
 	calcStart := time.Now()
 	fullBeatRow, isLoop, loopStart := g.graph.CalculateBeatRowUnbounded()
 	g.logger.Debugf("[update_beat_infos] CalculateBeatRowUnbounded elapsed=%v isLoop=%v loopStart=%d pathLen=%d",
@@ -120,8 +113,7 @@ func (s *playbackSlate) updateBeatInfos() {
 		}
 	}
 
-	// Reduce the graph's beat length to the actual maximum traversal size so
-	// subsequent path calculations are not padded with extra loop cycles.
+	// Shrink to the real traversal so later paths are not padded with loop cycles.
 	g.logger.Debugf("[update_beat_infos] after row loop, maxLen=%d", maxLen)
 	g.graph.SetBeatLength(maxLen)
 	g.logger.Debugf("[update_beat_infos] SetBeatLength done")
@@ -131,8 +123,7 @@ func (s *playbackSlate) updateBeatInfos() {
 	g.muteUntilByRow = make([]int, len(g.drum.Rows))
 	g.renderReady = false
 
-	// Reset per-row trigger counters so node logic starts fresh whenever the
-	// beat paths are recomputed (e.g., graph edits, origin changes).
+	// Node logic starts fresh whenever the paths are recomputed.
 	g.nodeTriggerCountsByRow = make(map[int]map[model.NodeID]int)
 	g.nodeLogicTriggerCountsByRow = make(map[int]map[model.NodeID]int)
 	g.lastEvalIdxByRowNode = make(map[int]map[model.NodeID]int)
@@ -144,9 +135,7 @@ func (s *playbackSlate) updateBeatInfos() {
 	if !g.Playing() && maxLen > g.drum.Length {
 		// Always store the full circuit length so the timeline is scrollable.
 		g.drum.SetBeatLength(maxLen)
-		// Cap the visible window to the platform's preferred default (e.g.
-		// 8 beats on mobile) unless the user manually adjusted length.
-		// Desktop uses DefaultTimelineBeats=0 (no cap).
+		// Mobile caps the visible window at its default unless the user changed it.
 		visLen := maxLen
 		if !g.drum.userAdjustedLength {
 			if db := Profile().DefaultTimelineBeats; db > 0 {
@@ -162,13 +151,11 @@ func (s *playbackSlate) updateBeatInfos() {
 		g.graph.SetBeatLength(maxLen)
 		g.logger.Debugf("[update_beat_infos] drum.SetLengthClamped done")
 	} else {
-		// While playing, avoid changing DrumView.Length to prevent window
-		// clamping jumps; update only the underlying graph beat length.
+		// While playing only the beat length changes, so the window does not jump.
 		g.drum.SetBeatLength(maxLen)
 	}
 
-	// Rebind active pulses to the updated beat paths while preserving
-	// their absolute progression indices.
+	// Keep each pulse's absolute progression.
 	g.logger.Debugf("[update_beat_infos] rebinding %d active pulses", len(g.activePulses))
 	for _, p := range g.activePulses {
 		if p.row >= len(g.beatInfosByRow) {
@@ -208,9 +195,7 @@ func (s *playbackSlate) updateBeatInfos() {
 	}
 	g.logger.Debugf("[update_beat_infos] after per-row path lens")
 
-	// Preserve current drum offset when the beat path changes. Clamp against
-	// the timeline length (in subdivisions) rather than the raw beat path so
-	// tracking can continue beyond the initial graph traversal.
+	// Clamped against the timeline length, so tracking can continue past the first traversal.
 	units := max1(g.drum.timelineUnitsPerBeat)
 	maxOffset := g.drum.timelineBeats*units - g.drum.Length
 	if maxOffset < 0 {
@@ -247,8 +232,7 @@ func (s *playbackSlate) updateBeatInfos() {
 		}
 		var s uint64 = 1469598103934665603
 		for _, bi := range g.beatInfosByRow[r] {
-			// Include NodeType so audibility/visibility-affecting edits (e.g.,
-			// regular->silent) are treated as path changes for scheduling/parity.
+			// NodeType is included, so regular→silent counts as a path change.
 			v := uint64(uint32(bi.I)<<16|uint32(uint16(bi.J))) ^ uint64(bi.NodeID) ^ (uint64(bi.NodeType) << 56)
 			s = (s ^ v) * 1099511628211
 		}
@@ -265,9 +249,7 @@ func (s *playbackSlate) updateBeatInfos() {
 			}
 		}
 		g.logger.Debugf("[update_beat_infos] path sig row %d changed=%v prevNext=%d", r, g.rowsPathChanged[r], prevNextVal)
-		// If the path changed while playing, seed commits for already-traversed
-		// steps in the current window so past cells remain immutable even when
-		// they previously lacked explicit timeline entries (e.g., invisible gaps).
+		// Seed commits for traversed steps so past cells stay immutable even where they had none.
 		if g.rowsPathChanged[r] && g.Playing() && g.drum != nil && r < len(g.drum.Rows) {
 			next := 0
 			if r < len(g.nextBeatIdxs) {
@@ -378,9 +360,7 @@ func (s *playbackSlate) updateBeatInfos() {
 		report := g.timelineService().TrimAfterPathChange(row, cutoff, freezeBefore)
 		g.logger.Debugf("[update_beat_infos] TrimAfterPathChange row %d done", row)
 		maxKeep := report.MaxKeep
-		// Avoid freezing future entries past the updated path frontier: clamp
-		// frozenUpTo to the new maxKeep so stale commits don't mask re-added
-		// nodes in the DrumView.
+		// Stale commits past the new frontier would mask re-added nodes.
 		if row < len(g.frozenUpToByRow) && g.frozenUpToByRow[row] > maxKeep {
 			g.frozenUpToByRow[row] = maxKeep
 		}
@@ -420,19 +400,10 @@ func (s *playbackSlate) updateBeatInfos() {
 	}
 	g.nextIdxSticky = nil
 
-	// Invalidate already-scheduled audio / parity buffers (when paths changed
-	// during playback) AND republish the new paths to the predictor under a
-	// SINGLE seqMu critical section. Previously these were three separate locks
-	// (rewind; then an unlocked audioGen-bump + buffer wipe; then SetPaths),
-	// leaving a window in which the background sequencer (seqScheduleTime
-	// TryLocks seqMu) could schedule a beat against the OLD path snapshot after
-	// the buffers were cleared — that stale decision then contradicted the
-	// post-SetPaths predictor and panicked the app on a live graph edit. Holding
-	// the lock across the whole invalidate→republish makes the transition atomic
-	// w.r.t. the sequencer: it either sees fully-old or fully-new state.
+	// Invalidate and republish under ONE seqMu section: with separate locks the sequencer could
+	// schedule against the old paths after the wipe, contradicting the new predictor.
 
-	// Snapshot node params outside seqMu (guarded by nodeCacheMu) so the lock
-	// hold below stays short.
+	// Outside seqMu (under nodeCacheMu) so the hold below stays short.
 	var nodes map[model.NodeID]model.Node
 	if g.engine != nil && g.engine.Predictor != nil {
 		nodes = make(map[model.NodeID]model.Node, len(g.nodeCache))
@@ -448,12 +419,8 @@ func (s *playbackSlate) updateBeatInfos() {
 	g.seqMu.Lock()
 	g.logger.Debugf("[update_beat_infos] acquired seqMu for invalidate+SetPaths")
 	if pathsChanged && g.Playing() {
-		// Rewind the sequencer counters for affected rows to the next-beat
-		// boundary so the next scheduling tick can re-enqueue any audio just
-		// canceled by the generation bumps below. Never rewind to the current
-		// beat (pastExclusive-1): those cells are already immutable, and
-		// re-scheduling them would violate the "edits only affect
-		// abs>=pastExclusive" invariant and trip parity (audio_vs_view).
+		// Never rewind to the current beat: those cells are immutable, and re-scheduling them breaks
+		// "edits only affect abs >= pastExclusive".
 		for row, changed := range g.rowsPathChanged {
 			if !changed || row < 0 || row >= len(g.seqNextIdxs) {
 				continue
@@ -469,19 +436,8 @@ func (s *playbackSlate) updateBeatInfos() {
 				g.seqNextIdxs[row] = next
 			}
 		}
-		// Drop in-flight audio from the old paths for the CHANGED rows only, via
-		// their per-row structural generation. Bumping the single GLOBAL audioGen
-		// here (as this used to) dropped already-scheduled beats on rows whose
-		// path did not change — those rows are not rewound/rescheduled, so the
-		// dropped beat never plays, producing an audible gap when placing/moving a
-		// node. A changed row's stale beats are still dropped (rowGen mismatch) and
-		// rescheduled by the seqNextIdxs rewind above. Transport Stop/Pause/seek
-		// keep using the global audioGen to drop everything.
-		//
-		// Also advance the parity generation (+grace) so the scan's parityGen
-		// filter excludes any decision/audio recorded under the old paths. Skip the
-		// path-dirty / freeze-marker / buffer-clear side effects — updateBeatInfos
-		// owns paths-dirty itself, and the explicit wipe below is the hygiene step.
+		// Per-row generations, never the global audioGen: unchanged rows are not rescheduled, so
+		// dropping their beats leaves an audible gap. The parity generation advances too.
 		for row, changed := range g.rowsPathChanged {
 			if changed {
 				g.bumpRowStructGen(row)
@@ -492,17 +448,8 @@ func (s *playbackSlate) updateBeatInfos() {
 			SkipPathChangeMark: true,
 			SkipBufferClear:    true,
 		})
-		// NOTE: we deliberately do NOT call audio.Stop(instrument) for the
-		// changed rows here. In-flight *scheduled* audio from the old paths is
-		// already dropped by the per-row structural generation bump above
-		// (bumpRowStructGen → audioLoop rowGen gate) and re-enqueued by the
-		// seqNextIdxs rewind. Calling audio.Stop additionally tears down the
-		// instrument's *already-ringing* voices (antiPop decay tails), which is
-		// wrong: the only audible effect of editing a node must be that that
-		// node's own future trigger changes — every voice already sounding keeps
-		// ringing. Transport Stop/Pause/seek still cut everything via the global
-		// audioGen path; a live graph edit must not. Pinned by
-		// node_edit_audio_preservation_test.go.
+		// No audio.Stop here: an edit may only change that node's future triggers, and every voice
+		// already ringing keeps ringing. Stale scheduled beats are dropped above.
 		g.parityMu.Lock()
 		g.parityAudio = nil
 		g.parityAudioMaxIdx = nil
@@ -511,15 +458,13 @@ func (s *playbackSlate) updateBeatInfos() {
 		clearedParity = true
 	}
 
-	// Update engine predictor with the new paths so scheduling/preview uses the
-	// authoritative engine-owned buffers (seqMu -> predictor lock order).
+	// Lock order: seqMu, then the predictor.
 	if g.engine != nil && g.engine.Predictor != nil {
 		setPathsStart := time.Now()
 		g.engine.Predictor.SetPaths(g.beatInfosByRow, g.isLoopByRow, g.loopStartByRow, nodes)
 		g.logger.Debugf("[update_beat_infos] SetPaths elapsed=%v rows=%d nodes=%d", time.Since(setPathsStart), len(g.beatInfosByRow), len(nodes))
 		g.pathsDirty = false
-		// Rebase predictor contexts at the current absolute position so
-		// subsequent Ensure() uses the live timeline, avoiding phase drift.
+		// Rebase at the current position so Ensure() follows the live timeline without phase drift.
 		if g.Playing() {
 			base := g.elapsedBeats
 			if len(g.nextBeatIdxs) > 0 {
@@ -566,19 +511,14 @@ func (s *playbackSlate) updateBeatInfos() {
 	ensureStart := time.Now()
 	g.engine.Predictor.Ensure(horizon)
 	g.logger.Debugf("[update_beat_infos] Ensure elapsed=%v", time.Since(ensureStart))
-	// When stopped/paused, rebuild DrumView immediately so callers (tests,
-	// import/export, edit flows) observe the updated window without waiting for
-	// the next Update(). While playing, defer refresh to the main Update path
-	// so queued highlights/syncUIToTime can advance row counters before parity
-	// scans run, avoiding false highlight/audio mismatches during structural edits.
+	// Stopped: rebuild now so callers see the window. Playing: defer to Update so highlights advance
+	// the row counters before parity scans.
 	if !g.Playing() {
 		refreshStart := time.Now()
 		g.refreshDrumRow()
 		g.logger.Debugf("[update_beat_infos] refreshDrumRow elapsed=%v", time.Since(refreshStart))
 	}
-	// Warm upcoming melody voices off the audioLoop dispatch goroutine so the
-	// sequencer's PlayBatch hits a warm cache instead of cold-rendering inline
-	// (the overdue-panic root cause). Enumeration is cheap; render is offloaded.
+	// Warm upcoming voices off audioLoop, so PlayBatch never cold-renders inline.
 	if g.voicePrewarmer != nil {
 		g.voicePrewarmer.warmFromBeatInfos()
 	}

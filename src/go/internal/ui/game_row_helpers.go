@@ -68,17 +68,10 @@ func (s *playbackSlate) clampRowFreeze(row int, limit int) {
 	if g.frozenUpToByRow[row] > limit {
 		g.frozenUpToByRow[row] = limit
 	}
-	// Any clamp invalidates that row's reconciliation watermark — entries
-	// strictly above the new clamp are no longer frozen, and entries at or
-	// below the clamp may have been mutated by the trim/release path that
-	// triggered this clamp. Force a re-scan from futureReleaseStart next
-	// refresh.
+	// Any clamp invalidates the row's watermark: entries around it may have changed.
 	g.invalidateReconciledRow(row)
 }
 
-// invalidateReconciledRow resets row r's reconciliation watermark so the next
-// refresh's reconcileFrozen scan starts from futureReleaseStart. Out-of-range
-// row values are silently ignored.
 func (s *playbackSlate) invalidateReconciledRow(row int) {
 	g := s.g
 	if row < 0 || row >= len(g.reconciledUpToByRow) {
@@ -87,9 +80,6 @@ func (s *playbackSlate) invalidateReconciledRow(row int) {
 	g.reconciledUpToByRow[row] = -1
 }
 
-// invalidateReconciledAll resets every row's reconciliation watermark. Used
-// when an event affects all rows globally (predictor SetPaths, Stop reset,
-// row count grow).
 func (s *playbackSlate) invalidateReconciledAll() {
 	g := s.g
 	for i := range g.reconciledUpToByRow {

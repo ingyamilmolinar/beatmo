@@ -2,20 +2,9 @@ package ui
 
 import "math"
 
-// sidebar_icons.go houses pure layout/math helpers for filled-triangle
-// shapes (right-pointing and down-pointing). The sidebar's expand/collapse
-// indicators now render via the shared icon-system chevron (drawMenuChevron),
-// so these helpers are retained only as standalone, pixel-tested geometry.
-// Keeping the math here makes the shape testable without an *ebiten.Image.
+// Kept as standalone, pixel-tested geometry; the sidebar now uses the shared chevron.
 
-// triangleRightRowSpan returns the [xStart, xEnd) horizontal span of the
-// `row`-th scanline of a right-pointing filled triangle anchored at
-// (x, y) with size (w, h). The triangle's tip is at the right edge,
-// vertically centered. xEnd <= xStart means "this row is empty".
-//
-// The leftmost column is at x for every row; the right edge approaches
-// x+w at the vertical midline and tapers back toward x at the top and
-// bottom, using a `1 - dist/halfHeight` formulation.
+// xEnd <= xStart means the row is empty.
 func triangleRightRowSpan(x, y, w, h, row int) (xStart, xEnd int) {
 	if w <= 0 || h <= 0 || row < 0 || row >= h {
 		return x, x
@@ -29,13 +18,7 @@ func triangleRightRowSpan(x, y, w, h, row int) (xStart, xEnd int) {
 	return x, x + int(math.Round(t*float64(w)))
 }
 
-// triangleDownRowSpan returns the [xStart, xEnd) span of the `row`-th
-// scanline of a down-pointing filled triangle anchored at (x, y) with
-// size (w, h). Top row is full width; rows narrow linearly to a single
-// pixel at the bottom-center.
-//
-// The very last row falls back to a single pixel at the tip; this helper
-// returns that span explicitly so the drawing code stays branch-free.
+// The last row is the single tip pixel, returned explicitly so drawing stays branch-free.
 func triangleDownRowSpan(x, y, w, h, row int) (xStart, xEnd int) {
 	if w <= 0 || h <= 0 || row < 0 || row >= h {
 		return x, x

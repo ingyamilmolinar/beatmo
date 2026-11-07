@@ -8,9 +8,7 @@ import (
 )
 
 func (dv *DrumView) bg(w, h int) *ebiten.Image {
-	// Keyed on ThemeGeneration: the fill is colBGBottom, so a runtime theme
-	// change must rebuild it (it used to keep the previous theme's background
-	// until a resize).
+	// Keyed on ThemeGeneration: the fill is a theme color.
 	if dv.bgDirty || len(dv.bgCache) == 0 || !dv.bgCache[0].Bounds().Eq(image.Rect(0, 0, w, h)) || dv.bgCacheThemeGen != ThemeGeneration() {
 		dv.bgCacheThemeGen = ThemeGeneration()
 		for _, old := range dv.bgCache {
@@ -25,9 +23,6 @@ func (dv *DrumView) bg(w, h int) *ebiten.Image {
 	return dv.bgCache[0]
 }
 
-// updateRowRects updates positions of existing per-row widgets without
-// reallocating them. It computes the geometry based on the current bounds,
-// visible window, and scroll offset. This keeps per-frame work minimal.
 func (dv *DrumView) updateRowRects() {
 	if len(dv.Rows) == 0 {
 		return
@@ -35,8 +30,7 @@ func (dv *DrumView) updateRowRects() {
 	if dv.mainVolSlider() != nil {
 		dv.mainVolSlider().SetRect(dv.mainVolRect)
 	}
-	// Ensure we have widgets for each row. This is a safety net for callers
-	// that may have changed the number of rows without invoking calcLayout yet.
+	// Callers may change the row count without running calcLayout first.
 	if dv.rowEntryCount() != len(dv.Rows) {
 		// Full rebuild on mismatch to guarantee integrity.
 		dv.calcLayout()
@@ -50,9 +44,7 @@ func (dv *DrumView) updateRowRects() {
 		w = dv.Bounds.Dx() - dv.labelW - dv.controlsW
 	}
 	dv.cell = w / len(dv.Rows[0].Steps)
-	// Delegate repositioning to the RowRackZone — via the tree so the
-	// HitIndex republish can never be skipped (this runs every Draw and
-	// used to silently consume the zone's needLayout republish signal).
+	// Via the tree, so the zone's HitIndex republish can never be skipped.
 	dv.tree.LayoutZoneNow("row-rack")
 }
 

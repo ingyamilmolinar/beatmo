@@ -8,8 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
-// SetSubdivisions updates the grid subdivisions-per-beat (allowed: 4,8,16,32).
-// It is only applied when playback is stopped to avoid mid-flight desyncs.
+// Only while stopped, to avoid mid-flight desyncs.
 func (g *Game) SetSubdivisions(n int) error {
 	if err := g.validateSubdivisions(n); err != nil {
 		return err
@@ -45,11 +44,8 @@ func (g *Game) SetSubdivisions(n int) error {
 			subs[i].MinPx = 8
 		}
 	}
-	// oldDiv already captured above
-	// Scale node coordinates proportionally without incorporating groove timing.
-	// Groove settings remain unchanged - they apply at playback time relative to
-	// the subdivision, so timing is preserved naturally. This approach ensures
-	// edges between connected nodes remain orthogonal after the transformation.
+	// Groove is relative to the subdivision, so scaling coordinates preserves timing and keeps edges
+	// orthogonal.
 	for id, node := range g.graph.Nodes {
 		if node.Type == model.NodeTypeInvisible {
 			continue
@@ -91,9 +87,7 @@ func (g *Game) SetSubdivisions(n int) error {
 		g.state.SetLastProg(0)
 	}
 	g.grid.SetSubs(subs)
-	// Sync UI node coordinates (I,J,X,Y) to the remapped graph nodes so hit
-	// tests and add/remove operations continue to work after subdivision
-	// changes. Use the new grid unit for world coordinates.
+	// So hit tests and edits keep working at the new grid unit.
 	unit := g.grid.Unit()
 	for _, un := range g.nodes {
 		if mn, ok := g.nodeSnapshot(un.ID); ok {
@@ -108,9 +102,7 @@ func (g *Game) SetSubdivisions(n int) error {
 		}
 	}
 	g.edgesDirty = true
-	// Subdivision changes invalidate prior timeline commits recorded at the
-	// previous resolution. Clear timeline/parity state so playback/history
-	// can rebuild under the new grid without mismatched absolute indices.
+	// Old commits are at the old resolution, so their absolute indices no longer match.
 	g.timeline = timeline.NewService()
 	g.playedGraveyard = nil
 	if len(g.frozenUpToByRow) != len(g.drum.Rows) {
@@ -137,10 +129,7 @@ func (g *Game) validateSubdivisions(n int) error {
 	if g.grid != nil {
 		oldDiv = g.grid.MaxDiv()
 	}
-	// Disallow lowering resolution when explicit nodes would fall off-grid.
-	// A node at coordinates (I,J) in oldDiv units is representable at the new
-	// grid iff I and J are multiples of (oldDiv/newDiv). Ignore invisible
-	// intermediates; only explicit audible/silent nodes gate this change.
+	// Lowering is refused when an explicit node would fall off-grid; invisible intermediates do not count.
 	if n < oldDiv {
 		if oldDiv%n != 0 {
 			return fmt.Errorf("cannot change subdiv: %d not a divisor of %d", n, oldDiv)
@@ -160,37 +149,21 @@ func (g *Game) validateSubdivisions(n int) error {
 
 // Removed global swing and per-instrument micro-delays; playback timing derives only from per-node groove settings.
 
-// nodeNudgeSeconds reads the selected node's NudgePct and converts it into seconds
-// as a fraction of an 8th note at the current BPM. Negative values are clamped
-// to zero at scheduling time to avoid past timestamps; UI may still store them.
-// nodeNudgeSecondsAt returns the groove offset in seconds for a beat event at
-// (row, idx). If the current node has no groove configured, it falls back to
-// the most recent regular node before idx (within a reasonable search window)
-// so per-node groove can apply to the immediately following trigger.
+// A fraction of a subdivision at the current BPM. Negative values are clamped at scheduling time
+// so nothing lands in the past.
 func (g *Game) nodeNudgeSecondsAt(row, idx int, info model.BeatInfo) float64 {
-	// identify the BeatInfo at this row/idx for the primary row context if necessary
-	// We only need BPM and grid to compute seconds per 8th; NodeParams are applied
-	// in scheduleSound via the currently-resolved node.
 	bpm := g.AppliedBPM()
 	if bpm <= 0 || g.grid == nil {
 		return 0
 	}
-	// helper to compute seconds per subdivision and scale from groove pct
-	// One subdivision duration
 	secPerBeat := 60.0 / float64(bpm)
 	sub := g.grid.MaxDiv()
 	if sub <= 0 {
 		return 0
 	}
 	secPerSub := secPerBeat / float64(sub)
-	// A beat that carries a node plays that node's OWN groove — and nothing
-	// else. Groove is a per-node parameter: a node with none is on the grid.
-	//
-	// This used to fall through to the back-search below whenever the node had
-	// no groove, so the nearest grooved node within two beats lent it its
-	// offset. One swung offbeat therefore dragged the following downbeat (and
-	// every ungrooved note after it) by the same amount, which turns swing into
-	// a plain shift of the whole phrase. Guard: TestGrooveAppliesOnlyToItsOwnNode.
+	// A beat with a node plays that node's OWN groove and nothing else: borrowing a neighbour's offset
+	// turned one swung offbeat into a shift of the whole phrase.
 	if info.NodeID != model.InvalidNodeID {
 		if n, ok := g.nodeSnapshot(info.NodeID); ok {
 			if n.Params.GrooveKind != model.GrooveNone && n.Params.GroovePct != 0 {
@@ -199,9 +172,7 @@ func (g *Game) nodeNudgeSecondsAt(row, idx int, info model.BeatInfo) float64 {
 			return 0
 		}
 	}
-	// A beat with no resolvable node: search backwards for the most recent
-	// regular node and apply its groove.
-	// Limit search to two beats worth of subdivisions to bound cost.
+	// No resolvable node: borrow the most recent regular node's groove, searching at most two beats.
 	maxBack := sub * 2
 	for j := idx - 1; j >= 0 && j >= idx-maxBack; j-- {
 		bi := g.beatInfoAtRow(row, j)

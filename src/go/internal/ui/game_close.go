@@ -8,26 +8,16 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// closeJoinTimeout caps how long Close() waits for bpmLoop/audioLoop to drain
-// after their channels are closed. The loops typically return within ~1ms
-// (their blocking points are the channel receives we just closed). A longer
-// guard would only mask a genuine hang.
+// The loops return within ~1 ms; a longer wait would only mask a real hang.
 const closeJoinTimeout = 250 * time.Millisecond
 
-// Close performs a full teardown of the game: stops background goroutines,
-// closes channels, joins the goroutines, and releases the audio device. It
-// is called on graceful shutdown (OS signals, window close, t.Cleanup) and
-// is safe to call multiple times.
-//
-// Ordering: cancel/close upstream signals FIRST so receivers unblock, then
-// Wait on the WaitGroup. Closing audio.* before the receivers exit would
-// race the audioLoop's dispatch path.
+// Idempotent. Signals close first so receivers unblock, then the loops are joined; closing audio
+// first would race audioLoop's dispatch.
 func (g *Game) Close() {
 	if g == nil || g.closed {
 		return
 	}
-	// Stop audioLoop's opportunistic seqScheduleTime refills before any
-	// channels go away so audioCh drains and the audioQuit select wins.
+	// Before any channel goes away, so audioCh drains and the audioQuit select wins.
 	g.closing.Store(true)
 	// Never leave committed lane voices playing after the Game is gone.
 	if g.audioLaneOn() {
@@ -42,16 +32,13 @@ func (g *Game) Close() {
 		g.recordStopUnsub()
 		g.recordStopUnsub = nil
 	}
-	// The locale registry is process-global too; without this every closed
-	// Game stayed reachable through its DrumView's OnLocaleChanged.
+	// The locale registry is process-global; without this a closed Game stays reachable.
 	if g.i18nCancel != nil {
 		g.i18nCancel()
 		g.i18nCancel = nil
 	}
 	unregisterGameForTest(g)
-	// The palette is package state; a Game that applied a theme (scene setup,
-	// an imported circuit) must not leak it into the next Game — test suites
-	// build hundreds of Games in one process. Production closes once, at exit.
+	// The palette is package state: tests build hundreds of Games per process.
 	if !g.circuitTheme.IsEmpty() || !g.userTheme.Doc.IsEmpty() || !ActiveTheme().IsEmpty() {
 		ApplyTheme(theme.Doc{})
 	}
@@ -75,18 +62,14 @@ func (g *Game) Close() {
 			close(c)
 		}
 	}
-	// audioCh is intentionally NOT closed: audioLoop writes back into it via
-	// the opportunistic seqScheduleTime drive, and closing a channel that is
-	// still being sent to panics. audioLoop exits on audioQuit instead.
+	// audioCh stays open: audioLoop still sends into it. It exits on audioQuit.
 	if g.audioQuit != nil {
 		safeClose(g.audioQuit)
 	}
 	if g.bpmCh != nil {
 		safeClose(g.bpmCh)
 	}
-	// Wait for audioLoop + bpmLoop to drain and return. A bounded wait
-	// converts a "goleak fires at TestMain teardown" failure mode into a
-	// loud, local "Close() timed out" log, which is far easier to bisect.
+	// A bounded wait turns a goleak failure at TestMain into a local, bisectable timeout.
 	done := make(chan struct{})
 	go func() {
 		g.bgWG.Wait()

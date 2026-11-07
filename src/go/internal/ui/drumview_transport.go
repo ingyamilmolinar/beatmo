@@ -30,8 +30,7 @@ func (dv *DrumView) PlayPressed() bool {
 // SetPlaying updates the play button label to reflect playback state.
 func (dv *DrumView) SetPlaying(p bool) {
 	dv.isPlaying = p
-	// The subdivision selector is disabled during playback; if its menu is open
-	// when playback starts, close it so a stale selection can't slip through.
+	// The selector is disabled while playing, so close its menu before a stale pick slips through.
 	if p && dv.subdivMenuComp != nil && dv.subdivMenuComp.IsOpen() {
 		dv.subdivMenuComp.Close()
 		dv.closeSubdivMenuPortal()
@@ -64,12 +63,8 @@ func (dv *DrumView) StopPressed() bool {
 	return false
 }
 
-// TriggerPlayPause sets the one-frame play/pause pulse, exactly as the
-// on-screen Play button does. Consumed by Game.Update via PlayPressed().
 func (dv *DrumView) TriggerPlayPause() { dv.playPressed = true }
 
-// TriggerStop sets the one-frame stop pulse, exactly as the Stop button does.
-// Consumed by Game.Update via StopPressed().
 func (dv *DrumView) TriggerStop() { dv.stopPressed = true }
 
 // RecordPressed returns true (once) if the record button was pressed.
@@ -107,9 +102,7 @@ func (dv *DrumView) SetBPM(b int) {
 		prev := dv.BPM()
 		dv.transportZone.SetBPM(b)
 		dv.bpm = dv.transportZone.BPM()
-		// Sync error animation bidirectionally: take the higher value so
-		// that both zone-generated errors (clamping) and DrumView-generated
-		// errors (invalid text input) are preserved.
+		// Take the higher value, keeping both clamp errors and text-input errors.
 		if dv.transportZone.BPMErrorAnim() > dv.bpmErrorAnim {
 			dv.bpmErrorAnim = dv.transportZone.BPMErrorAnim()
 		}
@@ -153,10 +146,7 @@ func (dv *DrumView) OffsetChanged() bool {
 	return false
 }
 
-// FollowPlayback reports whether the drum view auto-scrolls with playback.
-// TransportZone is the single source of truth; this is a thin delegator.
-// When TransportZone is absent (test-only DrumViews built without one), the
-// historical default of true is preserved.
+// TransportZone owns the state; true for DrumViews built without one (tests).
 func (dv *DrumView) FollowPlayback() bool {
 	if dv.transportZone != nil {
 		return dv.transportZone.FollowPlayback()
@@ -164,9 +154,6 @@ func (dv *DrumView) FollowPlayback() bool {
 	return true
 }
 
-// SetFollow toggles whether the drum view auto-scrolls with playback. It
-// delegates to TransportZone, the single source of truth; TransportZone is
-// responsible for syncing the track button visual via OnFollowChange.
 func (dv *DrumView) SetFollow(f bool) {
 	if dv.transportZone != nil {
 		dv.transportZone.SetFollow(f)
@@ -175,22 +162,14 @@ func (dv *DrumView) SetFollow(f bool) {
 	// No TransportZone (rare test-only path) — log-only no-op.
 }
 
-// syncTrackBtnVisual delegates to TransportZone, which owns the track button
-// and the follow state.
 func (dv *DrumView) syncTrackBtnVisual() {
 	if dv.transportZone != nil {
 		dv.transportZone.syncTrackBtnVisual()
 	}
 }
 
-// TrackBeat adjusts the drum view offset to keep the given beat visible when
-// auto-tracking is enabled.
-//
-// The recenter target is `length * RibbonPlayheadFrac` from the LEFT of the
-// visible window, matching the timeline ribbon's playhead cursor (pinned at
-// the same fraction of the bar width). Using 0.5 here would put the cell
-// flash at the drum-view midpoint while the ribbon cursor sits at ~0.70,
-// visibly desyncing the two playheads once the ribbon window starts sliding.
+// Recenters to RibbonPlayheadFrac of the window, where the ribbon's cursor is pinned; 0.5 would
+// put the cell flash somewhere the ribbon cursor is not.
 func (dv *DrumView) TrackBeat(cur int) {
 	if !dv.FollowPlayback() {
 		return
@@ -207,13 +186,8 @@ func (dv *DrumView) TrackBeat(cur int) {
 	if tb > dv.timelineBeats {
 		dv.timelineBeats = tb
 	}
-	// Dead-zone centered on the same column the ribbon cursor pins to. Kept
-	// tight (±1 cell) so the cell-highlight column stays visually locked to
-	// the ribbon cursor; the wider band the old code used produced a
-	// recenter every length/4 ticks during playback, and between recenters
-	// the cell highlight drifted several cells away from the cursor.
-	// Incremental row-sprite shifting (see drumview_cache_row_sprite.go)
-	// makes per-tick offset updates cheap.
+	// A tight (±1 cell) dead zone keeps the highlighted column locked to the ribbon cursor;
+	// incremental sprite shifting makes per-tick offsets cheap.
 	if dv.Length > 0 {
 		const recenterDeadZone = 1
 		targetCol := int(math.Round(float64(dv.Length) * frac))
@@ -227,10 +201,7 @@ func (dv *DrumView) TrackBeat(cur int) {
 		}
 		if left <= right && cur >= left && cur <= right {
 			if runningUnderGoTest() && trackBeatForceRefreshUnderTest {
-				// In tests, force a cache refresh to satisfy visibility assertions even
-				// when the offset stays within the current window. Perf tests that
-				// measure the PRODUCTION recomposite cadence disable this via
-				// SetTrackBeatForceRefreshForTest(false).
+				// Tests force a refresh for visibility assertions; perf tests disable it to measure the real cadence.
 				dv.offsetChanged = true
 			}
 			return
@@ -242,8 +213,7 @@ func (dv *DrumView) TrackBeat(cur int) {
 		desiredF = 0
 	}
 	desired := int(math.Round(desiredF))
-	// Clamp to timeline range so preview doesn't go blank when cur grows.
-	// Clamp offset in subdivision units
+	// Clamped so the preview never goes blank as cur grows.
 	maxOff := int(math.Round(float64(dv.timelineBeats)*units - length))
 	if maxOff < 0 {
 		maxOff = 0
@@ -256,21 +226,13 @@ func (dv *DrumView) TrackBeat(cur int) {
 		dv.offsetChanged = true
 		dv.logger.Tracef("[drumview/track] cur=%d offset->%d", cur, dv.Offset)
 	} else if runningUnderGoTest() && trackBeatForceRefreshUnderTest {
-		// In tests, force a cache refresh to satisfy visibility assertions even
-		// when the offset stays within the current window.
 		dv.offsetChanged = true
 	}
 }
 
-// trackBeatForceRefreshUnderTest gates the test-only "force a cache refresh
-// every TrackBeat" behavior. It defaults true so existing visibility tests are
-// unaffected; perf tests that measure the real production recomposite cadence
-// flip it false via SetTrackBeatForceRefreshForTest so the dead-zone short-
-// circuit behaves exactly as it does in the browser/desktop binary.
+// Perf tests turn this off so the dead-zone short-circuit behaves as in the real binary.
 var trackBeatForceRefreshUnderTest = true
 
-// SetTrackBeatForceRefreshForTest toggles the test-only TrackBeat force-refresh
-// and returns a restore func. Test seam only — see trackBeatForceRefreshUnderTest.
 func SetTrackBeatForceRefreshForTest(v bool) func() {
 	prev := trackBeatForceRefreshUnderTest
 	trackBeatForceRefreshUnderTest = v
@@ -292,10 +254,7 @@ func (dv *DrumView) SetLength(length int) {
 	}
 	dv.SetBeatLength(dv.Length)
 	if length != prev {
-		// Cell pitch is (w/Length); a Length change resizes every cell. The
-		// row sprite cache and rows-layer composite must be fully invalidated
-		// so the shift-and-fill path doesn't blend old-pitch and new-pitch
-		// pixels across the row.
+		// A Length change resizes every cell, so shift-and-fill would mix old- and new-pitch pixels.
 		dv.invalidateRowCaches()
 		dv.markAllRowsDirty()
 	}
@@ -308,10 +267,7 @@ func (dv *DrumView) SetLength(length int) {
 	}
 }
 
-// SetLengthClamped sets the visible drum view length, clamping to
-// screen-aware limits so cells remain readable. The unclamped value is
-// stored as the graph/timeline beat length so the full circuit stays
-// scrollable.
+// The unclamped value stays the timeline length, so the whole circuit remains scrollable.
 func (dv *DrumView) SetLengthClamped(length int) {
 	if length < 1 {
 		length = 1
@@ -330,9 +286,7 @@ func (dv *DrumView) SetLengthClamped(length int) {
 		r.CellTypes = make([]model.NodeType, dv.Length)
 	}
 	if length != prev {
-		// Same rationale as SetLength: Length change resizes every cell, so
-		// the row sprite + composite caches must fully invalidate to avoid
-		// the shift-and-fill path blending pitches.
+		// A Length change resizes every cell, so shift-and-fill would mix old- and new-pitch pixels.
 		dv.invalidateRowCaches()
 		dv.markAllRowsDirty()
 	}
@@ -358,8 +312,6 @@ func (dv *DrumView) SetInstrument(id instrument.ID) {
 	}
 	// Lazily load sample-backed instruments when first selected.
 	_ = audio.EnsureInstrumentLoaded(id)
-	// Clamp selected row to valid range to avoid out-of-bounds when rows were
-	// recently added/removed or after import/naming flows.
 	if dv.selRow < 0 || dv.selRow >= len(dv.Rows) {
 		if len(dv.Rows) == 0 {
 			return
@@ -371,10 +323,8 @@ func (dv *DrumView) SetInstrument(id instrument.ID) {
 	if oldID != id && dv.onStructuralMutation != nil {
 		dv.onStructuralMutation("instrument-change")
 	}
-	// A pick is a copy of the library entry (spec 2026-10-04 §6): edits live
-	// with the rows using an instrument, so when no other row uses id, a copy
-	// left edited by rows that have since moved off it starts over from the
-	// library.
+	// A pick copies the library entry: when no other row uses id, a copy edited by rows that have
+	// since moved off it starts over from the library.
 	if oldID != id && id != "" && !dv.rowUsesInstrument(id, dv.selRow) && audio.InstrumentDocModified(id) {
 		audio.ResetInstrumentParams(id)
 	}
@@ -391,10 +341,7 @@ func (dv *DrumView) SetInstrument(id instrument.ID) {
 			dv.instMenuActiveByRow[dv.selRow] = cat
 		}
 	}
-	// Color is bound to the row INDEX (pure sequential series), not the
-	// instrument id — changing the instrument keeps the row's color. A manual
-	// pick via SetRowColor is the only way to change it.
-	// Update label text and style immediately; also mark layout dirty so full rebuild
+	// Color belongs to the row index, not the instrument, so a swap keeps it.
 	if dv.selRow < len(dv.rowLabels()) {
 		dv.rowLabels()[dv.selRow].Text = dv.Rows[dv.selRow].Name
 		if dv.IsInstrumentAvailable(id) {
@@ -403,18 +350,12 @@ func (dv *DrumView) SetInstrument(id instrument.ID) {
 			dv.rowLabels()[dv.selRow].Style = MissingInstStyle
 		}
 	}
-	// Instrument changes also update the row color; invalidate row caches so the
-	// visible window updates immediately during playback (not only as the window
-	// scrolls and the incremental strip redraws).
+	// So the visible window updates during playback, not only as it scrolls.
 	dv.markRowDirty(dv.selRow)
 	// Also invalidate the row controls cache so the label button text is redrawn.
 	dv.markRowControlsDirty()
 	dv.bgDirty = true
-	// Pre-warm the newly-selected instrument's voice cache so the first notes
-	// after the switch hit a warm cache instead of a cold per-pitch render
-	// during playback (the browser "click + laggy" on instrument switch). Only
-	// on an actual change, and off the hot path (browser: render worker;
-	// desktop: cheap inline render). See audio.WarmInstrument.
+	// Warm the new instrument's voices off the hot path, or the first notes after a switch render cold.
 	if oldID != id && id != "" {
 		audio.WarmInstrument(id, audio.DefaultWarmPitches)
 	}
@@ -447,16 +388,12 @@ func (dv *DrumView) CycleInstrument() {
 	}
 }
 
-// wavInstrumentID is the id of the WAV instrument the user named name: a user
-// sample id derived from the name alone, so loading another file under the
-// same name updates that instrument. It is never a built-in's id, whatever
-// the name says — a WAV called "Kick" is its own instrument, not the kick.
+// Derived from the name alone, so a new file under the same name updates that instrument; never
+// a built-in's id ("Kick.wav" is its own instrument).
 func wavInstrumentID(name string) instrument.ID {
 	return instrument.UserSampleID(crc32.ChecksumIEEE([]byte("wav|" + strings.ToLower(name))))
 }
 
-// registerInstrument loads the pending WAV as the instrument the user named
-// name (the text typed in the naming prompt; the instrument's display name).
 func (dv *DrumView) registerInstrument(name string) {
 	name = strings.TrimSpace(name)
 	if name == "" {

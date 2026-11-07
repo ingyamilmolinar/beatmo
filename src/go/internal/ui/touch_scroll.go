@@ -30,8 +30,7 @@ func (ts *TouchScroller) Begin(x, y int) {
 	ts.isVert = false
 }
 
-// Move processes a touch move and returns the vertical pixel delta.
-// Returns 0 if direction hasn't been committed yet or if horizontal.
+// 0 until a vertical direction is committed.
 func (ts *TouchScroller) Move(x, y int) float64 {
 	if !ts.active {
 		return 0
@@ -39,14 +38,8 @@ func (ts *TouchScroller) Move(x, y int) float64 {
 	if !ts.dirLocked {
 		dx := x - ts.startX
 		dy := y - ts.startY
-		// Per-axis dead zone, matching the gesture detector's tap threshold
-		// (gesture.go: a touch is a TAP while dx <= tapMaxMovePx && dy <=
-		// tapMaxMovePx). A Euclidean check here was STRICTER than that box —
-		// e.g. an (8,8) real-finger jitter is Euclidean 11.3 (>10) yet per-axis
-		// 8 (a tap) — so it committed a scroll and cancelled the deferred tap,
-		// making instrument-menu items unselectable on real iPhone Safari while
-		// open/scroll worked. Keeping the two thresholds identical means any
-		// movement the gesture layer calls a tap never commits a scroll here.
+		// Per axis, matching the gesture detector's tap box exactly: a stricter Euclidean check committed
+		// scrolls on finger jitter the detector called a tap, cancelling the tap.
 		if abs(dx) <= touchScrollDeadZone && abs(dy) <= touchScrollDeadZone {
 			return 0
 		}
@@ -79,8 +72,7 @@ func (ts *TouchScroller) End() float64 {
 	return vel
 }
 
-// UpdateMomentum applies friction and returns the scroll delta for this frame.
-// Call once per frame after the touch has ended.
+// Once per frame after the touch ended.
 func (ts *TouchScroller) UpdateMomentum() float64 {
 	if math.Abs(ts.velocity) < touchScrollMinVel {
 		ts.velocity = 0
@@ -94,9 +86,7 @@ func (ts *TouchScroller) UpdateMomentum() float64 {
 // Active reports whether a touch is currently being tracked.
 func (ts *TouchScroller) Active() bool { return ts.active }
 
-// ScrollingCommitted reports whether the user has moved past the dead zone
-// and committed to a vertical scroll. Before this point, the touch could be
-// a tap on a button rather than a scroll gesture.
+// Before this, the touch may still be a tap.
 func (ts *TouchScroller) ScrollingCommitted() bool {
 	return ts.active && ts.dirLocked && ts.isVert
 }

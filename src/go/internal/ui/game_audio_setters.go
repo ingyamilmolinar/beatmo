@@ -5,9 +5,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
-// SetMasterVolume sets the master output volume (0..1) and syncs the
-// transport-bar slider so the UI matches. Mirrors the slider callback in
-// drumview_ctor.go.
 func (g *Game) SetMasterVolume(v float64) {
 	if v < 0 {
 		v = 0
@@ -56,8 +53,6 @@ func (g *Game) SetEQLPF(enabled bool, cutoffHz float64) {
 	g.drum.syncFilterButtonStyles()
 }
 
-// SetEQBandGain sets the gain (in dB) for a band on the given channel.
-// ch: channel.Master or an instrument's channel.
 func (g *Game) SetEQBandGain(ch channel.ID, band int, gainDB float64) {
 	if g.drum == nil {
 		return
@@ -70,11 +65,7 @@ func (g *Game) SetEQBandGain(ch channel.ID, band int, gainDB float64) {
 	if g.drum.eqPanelZone != nil && len(g.drum.eqPanelZone.bandGainsDB) == len(gains) {
 		copy(g.drum.eqPanelZone.bandGainsDB, gains)
 		copy(g.drum.eqPanelZone.bandMuted, muted)
-		// Invalidate the panel's own curve cache so the EQ-tab plot redraws
-		// with the new gains. Without this the panel's drawEQCurve keeps
-		// serving the stale cache (DrumView.eqCurveDirty drives a different
-		// curve), which is why band-adjusted scenes rendered identically to
-		// the flat-EQ base.
+		// The panel has its own curve cache, separate from DrumView.eqCurveDirty.
 		g.drum.eqPanelZone.curveDirty = true
 		g.drum.eqPanelZone.curveCache = nil
 	}

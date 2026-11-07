@@ -6,12 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// node_type_cycle.go — the node type cycle and the chord builder's one
-// mutation path (docs/superpowers/specs/2026-10-09-chord-nodes-design.md §3).
-
-// nextNodeType is the sidebar's type cycle:
-// Regular → Chord → Silent → Mute → Regular. Chord is skipped when the row's
-// instrument is unpitched (no notes to stack).
+// Regular → Chord → Silent → Mute; Chord is skipped on an unpitched instrument.
 func nextNodeType(cur model.NodeType, pitched bool) model.NodeType {
 	switch cur {
 	case model.NodeTypeRegular:
@@ -28,8 +23,7 @@ func nextNodeType(cur model.NodeType, pitched bool) model.NodeType {
 	}
 }
 
-// nodeIsPitched reports whether the node's row instrument names notes (the
-// same test the Pitch row's note chip uses).
+// The same test the Pitch chip uses.
 func (g *Game) nodeIsPitched(id model.NodeID) bool {
 	n, ok := g.graph.GetNodeByID(id)
 	if !ok {
@@ -47,10 +41,8 @@ func (g *Game) cycleNodeType(id model.NodeID) {
 	g.setNodeType(id, nextNodeType(n.Type, g.nodeIsPitched(id)))
 }
 
-// setNodeType changes a node's type. Entering Chord with no spec seeds the
-// default triad (one SetNodeParams, so the seed and the type change land in
-// the same undo step); the spec is otherwise left alone on every type, so a
-// collapsed chord comes back as it was.
+// Entering Chord with no spec seeds a triad in the same SetNodeParams (one undo step); otherwise the
+// spec stays, so a collapsed chord comes back as it was.
 func (g *Game) setNodeType(id model.NodeID, t model.NodeType) {
 	n, ok := g.graph.GetNodeByID(id)
 	if !ok || n.Type == t {
@@ -73,8 +65,7 @@ func (g *Game) setNodeType(id model.NodeID, t model.NodeType) {
 	emitNodeTypeChanged(id, old, t)
 }
 
-// setNodeChord is the chord builder's single mutation path (steppers and the
-// chord matrix): normalize, store, re-predict, announce (one undo step).
+// The chord builder's single mutation path; one undo step.
 func (g *Game) setNodeChord(id model.NodeID, c model.ChordSpec) {
 	n, ok := g.graph.GetNodeByID(id)
 	if !ok {
@@ -87,8 +78,7 @@ func (g *Game) setNodeChord(id model.NodeID, c model.ChordSpec) {
 	emitNodeChordChanged(id, p, g.nodeChordLabel(id))
 }
 
-// stepNodeChord moves the chord's inversion (field "inv") or spread
-// ("spr") by delta, clamped to the quality.
+// Clamped to the quality.
 func (g *Game) stepNodeChord(id model.NodeID, field sbField, delta int) {
 	n, ok := g.graph.GetNodeByID(id)
 	if !ok {
@@ -110,8 +100,7 @@ func (g *Game) stepNodeChord(id model.NodeID, field sbField, delta int) {
 	g.setNodeChord(id, c)
 }
 
-// nodeChordLabel names the chord a node sounds ("Cmaj7/E"), rooted on the
-// same MIDI note the Pitch chip would name (instrument offset included).
+// Rooted on the note the Pitch chip names.
 func (g *Game) nodeChordLabel(id model.NodeID) string {
 	n, ok := g.graph.GetNodeByID(id)
 	if !ok {
@@ -120,8 +109,7 @@ func (g *Game) nodeChordLabel(id model.NodeID) string {
 	return model.ChordName(g.nodeRootMIDI(id, n.Params.Pitch), n.Params.Chord)
 }
 
-// nodeRootMIDI is the MIDI note of a node pitch on its row's instrument
-// (nodePitchMIDI with the live instrument offset; offset 0 when unpitched).
+// Offset 0 when unpitched.
 func (g *Game) nodeRootMIDI(id model.NodeID, pitch float64) int {
 	offset := 0.0
 	if row, ok := g.nodeRows[id]; ok && row >= 0 && row < len(g.drum.Rows) {

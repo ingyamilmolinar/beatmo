@@ -6,13 +6,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// nodeCircuitPosition resolves a node's static position within its traversal
-// path. row is the node's row (from g.nodeRows); homeIdx is the first index at
-// which the node appears in that row's flattened path (beatInfosByRow), which is
-// the absolute subdivision count from the circuit's start. occurrences counts how
-// many times the node appears in one path slice (a self-crossing circuit visits a
-// node more than once). inCircuit is false when the node participates in no path
-// (a disconnected / open dead-end node), in which case it has no beat position.
+// homeIdx is the node's first index in its row's flattened path; occurrences > 1 for a
+// self-crossing circuit; inCircuit is false for a node on no path (no beat position).
 func (g *Game) nodeCircuitPosition(id model.NodeID) (homeIdx, occurrences, row int, inCircuit bool) {
 	r, ok := g.nodeRows[id]
 	if !ok || r < 0 || r >= len(g.beatInfosByRow) {
@@ -34,10 +29,7 @@ func (g *Game) nodeCircuitPosition(id model.NodeID) (homeIdx, occurrences, row i
 	return homeIdx, occurrences, r, true
 }
 
-// nodeTiming is the derived timing readout for one node: its static home position
-// in its circuit plus (during playback) its previous and next ACTUAL fire relative
-// to the playhead. "Actual" means honoring logic gates (probability, skip-every-N):
-// next is read from the Predictor, prev from the frozen Timeline.
+// Prev and next fires honour logic gates: next from the Predictor, prev from the frozen Timeline.
 type nodeTiming struct {
 	inCircuit   bool
 	homeIdx     int
@@ -50,9 +42,7 @@ type nodeTiming struct {
 	nextOK  bool
 }
 
-// nodeTimingMemo caches one nodeTiming keyed by node id + row path signature +
-// play state. It stays valid while the playhead sits within [prevIdx, nextIdx);
-// crossing nextIdx (or seeking back past prevIdx) forces a recompute.
+// Valid while the playhead stays within [prevIdx, nextIdx).
 type nodeTimingMemo struct {
 	valid    bool
 	id       model.NodeID
@@ -62,11 +52,8 @@ type nodeTimingMemo struct {
 	t        nodeTiming
 }
 
-// nodeLiveTiming returns the node's home position and its live last/next fire.
-// Next fire is sampled from the Predictor (future, honors logic gates); prev fire
-// from the Timeline (frozen past). Because each absolute index in a row maps 1:1
-// to one node, timeline.Committed's bool IS "did this node fire at idx". When
-// stopped, prev is omitted and next is computed from loop start (position 0).
+// Each absolute index in a row maps 1:1 to one node, so timeline.Committed IS "did this node fire".
+// Stopped: no prev, next from loop start.
 func (g *Game) nodeLiveTiming(id model.NodeID) nodeTiming {
 	home, occ, row, inCircuit := g.nodeCircuitPosition(id)
 	if !inCircuit {
@@ -102,8 +89,7 @@ func (g *Game) nodeLiveTiming(id model.NodeID) nodeTiming {
 
 	t := nodeTiming{inCircuit: true, homeIdx: home, occurrences: occ, row: row}
 
-	// One full loop period bounds every scan: a node fires at most once per period,
-	// so one period is enough to find the nearest fire or conclude there is none.
+	// A node fires at most once per period, so one period bounds every scan.
 	period := len(g.beatInfosByRow[row])
 	if g.isLoopByRow[row] {
 		period = len(g.beatInfosByRow[row]) - g.loopStartByRow[row]
@@ -156,10 +142,7 @@ func (g *Game) nodeLiveTiming(id model.NodeID) nodeTiming {
 	return t
 }
 
-// beatSlotLabel renders a subdivision index as "Beat N · k/D" — k of D
-// subdivisions into beat N — collapsing to just "Beat N" when the index lands
-// exactly on the beat (k == 0). The fraction is raw (den == MaxDiv), so the
-// midpoint between two beat-aligned nodes reads "4/8", not "1/2" or "5/8".
+// The fraction is raw (den == MaxDiv), so a midpoint reads "4/8", never "1/2".
 func (g *Game) beatSlotLabel(idx int) string {
 	beat, num, den := g.grid.BeatSlot(idx)
 	if num == 0 {
@@ -168,12 +151,6 @@ func (g *Game) beatSlotLabel(idx int) string {
 	return fmt.Sprintf("Beat %d · %d/%d", beat, num, den)
 }
 
-// formatNodeCoordHome renders the always-visible position line:
-//
-//	"(5, 2) · Beat 3 · 4/8"          — in a circuit, mid-beat
-//	"(5, 2) · Beat 3"                — in a circuit, exactly on the beat
-//	"(5, 2) · Beat 3 · 4/8 (+1)"     — appears more than once (self-crossing)
-//	"(9, 9) · off-circuit"           — participates in no path
 func (g *Game) formatNodeCoordHome(i, j int, t nodeTiming) string {
 	if !t.inCircuit {
 		return fmt.Sprintf("(%d, %d) · off-circuit", i, j)
@@ -185,8 +162,6 @@ func (g *Game) formatNodeCoordHome(i, j int, t nodeTiming) string {
 	return s
 }
 
-// formatNodeFireLine renders the live last/next line. Empty when off-circuit.
-// Stopped: "next  Beat 3 · 4/8". Playing: "last  Beat 2 · 4/8    next  Beat 6 · 4/8".
 // A missing side reads as an em dash.
 func (g *Game) formatNodeFireLine(t nodeTiming, playing bool) string {
 	if !t.inCircuit {

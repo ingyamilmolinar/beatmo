@@ -35,25 +35,16 @@ type SubdivMenuComponent struct {
 	props   SubdivMenuProps
 	state   SubdivMenuState
 	buttons []*Button
-	// cardRect is the contained popup surface (drawn as a single panel). It is
-	// positioned via AnchorPopupRect on rebuild so a bottom-row anchor never
-	// runs the menu off-screen, and so the items render as one card rather than
-	// floating chips.
+	// Positioned via AnchorPopupRect so a bottom-row anchor never runs the menu off-screen.
 	cardRect image.Rectangle
-	// screenBounds is the clamp region for AnchorPopupRect, fed by the portal
-	// opener (SetScreenBounds) since SubdivMenuProps carries no bounds field.
+	// Fed by the portal opener: SubdivMenuProps has no bounds field.
 	screenBounds image.Rectangle
-	// menuScroll shares the app-wide scroll component so a long options list
-	// (rare, but possible) scrolls like every other list menu.
-	menuScroll *MenuScroll
+	menuScroll   *MenuScroll
 
-	// nav is the shared keyboard cursor (arrows / Enter / Home / End).
-	// Lazily created by keyNav(); see menu_keynav.go.
 	nav *MenuKeyNav
 }
 
-// SetScreenBounds sets the clamp region used by AnchorPopupRect. The portal
-// opener calls this before Open so the menu positions inside the drum view.
+// Call before Open.
 func (s *SubdivMenuComponent) SetScreenBounds(b image.Rectangle) {
 	if b == s.screenBounds {
 		return
@@ -113,18 +104,12 @@ func (s *SubdivMenuComponent) IsOpen() bool {
 	return s.state.open
 }
 
-// Buttons returns the option buttons (in option order). Used by the legacy
-// hit-rect mirror (buildSubdivMenu) so JS exports and tests report the same
-// rects the card actually renders.
+// The same rects the card renders, so JS exports and tests agree with the screen.
 func (s *SubdivMenuComponent) Buttons() []*Button { return s.buttons }
 
 // CardRect returns the contained popup surface rect (empty when closed).
 func (s *SubdivMenuComponent) CardRect() image.Rectangle { return s.cardRect }
 
-// rebuildButtons recreates the menu buttons based on current props. The menu
-// renders as one contained card positioned via the shared AnchorPopupRect
-// primitive (flip + clamp). Desktop drops the card below the ÷n anchor; mobile
-// renders a full-width bottom sheet (mirrors the context menu).
 func (s *SubdivMenuComponent) rebuildButtons() {
 	s.buttons = s.buttons[:0]
 	s.cardRect = image.Rectangle{}
@@ -155,9 +140,7 @@ func (s *SubdivMenuComponent) rebuildButtons() {
 		}
 		s.cardRect = image.Rect(bounds.Min.X, bounds.Max.Y-cardH, bounds.Max.X, bounds.Max.Y)
 	} else {
-		// Desktop: size the card width from the widest RoleBody-styled label so
-		// "16"/"32" never truncate to "···". Width = widest label + icon-free
-		// padding; height = items + card padding.
+		// Sized from the widest label so "16"/"32" never truncate.
 		labelW := 0
 		for _, v := range s.props.Options {
 			if w := StyledTextWidth(fmt.Sprintf("%d", v), RoleBody); w > labelW {
@@ -192,9 +175,6 @@ func (s *SubdivMenuComponent) rebuildButtons() {
 	s.menuScroll.Configure(view, nOpts, visible)
 	offset := s.menuScroll.OffsetPx()
 
-	// Stacked items, uniform pitch. Active highlight is painted in Draw via
-	// drawMenuRow (shared menu-row renderer), so all buttons use the same base
-	// DropdownStyle.
 	itemX0 := s.cardRect.Min.X + pad
 	itemX1 := s.cardRect.Max.X - pad
 	for i, v := range s.props.Options {
@@ -216,15 +196,11 @@ func (s *SubdivMenuComponent) rebuildButtons() {
 	s.SetBounds(s.cardRect)
 }
 
-// HandleInput processes mouse input for the subdiv menu.
-// HoverAt implements portalHoverer: refreshes row hovered flags from the
-// plain cursor position each frame so the hover tint shows on desktop
-// (portal input handlers only run on press edges).
+// Portal input handlers only run on press edges, so hover needs its own per-frame pass.
 func (s *SubdivMenuComponent) HoverAt(mx, my int) {
 	for i, b := range s.buttons {
 		b.UpdateHover(mx, my)
-		// One highlight, shared with the keyboard: pointing at a row takes the
-		// cursor over so the mouse and the arrows can never light two rows.
+		// One highlight shared with the keyboard, so mouse and arrows never light two rows.
 		if b.hovered {
 			s.keyNav().BindHost(s)
 			s.keyNav().SetSelected(i)
@@ -239,8 +215,7 @@ func (s *SubdivMenuComponent) HandleInput(x, y int, pressed bool) InputResult {
 
 	pt := image.Pt(x, y)
 
-	// Scrollbar thumb drag is consumed first so a drag on the bar never falls
-	// through to the option buttons. Normal taps still reach the buttons below.
+	// First, so a drag on the bar never falls through to the options.
 	if s.menuScroll != nil {
 		if s.menuScroll.HandleScrollbarDrag(pt, pressed, s.rebuildButtons) {
 			return InputConsumed
@@ -271,9 +246,6 @@ func (s *SubdivMenuComponent) HandleInput(x, y int, pressed bool) InputResult {
 	return InputIgnored
 }
 
-// Draw renders the subdiv menu as one contained card surface with stacked
-// option buttons. The backdrop scrim is painted by the OverlayPortal
-// (PortalEntry.Scrim).
 func (s *SubdivMenuComponent) Draw(dst *ebiten.Image) {
 	if !s.state.open || s.cardRect.Empty() {
 		return
@@ -301,17 +273,11 @@ func (s *SubdivMenuComponent) Draw(dst *ebiten.Image) {
 	}
 }
 
-// drawSubdivRow renders one subdivision option row through the shared
-// drawMenuRow primitive (keycap chrome + press/hover animation). Current
-// subdivision → active with colTextAccent label; hover/press → hover; rest
-// = plain. Label is centered.
 func (s *SubdivMenuComponent) drawSubdivRow(dst *ebiten.Image, btn *Button, idx, v int) {
 	if btn.Rect().Empty() {
 		return
 	}
-	// Current subdivision → active; hover/press/keyboard cursor → hover.
-	// The keyboard cursor and the mouse share ONE highlight (see menu_keynav.go),
-	// so this reads both and never lights two rows.
+	// The keyboard cursor and the mouse share one highlight, so read both.
 	state := menuItemRest
 	var labelCol color.Color // nil → colTextPrimary in drawMenuRow
 	if v == s.props.Current {
@@ -342,8 +308,7 @@ func (s *SubdivMenuComponent) InputBounds() image.Rectangle {
 	return s.bounds.Union(s.props.AnchorRect)
 }
 
-// HandleWheel scrolls the options list when it overflows, and always consumes
-// the event to prevent pass-through to the grid beneath.
+// Always consumed, so nothing passes through to the grid.
 func (s *SubdivMenuComponent) HandleWheel(x, y, steps int) InputResult {
 	if !s.state.open {
 		return InputIgnored
@@ -355,17 +320,11 @@ func (s *SubdivMenuComponent) HandleWheel(x, y, steps int) InputResult {
 	return InputConsumed
 }
 
-// Update drives one frame of touch-fling momentum so a flick keeps scrolling
-// after the finger lifts — the inertial half of the shared instrument-menu feel,
-// and one frame of keyboard navigation (arrows / Enter / Home / End).
-// Called once per frame via the subdiv portal's updateFn.
 func (s *SubdivMenuComponent) Update() {
 	if !s.state.open {
 		return
 	}
-	// Momentum needs the scroller; keyboard navigation does NOT. A short option
-	// list never configures a MenuScroll, and gating both on it left such a menu
-	// (the jump-size picker) with no keyboard support at all.
+	// Momentum needs the scroller, keyboard navigation does not: a short list has no MenuScroll.
 	if s.menuScroll != nil {
 		s.menuScroll.Tick(s.rebuildButtons)
 	}
@@ -380,10 +339,7 @@ func (s *SubdivMenuComponent) keyNav() *MenuKeyNav {
 	return s.nav
 }
 
-// --- MenuKeyNavHost ---
-//
-// Every option row is a plain choice, so there is no unselectable chrome to
-// skip here (contrast the Templates menu, which interleaves group headers).
+// Every row is a plain choice: no unselectable chrome to skip.
 
 // MenuItemCount implements MenuKeyNavHost.
 func (s *SubdivMenuComponent) MenuItemCount() int { return len(s.props.Options) }
@@ -416,8 +372,6 @@ func (s *SubdivMenuComponent) MenuScrollBehavior() *ScrollBehavior {
 // MenuKeyNavForTest exposes the keyboard cursor for tests.
 func (s *SubdivMenuComponent) MenuKeyNavForTest() *MenuKeyNav { return s.keyNav() }
 
-// ClaimsKeyboard implements KeyboardClaimant: while this menu is open its
-// arrows/Enter drive the list, so the grid's arrow-pan must yield.
 func (s *SubdivMenuComponent) ClaimsKeyboard() bool { return s.state.open }
 
 // MenuScrollForTest exposes the scroll component for tests.

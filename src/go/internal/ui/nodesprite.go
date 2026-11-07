@@ -17,8 +17,6 @@ func rgba8(c color.Color) (r, g, b, a uint8) {
 	return uint8(cr), uint8(cg), uint8(cb), uint8(ca)
 }
 
-// buildNodeSprite renders a filled rectangle with a 1px border into a
-// screen-space image of size (2r)x(2r).
 func buildNodeSprite(fill, border color.Color, r int) *ebiten.Image {
 	if r < 1 {
 		r = 1

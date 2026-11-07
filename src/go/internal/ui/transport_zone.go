@@ -11,8 +11,7 @@ import (
 
 // audio import used indirectly via callbacks (GetMainVolume/SetMainVolume).
 
-// TransportCallbacks contains callbacks for the TransportZone to communicate
-// with the DrumView and audio engine. Zones don't reference Game or each other.
+// Zones never reference Game or each other.
 type TransportCallbacks struct {
 	OnPlayToggle     func()                             // play/pause pressed
 	OnStop           func()                             // stop pressed
@@ -41,14 +40,10 @@ type TransportCallbacks struct {
 	OnMasterVolClick func()       // delegates to DrumView's master vol popup
 	MasterVolPopup   *SliderPopup // forwarded to transportVolIconHitAdapter for drag-through
 
-	// PlaybackReady reports whether the readiness gate allows playback. nil ⇒
-	// always ready (tests / harnesses that build a bare zone).
+	// nil = always ready (bare zones in tests).
 	PlaybackReady func() bool
 }
 
-// TransportZone implements the Zone interface for the transport controls.
-// It owns the play/stop buttons, BPM controls, upload/import/export buttons,
-// master volume slider, and view mode / overflow buttons.
 type TransportZone struct {
 	rect       image.Rectangle
 	needLayout bool
@@ -82,12 +77,8 @@ type TransportZone struct {
 	bpmGroupRect       image.Rectangle // BPM box + inc/dec
 	transportGroupRect image.Rectangle // play + stop + record
 	fileOpsGroupRect   image.Rectangle // upload + import + export
-	// groupChrome paints the group containers (transport tray, BPM pill).
-	// Only mobile needs them: there the toolbar icons are bodiless and the
-	// container IS the control body. Desktop controls each carry their own
-	// keycap body, so a container around them only added a 2 px frame that
-	// stuck out above and below the run (DESIGN.md "Cluster alignment") —
-	// desktop groups are separated by spacing.cluster instead.
+	// Mobile only: there the toolbar icons are bodiless and the container IS the body. Desktop controls
+	// carry their own bodies, and a container only stuck out a 2 px frame.
 	groupChrome bool
 
 	// Animation state (decayed each frame)
@@ -130,43 +121,27 @@ type TransportZone struct {
 	// Hit areas cache (rebuilt on Layout)
 	hitAreas []HitArea
 
-	// Previous layout dimensions — drives the blur-on-resize behavior so
-	// the BPM box never carries a stale focus ring across orientation
-	// changes or window resizes.
+	// A size change blurs the BPM box, so no stale focus ring survives a resize or rotation.
 	prevLayoutRect image.Rectangle
 
-	// inputBlocked returns true when a popup/overlay is open; while blocked, an
-	// in-progress BPM edit is cancelled and a tap on the readout will not open
-	// the editor (see blockedAtTick). Set by DrumView wiring.
+	// While blocked, a BPM edit is cancelled and a tap on the readout opens nothing.
 	inputBlocked func() bool
 
-	// useBottomBar tells layoutMobile that DrumView has allocated a
-	// bottom action bar (B3 redesign) and will host vol-icon /
-	// view-switch / overflow there — so layoutMobile should clear those
-	// rects in the top toolbar and let DrumView place them. When false
-	// (ultra-short viewports where the bar collapses, see
-	// drumview_layout.go:49-64), layoutMobile falls back to the
-	// pre-Task-1.3 two-row layout that keeps those buttons inside the
-	// top toolbar so they remain reachable. DrumView sets this via
-	// SetUseBottomBar before each Layout call.
+	// true: DrumView hosts the vol/view buttons in its bottom bar, so clear them here. false (the bar
+	// collapsed on a short viewport): keep the two-row layout so they stay reachable. Set before each Layout.
 	useBottomBar bool
 
-	// barRect is the mobile bottom-action-bar bounds. Set by DrumView.calcLayout
-	// after it positions the bar; consumed by hit-area clip overrides for the
-	// vol/view/overflow buttons AND by the segmented view-switch (Phase 3).
+	// Set by DrumView after it positions the bar.
 	barRect image.Rectangle
 }
 
-// NewTransportZone creates a TransportZone with the provided callbacks.
-// Buttons are created internally; DrumView reads them via aliases.
+// DrumView reads the buttons through aliases.
 func NewTransportZone(cb TransportCallbacks) *TransportZone {
 	z := &TransportZone{
 		needLayout: true,
 		callbacks:  cb,
 		bpm:        120,
-		// follow defaults to true: timeline tracks the playhead until the
-		// user explicitly opts out. Single source of truth for the follow
-		// state on both desktop and mobile.
+		// The single source of the follow state on every platform.
 		follow: true,
 	}
 	z.initButtons()
@@ -175,11 +150,7 @@ func NewTransportZone(cb TransportCallbacks) *TransportZone {
 }
 
 func (z *TransportZone) initButtons() {
-	// Construct each button with a placeholder style; refreshProfileStyles
-	// (called at the end of this method and from Layout()) is the single
-	// authority for Style + IconColor, so a mobile\u2194desktop transition
-	// retints these buttons in real time without relying on construction-
-	// time profile sampling.
+	// refreshProfileStyles is the one authority for Style and IconColor, so a viewport switch retints live.
 	z.playBtn = NewButton("", nil, func() {
 		z.playPressed = true
 		z.playAnim = 1
@@ -211,15 +182,7 @@ func (z *TransportZone) initButtons() {
 	z.recordBtn.Icon = string(IconRecord)
 	z.recordBtn.IconColor = colRecordIdle
 
-	// Navigation now opens from the beat counter (see dv.OpenNavigation); the
-	// former transport "Navigate" (bullseye) button was removed.
-
-	// Undo / Redo render as vector icons (IconUndo / IconRedo) rather than
-	// text labels: the narrow desktop transport cell (~24px) clips a
-	// "Undo"/"Redo" text label down to the bare "..." ellipsis, which the
-	// user mistook for a broken overflow button. IconColor is retinted each
-	// frame (dim when the stack is empty) in syncUndoRedoVisual, called from
-	// decayAnims/Update.
+	// Icons, not text: the narrow cell clipped "Undo" to "...", which read as a broken overflow button.
 	z.undoBtn = NewSpecButton("", ComponentButtonSecondary, func() {
 		hapticTransportTap()
 		if z.callbacks.OnUndo != nil {
@@ -242,9 +205,7 @@ func (z *TransportZone) initButtons() {
 	z.bpmDecBtn.Repeat = true
 	z.bpmDecBtn.Icon = string(IconChevronDown)
 
-	// The BPM readout: display only (a tap opens the BPM value wheel —
-	// bpmOpenAdapter). Calm it to the on-surface-muted grey so the home row
-	// reads soft like the instrument labels rather than glaring white.
+	// Display only: a tap opens the BPM wheel.
 	z.bpmBox = newReadoutBox(BPMBoxStyle)
 	z.bpmBox.TextColor = colTextSecondary
 	z.bpmBox.SetText("120")
@@ -261,28 +222,16 @@ func (z *TransportZone) initButtons() {
 			z.callbacks.OnSubdivClick()
 		}
 	})
-	// Muted-grey label so the subdiv keycap reads soft like the rest of the
-	// recolored home row (disabled/latched states still override in Button.Draw).
+	// Disabled and latched states still override in Button.Draw.
 	z.subdivBtn.TextColor = colTextSecondary
 
 	z.trackBtn = NewButton("", nil, func() {
 		z.SetFollow(!z.follow)
 	})
-	// A compact keycap with the standard control radius, the same height and
-	// body as the beat counter beside it (layout: drumview_layout.go); its
-	// Style (TimelineKeycapStyle) is set by syncTrackBtnVisual below.
-	// Icon + IconColor are authoritative-set by syncTrackBtnVisual below.
+	// syncTrackBtnVisual sets the style, icon and color.
 	z.syncTrackBtnVisual()
 
-	// Phase 4 PR3 migration: file-ops buttons + mobile EQ toggle render via
-	// the generated `button-secondary` spec (Spec(ComponentButtonSecondary))
-	// — byte-equivalent to UploadBtnStyle / InstButtonStyle per
-	// TestComponentSpecsDrift, so this is a code-path swap, not a
-	// behavior change.
-	// IconColor for these three buttons flows from the generated
-	// ComponentButtonSecondary spec (DESIGN.md: iconColor: {colors.on-surface-muted}).
-	// SetSpec seeds b.IconColor at construction time; no explicit assignment
-	// here.
+	// The generated button-secondary spec seeds IconColor; nothing to assign here.
 	z.uploadBtn = NewSpecButton("", ComponentButtonSecondary, func() {
 		z.uploadAnim = 1
 		if z.callbacks.OnUploadClick != nil {
@@ -320,21 +269,11 @@ func (z *TransportZone) initButtons() {
 	z.viewSwitchBtn.Icon = string(IconAudio)
 	z.viewSwitchBtn.IconColor = colTextSecondary
 
-	// The overflow (kebab) button was removed; file options now open from the
-	// grid folder button (see Game.gridFileBtn / dv.OpenFileMenu).
-
-	// Single authority for every profile-dependent Style and IconColor.
-	// Called once here so the buttons are visually valid before Layout(),
-	// and re-called from Layout() so a mobile↔desktop viewport transition
-	// retints in real time (no construction-time sampling survives the
-	// transition).
+	// Before Layout so the buttons start valid; Layout re-runs it so a viewport switch retints live.
 	z.refreshProfileStyles()
 }
 
-// refreshProfileStyles re-derives every Button Style + IconColor in this
-// zone from the current LayoutProfile. Called from initButtons() at
-// construction and from Layout() every relayout. Idempotent — safe to
-// call every frame; runs in O(buttons).
+// Idempotent and O(buttons): safe every frame.
 func (z *TransportZone) refreshProfileStyles() {
 	p := Profile()
 	if z.playBtn != nil {
@@ -347,8 +286,7 @@ func (z *TransportZone) refreshProfileStyles() {
 	}
 	if z.recordBtn != nil {
 		z.recordBtn.Style = p.StopBtnStyle
-		// recordBtn.IconColor is dynamic (idle / armed) and managed
-		// elsewhere — do not overwrite it here.
+		// recordBtn.IconColor (idle/armed) is managed elsewhere.
 	}
 	if z.bpmDecBtn != nil {
 		z.bpmDecBtn.Style = p.BPMDecBtnStyle
@@ -364,10 +302,7 @@ func (z *TransportZone) refreshProfileStyles() {
 	if z.trackBtn != nil {
 		z.trackBtn.Style = p.TrackBtnStyle
 	}
-	// Mobile second-row recede: the view-switch control sits on surface-1 fill
-	// so the eye reads it as ancillary to the row 0 primary cluster
-	// (play/stop/record/bpm/subdiv on surface-2). Desktop uses the profile's
-	// ViewSwitchStyle directly.
+	// On mobile the view switch recedes onto surface-1, ancillary to the primary row.
 	if p.IsMobile() {
 		recede := ButtonStyleFromSpec(ComponentButtonSecondary)
 		recede.Fill = colSurface1
@@ -415,19 +350,13 @@ func (z *TransportZone) Layout(rect image.Rectangle) {
 	z.prevLayoutRect = rect
 	z.rect = rect
 	z.needLayout = false
-	// Re-derive profile-dependent button styles before laying out so a
-	// mobile↔desktop transition that occurred between frames is fully
-	// reflected in this Layout pass.
+	// So a viewport switch between frames is reflected in this pass.
 	z.refreshProfileStyles()
 	z.layoutButtons(rect)
 	z.rebuildHitAreas()
 }
 
-// BlurInputs clears focus on every text input owned by the transport zone.
-// Called automatically when the layout rect's size changes (resize /
-// orientation flip) so a stale focus ring can't outlive a viewport
-// transition. Exposed so DrumView wiring can blur on overlay open or
-// other input-blocking transitions.
+// Runs on a size change so no stale focus ring outlives the transition.
 func (z *TransportZone) BlurInputs() {
 	if z.bpmBox != nil {
 		z.bpmBox.focused = false
@@ -447,31 +376,20 @@ func (z *TransportZone) Update() {
 		z.bpmDelta = 0
 	}
 
-	// ─── BPM text input handling ───
-	// The TransportZone is the single authority for BPM box focus/blur/commit.
+	// The single authority for BPM box focus, blur and commit.
 	if z.bpmBox == nil {
 		return
 	}
-	// Latch the input-blocked state at Tick time (before the RootTree dispatches
-	// input this frame). A foreign-subtree dropdown that dismisses itself during
-	// this frame's dispatch would otherwise read as "not blocked" by the time
-	// bpmOpenAdapter.OnPress runs — so we snapshot it here, while the overlay is
-	// still open, and gate the tap on the snapshot.
+	// Latched at Tick, before dispatch: a foreign dropdown that dismisses itself this frame would
+	// otherwise read as unblocked by the time the readout's OnPress runs.
 	blocked := z.inputBlocked != nil && z.inputBlocked()
 	z.blockedAtTick = blocked
 
 	_ = blocked // gates bpmOpenAdapter (the BPM wheel opens from the readout)
 }
 
-// refreshDesktopHover updates each home-row button's hovered flag from the
-// plain cursor. The tree dispatcher only fires on press/drag/release, so
-// without this a button never learns the cursor is merely over it and the
-// button component's own hover-brighten (ButtonStyle.Draw's legacy hover
-// delta — the same +12/+20 the beat-counter keycap uses) never renders. This
-// mirrors portalHoverer.HoverAt for menus, reusing Button.UpdateHover. Desktop
-// only — touch has no hover (mobile press-lift is the tree's drawHoverGlow
-// job). The toolbar cache hashes each button's hovered flag, so a change here
-// invalidates it and re-renders the cap next frame.
+// The dispatcher only fires on press/drag/release, so desktop hover needs this per-frame pass.
+// The toolbar cache hashes hovered, so a change re-renders the cap.
 func (z *TransportZone) refreshDesktopHover() {
 	if Profile().IsMobile() {
 		return
@@ -492,65 +410,44 @@ func (z *TransportZone) HitAreas() []HitArea {
 	return z.hitAreas
 }
 
-// SetBarRect stores the mobile bottom-action-bar bounds. Theme 1+4: the
-// bar hosts ONLY the 6-segment view switcher (DrumView registers that
-// hit area separately). Vol icon and overflow live in the top toolbar
-// now, so we no longer override their ClipRect to the bar — leave them
-// pointing at z.rect (the top toolbar rect) so taps in the toolbar
-// reach them.
+// The bar holds only the view switcher, so the toolbar buttons keep the toolbar rect as their clip.
 func (z *TransportZone) SetBarRect(bar image.Rectangle) {
 	z.barRect = bar
 }
 
-// BarRect returns the stored mobile bottom-action-bar rect (or empty on
-// desktop / before Layout).
+// Empty on desktop and before Layout.
 func (z *TransportZone) BarRect() image.Rectangle { return z.barRect }
 
 func (z *TransportZone) Draw(screen *ebiten.Image) {
 	if z.rect.Dy() < 8 || z.rect.Dx() < 8 {
 		return
 	}
-	// Sync the Undo/Redo dim state at DRAW time so the buttons reflect the
-	// CURRENT CanUndo/CanRedo. Update()'s Tick runs BEFORE this frame's input is
-	// dispatched and the undo step is committed (at the per-frame endGroup), so
-	// syncing only in Update would render the previous frame's state — the button
-	// would lag one frame (or longer if the app then idles) behind a knob/edit.
-	// The toolbar cache hash also reads CanUndo/CanRedo, so both stay consistent.
+	// At DRAW time: Update ticks before this frame's undo step is committed, so syncing there lags a frame.
 	z.syncUndoRedoVisual()
 	z.renderToolbarControls(screen)
 }
 
-// HandleKey is a no-op for the transport zone. BPM editing now happens entirely
-// in the shared ParamValueEditor, whose own Update() handles Enter (commit) and
-// Escape (cancel); the readout box is never focused, so the tree never routes
-// keys here for BPM. Method retained to satisfy the Zone interface.
+// A no-op: the readout is never focused, so no BPM keys come here. Kept for the Zone interface.
 func (z *TransportZone) HandleKey(key ebiten.Key) InputResult {
 	return InputIgnored
 }
 
-// HandleChars is a no-op for the transport zone. See HandleKey — text entry is
-// owned by the shared editor's TextInput, not the readout box.
+// A no-op, like HandleKey.
 func (z *TransportZone) HandleChars(chars []rune) InputResult {
 	return InputIgnored
 }
 
 // --- Public accessors (for DrumView migration bridge) ---
 
-// SetPlaying updates the play button icon to reflect playback state.
-// On mobile, the button also swaps between PrimaryActionStyle (saturated
-// accent fill — calls the user to action) when stopped and the recede
-// PlayBtnStyle (surface fill, accent icon) when playing, so the resting
-// state is visually dominant and the playing state recedes.
+// On mobile the stopped state uses the saturated primary style so it dominates; playing recedes.
 func (z *TransportZone) SetPlaying(p bool) {
 	z.isPlaying = p
-	// Subdivision changes are rejected mid-flight (validateSubdivisions), so
-	// grey out the selector during playback to signal it's unavailable.
+	// Subdivision changes are rejected while playing, so the selector reads unavailable.
 	if z.subdivBtn != nil {
 		z.subdivBtn.Disabled = p
 	}
 	prof := Profile()
-	// A running transport is the play key's ACTIVE state (accent tint + 2 px
-	// bottom accent bar — DESIGN.md "Interaction states").
+	// A running transport is the play key's active state.
 	z.playBtn.SetToggled(p)
 	// DESIGN.md §0/§5: icon-only button — never raw Unicode in Text.
 	z.playBtn.Text = ""
@@ -599,9 +496,7 @@ func (z *TransportZone) SetBPM(b int) {
 	}
 }
 
-// SetBPMLive applies b (clamped to [1, maxBPM]) WITHOUT announcing it: the
-// value wheel's per-detent write. The wheel announces once, on close
-// (DrumView.commitBPM), so a scroll is one log line and one undo step.
+// Not announced: the wheel commits once on close, so a scroll is one log line and one undo step.
 func (z *TransportZone) SetBPMLive(b int) {
 	if b < 1 {
 		b = 1
@@ -684,13 +579,7 @@ func (z *TransportZone) MainVolIconRect() image.Rectangle { return z.mainVolIcon
 // SetPortal sets the portal reference for opening overlays.
 func (z *TransportZone) SetPortal(p *OverlayPortal) { z.portal = p }
 
-// SetUseBottomBar declares whether DrumView is hosting the mobile
-// vol-icon / view-switch / overflow buttons inside its bottom action
-// bar. When true, layoutMobile clears those three rects in the top
-// toolbar (DrumView places them in the bar). When false — the bar
-// collapsed because the drum-pane is too short — layoutMobile falls
-// back to a two-row layout that keeps the buttons inside the top
-// toolbar so they remain reachable. Must be called before Layout.
+// Call before Layout.
 func (z *TransportZone) SetUseBottomBar(use bool) {
 	if z.useBottomBar != use {
 		z.useBottomBar = use
@@ -717,21 +606,8 @@ func (z *TransportZone) layoutButtons(topBounds image.Rectangle) {
 }
 
 func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int, spec TopBarSpec) {
-	// Mobile transport (Theme 4): the top toolbar holds the transport
-	// controls + vol icon + overflow kebab. The bottom action bar hosts
-	// the 6-segment view switcher (Pads/EQ/Wave/Spec/Mtr/Scope) at full
-	// width — placed by DrumView, not here.
-	//
-	// Single-row layout (preferred — when topBounds height fits one row):
-	//   Play | Stop | Record | [−|BPM|+] | Subdiv | Vol | Nav | Overflow
-	// Two-row fallback (when topBounds is tall enough to split):
-	//   Row 0: Play | Stop | Record | [−|BPM|+] | Subdiv
-	//   Row 1:                                       Vol | Nav | Overflow
-	//
-	// We prefer single row whenever it would land each cell at >=
-	// TouchMinTarget; otherwise fall back to 2-row to preserve touch
-	// height. The legacy binary view-switch button is suppressed on
-	// mobile in both layouts (segmented replaces it).
+	// One row when every cell still gets TouchMinTarget, otherwise two rows. The binary view-switch
+	// is suppressed on mobile; the segmented control replaces it.
 	if z.viewSwitchBtn != nil {
 		z.viewSwitchBtn.SetRect(image.Rectangle{})
 	}
@@ -746,9 +622,6 @@ func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int, spec To
 	}
 
 	if useTwoRow {
-		// Row 1: just the vol icon now (Nav + Overflow removed — navigation
-		// opens from the beat counter, file options from the grid folder
-		// button).
 		row1Grid := NewGridLayout(row1Bounds, []float64{1.0}, []float64{1})
 		z.mainVolIconRect = safeInsetTransport(row1Grid.Cell(0, 0), pad)
 		if z.mainVolSlider != nil {
@@ -757,19 +630,8 @@ func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int, spec To
 		}
 	}
 
-	// Row 0 column weights — extend by [vol] when single-row (Nav + Overflow
-	// removed, freeing two slots). Undo / Redo are NOT placed on the mobile
-	// primary row: at <=480px the extra cells shrink the record button below
-	// the 44px touch-min (see TestMobileRecordButtonNeverSliver). On mobile
-	// they live in the overflow menu (TODO) + keyboard; desktop keeps them on
-	// the toolbar.
-	//
-	// NOTE: mobile buttons are intentionally NOT forced into equal squares
-	// (unlike desktop's layoutDesktop run). The mobile transport region is
-	// narrow, so controls at the 44px touch-min cannot be square — the layout
-	// instead fills the cell HEIGHT (≥ touch-min) at a narrow width and relies
-	// on ExpandHitArea for the 44px touch target. There is no "spacer void" on
-	// mobile to remove. Touch-min ratchet: TestMobileTransportButtons_AtTouchMin.
+	// No Undo/Redo on the mobile row: at <= 480 px they would shrink Record below the touch minimum.
+	// Mobile buttons are not forced square: they fill the cell height and rely on ExpandHitArea.
 	weights := []float64{1.0, 1.0, 1.0, 3.0, 1.0}
 	if !useTwoRow {
 		weights = []float64{1.0, 1.0, 1.0, 3.0, 1.0, 1.0}
@@ -778,17 +640,8 @@ func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int, spec To
 
 	z.playBtn.SetRect(safeInsetTransport(row0Grid.Cell(0, 0), pad))
 	z.stopBtn.SetRect(safeInsetTransport(row0Grid.Cell(1, 0), pad))
-	// Record takes the same cell treatment as play and stop. It used to be
-	// shrunk by 8 px top AND bottom (the "B12" visual demote), which left two
-	// ~6 px bands of the surrounding chip visible above and below it — read on
-	// screen as a horizontal line cutting across the top of its slot.
-	//
-	// The demote's goal (record must not sit at equal visual weight with the
-	// primary actions and invite an accidental mid-jam record) is already met
-	// by TONE: record draws colRecordIdle, a muted red ring, against play's
-	// saturated green triangle. Geometry was the wrong axis for it, and
-	// breaking cluster alignment was the cost. See DESIGN.md "Cluster
-	// alignment". Regression: TestTransportRecordMatchesPlayStopBounds.
+	// Same cell treatment as play and stop: tone, not a shrunk geometry, keeps it from inviting an
+	// accidental record, and shrinking it broke cluster alignment.
 	z.recordBtn.SetRect(safeInsetTransport(row0Grid.Cell(2, 0), pad))
 	bpmStepperBounds := row0Grid.Cell(3, 0)
 	stepperGrid := NewGridLayout(bpmStepperBounds, []float64{1.0, 2.0, 1.0}, []float64{1})
@@ -798,10 +651,7 @@ func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int, spec To
 
 	// Compute BPM group container rect (covers BPM box + inc/dec arrows).
 	z.bpmGroupRect = computeBPMGroupRect(z.bpmBox.Rect, z.bpmIncBtn.Rect(), z.bpmDecBtn.Rect(), spec.GroupOutlinePad)
-	// Clamp to the stepper cell on mobile — the horizontal layout puts
-	// bpmIncBtn flush against the col 3 right edge, so the pill outline
-	// pad would otherwise spill into col 4 (subdiv) by `GroupOutlinePad`
-	// pixels.
+	// Clamped, or the pill outline spills into the subdiv column.
 	if z.bpmGroupRect.Min.X < bpmStepperBounds.Min.X {
 		z.bpmGroupRect.Min.X = bpmStepperBounds.Min.X
 	}
@@ -816,9 +666,6 @@ func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int, spec To
 
 	z.subdivBtn.SetRect(safeInsetTransport(row0Grid.Cell(4, 0), pad))
 
-	// Single-row mode: append vol icon on row 0 (cell 5). Nav + Overflow were
-	// removed (freeing two slots) — navigation opens from the beat counter,
-	// file options from the grid folder button.
 	if !useTwoRow {
 		z.mainVolIconRect = safeInsetTransport(row0Grid.Cell(5, 0), pad)
 		if z.mainVolSlider != nil {
@@ -827,11 +674,7 @@ func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int, spec To
 		}
 	}
 
-	// Undo / Redo are hidden on the mobile primary row (no room at the 44px
-	// touch-min — the narrow mobile transport region already can't fit its
-	// controls as squares, see the weights note above). Zero their rects so
-	// they are not drawn or hit-registered on mobile; they remain available
-	// via keyboard (undo/redo).
+	// Zeroed on mobile (no room at the touch minimum); the keyboard still has them.
 	if z.undoBtn != nil {
 		z.undoBtn.SetRect(image.Rectangle{})
 	}
@@ -850,35 +693,15 @@ func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int, spec To
 	}
 }
 
-// transportBPMBoxUnits is the BPM text box width in square-side units. Wide
-// enough to show up to 4 digits (maxBPM == 1000) — it is the only wide
-// exception in the run.
+// Fits 4 digits; the run's only wide exception.
 const transportBPMBoxUnits = 2.0
 
-// transportBPMStepUnits is the desktop BPM ± stepper column width (stacked
-// inc/dec chevrons) in square-side units — narrower than a square, the second
-// intentional exception.
+// Narrower than a square, the second exception.
 const transportBPMStepUnits = 0.9
 
 func (z *TransportZone) layoutDesktop(topBounds image.Rectangle, pad int, spec TopBarSpec) {
-	// Desktop transport is a single left-aligned run of equal-size SQUARE
-	// buttons with a uniform gap. Running order:
-	//
-	//   Play | Stop | Record | BPM box | BPM ± | Subdiv | Vol | Undo | Redo
-	//
-	// The former Nav (crosshair) and Overflow (kebab) buttons were removed:
-	// navigation opens from the beat counter (dv.OpenNavigation), file options
-	// from the grid folder button (dv.OpenFileMenu). The BPM box and BPM ±
-	// stepper are the only non-square exceptions. The run packs at the left of
-	// the transport column; any leftover width sits to the right, before the
-	// timeline begins. Regression guards:
-	// TestDesktopTransportButtonsAreEqualSquares, TestDesktopTransportNoSpacerGap,
-	// TestDesktopTransportNoOverlap.
-	//
-	// The run is four groups — transport (Play Stop Rec) | tempo (BPM ± ÷n) |
-	// level (Vol) | history (Undo Redo) — separated by spacing.cluster, the
-	// token that exists for exactly this; controls inside a group sit the
-	// uniform gap apart.
+	// One left-aligned run of equal squares with uniform gaps (the BPM box and stepper are the only
+	// exceptions), in four groups separated by spacing.cluster: transport | tempo | level | history.
 	const nGaps = 8 // 9 controls in the run → 8 inter-control gaps (Nav + Overflow removed)
 	const nClusterGaps = 3
 	totalUnits := 7*1.0 + transportBPMBoxUnits + transportBPMStepUnits
@@ -940,9 +763,7 @@ func (z *TransportZone) layoutDesktop(topBounds image.Rectangle, pad int, spec T
 	// File-ops live behind the overflow menu; no inline group outline.
 	z.fileOpsGroupRect = image.Rectangle{}
 
-	// File ops (Upload / Import / Export) live behind the overflow "..." menu
-	// on desktop — keep their rects empty so they don't draw or claim hit
-	// areas inline. Their OnClick handlers fire from the overflow menu entries.
+	// Desktop keeps the file ops in the overflow menu, so their rects stay empty.
 	z.uploadBtn.SetRect(image.Rectangle{})
 	z.importBtn.SetRect(image.Rectangle{})
 	z.exportBtn.SetRect(image.Rectangle{})
@@ -1001,12 +822,8 @@ func (z *TransportZone) rebuildHitAreas() {
 		})
 	}
 
-	// BPM +/- buttons use repeatButtonHitAdapter for hold-to-repeat: its
-	// OnDrag re-invokes HandleInputResult every held frame, which is what
-	// actually drives Button.repeatTick's acceleration (the plain
-	// buttonHitAdapter above has a no-op OnDrag, so .Repeat never fires past
-	// the first press through that path — see repeatButtonHitAdapter vs
-	// buttonHitAdapter).
+	// repeatButtonHitAdapter: its OnDrag re-invokes HandleInputResult every held frame, which is what
+	// drives the repeat acceleration (buttonHitAdapter's OnDrag is a no-op).
 	for _, rb := range []struct {
 		btn *Button
 		tag string
@@ -1031,24 +848,18 @@ func (z *TransportZone) rebuildHitAreas() {
 		})
 	}
 
-	// BPM text box — on press, focuses the text input and returns InputIgnored
-	// so that the legacy TextInput.Update() path can handle subsequent
-	// text editing. The higher z-index ensures this area takes priority over
-	// touch-expanded BPM +/- button rects.
+	// Higher z, so it beats the touch-expanded +/- rects.
 	if z.bpmBox != nil && !z.bpmBox.Rect.Empty() {
 		z.hitAreas = append(z.hitAreas, HitArea{
 			Rect:   z.bpmBox.Rect,
 			ZIndex: zIdx + 1,
-			// The readout is display-only; tapping it opens the shared numeric
-			// editor (tap-to-popup) rather than focusing the box in place.
+			// Display only: a tap opens the shared editor.
 			Handler: &bpmOpenAdapter{z: z},
 			Tag:     "transport-bpm-box",
 		})
 	}
 
-	// Master volume slider group — z+1 so sliders get first dispatch over
-	// adjacent buttons at the same z. Fall-through ensures clicks outside
-	// the slider track still reach underlying buttons.
+	// z+1 so sliders win; clicks off the track still reach the buttons.
 	if z.mainVolGroup != nil && z.mainVolSlider != nil && !z.mainVolSlider.Rect().Empty() {
 		groupBounds := z.mainVolGroup.InputBounds()
 		if !groupBounds.Empty() {
@@ -1085,9 +896,7 @@ func (z *TransportZone) rebuildHitAreas() {
 
 // --- Hit handler adapters ---
 
-// repeatButtonHitAdapter wraps a Repeat-enabled Button as a HitHandler.
-// Delegates to Button.Handle which has proper repeat timing (initial delay,
-// acceleration) instead of firing every frame.
+// Through Button.Handle, which has proper repeat timing instead of firing every frame.
 type repeatButtonHitAdapter struct {
 	btn *Button
 }
@@ -1107,9 +916,7 @@ func (h *repeatButtonHitAdapter) OnRelease(x, y int) {
 
 func (h *repeatButtonHitAdapter) OnWheel(x, y, steps int) InputResult { return InputIgnored }
 
-// transportVolIconHitAdapter handles the mobile master volume icon click.
-// OnPress opens the popup and returns InputCaptured so that subsequent
-// drag/release events are routed here, enabling tap-and-slide in one gesture.
+// InputCaptured, so tap-and-slide works in one gesture.
 type transportVolIconHitAdapter struct {
 	onClick func()
 	popup   *SliderPopup
@@ -1152,11 +959,7 @@ func (z *TransportZone) decayAnims() {
 	decay(&z.uploadAnim)
 	decay(&z.bpmErrorAnim)
 
-	// Record button pulsing animation when recording. The icon tint swaps
-	// from colRecordIdle (dim red dot) to a breathing colRecordActive so the
-	// armed/recording state is unmistakable. Cadence comes from the
-	// button-toggle-pulse animation token (no magic numbers); the monotonic
-	// frame counter drives the phase so the breath is wall-clock smooth.
+	// A breathing tint from the animation token, phased by the monotonic frame counter.
 	if z.isRecording {
 		z.recordPulse++
 		a := SinPulseAlpha(int64(z.recordPulse), genAnimButtonTogglePulse)
@@ -1182,12 +985,8 @@ func (z *TransportZone) SetBPMDelta(v int) { z.bpmDelta = v }
 type bpmOpenAdapter struct{ z *TransportZone }
 
 func (a *bpmOpenAdapter) OnPress(x, y int) InputResult {
-	// Respect the input-blocked gate: when a popup/overlay (in either subtree)
-	// is open, a tap on the readout must NOT open the editor beneath it. We read
-	// the snapshot taken at Tick (blockedAtTick) rather than re-evaluating now,
-	// because a foreign dropdown can be dismissed earlier in this same dispatch
-	// frame. Still consume the press so it doesn't leak to a touch-expanded
-	// sibling control.
+	// Read the Tick snapshot: a foreign dropdown can be dismissed earlier this frame. Still consume, so
+	// the press cannot leak to an expanded sibling.
 	if a.z.blockedAtTick || (a.z.inputBlocked != nil && a.z.inputBlocked()) {
 		return InputConsumed
 	}
@@ -1202,22 +1001,13 @@ func (a *bpmOpenAdapter) OnWheel(x, y, steps int) InputResult { return InputIgno
 
 // --- Track button visual ---
 
-// syncTrackBtnVisual mirrors the play/stop visual model: chrome (Style) stays
-// fixed across states; the icon glyph and icon color carry the active/inactive
-// signal. Locked/tracking = colAccent (an engaged "on" pop, like the playing
-// transport), free = colTextSecondary (the calm on-surface-muted grey that the
-// rest of the home row now uses). Neither state is the glaring near-white it
-// used to be.
+// Chrome stays fixed; the glyph and its color carry the state (accent when locked, muted when free).
 func (z *TransportZone) syncTrackBtnVisual() {
 	if z.trackBtn == nil {
 		return
 	}
-	// Follow-on is the key's ACTIVE state (accent tint + 2 px bottom bar via
-	// SetToggled — DESIGN.md "Interaction states") plus the accent lock glyph.
-	// It used to go through a toggle helper that marked the button
-	// `pressed`; ButtonStyle renders pressed as the −20 press dim, so a
-	// latched lock sat permanently "held down" — a near-black square in the
-	// header beside every lighter key.
+	// Active via SetToggled, not pressed: ButtonStyle draws pressed as the press dim, which made a
+	// latched lock a near-black square.
 	z.trackBtn.Style = Profile().TrackBtnStyle
 	z.trackBtn.SetToggled(z.follow)
 	if z.follow {
@@ -1229,11 +1019,7 @@ func (z *TransportZone) syncTrackBtnVisual() {
 	}
 }
 
-// syncUndoRedoVisual dims the undo/redo button labels when their respective
-// stack is empty (CanUndo/CanRedo == false), matching the play/stop visual
-// model where the icon/text color carries the active/inactive signal while
-// chrome stays fixed. Uses existing theme tokens only (colTextPrimary /
-// colTextDisabled) — no new color literals.
+// The icon color carries the state while the chrome stays fixed.
 func (z *TransportZone) syncUndoRedoVisual() {
 	dim := func(btn *Button, can func() bool) {
 		if btn == nil {
@@ -1244,8 +1030,7 @@ func (z *TransportZone) syncUndoRedoVisual() {
 		if !enabled {
 			col = colTextDisabled
 		}
-		// Undo/Redo are icon buttons: the icon carries the active/inactive
-		// signal. TextColor is kept in sync too in case a label is ever set.
+		// TextColor kept in sync in case a label is ever set.
 		btn.IconColor = col
 		btn.TextColor = col
 	}
@@ -1264,9 +1049,7 @@ func (z *TransportZone) toolbarStateHash() uint64 {
 		}
 		return 0
 	}
-	// Theme: the cached toolbar bakes every key's body and glyph color, so a
-	// runtime theme change must miss — before this term the old-theme sprite
-	// was reused until a hover happened to change the hash.
+	// The cache bakes every key's colors, so a theme change must miss.
 	mix(uint64(ThemeGeneration()))
 	// Layout bounds.
 	mix(uint64(z.rect.Min.X))
@@ -1325,13 +1108,8 @@ func (z *TransportZone) toolbarStateHash() uint64 {
 			mix(uint64(r))
 		}
 	}
-	// Play button Disabled tracks the playback-readiness gate
-	// (playbackReady/warmupController), which flips independently of
-	// isPlaying/hover/pressed — none of which change when only the gate
-	// opens or closes. Without this term the cache never invalidates on a
-	// Disabled-only change and the stale enabled-looking sprite is reused,
-	// silently hiding the greyed-out chrome while the button is genuinely
-	// disabled underneath (a real render bug, not just a stub-test gap).
+	// The readiness gate flips Disabled independently of every other hashed field, so without this the
+	// stale enabled-looking sprite hides a really disabled button.
 	mix(boolBit(z.playBtn.Disabled))
 	if z.eqToggleMobile != nil {
 		for _, r := range z.eqToggleMobile.Text {
@@ -1347,8 +1125,7 @@ func (z *TransportZone) toolbarStateHash() uint64 {
 		mix(boolBit(z.viewSwitchBtn.hovered))
 		mix(boolBit(z.viewSwitchBtn.pressed))
 	}
-	// Undo / Redo: hover/press + dim state (CanUndo/CanRedo drive the label
-	// tint, so the toolbar cache must invalidate when a stack empties/fills).
+	// CanUndo/CanRedo drive the tint, so the cache must invalidate when a stack changes.
 	if z.undoBtn != nil {
 		mix(boolBit(z.undoBtn.hovered))
 		mix(boolBit(z.undoBtn.pressed))
@@ -1471,16 +1248,12 @@ func (z *TransportZone) renderToolbarControls(dst *ebiten.Image) {
 }
 
 func (z *TransportZone) renderToolbarToCache(cache *ebiten.Image, offsetX, offsetY int) {
-	// Mobile surface hierarchy: toolbar sits on colSurface1 so the eye reads
-	// a clear vertical zone separation from the background and the rows zone
-	// (which uses the brighter alternating-stripe colors). Drawn first so all
-	// chrome (cluster pills, buttons, hairlines) renders on top.
+	// Drawn first, so all chrome renders on top.
 	if Profile().IsMobile() {
 		bounds := cache.Bounds()
 		drawRect(cache, bounds, colTransportSurface, true)
 	}
-	// Draw group container backgrounds (behind buttons) — mobile only, see
-	// groupChrome.
+	// Mobile only (groupChrome).
 	if z.groupChrome {
 		z.drawTransportGroupOffset(cache, offsetX, offsetY)
 		z.drawBPMGroupOffset(cache, offsetX, offsetY)
@@ -1554,8 +1327,7 @@ func (z *TransportZone) renderToolbarDirect(dst *ebiten.Image) {
 	if z.bpmErrorAnim > 0 {
 		drawRect(dst, z.bpmBox.Rect, fadeColor(colError, z.bpmErrorAnim), false)
 	}
-	// NOTE: the shared BPM editor is drawn in (*TransportZone).Draw over the
-	// composited toolbar, NOT here — it must never live inside the toolbar cache.
+	// The shared BPM editor is drawn over the composited toolbar, never inside the cache.
 	z.bpmIncBtn.Draw(dst)
 	z.drawSubdivPillOffset(dst, 0, 0)
 	z.subdivBtn.Draw(dst)
@@ -1591,9 +1363,7 @@ func (z *TransportZone) drawToolbarSeparators(cache *ebiten.Image, offsetX, offs
 	}
 	sepCol := WithAlpha(genColorBorder, genAlphaTransportSeparator)
 
-	// Mobile: draw a horizontal hairline between transport row 0 (play/stop/
-	// record/bpm/subdiv) and row 1 (vol/view/overflow) so the two-row layout
-	// reads as deliberate grouping rather than collision-packed controls.
+	// So the two rows read as deliberate grouping.
 	if Profile().IsMobile() {
 		row0 := z.playBtn.Rect()
 		row1 := z.mainVolIconRect
@@ -1630,10 +1400,7 @@ func (z *TransportZone) drawToolbarSeparators(cache *ebiten.Image, offsetX, offs
 	}
 }
 
-// drawMasterVolIconOffset renders the master volume button by delegating to
-// the shared drawVolumeButton component (the same one used by per-row
-// volume cells). Master differs only in channel wiring: it reads from
-// mainVolSlider, has no row tint, and is never user-mutable as "muted".
+// The same component as the per-row volume; only the wiring differs.
 func (z *TransportZone) drawMasterVolIconOffset(cache *ebiten.Image, offsetX, offsetY int) {
 	r := z.mainVolIconRect
 	if r.Empty() {
@@ -1643,16 +1410,11 @@ func (z *TransportZone) drawMasterVolIconOffset(cache *ebiten.Image, offsetX, of
 	if z.mainVolSlider != nil {
 		vol = z.mainVolSlider.Value
 	}
-	// rowColor nil → the on-state resolves to colVolumeIconOn (the muted grey
-	// that calms the recolored home row); this keeps the master speaker
-	// byte-identical to the per-row speaker for the same nil-tint path.
+	// nil tint keeps master identical to a row speaker on the same path.
 	drawVolumeButton(cache, r.Sub(image.Pt(offsetX, offsetY)), vol, false, nil)
 }
 
-// drawBPMGroupOffset draws the BPM group visual container: a colSurface2
-// rounded rect with colBorderSubtle border, plus a "BPM" caption label.
-// Uses colSurface2 (one step lighter than the surface-1 toolbar background)
-// so the pill is visually distinct from the surrounding chrome.
+// surface-2, one step above the toolbar, so the pill stands out.
 func (z *TransportZone) drawBPMGroupOffset(dst *ebiten.Image, offsetX, offsetY int) {
 	gr := z.bpmGroupRect
 	if gr.Empty() {
@@ -1666,8 +1428,6 @@ func (z *TransportZone) drawBPMGroupOffset(dst *ebiten.Image, offsetX, offsetY i
 	label := "BPM"
 	labelW := int(float64(TextWidth(label)) * captionScale)
 	labelH := int(float64(TextHeight()) * captionScale)
-	// Position: vertically centered in the group rect, horizontally to the
-	// left of the BPM text box (inside the group container padding).
 	bpmBoxR := z.bpmBox.Rect.Sub(image.Pt(offsetX, offsetY))
 	lx := bpmBoxR.Min.X - labelW - 4
 	if lx < r.Min.X+2 {
@@ -1677,22 +1437,12 @@ func (z *TransportZone) drawBPMGroupOffset(dst *ebiten.Image, offsetX, offsetY i
 	DrawTextColorAtScale(dst, label, lx, ly, colTextSecondary, captionScale)
 }
 
-// drawPlayAccentOffset is a no-op; the play button's primary-action visual
-// is now driven by SetPlaying swapping playBtn.Style between
-// PrimaryActionStyle (stopped) and PlayBtnStyle (playing). Kept as a stub
-// so the call sites in renderToolbarToCache / renderToolbarDirect remain
-// stable.
+// A no-op kept for its call sites; SetPlaying swaps the style instead.
 func (z *TransportZone) drawPlayAccentOffset(dst *ebiten.Image, offsetX, offsetY int) {
 }
 
-// drawRecordArmedRingOffset draws a 2px destructive ring outside the record
-// button when recording is armed (z.isRecording == true). Signals "armed —
-// next play will record". Drawn AFTER the button so the ring sits on top of
-// the button border. Rendered on both platforms so the recording-state
-// highlight does not diverge by screen class.
+// After the button so the ring sits on its border; on both platforms.
 func (z *TransportZone) drawRecordArmedRingOffset(dst *ebiten.Image, offsetX, offsetY int) {
-	// Rendered on both platforms: the recording-armed highlight must not
-	// diverge by screen class.
 	if !z.isRecording {
 		return
 	}
@@ -1708,14 +1458,8 @@ func (z *TransportZone) drawRecordArmedRingOffset(dst *ebiten.Image, offsetX, of
 	drawRoundedRect(dst, inner, genColorDestructive, RadiusControl+(-ringInset)-1, false)
 }
 
-// drawRecordIndicatorOffset paints a persistent "REC" caption in
-// colRecordActive over the record button while recording. Unlike the
-// breathing icon tint (which the cached toolbar can freeze between hash
-// changes) and the non-cached pulse halo, this label is gated on the
-// isRecording bool that participates in the toolbar cache hash — so the
-// recording state is guaranteed to differ pixel-wise from idle the moment
-// recording starts, on both desktop and mobile. The label hugs the record
-// button's bottom edge, clamped inside the toolbar rect so it never spills.
+// Gated on isRecording, which is in the cache hash, so recording differs pixel-wise the moment it
+// starts (the breathing tint can freeze between hash changes).
 func (z *TransportZone) drawRecordIndicatorOffset(dst *ebiten.Image, offsetX, offsetY int) {
 	if !z.isRecording {
 		return
@@ -1746,10 +1490,7 @@ func (z *TransportZone) drawRecordIndicatorOffset(dst *ebiten.Image, offsetX, of
 	DrawTextColorAtScale(dst, label, lx-offsetX, ly-offsetY, colRecordActive, captionScale)
 }
 
-// drawSubdivPillOffset draws a colSurface2 pill background behind the
-// subdivision button on mobile. Called BEFORE subdivBtn.Draw so the
-// button's own background renders on top — the button uses a
-// transparent style on mobile so the pill shows through.
+// Before the button, whose transparent mobile style lets the pill show through.
 func (z *TransportZone) drawSubdivPillOffset(dst *ebiten.Image, offsetX, offsetY int) {
 	if !Profile().IsMobile() {
 		return
@@ -1762,11 +1503,7 @@ func (z *TransportZone) drawSubdivPillOffset(dst *ebiten.Image, offsetX, offsetY
 	drawRoundedRect(dst, r, colSurface2, RadiusControl, true)
 }
 
-// drawTransportGroupOffset draws the transport group pill container
-// (play+stop+record) as a rounded rect. The fill (colTransportGroupBG) is a
-// translucent white lift, so it reads as a distinct grouping on either
-// toolbar surface — identical styling on both platforms (visual styling does
-// not diverge by screen class).
+// Translucent, so it reads on either toolbar surface; identical on both platforms.
 func (z *TransportZone) drawTransportGroupOffset(dst *ebiten.Image, offsetX, offsetY int) {
 	gr := z.transportGroupRect
 	if gr.Empty() {
@@ -1776,8 +1513,6 @@ func (z *TransportZone) drawTransportGroupOffset(dst *ebiten.Image, offsetX, off
 	drawRoundedRect(dst, r, colTransportGroupBG, RadiusContainer, true)
 }
 
-// drawFileOpsGroupOffset draws the file-ops group pill container
-// (upload+import+export) as a rounded rect with subtle fill and border.
 func (z *TransportZone) drawFileOpsGroupOffset(dst *ebiten.Image, offsetX, offsetY int) {
 	gr := z.fileOpsGroupRect
 	if gr.Empty() {
@@ -1812,21 +1547,8 @@ func drawSliderOff(cache *ebiten.Image, slider *Slider, offsetX, offsetY int) {
 
 // --- Layout helpers (package-level) ---
 
-// transportRunMetrics computes the uniform square side, inter-control gap, and
-// vertical extent for a left-packed run of transport controls.
-//
-//   - totalUnits is the run width measured in multiples of the square side: a
-//     square button is 1 unit; wider exceptions (the BPM box, the ± stepper)
-//     contribute >1 / <1 units.
-//   - nGaps is the number of inter-control gaps in the run.
-//
-// The square side equals the bar's inner height, shrunk ONLY when the run
-// would otherwise overflow the available width. So a wide bar (desktop's left
-// column) yields a tight left-aligned cluster with slack to the right, while a
-// narrow bar (a phone) shrinks the squares to fit without ever overflowing.
-//
-// The gap is uniform and at least 2×GroupOutlinePad so adjacent group "pills"
-// (transport, BPM) never overlap.
+// Squares match the bar's inner height, shrinking ONLY when the run would overflow; totalUnits counts
+// the run in square sides. The gap is at least 2×GroupOutlinePad so group pills never overlap.
 func transportRunMetrics(topBounds image.Rectangle, pad int, spec TopBarSpec, totalUnits float64, nGaps int) (sq, gap, top, bot int) {
 	innerTop := topBounds.Min.Y + pad
 	innerBot := topBounds.Max.Y - pad
@@ -1856,9 +1578,7 @@ func transportRunMetrics(topBounds image.Rectangle, pad int, spec TopBarSpec, to
 		sq = 1
 	}
 
-	// Center the square band vertically inside the padded area so every
-	// control (squares and the wider/narrower BPM exceptions) shares one row
-	// height == sq, even when sq shrank below the bar's inner height to fit.
+	// Every control shares one row height even when the squares shrank.
 	cy := (innerTop + innerBot) / 2
 	top = cy - sq/2
 	bot = top + sq
@@ -1870,21 +1590,14 @@ func safeInsetTransport(r image.Rectangle, pad int) image.Rectangle {
 	if r.Empty() {
 		return r
 	}
-	// Clamp the horizontal and vertical insets INDEPENDENTLY.
-	//
-	// This used to share one budget derived from min(Dx, Dy) and from the
-	// width floor. Grid layouts hand out leftover pixels one at a time, so two
-	// nominally equal cells in the same row can differ by 1 px in width — and
-	// under a shared budget that 1 px changed the VERTICAL inset too. Siblings
-	// in one strip then rendered at different heights, leaving the seam that
-	// TestTransportClusterSharesBounds now guards.
+	// Each axis INDEPENDENTLY: grid cells differ by a pixel in width, and a shared budget then changed
+	// the vertical inset too, so siblings rendered at different heights.
 	padX := clampInsetAxis(pad, r.Dx(), genGeomTransportMinBtnW)
 	padY := clampInsetAxis(pad, r.Dy(), debugCharH+2)
 	return image.Rect(r.Min.X+padX, r.Min.Y+padY, r.Max.X-padX, r.Max.Y-padY)
 }
 
-// clampInsetAxis limits a symmetric inset on ONE axis so that axis keeps at
-// least minExtent px of content and never collapses below 2 px overall.
+// Keeps at least minExtent of content and never below 2 px.
 func clampInsetAxis(pad, extent, minExtent int) int {
 	maxPad := (extent - minExtent) / 2
 	if hard := (extent - 2) / 2; hard < maxPad {
@@ -1937,12 +1650,8 @@ func clampBtnTransport(btn *Button, bounds image.Rectangle) {
 	btn.SetRect(r)
 }
 
-// insetTransportCell converts a contiguous grid cell into its drawn button
-// rect: it applies the standard vertical/large-cell inset (safeInsetTransport)
-// and then guarantees a small horizontal gap so adjacent cells leave a visible
-// space instead of touching at narrow widths (where safeInsetTransport's
-// min-width guard otherwise refuses to inset). The gap is never taken if it
-// would collapse the button, so a button always stays clickable.
+// A small horizontal gap so cells never touch at narrow widths, never taken if it would collapse
+// the button.
 func insetTransportCell(cell image.Rectangle, pad, gap int) image.Rectangle {
 	r := safeInsetTransport(cell, pad)
 	g := gap / 2
@@ -1955,8 +1664,7 @@ func insetTransportCell(cell image.Rectangle, pad, gap int) image.Rectangle {
 	return r
 }
 
-// computeGroupRect returns the bounding rect enclosing all provided rects,
-// expanded by pad pixels. Empty rects are ignored.
+// Empty rects are ignored.
 func computeGroupRect(rects []image.Rectangle, pad int) image.Rectangle {
 	first := true
 	var minX, minY, maxX, maxY int
@@ -1988,25 +1696,16 @@ func computeGroupRect(rects []image.Rectangle, pad int) image.Rectangle {
 	return image.Rect(minX-pad, minY-pad, maxX+pad, maxY+pad)
 }
 
-// computeBPMGroupRect returns the bounding rect enclosing the BPM box and
-// inc/dec buttons, expanded by `pad` pixels for the visual container.
-// `pad` is the active TopBarSpec.GroupOutlinePad.
 func computeBPMGroupRect(bpmBox, incBtn, decBtn image.Rectangle, pad int) image.Rectangle {
 	return computeGroupRect([]image.Rectangle{bpmBox, incBtn, decBtn}, pad)
 }
 
-// ensureGapBtns ensures at least `gap` pixels between two adjacent buttons.
-// `gap` is the active TopBarSpec.ControlGap.
 func ensureGapBtns(left, right *Button, gap int) {
 	if left == nil || right == nil {
 		return
 	}
 	lr, rr := left.Rect(), right.Rect()
-	// Only nudge on a genuine overlap. Buttons that merely touch (left.Max ==
-	// right.Min — the normal case for contiguous grid cells with no inset at
-	// narrow widths) must NOT be shifted: pushing `right` rightward would wedge
-	// it into the *next* control and reintroduce the overlap this guards
-	// against (see TestDesktopTransportNoOverlap).
+	// Only on a real overlap: shifting buttons that merely touch would wedge them into the next control.
 	if lr.Max.X > rr.Min.X {
 		dx := lr.Max.X - rr.Min.X + gap
 		rr.Min.X += dx
@@ -2015,26 +1714,9 @@ func ensureGapBtns(left, right *Button, gap int) {
 	}
 }
 
-// textInputHitAdapter wraps a TextInput hit area. Focus/blur/caret are driven
-// by the legacy TextInput.Update() mouse poll, which runs in the tree's Phase-2
-// zone Update — BEFORE Phase-3 input dispatch — so the box is already focused by
-// the time OnPress fires.
-//
-// The `consume` flag decides what OnPress returns to the dispatcher:
-//
-//   - consume == false (default, EQ dB inputs): return InputIgnored so the
-//     press falls through to lower-z handlers. The EQ band dB input sits at
-//     zIdx+3 directly over its band's mute button (zIdx+2) and intentionally
-//     lets the press through so the mute toggle still fires (regression:
-//     TestEQBandMuteHoldNoMultipleToggles).
-//   - consume == true (transport BPM box): return InputConsumed so the press is
-//     NOT leaked into a neighbouring button's touch-EXPANDED hit rect. On mobile
-//     (MinTarget=44) the Record button's expanded rect reaches across the
-//     BPM-dec button into the BPM box; the old unconditional InputIgnored let a
-//     BPM box tap toggle recording (regression: transport_input_isolation_test.go).
-//
-// Both sites register EXACT, non-Touch hit areas, so OnPress only fires when the
-// cursor is inside the input's real rect — consuming there is always safe.
+// TextInput.Update focuses the box before dispatch. consume=false lets a press fall through (an EQ
+// dB input sits over its mute button); consume=true stops it leaking into a neighbour's expanded rect
+// (a BPM tap toggled recording). Both register exact, non-Touch areas, so consuming is safe.
 type textInputHitAdapter struct {
 	ti      *TextInput
 	consume bool

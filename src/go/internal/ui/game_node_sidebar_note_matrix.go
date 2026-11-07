@@ -8,13 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// Glue between the node sidebar's Pitch section and the note-matrix picker.
-//
-// The picker is a NoteMatrixComponent — the same component shape as the colour
-// picker, sharing solveSwatchGrid — but it is driven from here rather than
-// from the DrumView portal. The sidebar deliberately renders through GridTree
-// (see NodeSidebar.Open), so a portal-hosted picker would paint over the
-// bottom drum panel instead of being clipped to the grid pane.
+// Driven from here, not the DrumView portal: the sidebar renders through GridTree, and a portal
+// picker would paint over the drum panel instead of being clipped to the grid pane.
 
 // noteMatrixIsOpen reports whether the picker is showing.
 func (sb *NodeSidebar) noteMatrixIsOpen() bool {
@@ -28,12 +23,7 @@ func (sb *NodeSidebar) closeNoteMatrix() {
 	}
 }
 
-// nodeInstrumentPitchOffset returns the live pitch offset of the instrument on
-// the node's row, and whether it is pitched at all. Same resolution
-// nodeNoteLabel uses, so the picker's labels and the chip's label cannot
-// disagree — and since both now render through midiNoteName(nodePitchMIDI(...)),
-// they cannot disagree on the NAME either (they briefly could have: the chip
-// used to clamp to the piano range and the picker never did).
+// Same resolution as nodeNoteLabel, so the picker and the chip cannot disagree on a note.
 func (sb *NodeSidebar) nodeInstrumentPitchOffset() (float64, bool) {
 	if sb.node == nil || sb.game == nil {
 		return 0, false
@@ -53,10 +43,7 @@ func (sb *NodeSidebar) openNoteMatrix() {
 	}
 	offset, pitched := sb.nodeInstrumentPitchOffset()
 	if !pitched {
-		// Only genuinely unpitched noise (hi-hats, claps, shaker, whisper) lands
-		// here now that note display is universal — tuned percussion opens the
-		// picker like anything else. The chip is not drawn for those rows
-		// either, so this is belt-and-braces.
+		// Only unpitched noise lands here; its chip is not drawn either.
 		return
 	}
 	g := sb.game
@@ -75,9 +62,7 @@ func (sb *NodeSidebar) openNoteMatrix() {
 		CurrentPitch:     mn.Params.Pitch,
 		InstrumentOffset: offset,
 		OnPick: func(pitch float64) {
-			// Identical mutation sequence to the pit- / pit+ handlers, so a
-			// matrix pick is indistinguishable from a nudge to undo, the
-			// predictor and the hooks bus.
+			// Identical to the pit-/pit+ handlers, so undo, the predictor and the bus cannot tell them apart.
 			g.enqueueUI(func() {
 				if mn, ok := g.graph.GetNodeByID(node.ID); ok {
 					p := mn.Params
@@ -91,14 +76,10 @@ func (sb *NodeSidebar) openNoteMatrix() {
 		OnClose: func() {},
 	})
 	sb.noteMatrix.Open()
-	// Re-lay out immediately so the cell rects and their Buttons exist on THIS
-	// frame. Without it the picker is drawn but inert until the next layout
-	// pass, which is a frame of dead clicks right after it opens.
+	// Now, so the cell Buttons exist this frame; otherwise the first frame of clicks is dead.
 	sb.layout()
 
-	// Start the keyboard cursor ON the current note, so the first arrow press
-	// moves relative to where the user already is rather than jumping in from a
-	// corner — and so Enter straight after opening is a no-op on the value.
+	// On the current note, so the first arrow is relative and an immediate Enter changes nothing.
 	host := noteMatrixNavHost{sb: sb}
 	nav := sb.noteMatrixNav()
 	nav.BindHost(host)
@@ -110,8 +91,6 @@ func (sb *NodeSidebar) openNoteMatrix() {
 	}
 }
 
-// noteMatrixBounds is the container the picker is clamped inside: the grid
-// pane, since that is what the sidebar renders into.
 func (sb *NodeSidebar) noteMatrixBounds() image.Rectangle {
 	g := sb.game
 	if g == nil {
@@ -121,11 +100,8 @@ func (sb *NodeSidebar) noteMatrixBounds() image.Rectangle {
 	if g.split != nil {
 		b = image.Rect(0, 0, g.split.GridW(g.winW), g.split.GridH(g.winH))
 	}
-	// On a phone the picker spans the pane's width, so it starts BELOW the
-	// top-right button row: those buttons (higher z) otherwise covered its
-	// header, and with mobile's no-× design the strip beside them is the
-	// "outside" a tap closes it from. Desktop pickers sit beside the card,
-	// clear of the cluster, and keep the full pane height.
+	// On a phone it spans the pane, so it starts below the top-right buttons: they would cover its
+	// header, and the strip beside them is the "outside" a tap closes it from.
 	if Profile().IsMobile() {
 		if r := g.gridTopButtonsReservedRect(); !r.Empty() && r.Max.Y > b.Min.Y && r.Max.Y < b.Max.Y {
 			b.Min.Y = r.Max.Y
@@ -134,10 +110,7 @@ func (sb *NodeSidebar) noteMatrixBounds() image.Rectangle {
 	return b
 }
 
-// syncNoteMatrixProps refreshes the props that change while the picker is
-// open: the anchor (the sidebar re-lays out every frame, so the chip moves
-// with scroll and drag) and the current pitch (so -/+ nudges made with the
-// picker open move the selected ring).
+// The sidebar re-lays out every frame (the chip moves), and -/+ nudges must move the ring.
 func (sb *NodeSidebar) syncNoteMatrixProps() {
 	if !sb.noteMatrixIsOpen() || sb.node == nil || sb.game == nil {
 		return
@@ -150,8 +123,6 @@ func (sb *NodeSidebar) syncNoteMatrixProps() {
 	sb.noteMatrix.SetProps(p)
 }
 
-// noteMatrixCellAt returns the id of the selectable cell under a point; ok is
-// false when the point is not on one.
 func (sb *NodeSidebar) noteMatrixCellAt(x, y int) (sbID, bool) {
 	if !sb.noteMatrixIsOpen() {
 		return sbID{}, false
@@ -165,14 +136,8 @@ func (sb *NodeSidebar) noteMatrixCellAt(x, y int) (sbID, bool) {
 	return sbID{}, false
 }
 
-// handleNoteMatrixInput gives the open picker first refusal on pointer input,
-// with ONE exception: a press on a selectable cell falls through so the
-// sidebar's normal Button path fires it (hover, press animation, deferred tap).
-//
-// Everything else inside the panel is absorbed here. The picker is modal over
-// its own rect, and without that a press on a DIMMED cell reached whatever
-// sidebar control it floats over — clicking an out-of-range cell nudged the
-// pitch via the "−" key underneath it.
+// Absorbs everything except presses on selectable cells, which fall through to the Button path.
+// Modal over its rect: otherwise a dimmed cell's press reached the control beneath it.
 func (sb *NodeSidebar) handleNoteMatrixInput(x, y int, pressed bool) InputResult {
 	if !sb.noteMatrixIsOpen() {
 		return InputIgnored
@@ -181,19 +146,14 @@ func (sb *NodeSidebar) handleNoteMatrixInput(x, y int, pressed bool) InputResult
 	if _, onCell := sb.noteMatrixCellAt(x, y); onCell {
 		return InputIgnored // let the cell Button handle it
 	}
-	// Anchor pass-through: the panel can cover the note chip that opened it, so
-	// a press there must reach the chip Button (which toggles the picker shut)
-	// rather than being absorbed as a chrome press. Same affordance the slider
-	// popup gives its anchor.
+	// The panel may cover the chip that opened it; a press there must reach the chip, which closes it.
 	if a := sb.rects[sbPitchNote]; !a.Empty() && image.Pt(x, y).In(a) {
 		return InputIgnored
 	}
 	return sb.noteMatrix.HandleInput(x, y, pressed)
 }
 
-// noteMatrixCellIDs are the sidebar button ids for the picker's visible cells,
-// highest z first. buttonOrder() prepends these so a cell outranks every
-// control it floats over.
+// Highest z first, so a cell outranks every control it floats over.
 func (sb *NodeSidebar) noteMatrixCellIDs() []sbID {
 	if !sb.noteMatrixIsOpen() {
 		return nil
@@ -208,10 +168,7 @@ func (sb *NodeSidebar) noteMatrixCellIDs() []sbID {
 	return out
 }
 
-// layoutNoteMatrixCells publishes each visible, selectable cell's rect into
-// sb.rects so wireButtons can turn it into a Button. Stale ids from a previous
-// scroll position are removed, otherwise a button would linger over a cell
-// that has moved.
+// Stale ids are removed, or a button lingers over a cell that moved.
 func (sb *NodeSidebar) layoutNoteMatrixCells() {
 	for id := range sb.rects {
 		if id.el == elNoteCell {
@@ -231,7 +188,6 @@ func (sb *NodeSidebar) layoutNoteMatrixCells() {
 			sb.rects[c.ID] = c.Rect
 		}
 	}
-	// Drop buttons whose cell is gone (scrolled away or now out of range);
 	// mk() only deletes ids it is asked about.
 	for id := range sb.btns {
 		if id.el == elNoteCell {
@@ -242,9 +198,7 @@ func (sb *NodeSidebar) layoutNoteMatrixCells() {
 	}
 }
 
-// wireNoteMatrixCells registers one Button per selectable visible cell, using
-// the sidebar's own mk() so cells get the shared keycap style, hover, press
-// animation and deferred-tap dispatch.
+// Through the sidebar's mk(), so cells get the shared style, hover, press and deferred tap.
 func (sb *NodeSidebar) wireNoteMatrixCells(mk func(id sbID, label string, onClick func())) {
 	if !sb.noteMatrixIsOpen() || sb.node == nil || sb.game == nil {
 		return
@@ -258,8 +212,6 @@ func (sb *NodeSidebar) wireNoteMatrixCells(mk func(id sbID, label string, onClic
 	}
 }
 
-// drawNoteMatrix paints the picker above the sidebar's own content: chrome,
-// then the cell Buttons, then the scrollbar and close button.
 func (sb *NodeSidebar) drawNoteMatrix(dst *ebiten.Image) {
 	if !sb.noteMatrixIsOpen() {
 		return
@@ -277,19 +229,8 @@ func (sb *NodeSidebar) drawNoteMatrix(dst *ebiten.Image) {
 		if b := sb.btns[c.ID]; b != nil {
 			b.Draw(dst)
 		}
-		// Highlights are FILLS, not outlines — a 1px border is easy to lose on
-		// a dense grid of keycaps.
-		//
-		// They paint ON TOP of the button, deliberately. Drawn underneath they
-		// were invisible: the keycap face is opaque and covered them
-		// completely, so the draw call happened and the pixels never changed
-		// (a draw-call-counting test passed on exactly that). A translucent
-		// tint over the cap reads as highlighted while leaving the note name
-		// legible.
-		//
-		// The two states are separable because they can sit on different cells:
-		// the accent tint marks the note the node currently sounds, the focus
-		// tint marks where the keyboard cursor is.
+		// Fills, painted ON TOP of the button: under the opaque keycap they never changed a pixel.
+		// Accent = the note the node sounds; focus = the keyboard cursor, which may sit elsewhere.
 		if c.Selected {
 			drawRoundedRect(dst, c.Rect, WithAlpha(colAccent, AlphaMedium), fitRadius(RadiusControl, c.Rect), true)
 			drawRoundedRect(dst, c.Rect, colAccent, fitRadius(RadiusControl, c.Rect), false)
@@ -303,18 +244,10 @@ func (sb *NodeSidebar) drawNoteMatrix(dst *ebiten.Image) {
 	sb.noteMatrix.DrawOverlay(dst)
 }
 
-// ─── Keyboard navigation ───────────────────────────────────────────────────
-//
-// The picker reuses MenuKeyNav, the same cursor the instrument / template /
-// context menus use, via its opt-in grid interface: Up/Down move a whole row,
-// Left/Right one cell, Enter picks. Home/End jump to the first/last selectable
-// note and PageUp/PageDown move by a visible page — all inherited, none of it
-// re-implemented here.
+// Reuses MenuKeyNav's grid mode: Up/Down a row, Left/Right a cell, Home/End, paging, Enter.
 
-// noteMatrixNavHost adapts the picker to MenuKeyNavHost. Items are the FULL
-// model grid in row-major order (index = row*cols + col), including the
-// out-of-range cells, so the index arithmetic stays a plain stride; those cells
-// simply report themselves unselectable and the cursor steps over them.
+// The FULL grid including out-of-range cells, so the index is a plain stride; those cells
+// report unselectable and the cursor skips them.
 type noteMatrixNavHost struct{ sb *NodeSidebar }
 
 func (h noteMatrixNavHost) model() (noteMatrixModel, bool) {
@@ -371,8 +304,7 @@ func (h noteMatrixNavHost) MenuActivate(i int) {
 	h.sb.applyNoteMatrixPitch(pitch)
 }
 
-// MenuScrollBehavior is nil: the picker scrolls in ROWS while the cursor counts
-// CELLS, so MenuRevealItem does the placing instead (MenuKeyNavRevealer).
+// nil: the picker scrolls in rows while the cursor counts cells, so MenuRevealItem places it.
 func (h noteMatrixNavHost) MenuScrollBehavior() *ScrollBehavior { return nil }
 
 // MenuRevealItem scrolls the cursor's ROW into the visible window.
@@ -392,9 +324,7 @@ func (sb *NodeSidebar) noteMatrixNav() *MenuKeyNav {
 	return sb.noteMatrixKeyNav
 }
 
-// updateNoteMatrixKeyNav pumps the keyboard cursor for one frame. Called from
-// the sidebar's per-frame update so arrows work whether or not the pointer is
-// over the picker.
+// From the per-frame update, so arrows work wherever the pointer is.
 func (sb *NodeSidebar) updateNoteMatrixKeyNav() {
 	if !sb.noteMatrixIsOpen() {
 		if sb.noteMatrixKeyNav != nil {
@@ -405,17 +335,8 @@ func (sb *NodeSidebar) updateNoteMatrixKeyNav() {
 	sb.noteMatrixNav().Update(noteMatrixNavHost{sb: sb})
 }
 
-// applyNoteMatrixPitch is the ONE mutation both a cell click and Enter go
-// through, so keyboard and pointer cannot diverge.
-//
-// SELECTING APPLIES, RE-SELECTING CONFIRMS. Choosing a different note applies
-// it and leaves the picker OPEN, so several notes can be auditioned without
-// reopening the panel between each. Choosing the note that is already current
-// is the confirm gesture and closes.
-//
-// The rule is positional, not time-based: there is no double-click timer to
-// tune, and pointer and keyboard behave identically. The colour picker follows
-// the same rule (drumview_overlay_color_comp.go).
+// The one mutation for click and Enter. A new note applies and keeps the picker open for
+// auditioning; the current note confirms and closes. Positional, not timed.
 func (sb *NodeSidebar) applyNoteMatrixPitch(pitch float64) {
 	if sb.node == nil || sb.game == nil {
 		return
@@ -437,9 +358,7 @@ func (sb *NodeSidebar) applyNoteMatrixPitch(pitch float64) {
 	g.notifyPredictorNode(id)
 	emitNodeParamsChanged(id, p)
 
-	// Move the keyboard cursor onto the note just applied, so pointer and
-	// keyboard stay coherent: after clicking a cell, Enter CONFIRMS it rather
-	// than re-applying whatever the cursor was left pointing at.
+	// So after a click, Enter confirms that note.
 	if col, row, ok := sb.noteMatrix.Model().CellFor(pitch); ok {
 		if cols := sb.noteMatrix.Model().Cols(); cols > 0 {
 			nav := sb.noteMatrixNav()
@@ -448,14 +367,9 @@ func (sb *NodeSidebar) applyNoteMatrixPitch(pitch float64) {
 		}
 	}
 
-	// Stay open, and re-lay out so the highlight, the chip label and the cell
-	// buttons all reflect the note just applied.
 	sb.layout()
 }
 
-// noteMatrixKeyCursorID is the sidebar button id under the keyboard cursor, or
-// the zero sbID when nothing is highlighted. Draw uses it to render the same focus ring a
-// hovered cell gets, so the keyboard cursor is visible.
 func (sb *NodeSidebar) noteMatrixKeyCursorID() sbID {
 	if !sb.noteMatrixIsOpen() || sb.noteMatrixKeyNav == nil {
 		return sbID{}

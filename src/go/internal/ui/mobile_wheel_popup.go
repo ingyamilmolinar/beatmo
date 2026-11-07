@@ -19,22 +19,17 @@ const (
 	wheelDragRes
 )
 
-// WheelBinding wires a MobileWheelPopup to the single shared knob value-model.
-// The popup stores NO value of its own — it reads/writes Knob and Badge.
+// The popup stores NO value of its own.
 type WheelBinding struct {
-	// Model, when set, is the value model the wheel scrolls (NumberModel for
-	// BPM / node values / go-to). When nil the legacy Knob/Badge/Def/Discrete
-	// fields are adapted through knobModel (synth, sampler, EQ).
+	// nil adapts the Knob/Badge/Def fields through knobModel.
 	Model    WheelModel
 	Knob     *Knob
 	Badge    *KnobStepBadge // nil for discrete/enum params (no resolution strip)
 	Def      audio.ParamDef
 	Discrete bool // enum or Step>0: step detents instead of endless accumulation
 	OnChange func()
-	// OnCancel, when set, restores the bound value on Cancel (Esc) instead of
-	// re-applying the model's snapshot through OnChange — for a model that
-	// converts or clamps (dB ↔ linear, a floor) and so cannot round-trip the
-	// opening value exactly.
+	// For a model that converts or clamps (dB ↔ linear, a floor) and so cannot round-trip the opening
+	// value: restore it directly.
 	OnCancel     func()
 	OnCommit     func()
 	OnResolution func()
@@ -43,12 +38,8 @@ type WheelBinding struct {
 	Accent       func() color.Color
 }
 
-// ValueWheel is the embeddable value-wheel VIEW: a barrel of distinct value
-// rows around a centre selector, plus an optional resolution ladder. It draws no
-// frame and no title, so it can sit inside any card (the navigation menu's go-to
-// wheel, the logs time picker) or inside MobileWheelPopup, which adds the popup
-// frame, title band and the transactional Accept/Cancel. It owns no value: every
-// label and step goes through the binding's WheelModel.
+// No frame or title, so it can sit inside any card; MobileWheelPopup adds the frame and the
+// transactional Accept/Cancel. Owns no value: everything goes through the WheelModel.
 type ValueWheel struct {
 	binding      WheelBinding
 	resRect      image.Rectangle // resolution strip sub-rect (set in layoutBody)
@@ -61,31 +52,23 @@ type ValueWheel struct {
 	resNotcher   stepNotcher // clicky cadence for resolution-strip drag
 	wheelNotcher stepNotcher // paces mouse-wheel / two-finger scroll (events per step)
 
-	// Tap-vs-drag disambiguation for the barrel: a press latches its point;
-	// once the pointer travels past wheelTapSlopPx the gesture is a drag. A
-	// release that never moved is a CLICK — on a visible row it selects that
-	// row's value directly (desktop users click values instead of scrolling).
+	// A release that never passed the slop is a CLICK: on a visible row it selects that value.
 	pressPt    image.Point
 	pressMoved bool
 
 	dirty bool // a value change happened since the host last reset it
 
-	// accept is the host's "confirm" action, fired by a click on the centre
-	// selector (MobileWheelPopup: Accept; the go-to card: Go). Nil = inert.
+	// Fired by a click on the centre selector; nil = inert.
 	accept func()
 
-	// Plain-hover state (desktop only), refreshed once per frame via HoverAt
-	// (the portalHoverer seam — portal input handlers only run on press
-	// edges, so without this the ladder/center grip never show a hover cue).
+	// Portal input only runs on press edges, so hover is refreshed per frame via HoverAt.
 	hoverRung   int  // rung index under the cursor, -1 when none
 	hoverCenter bool // cursor is over the center value box
 
 	km *knobModel // cached legacy adapter (see model)
 }
 
-// MobileWheelPopup is the value-wheel POPUP: a ValueWheel inside a floating
-// panel with a title band, anchored to the control that opened it, with a
-// transactional edit (live preview, one commit on Accept, restore on Cancel).
+// Anchored to its opener; live preview, one commit on Accept, restore on Cancel.
 type MobileWheelPopup struct {
 	ValueWheel
 	open      bool
@@ -93,29 +76,19 @@ type MobileWheelPopup struct {
 	anchor    image.Rectangle
 	titleRect image.Rectangle // reserved title band at the panel top
 
-	// Transactional edit state. The popup is a modal value editor: turning the
-	// wheel previews live via OnChange, but the undo commit is DEFERRED until
-	// the edit is Accepted (Enter / tap-away / navigate-away). Esc Cancels,
-	// restoring initialValue. See Accept/Cancel.
+	// Turning previews live; the undo commit waits for Accept (Enter, tap-away, navigate-away). Esc
+	// restores initialValue.
 	initialValue float64 // model value snapshotted at Open (for Cancel)
 }
 
-// wheelStepEventsPerNotch is how many discrete scroll events advance the value by
-// one step. Scroll magnitude is ignored (a two-finger trackpad flick reports a
-// large delta per event); pacing by event count keeps wheel scrolling slow and
-// controlled, matching the clicky drag cadence.
+// Magnitude is ignored (a trackpad flick reports a huge delta); pacing by event count keeps it controlled.
 const wheelStepEventsPerNotch = 3
 
-// wheelTapSlopPx is the movement budget within which a press+release counts
-// as a CLICK on a barrel row rather than a drag. Kept well below tickGap so a
-// sub-slop gesture can never both fire a drag detent and a row jump.
+// Well below tickGap, so a sub-slop gesture can never fire both a detent and a row jump.
 const wheelTapSlopPx = 6
 
-// barrelRowAt maps a point to a signed barrel row: +n is the n-th visible row
-// ABOVE the center selector (larger values), -n below. ok=false outside the
-// barrel, inside the center band, or beyond the drawn row range. Mirrors
-// drawBarrel's geometry (tickGap spacing around the barrel's vertical center)
-// so the clickable rows are exactly the drawn rows.
+// +n is the n-th row ABOVE centre (larger values). Mirrors drawBarrel's geometry, so the clickable
+// rows are exactly the drawn ones.
 func (w *ValueWheel) barrelRowAt(x, y int) (int, bool) {
 	pt := image.Pt(x, y)
 	if w.valRect.Empty() || !pt.In(w.valRect) || pt.In(w.centerH) {
@@ -143,8 +116,6 @@ func (w *ValueWheel) confirm() {
 	}
 }
 
-// model returns the binding's value model: the explicit Model, else a
-// knobModel over the legacy Knob/Badge/Def fields (nil when neither is set).
 func (w *ValueWheel) model() WheelModel {
 	if w.binding.Model != nil {
 		return w.binding.Model
@@ -152,8 +123,7 @@ func (w *ValueWheel) model() WheelModel {
 	if w.binding.Knob == nil {
 		return nil
 	}
-	// Refreshed in place every call (no per-frame allocation): the binding is
-	// replaced wholesale on every Open.
+	// Refreshed in place, never allocated per frame.
 	if w.km == nil {
 		w.km = &knobModel{}
 	}
@@ -177,10 +147,8 @@ func (w *MobileWheelPopup) Open(b WheelBinding, anchor, bounds image.Rectangle, 
 	w.accept = w.Accept
 }
 
-// Bind attaches the wheel to a value binding and resets every gesture /
-// cadence / hover state, so a re-bound wheel never carries a half-finished
-// drag or a partial notch from the previous value. The confirm action (centre
-// click) is cleared; hosts set it with SetConfirm after binding.
+// Resets every gesture, cadence and hover state, so a re-bound wheel never carries a half-finished
+// drag; hosts set the confirm action afterwards.
 func (w *ValueWheel) Bind(b WheelBinding) {
 	w.binding = b
 	w.dragging = false
@@ -203,8 +171,7 @@ func (w *ValueWheel) Dirty() bool { return w.dirty }
 // ClearDirty resets the changed-since flag (a host that applied the value).
 func (w *ValueWheel) ClearDirty() { w.dirty = false }
 
-// HoverAt refreshes the desktop hover cue for an inline host; points outside
-// the wheel clear it.
+// Points outside the wheel clear it.
 func (w *ValueWheel) HoverAt(mx, my int) {
 	pt := image.Pt(mx, my)
 	if !pt.In(w.valRect) && !pt.In(w.resRect) {
@@ -215,11 +182,7 @@ func (w *ValueWheel) HoverAt(mx, my int) {
 	w.hoverAt(pt)
 }
 
-// HoverAt implements portalHoverer: refreshes the hovered rung / center-grip
-// state from the plain cursor position each frame so the hover tint shows on
-// desktop (portal input handlers only run on press edges — see
-// OverlayPortal.Update's plain-hover propagation). Cursor outside the popup
-// (or the popup closed) clears both.
+// Portal input handlers only run on press edges, so hover needs this per-frame pass.
 func (w *MobileWheelPopup) HoverAt(mx, my int) {
 	w.hoverRung = -1
 	w.hoverCenter = false
@@ -233,8 +196,6 @@ func (w *MobileWheelPopup) HoverAt(mx, my int) {
 	w.ValueWheel.hoverAt(pt)
 }
 
-// hoverAt refreshes the hovered rung / centre-grip state for a point already
-// known to be inside the host.
 func (w *ValueWheel) hoverAt(pt image.Point) {
 	w.hoverRung = -1
 	w.hoverCenter = false
@@ -249,8 +210,7 @@ func (w *ValueWheel) hoverAt(pt image.Point) {
 	}
 }
 
-// layout splits the panel into a barrel column, an optional resolution strip,
-// and a center value box. Discrete params hide the strip.
+// Discrete params hide the strip.
 func (w *MobileWheelPopup) layout() {
 	inner := w.rect.Inset(SpaceSM)
 
@@ -261,12 +221,8 @@ func (w *MobileWheelPopup) layout() {
 	w.layoutBody(body)
 }
 
-// Layout positions the wheel (barrel + optional ladder) inside body. Inline
-// hosts call it; MobileWheelPopup reaches it through layout().
 func (w *ValueWheel) Layout(body image.Rectangle) { w.layoutBody(body) }
 
-// layoutBody splits body into the barrel column, the optional resolution strip
-// and the centre value box.
 func (w *ValueWheel) layoutBody(body image.Rectangle) {
 	dvals := Profile().DensityValues()
 	resW := 0
@@ -287,15 +243,8 @@ func (w *ValueWheel) layoutBody(body image.Rectangle) {
 	w.centerH = image.Rect(w.valRect.Min.X, cy-pillH/2, w.valRect.Max.X, cy+pillH/2)
 }
 
-// rungRects lays the ladder pills vertically inside resRect, COARSEST rung at
-// the TOP — bigger numbers on top, matching the value barrel beside it (and
-// matching drag/scroll down = coarser, which pulls the bigger steps down
-// toward you). Equal heights, compressed when the ladder is long; empty when
-// the strip is hidden.
-//
-// The returned slice stays indexed by LADDER rung (fine→coarse, as
-// Badge.Rungs() orders them) and only the geometry is reversed, so drawResStrip,
-// the tap hit-test, and hover all follow from this one mapping.
+// COARSEST at the top, like bigger numbers on the barrel beside it. Indexed by ladder rung
+// (fine→coarse) with only the geometry reversed, so draw, hit-test and hover share one mapping.
 func (w *ValueWheel) rungRects() []image.Rectangle {
 	m := w.model()
 	if w.resRect.Empty() || m == nil {
@@ -324,10 +273,8 @@ func (w *ValueWheel) rungRects() []image.Rectangle {
 
 func (w *MobileWheelPopup) Close() { w.open = false; w.dragging = false; w.dragKind = wheelDragNone }
 
-// Accept persists the current edit: if the value changed since Open it fires
-// OnCommit once (recording a single undo step), then closes. This is the
-// terminal action for Enter, tapping outside, re-tapping the opener, and
-// navigating away — every dismissal EXCEPT Esc. A no-op when nothing changed.
+// The terminal action for every dismissal EXCEPT Esc: one commit (one undo step) if the value
+// changed, then close.
 func (w *MobileWheelPopup) Accept() {
 	if !w.open {
 		return
@@ -338,9 +285,7 @@ func (w *MobileWheelPopup) Accept() {
 	w.Close()
 }
 
-// Cancel discards the edit: it restores the value snapshotted at Open, re-applies
-// it via OnChange (so the source of truth and live audio revert to their previous
-// state), does NOT commit, then closes. This is the terminal action for Esc.
+// Restores the snapshot through OnChange, so the source of truth and live audio revert. No commit.
 func (w *MobileWheelPopup) Cancel() {
 	if !w.open {
 		return
@@ -360,19 +305,11 @@ func (w *MobileWheelPopup) Rect() image.Rectangle   { return w.rect }
 func (w *MobileWheelPopup) Anchor() image.Rectangle { return w.anchor }
 func (w *ValueWheel) IsDragging() bool              { return w.dragging && w.dragKind == wheelDragValue }
 
-// IsDraggingAny reports whether ANY drag (value OR resolution strip) is active.
-// The portal hit handler uses this to claim capture so move events keep flowing
-// to the popup; the narrower IsDragging() stays value-only for row-scroll isolation.
+// Capture needs any drag; IsDragging() stays value-only for row-scroll isolation.
 func (w *ValueWheel) IsDraggingAny() bool { return w.dragging }
 
-// HandleWheel applies a mouse-wheel / trackpad two-finger scroll. Scroll
-// MAGNITUDE is deliberately ignored (a two-finger flick reports a large delta
-// per event, which used to fly the value); instead each event contributes one
-// unit of direction to a notcher, so it takes wheelStepEventsPerNotch events to
-// advance one step — slow and controlled, matching the clicky drag. Over the
-// resolution strip it shifts the rung at the same cadence. Returns true if it
-// consumed the event. Value changes preview live (OnChange); the undo commit is
-// deferred to Accept (Enter / tap-away), like the drag path.
+// Magnitude is ignored (a flick used to fly the value): each event is one unit of direction, and
+// it takes wheelStepEventsPerNotch events per step. The commit waits for Accept.
 func (w *MobileWheelPopup) HandleWheel(mx, my, steps int) bool {
 	if !w.open {
 		return false
@@ -380,8 +317,6 @@ func (w *MobileWheelPopup) HandleWheel(mx, my, steps int) bool {
 	return w.ValueWheel.HandleWheel(mx, my, steps)
 }
 
-// HandleWheel applies a mouse-wheel / trackpad scroll to the wheel (see
-// MobileWheelPopup.HandleWheel for the pacing and direction contract).
 func (w *ValueWheel) HandleWheel(mx, my, steps int) bool {
 	if steps == 0 {
 		return false
@@ -398,11 +333,7 @@ func (w *ValueWheel) HandleWheel(mx, my, steps int) bool {
 	}
 	if overStrip {
 		changed := false
-		// Match the resolution DRAG (and the value barrel): a DOWNWARD scroll is a
-		// positive step on the target (n>0) and must COARSEN (bigger step number),
-		// like the value wheel where a downward scroll raises the shown number.
-		// Scroll UP (n<0) finens. (This mirrors applyResDelta, where drag-down —
-		// steps<0 — already coarsens; the two paths now agree.)
+		// A DOWNWARD scroll coarsens, matching the drag and the barrel.
 		for i := 0; i < n; i++ {
 			changed = m.AdjustLadder(-1) || changed // scroll down => coarser
 		}
@@ -419,17 +350,8 @@ func (w *ValueWheel) HandleWheel(mx, my, steps int) bool {
 	if m == nil {
 		return false
 	}
-	// Same barrel "down = higher" direction as the finger drag: a DOWNWARD scroll
-	// must RAISE the value (higher numbers descend to the center selector). The tree
-	// hands the popup ebiten.Wheel's raw int(wy) as steps. EMPIRICAL PLATFORM FACT
-	// (confirmed on the target device): a downward two-finger/wheel scroll arrives as
-	// POSITIVE int(wy), so n>0 for a downward scroll and we apply the RAW n to
-	// increase. (The wheel "down" sign is natural-scroll/platform dependent; we match
-	// the user's device. The finger drag reaches the same "down = increase" via
-	// delta=lastY-my; both are locked together by TestWheelDownGesturesAllIncrease.)
-	//
-	// Shift+scroll applies ONE ladder rung finer than the active resolution
-	// WITHOUT persisting the rung (mirrors nudgeKnobByWheel's fine path).
+	// A DOWNWARD scroll raises the value, like the finger drag; on the target devices it arrives as
+	// positive wy, so the raw n applies. Shift scrolls one rung finer without persisting it.
 	fine := isKeyPressed(ebiten.KeyShiftLeft) || isKeyPressed(ebiten.KeyShiftRight)
 	if fine && m.HasLadder() {
 		m.StepFine(n)
@@ -452,18 +374,10 @@ func (w *MobileWheelPopup) HandleInput(mx, my int, pressed bool) bool {
 	return w.ValueWheel.HandleInput(mx, my, pressed)
 }
 
-// HandleInput routes a pointer event to the barrel / ladder. Returns true when
-// the wheel consumed it.
 func (w *ValueWheel) HandleInput(mx, my int, pressed bool) bool {
 	if !pressed {
-		// A release that never left the tap slop is a CLICK (drags that start
-		// in the same spot are unaffected — any real movement sets pressMoved):
-		//  - on the CENTER value box it confirms (the host's accept action:
-		//    the popup Accepts, the go-to card seeks) — the uniform "click the
-		//    middle to confirm" contract, on every wheel.
-		//  - on a visible barrel ROW it selects that row's value directly
-		//    (live preview via OnChange; the undo commit stays deferred to
-		//    Accept, like any other edit).
+		// A release inside the slop is a CLICK: on the centre it confirms (every wheel's contract), on a
+		// visible row it selects that value (committed later, on Accept).
 		if w.dragging && w.dragKind == wheelDragValue && !w.pressMoved {
 			if w.pressPt.In(w.centerH) {
 				w.dragging = false
@@ -480,8 +394,7 @@ func (w *ValueWheel) HandleInput(mx, my int, pressed bool) bool {
 				}
 			}
 		}
-		// Releasing a drag ends the gesture but does NOT commit — the undo
-		// commit is deferred to Accept (Enter / tap-away). See Accept/Cancel.
+		// Ending a drag does not commit; Accept does.
 		w.dragging = false
 		w.dragKind = wheelDragNone
 		return true
@@ -491,9 +404,7 @@ func (w *ValueWheel) HandleInput(mx, my int, pressed bool) bool {
 		// Press: decide which sub-control this gesture owns.
 		switch {
 		case !w.resRect.Empty() && pt.In(w.resRect):
-			// Tap directly on a rung pill jumps straight to that resolution and
-			// persists it (OnResolution). A press in the strip gutter (outside any
-			// rung) still starts the legacy clicky res-drag below.
+			// A tap on a rung jumps to it and persists it; a press in the gutter still starts a res-drag.
 			if m := w.model(); m != nil && m.HasLadder() {
 				for i, rr := range w.rungRects() {
 					if pt.In(rr) {
@@ -543,24 +454,13 @@ func (w *ValueWheel) HandleInput(mx, my int, pressed bool) bool {
 	return true
 }
 
-// applyValueDelta feeds a vertical delta through the clicky cadence notcher and
-// advances the value one detent per notch — the same step-by-step feel as a
-// discrete knob, so a tiny drag no longer flies through every value. Continuous
-// params move exactly one StepMul per notch (snapping to the step grid); enum
-// params advance one item per notch. Returns true if at least one detent clicked
-// over.
-//
-// Direction: the barrel draws higher values at the top, lower at the bottom, so
-// dragging the finger DOWN (delta<0) pulls the higher rows toward the center
-// selector and must INCREASE the value. Both branches therefore invert delta so
-// that finger-down => positive steps => value up.
+// One detent per notch of the cadence, so a tiny drag never flies through values. Dragging DOWN
+// pulls the higher rows to centre, so it increases the value: delta is inverted.
 func (w *ValueWheel) applyValueDelta(delta int) bool {
 	m := w.model()
 	if m == nil {
 		return false
 	}
-	// Drag down (delta<0) => -delta>0 => steps>0 => the value rises (enum: the
-	// index advances). One notch == one detent at the active resolution.
 	steps := w.valNotcher.add(-delta)
 	if steps == 0 {
 		return false
@@ -569,8 +469,7 @@ func (w *ValueWheel) applyValueDelta(delta int) bool {
 	return true
 }
 
-// applyResDelta drags the resolution strip across the KnobStepBadge rungs and
-// keeps the knob's StepMul in sync. One rung shift per tick-gap of travel.
+// One rung per tick-gap of travel; keeps the knob's StepMul in sync.
 func (w *ValueWheel) applyResDelta(delta int) {
 	m := w.model()
 	if m == nil || !m.HasLadder() {
@@ -594,19 +493,11 @@ func (w *ValueWheel) applyResDelta(delta int) {
 	}
 }
 
-// ── keyboard editing (KeyboardKeyClaimant, see keyboard_key_claim.go) ────────
-//
-// Up/Down step the VALUE by one resolution step; Left/Right move the step
-// RESOLUTION one ladder rung. Direction matches the Synth tab's armed control
-// (ArrowRight = coarser), so both value editors read the same way. Every other
-// key falls through to the normal shortcut router: Space still plays, [ ] still
-// zoom, Enter/Esc keep their Accept/Cancel meaning from the portal overlay.
+// Up/Down step the value, Left/Right the resolution (Right = coarser), like the Synth tab's armed
+// control. Every other key falls through: Space plays, Enter/Esc keep Accept/Cancel.
 
-// ClaimedKeys implements KeyboardKeyClaimant: the vertical arrows while open,
-// plus the horizontal pair only when the resolution ladder is actually ON
-// SCREEN. The condition mirrors layout()'s resW gate exactly — claiming
-// Left/Right for a rung the user cannot see would take arrow-pan away to move
-// nothing.
+// Left/Right only while the ladder is ON SCREEN (the same gate as layout): claiming them for an
+// invisible rung would take arrow-pan away for nothing.
 func (w *MobileWheelPopup) ClaimedKeys() []ebiten.Key {
 	if w == nil || !w.open {
 		return nil
@@ -614,8 +505,6 @@ func (w *MobileWheelPopup) ClaimedKeys() []ebiten.Key {
 	return w.ValueWheel.ClaimedKeys()
 }
 
-// ClaimedKeys: the vertical arrows, plus the horizontal pair only while the
-// resolution ladder is on screen.
 func (w *ValueWheel) ClaimedKeys() []ebiten.Key {
 	if w == nil {
 		return nil
@@ -626,15 +515,13 @@ func (w *ValueWheel) ClaimedKeys() []ebiten.Key {
 	return valueStepKeys()
 }
 
-// hasResolutionStrip reports whether the resolution ladder is laid out. Single
-// source for layout() and ClaimedKeys, so the claim can't drift from the strip.
+// The one source for layout() and ClaimedKeys, so the claim cannot drift from the strip.
 func (w *ValueWheel) hasResolutionStrip() bool {
 	m := w.model()
 	return m != nil && m.HasLadder()
 }
 
-// HandleClaimedKeys implements KeyboardKeyClaimant. One key acts per frame (the
-// switch), so the alias spellings real Ebiten collapses cannot double-fire.
+// One key per frame, so the alias spellings cannot double-fire.
 func (w *MobileWheelPopup) HandleClaimedKeys() bool {
 	if w == nil || !w.open {
 		return false
@@ -642,8 +529,7 @@ func (w *MobileWheelPopup) HandleClaimedKeys() bool {
 	return w.ValueWheel.HandleClaimedKeys()
 }
 
-// HandleClaimedKeys steps the value (Up/Down) or the resolution (Left/Right).
-// One key acts per frame, so alias spellings cannot double-fire.
+// One key per frame, so the alias spellings cannot double-fire.
 func (w *ValueWheel) HandleClaimedKeys() bool {
 	if w == nil {
 		return false
@@ -661,11 +547,8 @@ func (w *ValueWheel) HandleClaimedKeys() bool {
 	return false
 }
 
-// StepValue advances the value by exactly ONE resolution step in dir (+1/-1) —
-// the keyboard's discrete counterpart to a drag notch, which is why it does NOT
-// go through valNotcher (a keypress must move the value on the frame it lands,
-// not after enough travel accumulates). Live-previews via OnChange; the undo
-// commit stays deferred to Accept, exactly like the drag and wheel paths.
+// Not through valNotcher: a keypress must move the value on the frame it lands. The commit still
+// waits for Accept.
 func (w *ValueWheel) StepValue(dir int) bool {
 	m := w.model()
 	if m == nil || dir == 0 {
@@ -681,10 +564,7 @@ func (w *ValueWheel) StepValue(dir int) bool {
 	return true
 }
 
-// StepResolution moves the step-resolution ladder one rung: +1 = COARSER (a
-// bigger step number), matching synthResolutionBinding.stepBy so both value
-// editors read the same way. Badge.AdjustResolution(+1) is FINER, so the delta
-// is inverted here.
+// +1 = coarser, matching the Synth tab; Badge.AdjustResolution(+1) is finer, hence the inversion.
 func (w *ValueWheel) StepResolution(dir int) bool {
 	m := w.model()
 	if m == nil || dir == 0 || !m.AdjustLadder(-sign(dir)) {

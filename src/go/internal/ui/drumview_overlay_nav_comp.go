@@ -6,18 +6,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// NavigationMenuComponent is the framework-compliant host for the navigation
-// menu (opened by tapping the beat counter). It is a first-class portal
-// component — implementing compOverlayable — so it flows through
-// compPortalOverlay + compHitHandler and the DrumView tree's NATIVE input
-// dispatch: press/drag/release, capture, hover, keyboard-claim, escape, and
-// click-outside are all handled by the tree, exactly like SubdivMenuComponent /
-// InstrumentMenuComponent / ColorWheelComponent.
-//
-// It reuses NavigationPanel for layout/draw/control logic, including the GO
-// TO wheel. While open it is a PARTIAL keyboard claimant (the wheel's arrows:
-// Up/Down value, Left/Right step) and Enter means Go; every other key passes
-// through, so Space still plays.
+// A portal component, so press/drag/release, capture, hover, Esc and click-outside all come from
+// the tree. A PARTIAL keyboard claimant: the wheel's arrows and Enter; Space still plays.
 type NavigationMenuComponent struct {
 	overlayBase
 	panel *NavigationPanel
@@ -32,8 +22,6 @@ type NavigationMenuComponent struct {
 	onClose      func()
 }
 
-// NewNavigationMenuComponent wraps an existing NavigationPanel as a portal
-// component.
 func NewNavigationMenuComponent(panel *NavigationPanel) *NavigationMenuComponent {
 	return &NavigationMenuComponent{
 		overlayBase: newOverlayBase(),
@@ -44,8 +32,6 @@ func NewNavigationMenuComponent(panel *NavigationPanel) *NavigationMenuComponent
 // Panel returns the wrapped NavigationPanel (control rects, callbacks).
 func (c *NavigationMenuComponent) Panel() *NavigationPanel { return c.panel }
 
-// CloseBtn returns the desktop-only header × (nil on mobile / before layout).
-// Exposed for tests, mirroring InstrumentMenuComponent / ColorWheelComponent.
 func (c *NavigationMenuComponent) CloseBtn() *Button { return c.closeBtn }
 
 // SetOnClose registers a callback fired when the menu closes (portal cleanup).
@@ -62,8 +48,7 @@ func (c *NavigationMenuComponent) SetScreenBounds(b image.Rectangle) {
 	}
 }
 
-// SetAnchor sets the trigger rect (beat counter) the card drops from, per the
-// DESIGN.md menu-placement rule.
+// Menus drop from their trigger.
 func (c *NavigationMenuComponent) SetAnchor(r image.Rectangle) {
 	if r == c.anchor {
 		return
@@ -74,8 +59,6 @@ func (c *NavigationMenuComponent) SetAnchor(r image.Rectangle) {
 	}
 }
 
-// Open opens the menu, seats the go-to wheel on the playhead and positions the
-// card.
 func (c *NavigationMenuComponent) Open() {
 	c.open = true
 	if c.panel != nil {
@@ -102,9 +85,7 @@ func (c *NavigationMenuComponent) Close() {
 // IsOpen reports whether the menu is open.
 func (c *NavigationMenuComponent) IsOpen() bool { return c.open }
 
-// navMenuCardWidth is the desktop card width: the editor-card width class
-// (DESIGN.md "Menu sizing & layout" — a card hosting controls), never narrower
-// than the position readout needs.
+// Never narrower than the position readout needs.
 func navMenuCardWidth() int {
 	w := menuWEditor()
 	if need := SpaceMD + menuRowIconSize() + SpaceSM +
@@ -114,18 +95,13 @@ func navMenuCardWidth() int {
 	return w
 }
 
-// rebuild positions the card via the shared AnchorPopupRect primitive (desktop:
-// dropped below the beat counter, flipped/clamped on-screen) or as a full-width
-// bottom sheet on mobile, then lays out the panel into it.
 func (c *NavigationMenuComponent) rebuild() {
 	if !c.open || c.panel == nil {
 		c.card = image.Rectangle{}
 		c.SetBounds(image.Rectangle{})
 		return
 	}
-	// Desktop: the jog cluster and the unit toggle share a row so the card fits
-	// under the timeline ribbon (keeps the go-to ghost visible). The mobile
-	// sheet keeps them on two rows.
+	// On desktop one row, so the card fits under the ribbon and the go-to ghost stays visible.
 	c.panel.SharedJogRow = !Profile().UseBottomSheet
 	h := c.panel.PanelHeight()
 	if Profile().UseBottomSheet {
@@ -147,18 +123,14 @@ func (c *NavigationMenuComponent) rebuild() {
 		c.card = AnchorPopupRect(b, c.anchor, w, h, PopupBelow)
 	}
 	c.panel.Layout(c.card)
-	// Desktop-only close × in the card's reserved top-right (nil on mobile, where
-	// the bottom sheet closes by tapping away) — the same shared component every
-	// other pop-up uses. NavigationPanel reserves this corner so it never overlaps
-	// the position readout / jog cluster.
+	// Desktop only (nil on mobile, where an outside tap closes); the panel reserves this corner.
 	c.closeBtn = newPopupCloseButton(c.Close)
 	if c.frame == nil {
 		c.frame = NewMenuCard(nil)
 	}
 	c.frame.SetCloseButton(c.closeBtn)
 	c.frame.Layout(c.card, c.frameSpec())
-	// The card's title band IS the position readout row; the panel keeps the
-	// row for geometry but no longer paints it (HideReadout).
+	// The title band IS the readout row; the panel keeps it for geometry only.
 	c.panel.HideReadout = true
 	c.SetBounds(c.card)
 }
@@ -168,15 +140,8 @@ func (c *NavigationMenuComponent) frameSpec() MenuCardSpec {
 	return MenuCardSpec{Title: c.panel.ReadoutText(), IconID: IconTarget, BottomSheet: Profile().UseBottomSheet}
 }
 
-// InputBounds is the single hit area published to the tree: JUST the card.
-//
-// It deliberately does NOT union the anchor (the beat counter). On mobile the
-// card is a full-width bottom sheet while the anchor sits at the top of the
-// pane, so a card∪anchor bounding box would span the whole middle — making taps
-// there land "inside" the menu and get captured, which BLOCKS the shared portal
-// click-outside (the menu would never close). A tap on the beat counter while
-// the menu is open simply closes it via click-outside (the press is consumed,
-// so it does not re-open) — the expected "click outside = close" behavior.
+// JUST the card, never unioned with the anchor: on mobile that box would span the middle of the
+// screen, capture every tap there and block click-outside.
 func (c *NavigationMenuComponent) InputBounds() image.Rectangle {
 	if !c.open {
 		return image.Rectangle{}
@@ -184,17 +149,13 @@ func (c *NavigationMenuComponent) InputBounds() image.Rectangle {
 	return c.card
 }
 
-// HandleInput receives tree-routed pointer events via compHitHandler. A press on
-// a control returns InputCaptured so the tree delivers OnDrag+OnRelease natively
-// — the framework-native way to make momentary jog buttons pop back up, the
-// Beats/Subdiv latch reset on the release edge, and a wheel drag keep flowing to
-// the wheel (NO bespoke capture flag).
+// A press on a control returns InputCaptured, so the tree delivers drag and release natively
+// (jog buttons pop back, the latch resets, a wheel drag keeps flowing).
 func (c *NavigationMenuComponent) HandleInput(x, y int, pressed bool) InputResult {
 	if !c.open {
 		return InputIgnored
 	}
-	// Desktop close × (nil on mobile): a press on it closes the menu outright,
-	// ahead of the panel's control handling, so it can't be read as a jog tap.
+	// Ahead of the panel's controls, so it cannot be read as a jog tap.
 	if pressed && c.closeBtn != nil && image.Pt(x, y).In(c.closeBtn.Rect()) {
 		c.Close()
 		c.capturing = false
@@ -209,8 +170,7 @@ func (c *NavigationMenuComponent) HandleInput(x, y int, pressed bool) InputResul
 	return InputConsumed
 }
 
-// HandleWheel scrolls the go-to wheel when the pointer is over it, and swallows
-// every other wheel event inside the card so none leaks to the grid beneath.
+// Swallows every other wheel event in the card so none leaks to the grid.
 func (c *NavigationMenuComponent) HandleWheel(x, y, steps int) InputResult {
 	if !c.open {
 		return InputIgnored
@@ -221,12 +181,8 @@ func (c *NavigationMenuComponent) HandleWheel(x, y, steps int) InputResult {
 	return InputConsumed
 }
 
-// Capturing reports whether a control gesture is in flight (drives the tree's
-// capture routing).
 func (c *NavigationMenuComponent) Capturing() bool { return c.capturing }
 
-// Update is the per-frame hook (wired through compPortalOverlay.updateFn). The
-// go-to wheel has no per-frame animation, so there is nothing to tick.
 func (c *NavigationMenuComponent) Update() {}
 
 // HoverAt forwards desktop hover to the panel's buttons (portalHoverer).
@@ -245,8 +201,7 @@ func (c *NavigationMenuComponent) HoverAt(mx, my int) {
 	}
 }
 
-// HandleEscape (portalEscapeHandler): Esc drops the pending go-to preview and
-// lets the universal handler close the menu (Close also cancels).
+// Drops the pending go-to preview; the universal handler then closes the menu.
 func (c *NavigationMenuComponent) HandleEscape() bool {
 	if c.panel != nil {
 		c.panel.CancelGoto()
@@ -263,8 +218,7 @@ func (c *NavigationMenuComponent) HandleEnter() bool {
 	return true
 }
 
-// ClaimedKeys (KeyboardKeyClaimant): the go-to wheel's arrows while open —
-// Up/Down step the value, Left/Right the step size. Nothing when closed.
+// Nothing when closed.
 func (c *NavigationMenuComponent) ClaimedKeys() []ebiten.Key {
 	if !c.open || c.panel == nil {
 		return nil
@@ -285,8 +239,7 @@ func (c *NavigationMenuComponent) Draw(dst *ebiten.Image) {
 	if !c.open || c.card.Empty() {
 		return
 	}
-	// Shared MenuCard frame (panel / bottom sheet, readout title band, close ×);
-	// re-laid each frame so the live readout stays current.
+	// Re-laid each frame so the live readout stays current.
 	if c.frame != nil {
 		c.frame.Layout(c.card, c.frameSpec())
 		c.frame.Draw(dst)

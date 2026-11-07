@@ -20,29 +20,20 @@ type PortalEntry struct {
 	Owner   Zone
 	Overlay PortalOverlay
 	Modal   bool
-	// Scrim dims the whole screen beneath this overlay (colScrim). Menus,
-	// pickers and popups set it so modality is visible; docked tool panels
-	// (FX panel) leave it off because the user interacts around them.
+	// Docked tool panels leave it off: the user works around them.
 	Scrim bool
-	// Passive marks an overlay that never owns input: it is a display-only hint
-	// (tooltips) that must NOT close on an outside press or make the out-of-tree
-	// grid/camera handlers stand down. Every INTERACTIVE overlay (menus, popups,
-	// dropdowns, the docked FX panel) leaves this false so an outside tap closes
-	// it and is consumed rather than leaking to the surface below. See OwnsInput.
+	// Display-only (tooltips): never closes on an outside press or makes the grid stand down. Every
+	// interactive overlay leaves it false.
 	Passive bool
 	Anchor  image.Rectangle
 	OnClose func() // called when the portal removes this entry
 }
 
-// PortalUpdater is an optional interface for overlays that need per-frame
-// updates (e.g., momentum, animation). If a PortalOverlay also implements
-// PortalUpdater, OverlayPortal.Update() calls it each frame.
 type PortalUpdater interface {
 	Update()
 }
 
-// OverlayPortal manages a stack of overlay entries. The topmost entry
-// renders last (on top). Modal overlays restrict input to themselves.
+// The topmost entry renders last; modal overlays restrict input to themselves.
 type OverlayPortal struct {
 	stack        []PortalEntry
 	screenBounds image.Rectangle
@@ -54,8 +45,7 @@ func NewOverlayPortal(hitIndex *HitIndex) *OverlayPortal {
 	return &OverlayPortal{hitIndex: hitIndex}
 }
 
-// Open pushes an overlay onto the stack. If the overlay is modal, it
-// becomes the modal filter in the HitIndex. Nil-safe.
+// Nil-safe.
 func (p *OverlayPortal) Open(entry PortalEntry) {
 	if p == nil {
 		return
@@ -97,7 +87,6 @@ func (p *OverlayPortal) Close(id string) {
 	p.updateModalState()
 }
 
-// CloseTop closes the topmost overlay and returns true. Returns false if empty.
 // Nil-safe.
 func (p *OverlayPortal) CloseTop() bool {
 	if p == nil || len(p.stack) == 0 {
@@ -114,10 +103,7 @@ func (p *OverlayPortal) CloseTop() bool {
 	return true
 }
 
-// RefreshEntry refreshes a single portal entry's hit areas immediately.
-// Use this when the overlay's geometry changes mid-frame (e.g., after
-// buildFXPanel() recomputes fxPanelRect) so the hit index stays in sync
-// without waiting for the next frame's Update().
+// For mid-frame geometry changes, so the hit index stays in sync.
 func (p *OverlayPortal) RefreshEntry(id string) {
 	if p == nil {
 		return
@@ -147,8 +133,7 @@ func (p *OverlayPortal) OverlayByID(id string) PortalOverlay {
 	return nil
 }
 
-// Has returns true if an overlay with the given ID is in the stack.
-// Nil-safe: a nil portal has nothing.
+// Nil-safe.
 func (p *OverlayPortal) Has(id string) bool {
 	if p == nil {
 		return false
@@ -179,10 +164,7 @@ func (p *OverlayPortal) HasModal() bool {
 	return false
 }
 
-// HasBlocking reports whether any overlay in the stack is blocking — modal
-// or scrim-backed (menus, pickers, dropdowns, popups). Passive overlays
-// (tooltips, docked tool panels with no scrim) are NOT blocking: the user
-// interacts around them, so they must not seize input from a sibling tree.
+// Passive and scrim-less docked panels are not blocking: the user works around them.
 func (p *OverlayPortal) HasBlocking() bool {
 	if p == nil {
 		return false
@@ -195,12 +177,7 @@ func (p *OverlayPortal) HasBlocking() bool {
 	return false
 }
 
-// OwnsInput reports whether any open overlay is INTERACTIVE (not Passive) and so
-// currently owns pointer input. It is the single source of truth for "an overlay
-// is up, so an outside press must close it rather than act on the surface below"
-// — a superset of HasBlocking that also covers non-blocking interactive overlays
-// (the docked FX panel, the EQ channel dropdown). Passive tooltips are excluded.
-// Nil-safe.
+// The single source for "an outside press must close it": every non-Passive overlay. Nil-safe.
 func (p *OverlayPortal) OwnsInput() bool {
 	if p == nil {
 		return false
@@ -246,22 +223,14 @@ func (p *OverlayPortal) Layout() {
 	}
 }
 
-// Update calls PortalUpdater.Update() on all overlays that implement it,
-// then refreshes hit areas for all overlays to reflect any layout changes
-// (e.g., component switching from categories to instruments mode).
-// Overlays that self-close (ShouldClose() returns true) are removed.
-// Called once per frame from DrumViewTree.Update().
+// Hit areas are refreshed every frame for layout changes; self-closed overlays are removed.
 func (p *OverlayPortal) Update() {
 	for _, e := range p.stack {
 		if u, ok := e.Overlay.(PortalUpdater); ok {
 			u.Update()
 		}
 	}
-	// Plain-hover propagation (desktop): portal overlays receive input only
-	// on press/drag/release edges, and the tree's hover-glow overlay skips
-	// portal z — so cursor-over feedback inside popups needs this per-frame
-	// seam. Each overlay refreshes its own buttons' hovered flags; the
-	// buttons' styles then render the standard hover delta.
+	// Portal overlays only get press/drag/release edges, so hover needs this per-frame seam.
 	if !Profile().IsMobile() {
 		mx, my := cursorPosition()
 		for _, e := range p.stack {
@@ -270,9 +239,7 @@ func (p *OverlayPortal) Update() {
 			}
 		}
 	}
-	// Refresh hit areas for all overlays. Components may change their
-	// InputBounds after processing input (e.g., category navigation),
-	// and stale hit areas cause subsequent clicks to miss.
+	// InputBounds can change after input, and stale areas miss clicks.
 	for si, e := range p.stack {
 		areas := e.Overlay.HitAreas()
 		for i := range areas {
@@ -282,23 +249,17 @@ func (p *OverlayPortal) Update() {
 	}
 }
 
-// portalHoverer lets a portal overlay receive the plain cursor position once
-// per frame for hover feedback — no press semantics, no capture. Desktop
-// only; OverlayPortal.Update dispatches it.
+// Desktop only; no press semantics, no capture.
 type portalHoverer interface{ HoverAt(mx, my int) }
 
-// CleanupClosed removes overlays whose ShouldClose() returns true.
-// Called after input processing so that components which close themselves
-// during handleInput() (e.g., subdiv menu button fires OnSelect → comp.Close())
-// have their portal entries removed in the same frame.
+// After input processing, so self-closing components disappear the same frame.
 func (p *OverlayPortal) CleanupClosed() {
 	changed := false
 	for i := len(p.stack) - 1; i >= 0; i-- {
 		if p.stack[i].Overlay.ShouldClose() {
 			id := p.stack[i].ID
 			onClose := p.stack[i].OnClose
-			// closeByID would also invoke OnClose, but we already captured
-			// it to avoid double-invoke — pass a copy with OnClose=nil.
+			// Already captured, so closeByID must not invoke it twice.
 			p.stack[i].OnClose = nil
 			p.closeByID(id)
 			p.hitIndex.RemovePortal(id)
@@ -314,9 +275,7 @@ func (p *OverlayPortal) CleanupClosed() {
 	}
 }
 
-// Draw renders all overlays in stack order (bottom to top). A single
-// backdrop scrim is painted directly beneath the topmost scrim-bearing
-// entry so stacked popups never double-dim the screen.
+// One scrim under the topmost scrim-bearing entry, so stacked popups never double-dim.
 func (p *OverlayPortal) Draw(screen *ebiten.Image) {
 	scrimIdx := -1
 	for i := len(p.stack) - 1; i >= 0; i-- {
@@ -341,8 +300,7 @@ func (p *OverlayPortal) StackLen() int {
 	return len(p.stack)
 }
 
-// closeByID removes an overlay by ID without updating the hit index.
-// Returns true if at least one entry was removed.
+// Does not update the hit index.
 func (p *OverlayPortal) closeByID(id string) bool {
 	n := 0
 	for _, e := range p.stack {
@@ -362,8 +320,6 @@ func (p *OverlayPortal) closeByID(id string) bool {
 	return removed
 }
 
-// updateModalState sets the HitIndex modal filter to the topmost modal
-// overlay, or clears it if no modals remain.
 func (p *OverlayPortal) updateModalState() {
 	for i := len(p.stack) - 1; i >= 0; i-- {
 		if p.stack[i].Modal {

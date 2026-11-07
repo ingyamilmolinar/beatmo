@@ -1,10 +1,7 @@
 package ui
 
-// QueueAction defers fn until the next Game.Update tick after seqMu has been
-// released. JS-driven mutations (executeAction, runScene, openContextMenu,
-// etc.) must use this path because Game.Update holds seqMu for the entire
-// frame; calling into UI code synchronously from page.evaluate would deadlock.
-// Mirrors the pendingImportData pattern used by drum.Update's onImport callback.
+// Game.Update holds seqMu for the whole frame, so JS-driven mutations must queue here; a
+// synchronous call from page.evaluate would deadlock.
 func (g *Game) QueueAction(fn func(*Game)) {
 	if fn == nil {
 		return
@@ -14,9 +11,7 @@ func (g *Game) QueueAction(fn func(*Game)) {
 	g.pendingActionsMu.Unlock()
 }
 
-// drainPendingActions runs every queued action exactly once. Called from
-// Game.Update after seqMu.Unlock so handlers that touch UI state, schedulers,
-// or the predictor cannot reenter seqMu. Safe to call when the queue is empty.
+// After seqMu.Unlock, so handlers can never re-enter it.
 func (g *Game) drainPendingActions() {
 	g.pendingActionsMu.Lock()
 	queue := g.pendingActions

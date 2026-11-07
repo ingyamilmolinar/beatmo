@@ -13,19 +13,14 @@ func (s *playbackSlate) applySequencerHighlight(row, idx int, info model.BeatInf
 		g.logger.Warnf("[game] highlight row out of range: row=%d rows=%d idx=%d", row, rows, idx)
 		return
 	}
-	// Guard against late/out-of-order highlights (e.g., a full hlCh) rewinding
-	// counters after syncUIToTime has already advanced the playhead. Highlights
-	// are allowed for the current beat (idx == nextBeatIdxs[row]-1) but ignored
-	// if they would move the playhead backwards.
+	// A late highlight (full hlCh) may land for the current beat but must never move the playhead back.
 	if row >= 0 && row < len(g.nextBeatIdxs) {
 		cur := g.nextBeatIdxs[row]
 		if cur > 0 && idx+1 < cur {
 			return
 		}
 	}
-	// Drop stale highlights that no longer match the current beat info.
-	// This prevents queued events from earlier paths from freezing incorrect
-	// playback history after delete/re-add edits.
+	// Queued events from older paths must not freeze wrong history after an edit.
 	curInfo := g.beatInfoAtRow(row, idx)
 	if curInfo.NodeID != info.NodeID || curInfo.NodeType != info.NodeType {
 		return

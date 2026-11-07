@@ -25,29 +25,20 @@ const (
 	sidebarTabW     = 24 // collapsed expand-tab width
 	sidebarInnerPad = 4  // inner padding for text within layout rects
 	sidebarSwatchSz = 12 // instrument color swatch size in header
-	// sidebarOptionIndent is the extra left inset of dropdown OPTION rows
-	// (Logic/Groove kinds, Add/Remove-group candidates) below their trigger
-	// row — the "level below" nesting cue, so an open dropdown reads as a
-	// submenu instead of flat sibling rows.
+	// The nesting cue: an open dropdown reads as a submenu, not sibling rows.
 	sidebarOptionIndent = SpaceLG
 )
 
-// sidebarLabelScale is the density-driven text-scale multiplier for sidebar
-// labels (was a hardcoded 1.2 const). Comfortable preserves the historical
-// 1.2; Compact tightens to 1.1, Spacious opens to 1.3. Read per-call so it
-// re-derives every Layout/Draw, matching the other density tokens.
+// Per call, so it re-derives with the density like the other tokens.
 func sidebarLabelScale() float64 {
 	return float64(Profile().DensityValues().SidebarLabelScale) / 1000
 }
 
-// sidebarScaledTextWidth returns the pixel width of s rendered at the given
-// scale, using the same font metrics as DrawTextAtScale.
+// Same metrics as DrawTextAtScale.
 func sidebarScaledTextWidth(s string, scale float64) int {
 	return int(float64(TextWidth(s)) * scale)
 }
 
-// NodeSidebar is a left-anchored panel for editing node properties.
-// It replaces the floating popup and uses fixed sizes + scrolling.
 type NodeSidebar struct {
 	game *Game
 	open bool
@@ -57,29 +48,20 @@ type NodeSidebar struct {
 	width     int  // current width (fixed; user-resize removed)
 	collapsed bool // fully hidden (show expand tab only)
 
-	// hover eases the lift on the sidebar's non-Button clickables (section
-	// headers, action rows, the collapsed expand tab) via the shared
-	// hoverFade — Buttons/chips get hover from their own per-frame
-	// HandleInputResult cadence.
+	// For the non-Button clickables; Buttons get hover from their own input cadence.
 	hover hoverFade
 
-	// drag is the top-left grip handle. Zero value = auto mode: layout's
-	// node-anchored placement passes through untouched. Once the user drags
-	// the grip the card is PINNED to the grid pane and stops tracking the
-	// node/camera; Open/Close reset it so a pin never survives a reopen.
+	// Zero value = auto placement beside the node. A drag pins the card to the grid pane; Open/Close
+	// reset it so a pin never survives a reopen.
 	drag PopupDragHandle
 
 	// Sections — individually collapsible
 	sectionOpen map[sbSection]bool
-	// secHeldPrev is the previous frame's press state as seen by the section
-	// -header branch of HandleInput, so that branch fires on the press EDGE
-	// only. Buttons get this for free from Button.applyPress's held counter
-	// (uigrid.go); section headers are toggled directly and so must track it
-	// themselves, or every frame the pointer stays down flips them again.
+	// Section headers toggle directly (not through a Button's held counter), so they need their own
+	// press edge or every held frame flips them again.
 	secHeldPrev bool
-	// pickerPressOwned: the current press began on the open note/chord
-	// picker, so it owns the gesture to its release even after the picker
-	// closes under it (see HandleInput). pickerHeldPrev tracks its press edge.
+	// A press that began on the open picker owns the gesture to its release, even after the picker
+	// closes under it.
 	pickerPressOwned bool
 	pickerHeldPrev   bool
 	pickerSeq        int // DrumView.updateSeq of the last HandleInput call
@@ -97,16 +79,10 @@ type NodeSidebar struct {
 
 	// Dropdown state
 	logicDropdownOpen bool
-	// noteMatrix is the note/octave picker opened from the Pitch section's
-	// note chip. It is owned by the sidebar rather than the DrumView portal
-	// because the sidebar renders through GridTree (see Open), so a
-	// portal-hosted picker would paint outside the grid pane.
-	noteMatrix *NoteMatrixComponent
-	// noteMatrixKeyNav is the picker's keyboard cursor — the same MenuKeyNav
-	// the instrument, template and context menus use.
-	noteMatrixKeyNav *MenuKeyNav
-	// chordMatrix is the chord picker opened from a chord node's chip, wired
-	// exactly like noteMatrix (game_node_sidebar_chord_matrix.go).
+	// Owned by the sidebar, not the portal: the sidebar renders through GridTree, and a portal
+	// picker would paint outside the grid pane.
+	noteMatrix              *NoteMatrixComponent
+	noteMatrixKeyNav        *MenuKeyNav
 	chordMatrix             *ChordMatrixComponent
 	chordMatrixAnchor       sbID // the chip the chord matrix hangs from
 	chordMatrixKeyNav       *MenuKeyNav
@@ -129,11 +105,8 @@ func NewNodeSidebar(g *Game) *NodeSidebar {
 	}
 }
 
-// Open activates the sidebar for the given node. The sidebar renders through the
-// grid pane's own tree (GridTree, see registerGridTree) — NOT the global portal —
-// so its node-anchored card is clipped to the grid pane and can never paint over
-// the bottom drum-view panel (a separate component tree). Input flows through the
-// grid inputDispatcher.
+// Renders through the grid pane's tree, not the global portal, so the card is clipped to the
+// grid pane and never paints over the drum view.
 func (sb *NodeSidebar) Open(node *uiNode) {
 	sb.open = true
 	sb.node = node
@@ -168,8 +141,6 @@ func (sb *NodeSidebar) Close() {
 	sb.rects = make(map[sbID]image.Rectangle)
 }
 
-// fireGroupChip closes the sidebar and opens the GroupMenu for gid, anchored
-// at the sidebar's panel origin.
 func (sb *NodeSidebar) fireGroupChip(gid model.GroupID) {
 	g := sb.game
 	panel := sb.rects[sbPanel]
@@ -177,17 +148,8 @@ func (sb *NodeSidebar) fireGroupChip(gid model.GroupID) {
 	g.groupMenu.OpenAt(gid, panel.Min.X+20, panel.Min.Y+20)
 }
 
-// createNewGroup turns the sidebar's current node into a brand-new
-// PROVISIONAL single-member group and opens its GroupMenu — the "grpnew"
-// row's onClick (task-sidebar-create brief). Mirrors handleMarquee's
-// creation lifecycle (game_marquee.go): CreateGroup mints the lowest-free
-// group id (default name "Group N", RulesEnabled false); NO emit happens
-// here — the group stays provisional until the user presses Save in the
-// menu (GroupMenu.save() owns the single emitGroupCreated undo step; closing
-// without Save silently discards it via discardProvisional). The sidebar
-// closes in favor of the GroupMenu, anchored near the sidebar's origin the
-// same way fireGroupChip anchors a reopened chip. Model errors (e.g. the
-// node vanished mid-frame) are a silent no-op, logged at Debug.
+// A provisional single-member group with no emit: Save in the GroupMenu emits the one creation
+// step, and closing without Save discards it. Model errors are a silent no-op.
 func (sb *NodeSidebar) createNewGroup() {
 	g := sb.game
 	node := sb.node
@@ -195,9 +157,7 @@ func (sb *NodeSidebar) createNewGroup() {
 		return
 	}
 	panel := sb.rects[sbPanel]
-	// Exact-set reuse, mirroring handleMarquee's release path: if a group
-	// already contains EXACTLY this node, reopen it (non-provisional — it is
-	// committed state) instead of minting a duplicate single-node group.
+	// A group holding exactly this node reopens committed instead of minting a duplicate.
 	if gid, ok := g.findGroupWithExactNodeSet([]model.NodeID{node.ID}); ok {
 		sb.Close()
 		g.groupMenu.OpenAt(gid, panel.Min.X+20, panel.Min.Y+20)
@@ -212,10 +172,7 @@ func (sb *NodeSidebar) createNewGroup() {
 	g.groupMenu.OpenAtProvisional(gid, panel.Min.X+20, panel.Min.Y+20)
 }
 
-// addToGroup adds the sidebar's current node to group gid via the model API
-// and closes the add dropdown (mirrors closing logic/groove dropdowns on
-// selection). Model errors (e.g. the group vanished mid-frame) are a silent
-// no-op — logged at Debug — no emit, no undo step.
+// Model errors (the group vanished mid-frame) are a silent no-op: no emit, no undo step.
 func (sb *NodeSidebar) addToGroup(gid model.GroupID) {
 	sb.groupAddDropdownOpen = false
 	node := sb.node
@@ -230,11 +187,7 @@ func (sb *NodeSidebar) addToGroup(gid model.GroupID) {
 	emitGroupChanged(gid)
 }
 
-// removeFromGroup removes the sidebar's current node from group gid via the
-// model API. If the group still exists afterward, emits EventGroupChanged;
-// if removing the last member auto-deleted it (model's
-// RemoveNodeFromGroup), emits EventGroupDeleted instead. Model errors are a
-// silent no-op — logged at Debug — no emit, no undo step.
+// Emits EventGroupDeleted instead when removing the last member auto-deleted the group.
 func (sb *NodeSidebar) removeFromGroup(gid model.GroupID) {
 	node := sb.node
 	if node == nil {
@@ -277,12 +230,8 @@ func (sb *NodeSidebar) Hit(x, y int) bool {
 	if !sb.open || sb.node == nil {
 		return false
 	}
-	// The note-matrix picker floats OUTSIDE the sidebar card, so its panel must
-	// be part of the sidebar's hit region too. Without this the input
-	// dispatcher decides the press is not the sidebar's, never calls
-	// HandleInput, and the click falls through to the grid — which is exactly
-	// how every matrix cell shipped dead while the component's own unit tests
-	// passed.
+	// The picker floats outside the card, so its panel must be in the hit region or the dispatcher
+	// never calls HandleInput and every cell is dead.
 	if p := sb.openPicker(); p != nil {
 		if r := p.InputBounds(); !r.Empty() && image.Pt(x, y).In(r) {
 			return true
@@ -294,10 +243,7 @@ func (sb *NodeSidebar) Hit(x, y int) bool {
 	return false
 }
 
-// nodeSidebarSections is every collapsible section, in card order — the ONE
-// list the header hit-tests (press path and deferred-tap path), the hover set
-// and ExpandAllSections read. A header missing from a hand-kept copy of it is
-// dead: the Chord header shipped that way and could never expand the builder.
+// The ONE list every header consumer reads; a header missing from a hand-kept copy is dead.
 var nodeSidebarSections = []sbSection{secVol, secPit, secChord, secDur, secLogic, secGroove, secAud, secGrp}
 
 // ExpandAllSections opens all collapsible sections (for tests).
@@ -337,8 +283,7 @@ func (sb *NodeSidebar) layout() {
 	}
 	sb.width = w
 
-	// Panel rect is set below, after content sizing: a compact card sized to its
-	// content (not the full pane) and anchored beside the tapped node.
+	// Sized to its content and anchored beside the node, below.
 
 	// Determine node type visibility
 	nodeType := model.NodeTypeRegular
@@ -353,13 +298,8 @@ func (sb *NodeSidebar) layout() {
 	showLogic := !isSilent
 	showGroove := !isSilent
 
-	// Fixed header (NOT scrolled): a snug title band + an always-visible
-	// coordinate readout (grid coords + circuit beat/subdivision). The title band
-	// is sized to the title glyphs — not the full legacy sidebarHeaderH — so the
-	// always-visible line costs only a few px of content height, keeping controls
-	// reachable on short panels. A second line (live last/next fire) is reserved
-	// only while playing, since when stopped the home line already IS the
-	// next-from-0 position.
+	// The title band is snug so the always-visible coordinate line stays cheap; a second line
+	// (live fires) only while playing.
 	closeSize := sidebarBtnH
 	lineH := StyledTextHeight(RoleCaption)
 	titleBandH := StyledTextHeight(menuTitleRole) + 4
@@ -371,9 +311,7 @@ func (sb *NodeSidebar) layout() {
 	headerRect := image.Rect(sidebarPad, sidebarPad, w-sidebarPad, sidebarPad+headerH)
 	sb.rects[sbHeader] = headerRect
 	sb.rects[sbCoords] = image.Rect(sidebarPad, sidebarPad+titleBandH, w-sidebarPad, sidebarPad+headerH)
-	// Close × is desktop-only (shared desktopCloseVisible gate); on mobile the
-	// node card dismisses via tap-away, so no rect is published and the button is
-	// never built below. delete keeps a profile flip (tests) from leaving a stale rect.
+	// Desktop only; delete keeps a profile flip from leaving a stale rect.
 	if desktopCloseVisible() {
 		sb.rects[sbClose] = image.Rect(w-sidebarPad-closeSize, sidebarPad, w-sidebarPad, sidebarPad+closeSize)
 	} else {
@@ -426,18 +364,13 @@ func (sb *NodeSidebar) layout() {
 			y += sidebarBtnH + sidebarGap
 		}
 	}
-	// No Move section: moving a node is covered by copy/paste (and by the
-	// long-press quick-action popup), so the sidebar doesn't duplicate it.
-	// Section: Groups — ALWAYS shown (task-sidebar-create), not gated on
-	// AllGroups() anymore: even a zero-group project needs the section to
-	// host the "Create new group" row. A non-member node still discovers
-	// "Add to group" the same way it always did once other groups exist.
+	// No Move section: copy/paste and the long-press popup cover it. Groups always shows, so a
+	// project with no groups can still create one.
 	y = sb.layoutGroupSection(y, w, sb.node.ID)
 
 	// Compute scroll limits via ScrollBehavior
 	contentH := y + sb.scroll.VS.First - contentTop
-	// Compact card: height = content (header + sections), capped to the grid pane
-	// so a tall node keeps the card on-screen and scrolls the overflow.
+	// Capped to the grid pane; a tall node scrolls the overflow.
 	cardH := contentTop + contentH + sidebarPad
 	if cardH > gridH {
 		cardH = gridH
@@ -449,26 +382,19 @@ func (sb *NodeSidebar) layout() {
 	sb.scroll.VS.View = image.Rect(w-sb.scroll.Style.Width, contentTop, w, contentTop+viewportH)
 	sb.scroll.VS.Clamp()
 
-	// Anchor the card beside the tapped node, CLAMPED TO THE GRID PANE (not the
-	// window) so it stays entirely within the grid pane's own tree and can never
-	// render over the bottom drum-view panel — a separate component tree.
-	// AnchorPopupRect flips above/below to keep it inside the pane; avoidReservedRect
-	// dodges the gear cluster. All child rects (and the scroll viewport) were
-	// computed at origin (0,0); translate them to the anchored origin.
+	// Clamped to the GRID PANE, not the window, so it never renders over the drum view. Child rects
+	// were computed at (0,0) and are translated to the anchor.
 	x1, y1, x2, y2 := g.nodeScreenRect(sb.node)
 	nodeR := image.Rect(int(x1), int(y1), int(x2), int(y2))
 	gridPane := image.Rect(0, 0, g.split.GridW(g.winW), gridH)
 	anchored := AnchorPopupRect(gridPane, nodeR, w, cardH, PopupBelow)
-	// Avoid the WHOLE top-right button cluster (gear + file + logs): the sidebar's
-	// close button sits at the card's top-right and would otherwise collide with
-	// the higher-z logs button, which swallows the click. (gridHelpReservedRect
-	// covers only gear+file, kept narrower for the group menu's placement spec.)
+	// The whole button cluster: the card's close × would otherwise sit under the higher-z logs
+	// button, which swallows the click.
 	if avoid := g.gridTopButtonsReservedRect(); !avoid.Empty() {
 		anchored = avoidReservedRect(anchored, avoid, gridPane.Dx(), gridPane.Dy())
 	}
-	// The grip handle gets the last word: in auto mode Place returns `anchored`
-	// verbatim, so default placement is unchanged; once the user has dragged,
-	// it returns the pinned origin re-clamped against the CURRENT card size.
+	// Auto mode returns `anchored` verbatim; once dragged, the pinned origin re-clamped to the
+	// current card size.
 	placed := sb.drag.Place(anchored, gridPane, g.gridTopButtonsReservedRect())
 	origin := placed.Min
 	if origin.X != 0 || origin.Y != 0 {
@@ -478,13 +404,10 @@ func (sb *NodeSidebar) layout() {
 		sb.scroll.VS.View = sb.scroll.VS.View.Add(origin)
 	}
 
-	// Grip rect is published in FINAL screen space — after the translate — so
-	// draw and hit-test agree without either re-deriving the origin.
+	// In final screen space, so draw and hit-test agree.
 	sb.rects[sbGrip] = sb.drag.GripRect(sb.rects[sbPanel])
 
-	// Note-matrix cell rects are already in SCREEN space (the picker solves
-	// against the grid pane), so they are published AFTER the origin translate
-	// above and before wireButtons turns them into Buttons.
+	// Already in screen space, so after the translate and before wireButtons.
 	sb.layoutNoteMatrixCells()
 	sb.layoutChordMatrixCells()
 
@@ -492,10 +415,7 @@ func (sb *NodeSidebar) layout() {
 	sb.wireButtons()
 }
 
-// layoutSection lays out a simple +/- section (vol, pit, dur).
-// Layout: [label] ... [−] [value pill] [+] right-aligned.
-// sidebarNoteChipW is the fixed width of the Pitch row's note chip button.
-// Wide enough for the longest label ("A#-1") at RoleBody plus padding.
+// Fits "A#-1" at body size.
 const sidebarNoteChipW = 40
 
 func (sb *NodeSidebar) layoutSection(y, w, btnX int, sec sbSection, _ string, hasButtons bool) int {
@@ -505,8 +425,6 @@ func (sb *NodeSidebar) layoutSection(y, w, btnX int, sec sbSection, _ string, ha
 		return y
 	}
 	if hasButtons {
-		// Right-align: [−] [pill] [+]
-		// +button at the far right
 		plusX := w - sidebarPad - sidebarIncBtnW
 		// pill between buttons
 		pillW := Profile().DensityValues().SidebarValuePillW
@@ -516,13 +434,10 @@ func (sb *NodeSidebar) layoutSection(y, w, btnX int, sec sbSection, _ string, ha
 
 		btnY := y + (sidebarBtnH-sidebarIncBtnH)/2 // vertically center 24px buttons in 28px row
 		if sec == secPit {
-			// Note chip, left of the -/+ cluster. FIXED width so the row does
-			// not jitter as the name changes between "C4" and "A#4"; the draw
-			// site skips it entirely for percussion (no note to show).
+			// Fixed width so the row does not jitter between "C4" and "A#4"; skipped for percussion.
 			noteX := minusX - sidebarGap - sidebarNoteChipW
 			if sb.nodeIsChord() {
-				// A chord name ("C#m(add9)/E") needs the whole left gap: the
-				// chip replaces the row caption.
+				// A chord name needs the whole left gap: the chip replaces the caption.
 				noteX = sidebarPad
 			}
 			sb.rects[sbPitchNote] = image.Rect(noteX, btnY, minusX-sidebarGap, btnY+sidebarIncBtnH)
@@ -536,9 +451,6 @@ func (sb *NodeSidebar) layoutSection(y, w, btnX int, sec sbSection, _ string, ha
 	return y
 }
 
-// layoutChordSection lays out the chord builder: the chord chip (opens the
-// chord matrix), inversion and spread steppers ([caption] … [−] [pill] [+],
-// like layoutSection) and the full-width "Single note" collapse row.
 func (sb *NodeSidebar) layoutChordSection(y, w int) int {
 	sb.rects[sbSectionHeader(secChord)] = image.Rect(sidebarPad, y, w-sidebarPad, y+sidebarSectionH)
 	y += sidebarSectionH
@@ -549,9 +461,7 @@ func (sb *NodeSidebar) layoutChordSection(y, w int) int {
 	pillW := Profile().DensityValues().SidebarValuePillW
 	pillX := plusX - sidebarGap - pillW
 	minusX := pillX - sidebarGap - sidebarIncBtnW
-	// The chord chip — the section's lead control: names the chord and opens
-	// the chord matrix, so choosing a chord never needs a detour through the
-	// (separately collapsed) Pitch section.
+	// The lead control, so choosing a chord never detours through the Pitch section.
 	chipY := y + (sidebarBtnH-sidebarIncBtnH)/2
 	sb.rects[sbChordName] = image.Rect(sidebarPad, chipY, w-sidebarPad, chipY+sidebarIncBtnH)
 	y += sidebarBtnH + sidebarGap
@@ -567,13 +477,8 @@ func (sb *NodeSidebar) layoutChordSection(y, w int) int {
 	return y
 }
 
-// keepUnderPointer runs a change that re-shapes the card (a type change adds
-// or removes whole sections) without moving control id: the card is held at
-// its current position instead of re-anchoring beside the node, and the
-// content is scrolled by however far id moved. Without it, Regular → Chord
-// pushed the Audible button off the bottom of the card, so the next tap of a
-// "rotate" hit nothing. When the content cannot scroll far enough (a short
-// card), id is still kept inside the viewport.
+// Holds the card in place and scrolls by however far id moved, so a type change that adds or
+// removes sections never pushes the next tap's target out from under the pointer.
 func (sb *NodeSidebar) keepUnderPointer(id sbID, change func()) {
 	before := sb.rects[id]
 	if panel := sb.rects[sbPanel]; !panel.Empty() {
@@ -691,27 +596,8 @@ func (sb *NodeSidebar) layoutGrooveSection(y, w, btnX int) int {
 	return y
 }
 
-// layoutGroupSection lays out the ALWAYS-PRESENT (task-sidebar-create) Groups
-// section, in order (task-remove-selector brief):
-//  0. A "Create new group" row ("grpnew"), first — above membership chips —
-//     so a zero-group project still gets a usable section (its only row).
-//  1. Membership chips ("grpchip:<gid>", opens the GroupMenu) — one per
-//     group the node currently belongs to, now full-width open-only buttons
-//     (the paired "grpdel:<gid>" remove button is gone; removal moved to the
-//     "Remove from group" selector below).
-//  2. An "Add to group" row ("grpadd"), shown only when at least one group
-//     exists that the node is NOT a member of; clicking it toggles
-//     groupAddDropdownOpen, which lists those candidates
-//     ("grpaddopt:<gid>").
-//  3. A "Remove from group" row ("grpremove"), shown only when the node has
-//     at least one membership; clicking it toggles groupRemoveDropdownOpen,
-//     which lists those memberships ("grpremoveopt:<gid>"). Picking one
-//     removes that membership (NodeSidebar.removeFromGroup).
-//
-// The section header itself ("sec-grp") is laid out unconditionally by the
-// caller (layout() no longer gates this on AllGroups()) — a non-member node,
-// or one in a project with zero groups, still needs the section to reach
-// "Create new group" / "Add to group".
+// Always present: Create first (so a project with no groups has a row), then membership chips
+// (open-only), then Add (only when a non-member group exists), then Remove (only with a membership).
 func (sb *NodeSidebar) layoutGroupSection(y, w int, nodeID model.NodeID) int {
 	sb.rects[sbSectionHeader(secGrp)] = image.Rect(sidebarPad, y, w-sidebarPad, y+sidebarSectionH)
 	y += sidebarSectionH
@@ -740,8 +626,7 @@ func (sb *NodeSidebar) layoutGroupSection(y, w int, nodeID model.NodeID) int {
 		}
 	}
 	if !hasCandidate {
-		// No candidate left to add to (e.g. the last one was just added) —
-		// the dropdown can't be reachable, so force it closed.
+		// No candidate left, so the dropdown cannot be reached.
 		sb.groupAddDropdownOpen = false
 	} else {
 		sb.rects[sbGroupAdd] = image.Rect(sidebarPad, y, w-sidebarPad, y+sidebarBtnH)
@@ -759,8 +644,7 @@ func (sb *NodeSidebar) layoutGroupSection(y, w int, nodeID model.NodeID) int {
 	}
 
 	if len(grpIDs) == 0 {
-		// No membership to remove from — the dropdown can't be reachable,
-		// so force it closed (mirrors the grpadd hasCandidate branch above).
+		// No membership left, so the dropdown cannot be reached.
 		sb.groupRemoveDropdownOpen = false
 	} else {
 		sb.rects[sbGroupRemove] = image.Rect(sidebarPad, y, w-sidebarPad, y+sidebarBtnH)
@@ -792,11 +676,7 @@ func (sb *NodeSidebar) wireButtons() {
 			return
 		}
 		if _, ok := sb.btns[id]; !ok {
-			// Every node-sidebar control uses the shared menu keycap style
-			// (DropdownStyle) so the node pop-up's buttons + dropdown lists read
-			// identically to the instrument / context / subdivision menus. The
-			// node's own color is layered on via tintBtnAccent (keycap face tint) and, for
-			// dropdown lists, drawMenuRow's accent stripe.
+			// The shared menu keycap style, so the node pop-up reads like every other menu.
 			sb.btns[id] = NewButton(label, DropdownStyle, func() {
 				g.enqueueUI(onClick)
 				sb.anim[id] = 1
@@ -810,11 +690,9 @@ func (sb *NodeSidebar) wireButtons() {
 		}
 		sb.btns[id].SetRect(r)
 		sb.btns[id].ConsumeOnPress = true
-		// Smooth styled label (embedded Inter) — never the legacy bitmap
-		// upscale path, which pixelates at any scale ≠ 1.
+		// Styled text, never the bitmap upscale path, which pixelates.
 		sb.btns[id].SetTextRole(RoleBody)
-		// +/− steppers use icon-based drawing (Button.Draw path) instead of the
-		// legacy hand-drawn glyph so they get cushion + glow + rounded chrome.
+		// The icon path gets the shared cushion, glow and chrome.
 		if id.el == elMinus {
 			sb.btns[id].Icon = "minus"
 			sb.btns[id].Text = ""
@@ -845,18 +723,14 @@ func (sb *NodeSidebar) wireButtons() {
 			emitNodeParamsChanged(node.ID, p)
 		}
 	})
-	// Value pills open the shared value wheel (no keycap is drawn for them —
-	// drawValuePill paints the readout; the Button only owns the tap).
+	// drawValuePill paints the readout; the Button only owns the tap.
 	for _, f := range []sbField{fieldVol, fieldDur, fieldLogicN, fieldLogicP, fieldGroovePct} {
 		mk(sbValue(f), "", func() { g.openNodeValueWheel(f) })
 	}
 	// Note-matrix cells, when the picker is open.
 	sb.wireNoteMatrixCells(mk)
 	sb.wireChordMatrixCells(mk)
-	// Note chip: opens the note/octave matrix picker. Registered before the
-	// -/+ buttons so it shares their keycap styling and press animation.
-	// Only meaningful for pitched instruments; mk() drops it when the rect is
-	// absent, and the pitch draw block omits the rect for percussion.
+	// Pitched instruments only; mk() drops it when the rect is absent.
 	nodePitch := 0.0
 	if mn, ok := g.graph.GetNodeByID(node.ID); ok {
 		nodePitch = mn.Params.Pitch
@@ -1067,8 +941,7 @@ func (sb *NodeSidebar) wireButtons() {
 			emitNodeParamsChanged(node.ID, p)
 		}
 	})
-	// Chord builder (chord nodes only; mk drops the buttons when the
-	// section is not laid out).
+	// mk drops the buttons when the section is not laid out.
 	mk(sbChordName, g.nodeChordLabel(node.ID), func() {
 		if sb.chordMatrixIsOpen() {
 			sb.closeChordMatrix()
@@ -1083,23 +956,13 @@ func (sb *NodeSidebar) wireButtons() {
 	mk(sbChordSingle, i18n.T(i18n.KeyChordSingleNote), func() {
 		g.setNodeType(node.ID, model.NodeTypeRegular) // the spec is kept
 	})
-	// Type cycle: Regular → Chord → Silent → Mute (Chord skipped on an
-	// unpitched row).
+	// Regular → Chord → Silent → Mute; Chord is skipped on an unpitched row.
 	mk(sbAudible, i18n.T(i18n.KeyNodeSecAudible), func() {
 		sb.keepUnderPointer(sbAudible, func() { g.cycleNodeType(node.ID) })
 	})
-	// "Create new group" row — always wired (the section is always
-	// present), first, above the membership chips.
 	mk(sbGroupNew, i18n.T(i18n.KeyGroupCreateNew), func() {
 		sb.createNewGroup()
 	})
-	// Group chips — one per group this node currently belongs to, now pure
-	// open-only full-width buttons (the paired "grpdel:<gid>" remove button
-	// is gone; removal moved to the "Remove from group" selector below).
-	// Below them, an "Add to group" row + dropdown for groups the node is
-	// NOT a member of, then a "Remove from group" row + dropdown for groups
-	// the node IS a member of (see layoutGroupSection for the matching
-	// geometry).
 	grpIDs := g.graph.GroupsForNode(node.ID)
 	grpIDSet := make(map[model.GroupID]bool, len(grpIDs))
 	for _, gid := range grpIDs {
@@ -1113,9 +976,7 @@ func (sb *NodeSidebar) wireButtons() {
 			sb.fireGroupChip(gid)
 		})
 	}
-	// "Add to group" row + dropdown of non-member groups. mk()'s own rect
-	// check (layoutGroupSection only creates "grpadd" when a candidate
-	// exists) handles hiding this row — no extra gating needed here.
+	// mk()'s rect check hides the row when there is no candidate.
 	var nonMemberGroups []model.NodeGroup
 	for _, grp := range g.graph.AllGroups() {
 		if !grpIDSet[grp.ID] {
@@ -1142,9 +1003,7 @@ func (sb *NodeSidebar) wireButtons() {
 			})
 		}
 	}
-	// "Remove from group" row + dropdown of MEMBER groups. mk()'s own rect
-	// check (layoutGroupSection only creates "grpremove" when the node has
-	// >=1 membership) handles hiding this row — no extra gating needed here.
+	// mk()'s rect check hides the row without a membership.
 	mk(sbGroupRemove, i18n.T(i18n.KeyGroupRemoveFrom), func() {
 		sb.groupRemoveDropdownOpen = !sb.groupRemoveDropdownOpen
 		if sb.groupRemoveDropdownOpen {
@@ -1166,8 +1025,7 @@ func (sb *NodeSidebar) wireButtons() {
 			})
 		}
 	}
-	// Prune stale group buttons: dynamic-count section, unlike the fixed
-	// vol/pit/dur ids above.
+	// The group section has a dynamic count, unlike the fixed ids above.
 	for id := range sb.btns {
 		gid := model.GroupID(id.arg)
 		switch id.el {
@@ -1176,24 +1034,18 @@ func (sb *NodeSidebar) wireButtons() {
 				delete(sb.btns, id)
 			}
 		case elGroupAddOpt:
-			// Dropdown option buttons list NON-member groups (grpIDSet holds
-			// memberships, so it must not gate them). Prune when the dropdown
-			// is closed or the group itself vanished, so rect-less orphans
-			// don't accumulate in sb.btns.
+			// These list NON-member groups, so grpIDSet must not gate them; prune when closed or vanished.
 			if _, exists := sb.game.graph.Group(gid); !sb.groupAddDropdownOpen || !exists {
 				delete(sb.btns, id)
 			}
 		case elGroupRemoveOpt:
-			// Dropdown option buttons list MEMBER groups, so grpIDSet IS the
-			// correct gate here (the mirror image of the add options above).
-			// Prune when the dropdown is closed or the node is no longer a member.
+			// These list MEMBER groups, so grpIDSet is the right gate here.
 			if !sb.groupRemoveDropdownOpen || !grpIDSet[gid] {
 				delete(sb.btns, id)
 			}
 		}
 	}
-	// Close button (desktop only — no rect published on mobile, so skip + drop
-	// any stale button from a prior desktop layout).
+	// No rect on mobile, so drop any stale button from a desktop layout.
 	{
 		r, ok := sb.rects[sbClose]
 		if ok && !r.Empty() {
@@ -1227,10 +1079,7 @@ func (sb *NodeSidebar) InputBounds() image.Rectangle {
 	if !ok {
 		return image.Rectangle{}
 	}
-	// The note-matrix picker floats OUTSIDE the sidebar card, so the reported
-	// interactive area must cover it too — the input dispatcher routes on this
-	// rect, so a press on the picker was otherwise never delivered here and
-	// every cell was dead. Union, not replace: the card stays interactive.
+	// The picker floats outside the card and the dispatcher routes on this rect, so union it in.
 	if p := sb.openPicker(); p != nil {
 		if m := p.InputBounds(); !m.Empty() {
 			return panel.Union(m)
@@ -1242,15 +1091,10 @@ func (sb *NodeSidebar) InputBounds() image.Rectangle {
 // ZIndex returns the z-order (above splitter and drumview).
 func (sb *NodeSidebar) ZIndex() int { return 200 }
 
-// PassesGesturesThrough opts the sidebar out of the dispatcher's default
-// whole-gesture ownership: its touch taps resolve on the release-time grid tap
-// (handleTapInGrid's sidebar branch ends the deferred-tap / scroll gesture the
-// dispatcher started), so the tap must still be routed there.
+// Its touch taps resolve on the release-time grid tap, so the gesture must still be routed there.
 func (sb *NodeSidebar) PassesGesturesThrough() bool { return true }
 
-// HandleInput processes mouse/touch input within the sidebar.
-// Follows the deferred-tap + scroll-commitment pattern from the instrument
-// menu to prevent accidental section toggles during touch scrolling.
+// The deferred-tap + scroll pattern, so touch scrolling never toggles a section.
 func (sb *NodeSidebar) HandleInput(x, y int, pressed bool) InputResult {
 	if sb.collapsed {
 		if pressed {
@@ -1263,13 +1107,8 @@ func (sb *NodeSidebar) HandleInput(x, y int, pressed bool) InputResult {
 		return InputIgnored
 	}
 
-	// A Shift+press is the start of a connect (link-drag) or marquee gesture
-	// on the grid — the sidebar yields: close and report the press as
-	// unhandled so the SAME press reaches handleEditor's shift block
-	// (which bypasses the closed-guard for shift). Without this, shift+drag
-	// FROM the selected node is dead whenever that node renders under this
-	// full-height left panel — the exact flow of "click a node, then
-	// shift+drag it onto another node to connect them".
+	// Shift+press starts a connect or marquee: yield the SAME press to handleEditor, or shift+drag
+	// from a node under the card is dead.
 	if pressed && (isKeyPressed(ebiten.KeyShiftLeft) || isKeyPressed(ebiten.KeyShiftRight)) {
 		sb.Close()
 		return InputIgnored
@@ -1277,16 +1116,8 @@ func (sb *NodeSidebar) HandleInput(x, y int, pressed bool) InputResult {
 
 	sb.layout()
 
-	// A press that began on the open picker owns its gesture to the release.
-	// Re-tapping the picked cell confirms and CLOSES the picker on the press
-	// frame; the still-held pointer then sits over the card beneath, and the
-	// next held frame / the release activated whatever control lay under the
-	// cell — on a phone the Audible selector, which turned a just-confirmed
-	// chord back into a single note. (ConsumeOnPress cannot guard this: the
-	// drum view's tree rewrites the global suppress flag every frame.)
-	// HandleInput is not called on every frame (the dispatcher routes only
-	// some), so a gap since the last call resets the latch rather than
-	// trusting a stale held state.
+	// Re-tapping the picked cell closes the picker on the press frame; the held pointer then sits
+	// over the card, so the press stays the picker's until release. A gap since the last call resets it.
 	if seq := sb.game.drum.updateSeq; sb.pickerSeq != seq && sb.pickerSeq != seq-1 {
 		sb.pickerHeldPrev, sb.pickerPressOwned = false, false
 	}
@@ -1306,14 +1137,8 @@ func (sb *NodeSidebar) HandleInput(x, y int, pressed bool) InputResult {
 		sb.pickerPressOwned = false
 	}
 
-	// The note-matrix picker is MODAL over its own panel: it gets first refusal
-	// on every press, and declines only for presses on its selectable cells so
-	// those reach the shared Button path below (step 8) with the hover and
-	// press behaviour every other node-menu control has.
-	//
-	// Both halves are load-bearing. Absorbing everything here left the cells
-	// dead; absorbing nothing let a press on a DIMMED cell fire the sidebar
-	// control underneath it.
+	// Modal over its own panel; declines only presses on its selectable cells, so those reach the
+	// shared Button path. Absorbing all made the cells dead; none let a dimmed cell fire what lies beneath.
 	if r := sb.handleNoteMatrixInput(x, y, pressed); r != InputIgnored {
 		return r
 	}
@@ -1321,18 +1146,12 @@ func (sb *NodeSidebar) HandleInput(x, y int, pressed bool) InputResult {
 		return r
 	}
 
-	// Track the press edge for the section-header branch (step 9) here, at the
-	// single point every call passes through — NOT at step 9 itself. Most
-	// releases never reach step 9 (the scroll/deferred-tap steps below consume
-	// them and return early), so updating it there would leave the flag stuck
-	// true after a captured gesture and swallow the next genuine press edge.
+	// Captured here, where every call passes: most releases never reach the header branch, and
+	// tracking it there would swallow the next real press edge.
 	prevSecHeld := sb.secHeldPrev
 	sb.secHeldPrev = pressed
 
-	// Grip drag — highest precedence inside the card. Returning InputCaptured
-	// makes the dispatcher route every later frame straight here without
-	// re-hit-testing (input_dispatch.go), so the drag survives the cursor
-	// leaving the card.
+	// InputCaptured routes later frames straight here, so the drag survives the cursor leaving the card.
 	gridPaneR := image.Rect(0, 0, sb.game.split.GridW(sb.game.winW), sb.game.split.GridH(sb.game.winH))
 	if sb.drag.Dragging() {
 		panel := sb.rects[sbPanel]
@@ -1375,8 +1194,6 @@ func (sb *NodeSidebar) HandleInput(x, y int, pressed bool) InputResult {
 		return InputCaptured
 	}
 
-	// 4. TouchActive but not yet committed (in dead zone) →
-	//    process moves; on release fire deferred tap if no scroll committed
 	if sb.scroll.TouchActive() {
 		if pressed {
 			sb.scroll.HandleTouchMove(x, y)
@@ -1394,15 +1211,8 @@ func (sb *NodeSidebar) HandleInput(x, y int, pressed bool) InputResult {
 
 	pt := image.Pt(x, y)
 
-	// Steps 5 and 6 START a sidebar scroll gesture. They must not run for a
-	// press over the OPEN note-matrix picker: the picker floats across the
-	// sidebar card, so a cell that overlaps the sidebar's scrollbar (or merely
-	// its scroll viewport) had its press swallowed as a thumb-drag or a
-	// deferred tap and never reached the cell Button. An active surface owns
-	// its own area; the parent must not also act on it.
-	//
-	// A gesture already IN PROGRESS (steps 2-4) still finishes normally — this
-	// only declines to start a new one under the picker.
+	// Never START a scroll under the open picker: it floats over the card, and a cell over the
+	// scrollbar or viewport would be swallowed. A gesture already in progress still finishes.
 	overPicker := sb.openPicker() != nil &&
 		image.Pt(x, y).In(sb.openPicker().InputBounds())
 
@@ -1415,8 +1225,7 @@ func (sb *NodeSidebar) HandleInput(x, y int, pressed bool) InputResult {
 		}
 	}
 
-	// 6. Press in scroll viewport → begin deferred tap + touch scroll simultaneously
-	//    Exclude scrollbar track area so track clicks reach step 11.
+	// Excludes the scrollbar track so track clicks reach their own step.
 	contentTop := sb.contentTopY()
 	viewport := image.Rect(panelR.Min.X, contentTop, panelR.Max.X, panelR.Max.Y)
 	onScrollbarTrack := sb.scroll.HasScroll() && pt.In(sb.scroll.BarRect())
@@ -1449,28 +1258,9 @@ func (sb *NodeSidebar) HandleInput(x, y int, pressed bool) InputResult {
 		}
 	}
 
-	// 9. Section header clicks (only if not suppressed by touch)
-	//
-	// Fires on the press EDGE only, and never while clicks are globally
-	// suppressed. Both guards are load-bearing:
-	//
-	//   - Edge: this branch toggles sb.sectionOpen directly rather than going
-	//     through a Button, so without an edge check every frame the pointer
-	//     stayed down flipped the section again — leaving it open or closed on
-	//     the parity of how long the user held.
-	//   - suppressClicksUntilRelease: Button.ConsumeOnPress raises this so the
-	//     same held press cannot activate anything else until release, and
-	//     DeferredTap.Begin declines while it is set ("uniform guard behavior
-	//     across all menus"). That decline is precisely what lets a press reach
-	//     this branch at all — a press inside the scroll viewport is otherwise
-	//     captured by the deferred-tap path at step 6 and toggles once on
-	//     release. So without this guard the branch fired ONLY in the case
-	//     where it was supposed to stay silent, and could double-toggle one
-	//     gesture: once here, then again via the deferred tap once the tree
-	//     cleared the flag mid-hold.
-	//
-	// prevSecHeld is captured at the top of HandleInput (see there) so the edge
-	// stays accurate even for the gestures that never reach this branch.
+	// Press EDGE only (headers toggle directly, so a held press would keep flipping them), and never
+	// while clicks are suppressed: that suppression is what keeps this branch from double-toggling a press
+	// the deferred tap already owns.
 	if !touchSuppressButtons && !suppressClicksUntilRelease && pressed && !prevSecHeld {
 		for _, sec := range nodeSidebarSections {
 			r, ok := sb.rects[sbSectionHeader(sec)]
@@ -1599,9 +1389,6 @@ func (sb *NodeSidebar) closeDropdownsOutside(x, y int) {
 	}
 }
 
-// fireTapAt replays a deferred tap at stored coordinates — hit-tests buttons
-// and section headers in z-order, fires the first match. Called by
-// deferredTap.End() on touch release when scroll was NOT committed.
 func (sb *NodeSidebar) fireTapAt(x, y int) {
 	pt := image.Pt(x, y)
 
@@ -1649,18 +1436,13 @@ func (sb *NodeSidebar) fireTapAt(x, y int) {
 	sb.closeDropdownsOutside(x, y)
 }
 
-// HandleWheel scrolls content. steps comes from wheelScrollSteps() where
-// positive = wheel up. ScrollBehavior.HandleWheel has the same convention,
-// so we delegate directly.
+// Same sign convention as ScrollBehavior.HandleWheel.
 func (sb *NodeSidebar) HandleWheel(x, y int, steps int) InputResult {
 	if !sb.open || sb.node == nil {
 		return InputIgnored
 	}
 	sb.layout() // Ensure scroll limits are up-to-date
-	// The note-matrix picker floats over the sidebar, so a wheel event with the
-	// pointer over IT must scroll its rows, not the card underneath. The
-	// position was previously discarded outright (_, _), which is why the wheel
-	// scrolled the sidebar behind an open picker.
+	// Over the picker the wheel scrolls its rows, not the card underneath.
 	if p := sb.openPicker(); p != nil {
 		if r := p.HandleWheel(x, y, steps); r != InputIgnored {
 			return r
@@ -1670,13 +1452,9 @@ func (sb *NodeSidebar) HandleWheel(x, y int, steps int) InputResult {
 	return InputConsumed
 }
 
-// UpdateScroll applies per-frame momentum decay. Call from Game.Update()
-// every frame (not from HandleInput, which only runs when the cursor is
-// over the sidebar).
+// Every frame from Game.Update: HandleInput only runs while the cursor is over the sidebar.
 func (sb *NodeSidebar) UpdateScroll() {
-	// Keyboard cursor for the note-matrix picker. Pumped here (not from
-	// HandleInput) so the arrows work whether or not the pointer happens to be
-	// over the picker — HandleInput only runs when it is.
+	// Pumped here so the arrows work wherever the pointer is.
 	sb.updateNoteMatrixKeyNav()
 	sb.updateChordMatrixKeyNav()
 
@@ -1693,9 +1471,8 @@ func (sb *NodeSidebar) Capturing() bool {
 
 // buttonOrder returns button ids in z-order (highest first).
 func (sb *NodeSidebar) buttonOrder() []sbID {
-	// The note-matrix cells float above every other control, so they take the
-	// highest z. buttonOrder is what fireTapAt walks: a Button missing from
-	// this list is DEAD however correctly it is registered and drawn.
+	// The cells float above everything, so highest z. fireTapAt walks this list: a Button missing
+	// from it is dead however it is registered and drawn.
 	order := append([]sbID{}, sb.noteMatrixCellIDs()...)
 	order = append(order, sb.chordMatrixCellIDs()...)
 	order = append(order, sbClose)
@@ -1729,10 +1506,7 @@ func (sb *NodeSidebar) buttonOrder() []sbID {
 	}
 	order = append(order, sbMinus(fieldLogicN), sbPlus(fieldLogicN), sbMinus(fieldLogicP), sbPlus(fieldLogicP), sbMinus(fieldGroovePct), sbPlus(fieldGroovePct))
 	order = append(order, sbLogicSelect, sbGrooveSelect, sbGroupAdd, sbGroupRemove, sbGroupNew)
-	// "pitnote" (the note chip that opens the note matrix) is listed BEFORE the
-	// steppers: it sits immediately left of "pit-" and must win any overlap.
-	// A button absent from this list is DEAD — buttonOrder is what fireTapAt
-	// walks, so registering a Button in wireButtons is not enough on its own.
+	// Before the steppers: it sits just left of "pit-" and must win an overlap.
 	order = append(order, sbPitchNote)
 	order = append(order, sbMinus(fieldVol), sbPlus(fieldVol), sbMinus(fieldPit), sbPlus(fieldPit), sbMinus(fieldDur), sbPlus(fieldDur), sbAudible)
 	order = append(order, sbChordName, sbMinus(fieldChordInv), sbPlus(fieldChordInv), sbMinus(fieldChordSpread), sbPlus(fieldChordSpread), sbChordSingle)
@@ -1745,12 +1519,8 @@ func (sb *NodeSidebar) buttonOrder() []sbID {
 	return order
 }
 
-// contentTopY is the single source of truth for the Y where scrollable content
-// begins — directly below the fixed header band. It derives from the laid-out
-// header rect so the input-press, inViewport, and Draw paths stay in lockstep
-// with layout(), which grows the header when the coordinate readout adds a second
-// (playing) line. It falls back to the legacy fixed header height only before
-// layout() has populated the header rect.
+// The one source for where scrolled content begins, derived from the laid-out header so input,
+// viewport and Draw agree when the header grows a second line.
 func (sb *NodeSidebar) contentTopY() int {
 	if hr, ok := sb.rects[sbHeader]; ok && !hr.Empty() {
 		return hr.Max.Y + sidebarGap
@@ -1758,8 +1528,7 @@ func (sb *NodeSidebar) contentTopY() int {
 	return sidebarPad + sidebarHeaderH + sidebarGap
 }
 
-// gripHovered reports whether the desktop cursor is over the drag grip. Mobile
-// has no hover state, so it always reports false.
+// Mobile has no hover.
 func (sb *NodeSidebar) gripHovered() bool {
 	if Profile().IsMobile() {
 		return false
@@ -1772,8 +1541,6 @@ func (sb *NodeSidebar) gripHovered() bool {
 	return image.Pt(mx, my).In(gr)
 }
 
-// inViewport reports whether a rectangle is at least partially visible within
-// the scrollable content area (below the fixed header and above the panel bottom).
 func (sb *NodeSidebar) inViewport(r image.Rectangle) bool {
 	contentTop := sb.contentTopY()
 	bottom := sb.game.split.GridH(sb.game.winH)
@@ -1799,10 +1566,7 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 	g := sb.game
 	panel := sb.rects[sbPanel]
 
-	// Resolve the hovered non-Button clickable (desktop): section headers +
-	// full-width action rows get the shared eased hover lift. Buttons, chips
-	// and dropdown options carry their own hovered state via the per-frame
-	// dispatcher cadence.
+	// Buttons and chips carry their own hover; this covers headers and action rows.
 	hoverID := ""
 	if !Profile().IsMobile() {
 		mx, my := cursorPosition()
@@ -1836,9 +1600,6 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 
 	contentTop := sb.contentTopY()
 
-	// Draw sections. Section headers now self-compute their text baseline via
-	// StyledTextHeight; the legacy secTextOffY arg is retained for signature
-	// compatibility but ignored by drawSectionHeader.
 	sepColor := WithAlpha(genColorSidebarSectionBg, genAlphaSidebarSection)
 	const secTextOffY = 0
 
@@ -1852,10 +1613,7 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 
 	_ = panel // used by layout; drawing uses sb.rects
 
-	// All scrolled content draws through a viewport SubImage (below the
-	// fixed header, above the panel bottom) so a half-scrolled row can never
-	// paint over the title band. The shadowed dst keeps the section-draw
-	// code identical; coordinates stay absolute.
+	// Through a viewport SubImage, so a half-scrolled row can never paint over the title band.
 	dstFull := dst
 	dst = dstFull.SubImage(image.Rect(panel.Min.X, contentTop, panel.Max.X, panel.Max.Y)).(*ebiten.Image)
 
@@ -1884,11 +1642,7 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 				sb.drawBtn(dst, sbMinus(fieldPit))
 				sb.drawValuePill(dst, sbValue(fieldPit), fmt.Sprintf("%+d", int(pitVal)))
 				sb.drawBtn(dst, sbPlus(fieldPit))
-				// Note chip BUTTON in the row's left gap: the musical note this
-				// node sounds, and the opener for the note/octave matrix. It is
-				// absent for percussion (nodeNoteLabel returns "" and the
-				// button was never registered). Derived live, so it tracks
-				// pitch / synth / sampler edits.
+				// Derived live, so it follows pitch, synth and sampler edits; absent for percussion.
 				sb.drawBtn(dst, sbPitchNote)
 			}
 		}
@@ -2013,13 +1767,6 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 		}
 	}
 
-	// Groups section — ALWAYS shown (task-sidebar-create), not gated on
-	// AllGroups() anymore. First row is "Create new group" (grpnew), then
-	// full-width open-only membership chips (reopening the GroupMenu on
-	// click, fireGroupChip — the paired "grpdel" remove button is gone,
-	// task-remove-selector), then an "Add to group" row + dropdown for
-	// groups this node is NOT a member of, then a "Remove from group" row +
-	// dropdown for groups this node IS a member of.
 	{
 		sb.drawSectionHeader(dst, sbSectionHeader(secGrp), i18n.T(i18n.KeyGroupMenuTitle), secGrp, sepColor, secTextOffY)
 		if sb.sectionOpen[secGrp] {
@@ -2035,10 +1782,7 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 				if grp, ok := g.graph.Group(gid); ok && grp.Name != "" {
 					label = grp.Name
 				}
-				// Membership chips are navigational (they reopen the
-				// GroupMenu), so they render as flat menu rows: the group's
-				// identity lives in the leading swatch + hover tint +
-				// drill-in chevron — never a color-filled face.
+				// Navigational, so flat menu rows: identity in the swatch and hover tint, never a filled face.
 				if btn := sb.btns[chipID]; btn != nil {
 					state := menuItemRest
 					if btn.hovered || btn.pressed {
@@ -2058,10 +1802,7 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 				if sb.groupAddDropdownOpen {
 					for id := range sb.rects {
 						if id.el == elGroupAddOpt {
-							// Group identity = its color everywhere (badges,
-							// chips, remove options). Add options list
-							// specific groups too, so they wear the same
-							// per-group tint, not the node's accent.
+							// A group wears its own color everywhere, not the node's accent.
 							sb.drawDropdownItem(dst, id, false, g.groupColor(model.GroupID(id.arg)))
 						}
 					}
@@ -2080,8 +1821,6 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 		}
 	}
 
-	// Scrolled content done — back to the unclipped surface for the fixed
-	// chrome (header band, separator, close, scrollbar).
 	dst = dstFull
 
 	// Fixed header, drawn after the clipped content so it always sits on top.
@@ -2089,8 +1828,6 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 	sepY := sb.rects[sbHeader].Max.Y
 	drawRect(dst, image.Rect(sidebarPad, sepY, panel.Max.X-sidebarPad, sepY+1), WithAlpha(genColorSidebarSectionBg, genAlphaSidebarSection), true)
 
-	// Close button — visible neutral chip with the standard hairline border;
-	// the muted × glyph matches every other panel's close affordance.
 	if btn, ok := sb.btns[sbClose]; ok && btn != nil {
 		r := btn.Rect()
 		if !r.Empty() {
@@ -2114,17 +1851,12 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 		}
 	}
 
-	// The note-matrix picker floats above every sidebar control, so it paints
-	// last. It is clipped to the grid pane like the rest of the sidebar.
+	// Last, above every control; clipped to the grid pane like the rest.
 	sb.drawNoteMatrix(dst)
 	sb.drawChordMatrix(dst)
 }
 
-// drawHeader renders the fixed header with instrument name and color swatch.
-// nodeAccent returns the accent color for the node sidebar: the owning row's
-// instrument color so the sidebar's header underline, active section stripes,
-// and accent text all read as owned by the instrument the node belongs to.
-// Falls back to the azure chrome accent when the node has no resolvable row.
+// The node's row instrument color, so the sidebar reads as owned by that instrument.
 func (sb *NodeSidebar) nodeAccent() color.Color {
 	if sb.node != nil && sb.game != nil {
 		if row, ok := sb.game.nodeRows[sb.node.ID]; ok && row >= 0 && row < len(sb.game.drum.Rows) {
@@ -2146,8 +1878,7 @@ func (sb *NodeSidebar) drawHeader(dst *ebiten.Image) {
 	// Shared "Neon Horizon" header band, tinted to the node's instrument color.
 	drawMenuHeaderBandAccent(dst, headerRect, sb.nodeAccent())
 
-	// Instrument swatch + name via the shared, unified menu-title treatment so
-	// the node pop-up title matches the row context menu 100% (font/size/icon).
+	// The shared menu-title treatment, so it matches the row context menu exactly.
 	swatchCol := color.Color(genColorSidebarSwatchFallback)
 	label := i18n.T(i18n.KeyNodeTitle)
 	if row, ok := g.nodeRows[sb.node.ID]; ok && row >= 0 && row < len(g.drum.Rows) {
@@ -2170,16 +1901,11 @@ func (sb *NodeSidebar) drawHeader(dst *ebiten.Image) {
 	titleRect := image.Rect(titleX, headerRect.Min.Y, headerRect.Max.X, titleBottom)
 	drawMenuTitle(dst, titleRect, label, swatchCol)
 
-	// Drag grip: dim by default, brighter on hover, accent while dragging —
-	// the standard three-state affordance tint.
 	if gr, ok := sb.rects[sbGrip]; ok && !gr.Empty() {
 		DrawIcon(dst, IconGrip, gr, popupGripTint(sb.drag.Dragging(), sb.gripHovered()))
 	}
 
-	// Coordinate readout: grid coords + circuit beat/subdivision (always). While
-	// playing, a second line shows the node's live last/next fire; when stopped
-	// the home line already conveys the next-from-0 position, so it is omitted to
-	// keep the fixed header short on small panels.
+	// The live line only while playing; stopped, the home line already says where it fires next.
 	if !coordR.Empty() && sb.node != nil {
 		tm := g.nodeLiveTiming(sb.node.ID)
 		x := coordR.Min.X + 2
@@ -2192,19 +1918,13 @@ func (sb *NodeSidebar) drawHeader(dst *ebiten.Image) {
 	}
 }
 
-// drawSectionHeader draws a collapsible section header using the shared menu
-// chrome (icon chevron + item background + active stripe) and an optional
-// collapsed-state summary badge.
 func (sb *NodeSidebar) drawSectionHeader(dst *ebiten.Image, rectID sbID, label string, sectionID sbSection, _ color.Color, _ int) {
 	r, ok := sb.rects[rectID]
 	if !ok || r.Empty() || !sb.inViewport(r) {
 		return
 	}
 	expanded := sb.sectionOpen[sectionID]
-	// No expand highlight: the chevron direction (down=open, right=closed) already
-	// conveys section state, and the node-color fill/stripe + accent text read as a
-	// distracting "selected" bar. Headers stay neutral; node color lives on the
-	// buttons, header swatch, and dropdown stripes.
+	// Neutral: the chevron already shows the state, and a colored bar read as "selected".
 	chevR := image.Rect(r.Min.X+sidebarPad, r.Min.Y, r.Min.X+sidebarPad+IconSizeMD, r.Max.Y)
 	var chevCol color.Color = colTextSecondary
 	var labelCol color.Color = colTextPrimary
@@ -2217,13 +1937,9 @@ func (sb *NodeSidebar) drawSectionHeader(dst *ebiten.Image, rectID sbID, label s
 
 	sb.drawSectionBadge(dst, r, sectionID)
 
-	// Expandable header = clickable: the shared eased hover lift, same as
-	// every button (headers stay neutral otherwise — chevron carries state).
 	drawButtonHoverGlow(dst, r, RadiusSM, sb.hover.Lift(rectID.String()))
 }
 
-// drawSectionBadge renders the collapsed-section summary badge (right-aligned,
-// square sharp corners) showing the section's current value (default or not).
 func (sb *NodeSidebar) drawSectionBadge(dst *ebiten.Image, r image.Rectangle, sectionID sbSection) {
 	if sb.sectionOpen[sectionID] {
 		return
@@ -2243,10 +1959,7 @@ func (sb *NodeSidebar) drawSectionBadge(dst *ebiten.Image, r image.Rectangle, se
 	DrawTextStyled(dst, badge, bx+badgePadX, by+badgePadY, RoleCaption, colTextSecondary)
 }
 
-// sectionBadgeText returns a summary string of a collapsed section's current
-// value. Every category surfaces its value — including when it is at the
-// default — using the same formatting as updated values, so a glance at the
-// collapsed sidebar shows each category's state (e.g. "100%", "+0", "None").
+// Every section shows its value even at the default, so a glance shows each state.
 func (sb *NodeSidebar) sectionBadgeText(sectionID sbSection) string {
 	if sb.node == nil {
 		return ""
@@ -2323,12 +2036,8 @@ func (sb *NodeSidebar) drawExpandTab(dst *ebiten.Image) {
 	DrawIcon(dst, IconChevronRight, iconR, colTextSecondary)
 }
 
-// drawBtn draws a single button if it exists and is within the viewport.
-// Faces stay neutral (plain DropdownStyle keycaps, like every other menu):
-// the node's identity color lives in the header band, title swatch, and
-// dropdown accent stripes — never on button fills (2026-07-16 redesign; the
-// old tintBtnAccent 40% face tint made the whole panel read as color-filled
-// blocks).
+// Faces stay neutral: the node's color lives in the header, swatch and dropdown stripes, never
+// on button fills.
 func (sb *NodeSidebar) drawBtn(dst *ebiten.Image, id sbID) {
 	b := sb.btns[id]
 	if b == nil {
@@ -2340,20 +2049,13 @@ func (sb *NodeSidebar) drawBtn(dst *ebiten.Image, id sbID) {
 	b.Draw(dst)
 }
 
-// sidebarHoverIDs enumerates the sidebar's hover-lift targets that are NOT
-// Buttons: the collapsible section headers plus the full-width action rows.
-// Resolved against sb.rects each frame in Draw; first hit wins.
+// First hit wins.
 var sidebarHoverIDs = []sbID{
 	sbSectionHeader(secVol), sbSectionHeader(secPit), sbSectionHeader(secChord), sbSectionHeader(secDur),
 	sbSectionHeader(secLogic), sbSectionHeader(secGroove), sbSectionHeader(secAud), sbSectionHeader(secGrp),
 	sbAudible, sbChordSingle, sbGroupNew, sbGroupAdd, sbGroupRemove,
 }
 
-// drawActionRow renders one full-width sidebar action row: the neutral
-// DropdownStyle keycap + a left-aligned styled label + the shared hover
-// lift. One helper so every action row (Audible, Move, Create/Add/Remove
-// group) shares identical chrome.
-// drawChordSection draws the chord builder (layoutChordSection's rows).
 func (sb *NodeSidebar) drawChordSection(dst *ebiten.Image, c model.ChordSpec, sepColor color.Color) {
 	sb.drawSectionHeader(dst, sbSectionHeader(secChord), i18n.T(i18n.KeyNodeSecChord), secChord, sepColor, 0)
 	if !sb.sectionOpen[secChord] {
@@ -2395,15 +2097,8 @@ func (sb *NodeSidebar) drawActionRow(dst *ebiten.Image, id sbID, label string) {
 	drawButtonHoverGlow(dst, r, RadiusSM, sb.hover.Lift(id.String()))
 }
 
-// drawDropdownItem renders one Logic/Groove/group-dropdown LIST row through
-// the shared drawMenuRow primitive (same as every other menu list):
-// background accent + keycap chrome + label. accent is caller-supplied so
-// each dropdown can carry its own accent language: the node's own color
-// (nodeAccent — SSOT DrumRow.Color) for Logic/Groove/"Add to group" so the
-// selected row shows a node-color stripe and a hovered row a node-color
-// tint; the group's own color (groupColor(gid)) for "Remove from group"
-// option rows, matching the membership chips' tinting. The clip guard keeps
-// off-viewport rows from drawing.
+// Logic, Groove and Add-to-group rows take the node's color; Remove options take each group's
+// own color, like the membership chips.
 func (sb *NodeSidebar) drawDropdownItem(dst *ebiten.Image, id sbID, selected bool, accent color.Color) {
 	b := sb.btns[id]
 	if b == nil {
@@ -2426,11 +2121,6 @@ func (sb *NodeSidebar) drawDropdownItem(dst *ebiten.Image, id sbID, selected boo
 	})
 }
 
-// drawValuePill draws a centered value READOUT between the inc/dec stepper
-// keys. In the mechanical-keycap language the steppers are raised keys, so the
-// readout reads as a RECESSED display window sunk into the panel: a fill
-// darker than the panel + an inner top shadow (the tactile opposite of a
-// keycap's top specular), then the border and centered colTextPrimary text.
 func (sb *NodeSidebar) drawValuePill(dst *ebiten.Image, key sbID, value string) {
 	r, ok := sb.rects[key]
 	if !ok || r.Empty() || !sb.inViewport(r) {
@@ -2439,10 +2129,7 @@ func (sb *NodeSidebar) drawValuePill(dst *ebiten.Image, key sbID, value string) 
 	drawRecessedPill(dst, r, value)
 }
 
-// drawRecessedPill paints a value READOUT as a recessed display well: a fill
-// darker than the panel + an inner top shadow (the tactile opposite of a
-// keycap's top specular), the border, then centered colTextPrimary text. Pure
-// (no sidebar state) so it is unit-testable and reusable for any readout.
+// A recessed well, the tactile opposite of a keycap; pure so it can be reused and tested.
 func drawRecessedPill(dst *ebiten.Image, r image.Rectangle, value string) {
 	drawRoundedRect(dst, r, adjustColor(colSurface2, -22), fitRadius(RadiusControl, r), true)
 	drawRect(dst, image.Rect(r.Min.X+2, r.Min.Y+1, r.Max.X-2, r.Min.Y+1+genGeomButtonInnerShadowPx),

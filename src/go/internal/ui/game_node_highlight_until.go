@@ -4,8 +4,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// highlightWindow represents a time window during which a node highlight is active.
-// The highlight should only be visible when start <= audio.Now() < end.
+// Visible only while start <= audio.Now() < end.
 type highlightWindow struct {
 	start float64
 	end   float64

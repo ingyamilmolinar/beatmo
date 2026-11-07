@@ -33,16 +33,13 @@ func (g *Game) parityCheck(row, idx int, info model.BeatInfo, scheduled bool, so
 	if g.state.JustResumed() {
 		return
 	}
-	// During the post-mutation grace window, skip parityCheck entirely. The
-	// audio thread may be firing notes scheduled before the mutation while the
-	// scheduler has already advanced to post-mutation state; their comparison
-	// is meaningless until grace expires.
+	// After a mutation the audio thread may still fire pre-mutation notes, so comparisons are
+	// meaningless until grace expires.
 	if g.parityInGrace() {
 		return
 	}
 	if missing {
-		// If the row lacks an instrument/bus, the scheduler intentionally skips
-		// audio; don't flag parity for the visible slate in that case.
+		// A row without an instrument intentionally plays nothing.
 		return
 	}
 	if !g.renderReady {
@@ -57,9 +54,7 @@ func (g *Game) parityCheck(row, idx int, info model.BeatInfo, scheduled bool, so
 	if info.NodeType == model.NodeTypeMute {
 		return
 	}
-	// Ignore beats that are already behind the playhead; DrumView may still
-	// show immutable playback commits there, but scheduler parity should only
-	// consider the current/future window.
+	// Only the current and future window: the past shows immutable commits.
 	playhead := g.playheadFloor() - 1
 	if playhead < 0 {
 		playhead = 0
@@ -67,8 +62,7 @@ func (g *Game) parityCheck(row, idx int, info model.BeatInfo, scheduled bool, so
 	if idx < playhead {
 		return
 	}
-	// Skip parity for muted/solo-gated rows: scheduler passes false but slate
-	// shows predictor truth which doesn't account for UI mute/solo state.
+	// The slate shows predictor truth, which ignores mute/solo.
 	anySolo := false
 	for _, r := range g.drum.Rows {
 		if r.Solo {
@@ -83,11 +77,7 @@ func (g *Game) parityCheck(row, idx int, info model.BeatInfo, scheduled bool, so
 	if !inWindow {
 		return
 	}
-	// Single-beat grace in EVERY mode (including fatal): the sequencer just
-	// scheduled idx and the DrumView slate will reflect it on the next refresh,
-	// so a scheduled-but-not-yet-slated just-scheduled beat is a one-frame
-	// pipeline-latency artifact, not a desync. Bypassing this under fatal mode
-	// (the old `!fatalNow &&`) turned that benign lag into a panic.
+	// The just-scheduled beat is a one-frame pipeline lag in every mode, fatal included.
 	if scheduled && !slate && row >= 0 && row < len(g.seqNextIdxs) && idx == g.seqNextIdxs[row]-1 {
 		return
 	}

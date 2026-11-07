@@ -123,8 +123,7 @@ func applyNodeDecision(vol, pitch, dur float64, dec model.NodeDecision) (float64
 	return vol, pitch, dur
 }
 
-// nodeLayersAt is the firing cell's voice stack: nil (one voice) for every
-// non-chord node, the chord's layers otherwise (model.NodeLayers).
+// nil (one voice) for every non-chord node.
 func (s *playbackSlate) nodeLayersAt(info model.BeatInfo) []model.Layer {
 	if info.NodeType != model.NodeTypeChord {
 		return nil
@@ -136,8 +135,7 @@ func (s *playbackSlate) nodeLayersAt(info model.BeatInfo) []model.Layer {
 	return model.NodeLayers(n.Type, n.Params)
 }
 
-// evalNodeParamsOnly computes effective volume/pitch/duration from node
-// parameters without touching trigger counters or applying gating logic.
+// No trigger counters or gating.
 func (s *playbackSlate) evalNodeParamsOnly(row, idx int, info model.BeatInfo) (float64, float64, float64) {
 	g := s.g
 	if !info.NodeType.Fires() && info.NodeType != model.NodeTypeMute {
@@ -153,8 +151,6 @@ func (s *playbackSlate) evalNodeParamsOnly(row, idx int, info model.BeatInfo) (f
 		vol *= n.Params.Volume
 		pitch += n.Params.Pitch
 		dur *= n.Params.Duration
-		// Do not apply user logic or trigger-based rules here; gating and
-		// counters are handled elsewhere by predictions/sequencer.
 	}
 	if gi := g.groupIndexSnapshot(); gi != nil && gi.HasRules(info.NodeID) {
 		loopStart, loopLen := g.rowLoopSpan(row)
@@ -162,8 +158,7 @@ func (s *playbackSlate) evalNodeParamsOnly(row, idx int, info model.BeatInfo) (f
 		pitch += pd
 		vol *= vm
 		dur *= dm
-		// Final legal-range clamp — only for ruled nodes so ungrouped
-		// behavior is byte-identical to before this feature.
+		// Ruled nodes only, so ungrouped behaviour stays byte-identical.
 		if pitch < -24 {
 			pitch = -24
 		} else if pitch > 24 {
@@ -210,10 +205,8 @@ func (s *playbackSlate) nodeTriggeredState(row, idx int, info model.BeatInfo) (b
 	return g.engine.Predictor.TriggeredAt(row, idx), true
 }
 
-// deterministicRoll returns a deterministic pseudo-random value in [0,1) for
-// the given row/index/node triple, stable across runs and independent of wall
-// clock, so preview predictions and audio playback can agree for probability
-// logic without shared mutable RNG state.
+// Stable across runs and independent of the clock, so preview and playback agree on probability
+// logic without shared RNG state.
 func (s *playbackSlate) deterministicRoll(row, idx int, id model.NodeID) float64 {
 	// 64-bit SplitMix-derived hash
 	x := uint64(uint32(row))<<32 ^ uint64(uint32(idx)) ^ (uint64(uint32(id)) << 16) ^ 0x9E3779B97F4A7C15

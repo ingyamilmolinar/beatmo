@@ -10,8 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Cached environment variables read once at init to avoid per-frame syscalls.
-// Tests in the same package can override these directly.
+// Read once, never per frame; tests may override them.
 var (
 	envRenderSafe      = os.Getenv("RENDER_SAFE") == "1"
 	envScreenEdges     = os.Getenv("SCREEN_EDGES") == "1"
@@ -22,12 +21,7 @@ var (
 	envNoSpriteNodes   = os.Getenv("NO_SPRITE_NODES") == "1"
 )
 
-// drawGridPane is dispatch-only: it computes the per-frame side-effecting setup
-// exactly once (the grid-pane subimage, camera matrix, culling rect, edge-style
-// params, FastPanDetect counter mutation, draw-stat reset, FRAME trace log),
-// stashes the derived values into g.gridDrawCtx + g.gridDrawScreen, then calls
-// the focused drawGrid* sub-methods (grid_pane_draw.go) IN THE ORIGINAL ORDER so
-// rendered pixels stay byte-identical to the pre-split inlined version.
+// Dispatch only: computes the frame's setup once into gridDrawCtx/gridDrawScreen, then the tree draws.
 func (g *Game) drawGridPane(screen *ebiten.Image) {
 	gridRect := g.split.GridRect(g.winW, g.winH)
 	var top *ebiten.Image
@@ -39,19 +33,13 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		g.gridPaneSubRect = gridRect
 		g.gridPaneSub = top
 	}
-	// Always draw top‑pane content into the same subimage to avoid any
-	// compositor/target disparities between cached and direct draws.
+	// Always the same subimage, so cached and direct draws match.
 	dst := top
 	// Render mode flags
 	renderSafe := envRenderSafe
 	screenEdges := renderSafe || RuntimeProf().ScreenEdgesDefault || envScreenEdges || g.simpleDraw
 
-	// Stash the transient per-frame draw context for the drawGrid* sub-methods.
-	// gridRect / render-mode flags first; the camera-derived locals are filled
-	// in below. The whole ctx is populated BEFORE the debug-trace branch and
-	// the tree dispatch, so any drawGrid* method (including the debug-path
-	// drawGridBackground) always sees a complete context — no partial-ctx trap
-	// if a future change makes the background read a camera-derived field.
+	// The whole ctx is filled before any branch reads it, so no draw sees a partial context.
 	ctx := &g.gridDrawCtx
 	*ctx = gridPaneDrawCtx{}
 	ctx.gridRect = gridRect
@@ -71,10 +59,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 	var cam ebiten.GeoM
 	cam.Scale(camScale, camScale)
 	cam.Translate(offX, offY+float64(gridTopOffset()))
-	// Snap world coordinates to the nearest screen pixel to keep nodes,
-	// edges, and pulses phase-aligned with the tiled grid. This avoids the
-	// half‑pixel drift that occurs when world→screen projects to fractional
-	// pixels.
+	// World coordinates snap to whole pixels so nodes and edges stay aligned with the grid tiles.
 
 	// Detect fast pan to gate expensive UI ensures (browser only by default).
 	if RuntimeProf().FastPanDetect {
@@ -120,9 +105,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 	ctx.edgeThick = edgeThick
 	ctx.arrow = arrow
 
-	// Invalidate the guide-target memo for this draw pass: g.frame only
-	// advances during playback, so it cannot serve as the memo key while
-	// stopped (stale guide after an edit with a still cursor).
+	// g.frame only advances while playing, so it cannot key the memo when stopped.
 	g.guideMemoFrame = -1
 
 	if g.logDrawNodes {
@@ -147,38 +130,21 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		g.logger.Tracef("[frame/scene] f=%d nodes=%d edges=%d pulses=%d tile=(%d,%d) phase=(%d,%d) cam=(%.3f,%.0f,%.0f)%s", g.frame, len(g.nodes), len(g.edges), len(g.activePulses), tileW, tileH, phaseX, phaseY, g.cam.Scale, offX, offY, mode)
 	}
 
-	// Dispatch every grid-pane layer through the GridTree, which walks the
-	// registered Layers in ascending z-order (registerGridTree). Drawing in
-	// z-order is the structural fix for the coordinate-badge-over-sidebar bug:
-	// the node sidebar (z=60) and cursor label (z=70) now composite ON TOP of
-	// the coordinate badge (z=40) / pulses / move-mode, instead of the old
-	// inlined order that drew the sidebar right after the nodes (so the badge
-	// could overpaint it). clip=true layers receive the grid-pane-clipped
-	// subimage (== the original `top`); clip=false layers (sidebar, cursor
-	// label) receive the unclipped screen. The drawGrid* methods still read the
-	// per-frame g.gridDrawCtx + draw node-glow to g.gridDrawScreen, both set up
-	// above before this call.
+	// Ascending z, so the sidebar and cursor label composite over the coordinate badge;
+	// clip=false layers get the unclipped screen.
 	g.gridTree.SetBounds(gridRect)
 	g.gridTree.Draw(screen)
 
 	// Divider drawn after both panes
 }
 
-// nodeStateSlashMinPx is the minimum on-screen node radius (px) at which the
-// Muted diagonal slash detail is drawn. Below this the desaturated body alpha
-// alone carries the state to keep tiny nodes legible (nodeMinPx is 8 desktop /
-// 12 mobile).
+// Below this radius the desaturated body alone carries the Muted state.
 const nodeStateSlashMinPx = 10
 
-// nodeChordGlyphMinPx is the smallest node radius that draws the notehead
-// glyph; smaller chord nodes (the default zoom) get three ticks instead.
+// Smaller chord nodes get three ticks instead.
 const nodeChordGlyphMinPx = 9
 
-// drawNodeStateOverlays iterates every node and paints the state-distinct
-// treatment for Muted / Silent / Invisible nodes (regular nodes are left
-// untouched). It mirrors the base draw loop's culling + fill/border derivation
-// so the overlay registers correctly against the row-colored body. Drawn in
-// screen space onto dst.
+// Mirrors the base loop's culling and colors so the overlay registers on the body.
 func (g *Game) drawNodeStateOverlays(dst *ebiten.Image, minX, maxX, minY, maxY float64, gridW, gridH int) {
 	nodeStyle := NodeUI
 	for nodeIdx, n := range g.nodes {
@@ -215,20 +181,8 @@ func (g *Game) drawNodeStateOverlays(dst *ebiten.Image, minX, maxX, minY, maxY f
 	}
 }
 
-// drawNodeStateOverlay paints a distinct, token-driven treatment over the base
-// node body so Muted / Silent / Invisible nodes are visually distinguishable
-// from a normal node. It is drawn AFTER the base sprite/rect (the sprite cache
-// key does not encode node type), in screen space, so it works on both the
-// cached node-layer path and the RENDER_SAFE / NO_SPRITE_NODES fallback path.
-//
-//   - Muted:     body desaturated (fill @ AlphaMedium) + a diagonal slash in the
-//     drum-mute gray family (gated on rPx >= nodeStateSlashMinPx).
-//   - Silent:    hollow — interior cleared to the grid background, border-only
-//     silhouette re-stroked.
-//   - Invisible: ghosted — body @ AlphaFaint + a dashed outline @ AlphaSubtle.
-//
-// Invisible nodes are skipped by the base draw loops, so this is their ONLY
-// render; the other two overlay on top of an already-drawn body.
+// Drawn after the base body in screen space (the sprite key ignores the type), so it works on
+// every draw path. Invisible nodes have no base draw: this is their only render.
 func (g *Game) drawNodeStateOverlay(dst *ebiten.Image, sx1, sy1, sx2, sy2 float64, nt model.NodeType, fillCol, borderCol color.Color) {
 	rPx := int(math.Round((sx2 - sx1) * 0.5))
 	if rPx < 1 {
@@ -242,14 +196,12 @@ func (g *Game) drawNodeStateOverlay(dst *ebiten.Image, sx1, sy1, sx2, sy2 float6
 	}
 	switch nt {
 	case model.NodeTypeChord:
-		// Stacked noteheads over the body, in the border tone (the row
-		// color's light variant, so it reads on the row-colored fill).
+		// The border tone reads on the row-colored fill.
 		if rPx >= nodeChordGlyphMinPx {
 			g := rPx * 3 / 2
 			DrawIcon(dst, IconChord, image.Rect(cx-g/2, cy-g/2, cx+g-g/2, cy+g-g/2), borderCol)
 		} else {
-			// Too small for noteheads: three crisp ticks, the same mark a
-			// chord cell carries in the drum view.
+			// The same mark a chord cell carries in the drum view.
 			w := rPx
 			if w < 2 {
 				w = 2
@@ -262,15 +214,11 @@ func (g *Game) drawNodeStateOverlay(dst *ebiten.Image, sx1, sy1, sx2, sy2 float6
 		// Desaturate the body with a translucent fill scrim, then re-edge.
 		drawRect(dst, rect, WithAlphaFromColor(fillCol, AlphaMedium), true)
 		drawRect(dst, rect, borderCol, false)
-		// Diagonal slash in the drum-mute gray family (legible detail only at
-		// larger radii; tiny nodes rely on the desaturated body alone).
 		if rPx >= nodeStateSlashMinPx {
 			var idm ebiten.GeoM
 			DrawLineCam(dst, float64(rect.Min.X), float64(rect.Min.Y), float64(rect.Max.X), float64(rect.Max.Y), &idm, colMuteCell, float64(genGeomHighlightBorderThickness))
 		}
 	case model.NodeTypeSilent:
-		// Hollow: clear the interior to the grid background (no/low fill), then
-		// re-stroke the border so only the silhouette remains.
 		inner := image.Rect(rect.Min.X+1, rect.Min.Y+1, rect.Max.X-1, rect.Max.Y-1)
 		if !inner.Empty() {
 			drawRect(dst, inner, colBGTop, true)
@@ -288,12 +236,8 @@ func (g *Game) drawNodeStateOverlay(dst *ebiten.Image, sx1, sy1, sx2, sy2 float6
 	}
 }
 
-// nodeOwnHighlightColor returns the color a node highlights/hovers/fires in:
-// its OWN displayed color. Row-instrument nodes use their row color; every
-// other node (structural / mute / silent, which has no row) uses the node
-// border color — the node's visible ring — since the node fill is a dark,
-// near-background purple that would not read as a halo. This keeps every
-// highlight the same color as the thing it highlights, never a flat white.
+// A node highlights in its own color: rowless nodes use the border, since their dark fill would
+// not read as a halo.
 func (g *Game) nodeOwnHighlightColor(rowIdx int, rowOK bool) color.Color {
 	if rowOK && rowIdx >= 0 && rowIdx < len(g.drum.Rows) {
 		return g.drum.Rows[rowIdx].Color
@@ -301,11 +245,6 @@ func (g *Game) nodeOwnHighlightColor(rowIdx int, rowOK bool) color.Color {
 	return genColorNodeBorder
 }
 
-// drawNodeSelectionHalo paints a soft glow around the selected node's selection
-// ring, reusing the EQ-handle halo language (WithAlpha(primary, AlphaSubtle)).
-// The crisp 2px selection ring itself is drawn separately by the caller in
-// colStep (= primary); this adds the surrounding glow the ring previously
-// lacked. Drawn in screen space so it works on every node-draw path.
 func (g *Game) drawNodeSelectionHalo(dst *ebiten.Image, sx1, sy1, sx2, sy2 float64) {
 	rPx := int(math.Round((sx2 - sx1) * 0.5))
 	if rPx < 1 {
@@ -314,9 +253,7 @@ func (g *Game) drawNodeSelectionHalo(dst *ebiten.Image, sx1, sy1, sx2, sy2 float
 	cx := int(math.Round((sx1 + sx2) * 0.5))
 	cy := int(math.Round((sy1 + sy2) * 0.5))
 	halo := WithAlpha(colAccent, AlphaSubtle)
-	// Soft glow = a translucent band ringing the selection box. Painted as four
-	// filled strips between the node rect and an expanded rect so the node body
-	// stays uncovered while the surround glows (EQ-handle halo language).
+	// Four strips around the rect, so the body stays uncovered.
 	const grow = 4
 	inX0, inY0 := cx-rPx, cy-rPx
 	inX1, inY1 := cx+rPx, cy+rPx
@@ -329,15 +266,8 @@ func (g *Game) drawNodeSelectionHalo(dst *ebiten.Image, sx1, sy1, sx2, sy2 float
 	drawRect(dst, image.Rect(inX1, inY0, outX1, inY1), halo, true)
 }
 
-// drawNodeGroupRing draws a square outline ring around a node's screen-space
-// rect, grown outward past the node body by ringGrow px — one radius step
-// larger than the selection ring (see drawNodeSelectionHalo's inner box)
-// so a node that is both selected and a group member shows both rings
-// without overlap. ringGrow also lets multiple concurrent group-membership
-// rings nest concentrically (see groupRingBaseGrow/groupRingStepGrow,
-// game_group_badges.go) — the Nth ring on a multi-group node passes a larger
-// ringGrow than the (N-1)th. Reuses the exact DrawLineCam primitive the
-// selection ring uses; only the color and offset differ.
+// Grown past the selection ring so both show without overlap; larger ringGrow values nest
+// several group rings concentrically.
 func (g *Game) drawNodeGroupRing(dst *ebiten.Image, sx1, sy1, sx2, sy2 float64, ringCol color.Color, ringGrow int) {
 	x1, y1 := sx1-float64(ringGrow), sy1-float64(ringGrow)
 	x2, y2 := sx2+float64(ringGrow), sy2+float64(ringGrow)
@@ -348,23 +278,12 @@ func (g *Game) drawNodeGroupRing(dst *ebiten.Image, sx1, sy1, sx2, sy2 float64, 
 	DrawLineCam(dst, x1, y2, x1, y1, &idm, ringCol, float64(genGeomHighlightBorderThickness))
 }
 
-// groupExternalRingStep1 / groupExternalRingStep2 are the outward px steps
-// (past the outermost drawn membership ring) for the Part-B external
-// highlight (task-enabled-status brief): a stronger 2px stroke immediately
-// outside the ring stack, plus a softer 1px stroke one more step further out
-// (glow feel). Additive to the existing faint/strong ring behavior.
 const (
 	groupExternalRingStep1 = 3
 	groupExternalRingStep2 = 6
 )
 
-// drawNodeExternalHighlightRing draws the Part-B external highlight for a
-// node whose group is currently hovered (via its badge) or has its GroupMenu
-// open: two extra square rings OUTSIDE whatever concentric membership rings
-// drawNodeGroupRing already drew — outermostGrow is the grow value of the
-// last (or would-be) membership ring, so this always sits strictly further
-// out. First ring: 2px stroke at AlphaStrong; second ring
-// (groupExternalRingStep2 further out): 1px stroke at AlphaMedium.
+// Always strictly outside the membership rings (outermostGrow is the last ring's grow).
 func (g *Game) drawNodeExternalHighlightRing(dst *ebiten.Image, sx1, sy1, sx2, sy2 float64, gid model.GroupID, outermostGrow int) {
 	col := g.groupColor(gid)
 	var idm ebiten.GeoM
@@ -388,9 +307,6 @@ func (g *Game) drawNodeExternalHighlightRing(dst *ebiten.Image, sx1, sy1, sx2, s
 	DrawLineCam(dst, x1b, y2b, x1b, y1b, &idm, medium, 1)
 }
 
-// groupIDsContain reports whether gid is present in ids — used to test
-// membership of the current frame's external-highlight target group against
-// a node's (already up-to-groupRingMaxCount-capped) membership list.
 func groupIDsContain(ids []model.GroupID, gid model.GroupID) bool {
 	for _, id := range ids {
 		if id == gid {
@@ -400,8 +316,6 @@ func groupIDsContain(ids []model.GroupID, gid model.GroupID) bool {
 	return false
 }
 
-// computeNodeGraphSig returns a hash of node positions, types, start flags,
-// and row colors. Used to invalidate the static node layer cache.
 func (g *Game) computeNodeGraphSig() uint64 {
 	s := uint64(len(g.nodes))
 	for _, n := range g.nodes {

@@ -8,16 +8,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// instMenuHasScroll reports whether the instrument menu has more rows
-// than fit in the current viewport. Drives whether the scrollbar
-// gutter renders.
 func (dv *DrumView) instMenuHasScroll() bool {
 	return dv.instMenuScroll.HasScroll()
 }
 
-// instMenuThumbRect returns the screen-space rect of the scrollbar
-// thumb for the open menu, or an empty rect when the menu is closed
-// or has no scroll.
 func (dv *DrumView) instMenuThumbRect() image.Rectangle {
 	if !dv.IsInstMenuOpen() || !dv.instMenuHasScroll() || dv.instMenuScroll.View.Empty() {
 		return image.Rect(0, 0, 0, 0)
@@ -25,9 +19,6 @@ func (dv *DrumView) instMenuThumbRect() image.Rectangle {
 	return dv.instMenuScroll.ThumbRect(dropdownScrollbarWidth(), dv.rowHeight()/2)
 }
 
-// instDisplayLabel returns a user-facing name for an instrument ID,
-// preferring catalog metadata when available. Uses a per-DrumView
-// cache to avoid recomputing the label every frame.
 func (dv *DrumView) instDisplayLabel(id instrument.ID) string {
 	if id == "" {
 		return "(missing)"
@@ -45,16 +36,10 @@ func (dv *DrumView) instDisplayLabel(id instrument.ID) string {
 	return lbl
 }
 
-// computeInstLabel computes the display label for an instrument ID without
-// caching. Delegates to audio.InstrumentDisplayName, the single source of
-// truth: user override → catalog name → catalog basename → pretty-cased id.
 func (dv *DrumView) computeInstLabel(id instrument.ID) string {
 	return audio.InstrumentDisplayName(id)
 }
 
-// matchInstrumentSearch reports whether the query q matches the
-// instrument id by id, display label, or relPath. Case-insensitive
-// substring match. Empty query always matches.
 func (dv *DrumView) matchInstrumentSearch(id instrument.ID, q string) bool {
 	if q == "" {
 		return true
@@ -77,12 +62,7 @@ func (dv *DrumView) matchInstrumentSearch(id instrument.ID, q string) bool {
 	return false
 }
 
-// syncInstMenuScrollFromComp mirrors the InstrumentMenuComponent's
-// internal scroll state into dv.instMenuScroll so call sites that
-// historically read the latter (drumview_notifications.go, tests in
-// drumview_test.go) keep working without each one reaching through
-// the component. Invoked at every state-mutating menu transition
-// (Open, Refresh, post-Update). Cheap.
+// Mirrors the component's scroll into dv.instMenuScroll for the callers that read it.
 func (dv *DrumView) syncInstMenuScrollFromComp() {
 	if dv == nil || dv.instMenuComp == nil {
 		return
@@ -100,21 +80,10 @@ func (dv *DrumView) syncInstMenuScrollFromComp() {
 		dv.instMenuMode = instMenuModeInstruments
 	}
 	dv.instSearchBox = dv.instMenuComp.SearchBox()
-	// Mirror category buttons too — drumview_notifications and a few
-	// tests read dv.instCategoryBtns directly.
 	dv.instCategoryBtns = append(dv.instCategoryBtns[:0], dv.instMenuComp.CategoryBtns()...)
 }
 
-// instMenuBtns returns the current set of instrument-menu buttons
-// derived from InstrumentMenuComponent. Test code historically read
-// dv.instMenuBtns as a field; the field has been retired and this
-// method returns the equivalent shape: [Back?, ...categoryBtns or
-// instBtns]. Order matches the legacy contract (Back first when in
-// instruments mode and categories exist; otherwise the visible
-// list at index 0).
-//
-// Callers must treat the slice as read-only — it is freshly allocated
-// on each call and not retained between frames.
+// Freshly allocated each call: [Back?, categories or instruments]. Read-only.
 func (dv *DrumView) instMenuBtns() []*Button {
 	if dv == nil || dv.instMenuComp == nil {
 		return nil
@@ -129,10 +98,7 @@ func (dv *DrumView) instMenuBtns() []*Button {
 	return out
 }
 
-// openInstMenuForRow opens the instrument selector menu for the
-// given row, using the InstrumentMenuComponent. A row out of range
-// is a silent no-op so callers can pass user-supplied indices
-// without bounds checking.
+// An out-of-range row is a silent no-op.
 func (dv *DrumView) openInstMenuForRow(rowIdx int) {
 	if rowIdx < 0 || rowIdx >= len(dv.Rows) {
 		return
@@ -167,18 +133,13 @@ func (dv *DrumView) openInstMenuForRow(rowIdx int) {
 	dv.instMenuRow = rowIdx
 
 	if dv.instMenuComp == nil {
-		// Component should always be present after DrumView.New() — guard
-		// for tests that build a partial DrumView. There's no legacy
-		// fallback path anymore.
+		// Only a partially built DrumView (tests) lacks the component.
 		return
 	}
 
 	var instOpts []InstrumentOption
 	for _, id := range dv.instOptions {
-		// instDisplayLabel fills the cache on a miss. Reading the cache
-		// directly fell back to the raw id whenever nothing had warmed it —
-		// it only ever worked because calcLabelWidth used to measure every
-		// instrument option (and so warmed every entry) as a side effect.
+		// instDisplayLabel, not the cache: it fills a miss.
 		label := dv.instDisplayLabel(id)
 		cat := audio.CatNone
 		if dv.instCatByID != nil {
@@ -217,9 +178,7 @@ func (dv *DrumView) openInstMenuForRow(rowIdx int) {
 		ProjectPins:           dv.ProjectPins(),
 		Style:                 DefaultMenuStyle(),
 		OnSelect: func(instID instrument.ID) {
-			// pickInstrument never drops the row's settings: it may ask
-			// first (pick_settings.go), then SetInstrument invokes
-			// dv.onRowInstrumentChanged so dependents follow.
+			// Never drops the row's settings: it may ask first.
 			dv.pickInstrument(rowIdx, instID)
 		},
 		RowInstrument: func() instrument.ID {
@@ -229,8 +188,7 @@ func (dv *DrumView) openInstMenuForRow(rowIdx int) {
 			return ""
 		},
 		OnFavorite: func(instID instrument.ID, fav bool) {
-			// FavoritesStore.Set is invoked by the component itself;
-			// this hook is a telemetry / future-integration seam.
+			// The component writes FavoritesStore itself.
 			_ = instID
 			_ = fav
 		},
@@ -238,11 +196,6 @@ func (dv *DrumView) openInstMenuForRow(rowIdx int) {
 			dv.closeInstMenuPortal()
 		},
 		OnStateChanged: func() {
-			// Fired from inside SetProps / Open / category click /
-			// search / scroll. Mirror the component's state into
-			// dv's bookkeeping fields so tests and other DrumView
-			// methods see consistent state without reaching through
-			// dv.instMenuComp accessors on every read.
 			dv.syncInstMenuScrollFromComp()
 		},
 	})

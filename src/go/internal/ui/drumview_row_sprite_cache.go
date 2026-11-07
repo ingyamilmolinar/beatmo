@@ -6,14 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// rowSpriteCache holds the per-row cached sprites for the steps area (no
-// highlights). Each sprite covers the full timeline width and one row height,
-// rebuilt when length, row color, or timeline width/height change.
-//
-// It is embedded anonymously in DrumView so existing dv.rowCache /
-// dv.rowCacheGen / … keep resolving via field promotion; grouping just names
-// this cohesive cache and lifts its fields out of the ~590-field DrumView struct
-// (no behaviour change). See drumview_cache_row_sprite.go.
+// Embedded in DrumView, so its fields resolve by promotion.
 type rowSpriteCache struct {
 	rowCache        []*ebiten.Image
 	rowDirty        []bool

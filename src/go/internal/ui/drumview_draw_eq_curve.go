@@ -14,14 +14,10 @@ const (
 	eqCurveMaxDB   = 12.0
 	eqCurvePoints  = 200
 	eqHandleRadius = 10
-	// eqGuideDB is the ± dB value at which the EQ plot draws faint guide
-	// rulers with end labels, so the otherwise-unlabeled handle field
-	// carries a visible dB scale.
+	// Faint labelled rulers give the unlabelled handle field a visible dB scale.
 	eqGuideDB = 6.0
 )
 
-// eqGuideLabelScale sizes the ±6 dB end labels (caption-sized, derived from
-// the font tokens so it tracks any future font change).
 var eqGuideLabelScale = FontSizeCaption / FontSizeBody
 
 // freqToX maps a frequency (Hz) to an X pixel within eqRect using log scale.
@@ -52,8 +48,7 @@ func xToFreq(x int, r image.Rectangle) float64 {
 	return math.Pow(10, logMin+t*(logMax-logMin))
 }
 
-// gainDBToY maps a dB value to a Y pixel within eqRect.
-// +12 dB at top, -12 dB at bottom, 0 dB at center.
+// +12 dB at the top, −12 dB at the bottom.
 func gainDBToY(db float64, r image.Rectangle) int {
 	t := (eqCurveMaxDB - db) / (eqCurveMaxDB - eqCurveMinDB)
 	return r.Min.Y + int(t*float64(r.Dy()))
@@ -93,8 +88,6 @@ func (dv *DrumView) eqCurveEnsure() {
 	dv.eqCurveDirty = false
 }
 
-// curveYAtX returns the Y pixel on the cached frequency response curve closest
-// to the given X pixel. Falls back to the 0 dB line.
 func (dv *DrumView) curveYAtX(px int, r image.Rectangle) int {
 	dv.eqCurveEnsure()
 	best := gainDBToY(0, r)
@@ -119,8 +112,6 @@ func (dv *DrumView) curveYAtX(px int, r image.Rectangle) int {
 	return best
 }
 
-// handleEQCurveDrag processes mouse input for EQ curve handle dragging.
-// Returns true if the input was consumed.
 func (dv *DrumView) handleEQCurveDrag(mx, my int, pressed bool) bool {
 	r := dv.eqRect
 	if r.Empty() || dv.eqWaveformMode {

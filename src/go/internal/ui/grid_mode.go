@@ -1,9 +1,6 @@
 package ui
 
-// GridModeKind identifies an armed grid interaction mode entered from the node
-// quick-action popup (or the sidebar's Move button). While a mode is armed the
-// user can pan/zoom freely; the next grid tap places (move/copy), connects
-// (connect), or cancels the mode.
+// While armed the user can pan and zoom freely; the next grid tap places, connects or cancels.
 type GridModeKind int
 
 const (
@@ -25,27 +22,17 @@ func (k GridModeKind) String() string {
 	return "none"
 }
 
-// GridModeObserver is the opt-in API for components that must react to mode
-// transitions (e.g. the node sidebar closes when a mode arms). Observers run
-// synchronously on the UI Update goroutine — they must not re-acquire seqMu,
-// and they must not call Enter/Cancel/Commit back into the manager from
-// OnGridModeChanged: a re-entrant transition would hand later observers in the
-// same notification a stale next/subject that no longer matches Active().
+// Synchronous on the UI goroutine: must not take seqMu, and must not call Enter/Cancel/Commit from
+// OnGridModeChanged, which would hand later observers a stale next/subject.
 type GridModeObserver interface {
 	OnGridModeChanged(prev, next GridModeKind, subject *uiNode)
 }
 
-// gridModeBlinkHalfPeriod is the blink half-period in Update ticks (~250 ms at
-// 60 TPS): the armed subject node's body is highlighted for one half period,
-// plain for the next.
+// ~250 ms at 60 TPS.
 const gridModeBlinkHalfPeriod = 15
 
-// gridModeManager is the single owner of armed grid-mode state. Enter, Cancel
-// and Commit are the ONLY mutation paths (grid_mode_discipline_test.go guards
-// this structurally): they emit the armed/canceled hooks events centrally and
-// notify observers synchronously, so call sites cannot forget either. Armed
-// modes mutate nothing until the committed operation runs, so Cancel is always
-// a safe rollback: clear state, notify, done.
+// Enter, Cancel and Commit are the ONLY mutation paths, so events and observers can never be
+// forgotten. An armed mode mutates nothing until it commits, so Cancel is always a safe rollback.
 type gridModeManager struct {
 	kind      GridModeKind
 	subject   *uiNode
@@ -58,9 +45,7 @@ func (m *gridModeManager) Register(o GridModeObserver) {
 	m.observers = append(m.observers, o)
 }
 
-// Enter arms kind on subject. Entering with kind==GridModeNone or a nil
-// subject is a no-op (use Cancel to disarm). Entering while another mode is
-// armed cancels it first (reason "switched") and then arms the new mode.
+// None or a nil subject is a no-op; entering over another mode cancels it ("switched") first.
 func (m *gridModeManager) Enter(kind GridModeKind, subject *uiNode) {
 	if kind == GridModeNone || subject == nil {
 		return
@@ -75,8 +60,7 @@ func (m *gridModeManager) Enter(kind GridModeKind, subject *uiNode) {
 	m.notify(GridModeNone, kind, subject)
 }
 
-// Cancel rolls back the armed mode without touching the document. No-op when
-// nothing is armed.
+// Never touches the document.
 func (m *gridModeManager) Cancel(reason string) {
 	if m.kind == GridModeNone {
 		return
@@ -89,9 +73,7 @@ func (m *gridModeManager) Cancel(reason string) {
 	m.notify(prev, GridModeNone, subject)
 }
 
-// Commit clears the armed mode after its operation ran. It emits no event of
-// its own — the committed operation (moveNode / pasteNodeFrom / addEdge)
-// publishes the domain event. No-op when nothing is armed.
+// Emits nothing: the committed operation publishes the domain event.
 func (m *gridModeManager) Commit() {
 	if m.kind == GridModeNone {
 		return
@@ -104,9 +86,7 @@ func (m *gridModeManager) Commit() {
 }
 
 func (m *gridModeManager) notify(prev, next GridModeKind, subject *uiNode) {
-	// Iterate a snapshot so a Register call from inside an observer cannot
-	// grow the slice mid-loop. Re-entrant Enter/Cancel/Commit from observers
-	// stays forbidden by the GridModeObserver contract.
+	// A snapshot, so a Register from inside an observer cannot grow the slice mid-loop.
 	obs := make([]GridModeObserver, len(m.observers))
 	copy(obs, m.observers)
 	for _, o := range obs {
@@ -125,15 +105,11 @@ func (m *gridModeManager) Tick() {
 	}
 }
 
-// blinkOn reports whether the armed subject's blink highlight is in its ON
-// half period this tick.
 func (m *gridModeManager) blinkOn() bool {
 	return (m.phase/gridModeBlinkHalfPeriod)%2 == 0
 }
 
-// sidebarModeObserver closes the node sidebar whenever a grid mode arms — the
-// armed-mode overlay owns the grid until placement. Registered once at Game
-// construction; the first proof of the opt-in observer API.
+// The armed mode owns the grid until placement.
 type sidebarModeObserver struct{ g *Game }
 
 func (o sidebarModeObserver) OnGridModeChanged(prev, next GridModeKind, _ *uiNode) {

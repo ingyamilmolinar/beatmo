@@ -35,14 +35,12 @@ func (g *Game) nodeAtScreen(x, y int) *uiNode {
 }
 
 func (g *Game) nodeRadius(n *uiNode) float64 {
-	// Compute in screen space so nodes grow when zooming out and shrink when
-	// zooming in, providing strong visibility at bird's‑eye views.
+	// Screen space, so nodes grow when zoomed out and stay visible at a bird's-eye view.
 	scale := g.cam.Scale
 	baseScr := 12.0 / math.Max(scale, 0.001) // inverse with zoom
 	// Also incorporate grid scale a bit so at extreme zoom-in we retain shape.
 	baseScr = math.Max(baseScr, g.grid.UnitPixels(scale)*0.2)
-	// Apply trigger animation toward a higher cap; do not clamp by neighbors
-	// so nodes can collide visually when zoomed far out, per UI policy.
+	// No clamp by neighbours: nodes may visually collide when zoomed far out.
 	capScr := 96.0 // generous upper bound
 	rScr := baseScr
 	if n != nil {
@@ -53,15 +51,10 @@ func (g *Game) nodeRadius(n *uiNode) float64 {
 			rScr = baseScr + (capScr-baseScr)*peak*e
 		}
 	}
-	// Enforce a minimum on-screen size for easier clicking: at least 3x the
-	// current smallest baseline node, unless that would overlap neighbors.
-	// Minimum on-screen radius when zoomed in to keep nodes clickable,
-	// without blowing them up: ~10px radius (20px diameter).
+	// A ~10 px radius floor keeps nodes clickable without blowing them up.
 	minFloor := 10.0
 	if scale >= 1.0 && rScr < minFloor && n != nil {
-		// O(1) grid-spacing check: nodes sit on a grid with known minimum
-		// distance (UnitPixels * scale). If two minFloor-sized nodes at
-		// adjacent grid positions would not overlap, apply the floor.
+		// O(1): nodes sit on a grid with a known minimum spacing.
 		unitScreen := g.grid.UnitPixels(scale) * scale
 		if unitScreen >= (minFloor*2 + 2) {
 			rScr = minFloor
@@ -83,9 +76,7 @@ func (g *Game) nodeRadius(n *uiNode) float64 {
 	return rScr / scale
 }
 
-// selectNodeOpenSidebar makes n the selected node and opens its sidebar —
-// the shared release-time behavior of clicking a node directly or releasing
-// on a guide target snapped to one.
+// Shared by a direct node click and a release on a guide snapped to one.
 func (g *Game) selectNodeOpenSidebar(n *uiNode) {
 	if g.sel != nil {
 		g.sel.Selected = false
@@ -126,7 +117,6 @@ func (g *Game) ensureGateSlices() {
 }
 
 func (g *Game) muteHoldSteps(row, idx int, info model.BeatInfo) int {
-	// Mute nodes no longer enforce a sustained gate; returning zero limits
-	// suppression to the scheduling index itself.
+	// Mute nodes gate only their scheduling index, not a sustained window.
 	return 0
 }

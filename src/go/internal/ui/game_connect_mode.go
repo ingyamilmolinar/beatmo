@@ -6,8 +6,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// enterConnectMode activates connect mode: the next grid tap will create
-// a directed edge from the given node to the tapped target.
 func (g *Game) enterConnectMode(node *uiNode) {
 	g.modes.Enter(GridModeConnect, node)
 	// Visually select the source node.
@@ -51,10 +49,7 @@ func (g *Game) handleConnectModeTap(x, y int) {
 	g.modes.Commit()
 }
 
-// drawConnectMode renders the connect mode visual feedback: a cyan outline
-// around the source node. The armed-mode banner is drawn once for all three
-// modes (move/copy/connect) by drawGridModeBanner (Task 9) — this function no
-// longer draws a banner of its own.
+// The armed-mode banner is drawn once for every mode by drawGridModeBanner.
 func (g *Game) drawConnectMode(dst *ebiten.Image) {
 	if !g.modes.Is(GridModeConnect) {
 		return

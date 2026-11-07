@@ -19,13 +19,9 @@ import (
 // fxSearchMobileInputID is the native-input id of the FX "add effect" search.
 const fxSearchMobileInputID = "fx-search"
 
-// fxToggleTag is the prefix used to identify toggle buttons in the FX panel.
-// The button Text is set to fxToggleTag+"on" or fxToggleTag+"off" so that
-// drawFXPanel can render a pill-style toggle switch instead of a checkbox.
+// Text = fxToggleTag+"on"/"off" tells drawFXPanel to render a pill switch, not a checkbox.
 const fxToggleTag = "\x00fxtoggle:"
 
-// addEffectButtonStyle draws the "+ Add Effect" button with a dashed border,
-// colSurface1 fill, and RadiusContainer corners.
 type addEffectButtonStyle struct{}
 
 func (addEffectButtonStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed, hovered bool) {
@@ -43,22 +39,12 @@ func (addEffectButtonStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed, 
 	drawDashedRoundedBorder(dst, r, colBorderMedium, rad)
 }
 
-// drawFXTogglePill draws a pill-style toggle switch in the given rect.
-// enabled controls the ON/OFF color scheme; sizing follows the active
-// LayoutProfile (FXToggle*() accessors).
-//
-// This shared helper is also used by the Synth stage-enable pills
-// (synth_panel_zone.go), so its default ON tint is left unchanged. The per-row
-// insert-FX panel calls drawFXTogglePillCol with colAccent so the FX enable
-// toggle obeys the single-accent rule (azure, not iOS-green).
+// Shared with the Synth stage pills, so its ON tint stays; the FX panel uses
+// drawFXTogglePillCol with the accent (one chrome accent).
 func drawFXTogglePill(dst *ebiten.Image, r image.Rectangle, enabled bool) {
 	drawFXTogglePillCol(dst, r, enabled, colPlayGreen)
 }
 
-// drawFXTogglePillCol is drawFXTogglePill with an explicit ON-track color so
-// individual call sites can pick a role-correct tint without recoloring the
-// shared widget for every caller. onCol is used for the track fill when
-// enabled; the OFF track stays colSurface3.
 func drawFXTogglePillCol(dst *ebiten.Image, r image.Rectangle, enabled bool, onCol color.Color) {
 	trackW, trackH := FXToggleTrackW(), FXToggleTrackH()
 	thumbD := FXToggleThumbD()
@@ -97,12 +83,8 @@ func drawFXTogglePillCol(dst *ebiten.Image, r image.Rectangle, enabled bool, onC
 	drawCapsule(dst, thumbR, thumbCol, true)
 }
 
-// drawFXTogglePillDisabled draws the enable pill in a MUTED, non-interactive
-// palette — used by the Synth tab for a stage that is the instrument's SOLE
-// sound source (a generator like OSC on a pure-oscillator voice). Such a stage
-// must stay ON, so the thumb sits in the ON position, but both track and thumb
-// use dimmed tokens so the pill reads "locked on", not a live toggle the user
-// can flip to silence the whole instrument. See audio.StageDisableSilences.
+// For a stage that is the instrument's only sound source: it must stay on, so the pill reads
+// "locked on", not a toggle that would silence the instrument.
 func drawFXTogglePillDisabled(dst *ebiten.Image, r image.Rectangle) {
 	trackW, trackH := FXToggleTrackW(), FXToggleTrackH()
 	thumbD := FXToggleThumbD()
@@ -120,10 +102,6 @@ func drawFXTogglePillDisabled(dst *ebiten.Image, r image.Rectangle) {
 	drawCapsule(dst, thumbR, TokenTextDisabled(), true)
 }
 
-// fxAddRowEffectFor reports the effect type a given add-menu picker button
-// corresponds to, and whether btn is one of the picker rows at all. Backs the
-// drawFXPanel routing that renders picker rows via drawMenuRow instead of the
-// button's own keycap chrome.
 func (dv *DrumView) fxAddRowEffectFor(btn *Button) (audio.EffectType, bool) {
 	for i, b := range dv.fxAddRowBtn {
 		if b == btn {
@@ -133,9 +111,6 @@ func (dv *DrumView) fxAddRowEffectFor(btn *Button) (audio.EffectType, bool) {
 	return "", false
 }
 
-// hoverStateOf returns the flat-menu-row state (rest/hover) for a button,
-// mirroring the button's own pressed/hovered flags so a picker/back row that
-// reuses *Button for geometry+input still reads as hovered under the cursor.
 func hoverStateOf(b *Button) menuItemState {
 	if b != nil && (b.hovered || b.pressed) {
 		return menuItemHover
@@ -166,11 +141,7 @@ func (dv *DrumView) toggleFXPanel(row int) {
 	dv.openFXPanel(row)
 }
 
-// ensureFXScroll lazily creates the FX panel's scroll component. It runs in
-// pixel mode (ItemHeight=1): VS.First is the pixel offset and VS.Total/Visible
-// are the content / viewport heights in px, so the FX list reuses the exact same
-// MenuScroll engine (wheel, touch, momentum, thumb geometry) as every other menu
-// instead of a bespoke fork.
+// Pixel mode (ItemHeight=1), so the FX list reuses the same MenuScroll engine as every menu.
 func (dv *DrumView) ensureFXScroll() *MenuScroll {
 	if dv.fxScroll == nil {
 		dv.fxScroll = NewMenuScroll(ScrollbarStyleForPlatform(), 1)
@@ -178,8 +149,6 @@ func (dv *DrumView) ensureFXScroll() *MenuScroll {
 	return dv.fxScroll
 }
 
-// fxScrollOffset is the current pixel scroll offset (0 when the panel/scroll is
-// absent). fxHasScroll reports whether the content overflows the viewport.
 func (dv *DrumView) fxScrollOffset() int {
 	if dv.fxScroll == nil {
 		return 0
@@ -191,9 +160,6 @@ func (dv *DrumView) fxHasScroll() bool {
 	return dv.fxScroll != nil && dv.fxScroll.HasScroll()
 }
 
-// fxWheelStepPx is the pixel distance one wheel notch scrolls the FX list
-// (preserves the pre-migration ~20px/notch feel; smooth engine respects
-// magnitude so a hi-res wheel moves proportionally more).
 const fxWheelStepPx = 20
 
 func (dv *DrumView) openFXPanel(row int) {
@@ -205,9 +171,7 @@ func (dv *DrumView) openFXPanel(row int) {
 	dv.fxScroll = NewMenuScroll(ScrollbarStyleForPlatform(), 1)
 	dv.fxExpandedSlots = map[int]bool{}
 	dv.fxListScrollPx = 0
-	// A fresh open never carries over a search query from a previous session
-	// on this or another row's panel (dv.fxAddSearch persists as a widget
-	// across opens for reuse, so its stale text must be cleared explicitly).
+	// The search box widget persists across opens, so a stale query must be cleared explicitly.
 	dv.clearFXAddSearch()
 	dv.buildFXPanel()      // compute correct fxPanelRect FIRST
 	dv.openFXPanelPortal() // register portal with correct rect
@@ -227,8 +191,6 @@ func (dv *DrumView) closeFXPanel() {
 	dv.clearFXAddSearch()
 }
 
-// OpenFXPanel opens the per-row insert-effects panel programmatically.
-// Used by the screenshot harness, scene catalog, and tests.
 func (dv *DrumView) OpenFXPanel(row int) {
 	if dv.IsFXPanelOpen() && dv.fxPanelRow == row {
 		return
@@ -237,10 +199,7 @@ func (dv *DrumView) OpenFXPanel(row int) {
 	dv.openFXPanel(row)
 }
 
-// fxPanelAccent returns the FX panel's owning-row instrument color — the accent
-// the enable-toggle pill and other FX highlights tint to, so the effects panel
-// reads as owned by the instrument it edits. Falls back to the azure chrome
-// accent when the row has no color.
+// The row's instrument color, so the panel reads as owned by the instrument it edits.
 func (dv *DrumView) fxPanelAccent() color.Color {
 	if dv.fxPanelRow >= 0 && dv.fxPanelRow < len(dv.Rows) {
 		if c := dv.Rows[dv.fxPanelRow].Color; c != nil {
@@ -250,9 +209,7 @@ func (dv *DrumView) fxPanelAccent() color.Color {
 	return colAccent
 }
 
-// fxPanelCloseBtn returns the FX panel's close (×) button by identity, or nil
-// when the panel is closed. Tracked as a field so retrieval never depends on
-// the button being the last entry in fxPanelBtns.
+// Tracked by identity, so it never depends on being the last button.
 func (dv *DrumView) fxPanelCloseBtn() *Button { return dv.fxPanelCloseButton }
 
 // CloseFXPanel closes the FX panel.
@@ -266,9 +223,6 @@ func (dv *DrumView) FXPanelRow() int {
 	return dv.fxPanelRow
 }
 
-// FXPanelRect returns the screen-space rectangle of the currently open FX
-// panel and ok=true. Returns the zero rectangle and ok=false when no FX
-// panel is open.
 func (dv *DrumView) FXPanelRect() (image.Rectangle, bool) {
 	if !dv.IsFXPanelOpen() {
 		return image.Rectangle{}, false
@@ -318,13 +272,8 @@ func effectTypeOrder() []audio.EffectType {
 	return audio.EffectTypeOrder()
 }
 
-// fxCategoryOrder is the fixed display order for the add-menu's idle-state
-// category group headers.
 var fxCategoryOrder = []string{"creative", "modulation", "dynamics", "utility"}
 
-// fxCategoryDisplay maps a raw EffectRegistration.Category value to its
-// display caption (title case, matched by drawMenuGroupHeader which
-// uppercases internally).
 var fxCategoryDisplay = map[string]string{
 	"creative":   "Creative",
 	"modulation": "Modulation",
@@ -332,14 +281,7 @@ var fxCategoryDisplay = map[string]string{
 	"utility":    "Utility",
 }
 
-// fxCategoryLabel returns the display caption for a raw EffectRegistration
-// category, falling back to the raw category string (non-blank, e.g.
-// "creative") when fxCategoryDisplay has no entry — e.g. a future effect
-// ships tagged with a category not yet added to the display map. Group
-// headers uppercase the label anyway (drawMenuGroupHeader), so the raw
-// string still reads correctly as a header. Prevents a blank category
-// header/caption from silently rendering; callers should use this instead
-// of indexing fxCategoryDisplay directly.
+// Falls back to the raw category so an unmapped one never renders a blank header.
 func fxCategoryLabel(cat string) string {
 	if label, ok := fxCategoryDisplay[cat]; ok {
 		return label
@@ -347,9 +289,7 @@ func fxCategoryLabel(cat string) string {
 	return cat
 }
 
-// fxCategoryOrderIndex returns cat's position in fxCategoryOrder, or
-// len(fxCategoryOrder) for an unrecognized/empty category so unknown
-// categories sort last instead of first.
+// Unknown categories sort last.
 func fxCategoryOrderIndex(cat string) int {
 	for i, c := range fxCategoryOrder {
 		if c == cat {
@@ -359,10 +299,7 @@ func fxCategoryOrderIndex(cat string) int {
 	return len(fxCategoryOrder)
 }
 
-// fxGroupEffectsByCategory returns order re-sorted so effects sharing a
-// category are contiguous, ordered by fxCategoryOrder; within a category,
-// the original (effectTypeOrder) relative order is preserved via a stable
-// sort.
+// Stable, so registration order holds within a category.
 func fxGroupEffectsByCategory(order []audio.EffectType) []audio.EffectType {
 	regs := audio.EffectRegistrations()
 	out := make([]audio.EffectType, len(order))
@@ -380,9 +317,6 @@ func fxGroupEffectsByCategory(order []audio.EffectType) []audio.EffectType {
 	return out
 }
 
-// fxAddCategoryHeaderCount reports how many category group-header rows the
-// idle add-menu layout needs for the given (already category-sorted) visible
-// effect list — one per contiguous category run.
 func fxAddCategoryHeaderCount(effects []audio.EffectType) int {
 	regs := audio.EffectRegistrations()
 	haveLast := false
@@ -402,19 +336,14 @@ func fxAddCategoryHeaderCount(effects []audio.EffectType) int {
 	return n
 }
 
-// fxAddHeaderRow is one interleaved category group-header row recorded by
-// buildFXPanel's idle add-menu layout — its Y is the scrolled screen-space
-// top, matching the effect rows built in the same pass so draw and build can
-// never drift.
+// Y is the scrolled screen top, recorded in the same pass as the effect rows so draw and build
+// cannot drift.
 type fxAddHeaderRow struct {
 	Y     int
 	Label string
 }
 
-// fxAddGroupHeaders returns the category group-header labels currently in
-// the add-menu layout (idle state only — always empty while a search query
-// is active, since fxAddHeaderRows is only populated by buildFXPanel's idle
-// branch).
+// Always empty while searching.
 func (dv *DrumView) fxAddGroupHeaders() []string {
 	out := make([]string, len(dv.fxAddHeaderRows))
 	for i, h := range dv.fxAddHeaderRows {
@@ -423,9 +352,6 @@ func (dv *DrumView) fxAddGroupHeaders() []string {
 	return out
 }
 
-// fxAddInstanceCount reports how many instances of effect type et are
-// already present in the FX panel's owning row's insert chain — backs the
-// idle-state "×N" trailing badge.
 func (dv *DrumView) fxAddInstanceCount(et audio.EffectType) int {
 	if dv.fxPanelRow < 0 || dv.fxPanelRow >= len(dv.Rows) {
 		return 0
@@ -440,10 +366,8 @@ func (dv *DrumView) fxAddInstanceCount(et audio.EffectType) int {
 	return n
 }
 
-// fxAddRowTrail returns the trailing caption for an add-menu picker row:
-// while searching, the effect's category (so results carry context outside
-// their usual group); while idle, an "×N" instance-count badge when the
-// chain already holds N of that effect, or "" otherwise.
+// Searching shows the category (results leave their group); idle shows "×N" when the chain
+// already holds that effect.
 func (dv *DrumView) fxAddRowTrail(et audio.EffectType) string {
 	if strings.TrimSpace(dv.fxAddSearchQuery) != "" {
 		if r := audio.EffectRegistrations()[et]; r != nil {
@@ -457,13 +381,7 @@ func (dv *DrumView) fxAddRowTrail(et audio.EffectType) string {
 	return ""
 }
 
-// fxAddVisibleEffects returns the effect types the add-menu picker should
-// list — category-grouped registration order when the search query is
-// empty, or a fuzzy-scored flat subset (matched against each effect's
-// DisplayName) when a query is active. Mirrors
-// templateSearchResults/overflowItems' filtering. As a side effect,
-// refreshes dv.fxAddSearchHighlights so drawMenuRow can paint per-result
-// fuzzy-match highlight cells while searching.
+// Also refreshes fxAddSearchHighlights for drawMenuRow.
 func (dv *DrumView) fxAddVisibleEffects() []audio.EffectType {
 	order := effectTypeOrder()
 	q := strings.TrimSpace(dv.fxAddSearchQuery)
@@ -493,12 +411,7 @@ func (dv *DrumView) fxAddVisibleEffects() []audio.EffectType {
 	return out
 }
 
-// setFXAddSearchQuery sets the query programmatically (Back/select reset,
-// Esc, tests) and pushes it into the box, then rebuilds the panel so the
-// filtered rows and hit-areas refresh immediately. NOT used on the typing
-// path (see updateFXAddSearch), where the box already holds the text —
-// calling SetText there would teleport the caret to the end. Mirrors
-// setTemplateSearchQuery (drumview_context_menu.go).
+// Programmatic changes only: on the typing path SetText would jump the caret to the end.
 func (dv *DrumView) setFXAddSearchQuery(q string) {
 	if dv.fxAddSearchQuery == q {
 		return
@@ -514,9 +427,7 @@ func (dv *DrumView) setFXAddSearchQuery(q string) {
 	dv.refreshFXPortalHitAreas()
 }
 
-// clearFXAddSearch resets the query + box text directly (no rebuild — callers
-// call buildFXPanel themselves right after, e.g. the Back row and effect-pick
-// OnClick handlers) so a fresh add-menu open never resurfaces a stale query.
+// No rebuild: callers rebuild right after.
 func (dv *DrumView) clearFXAddSearch() {
 	dv.fxAddSearchQuery = ""
 	dv.fxAddSearchHighlights = nil
@@ -526,12 +437,7 @@ func (dv *DrumView) clearFXAddSearch() {
 	}
 }
 
-// updateFXAddSearch polls the pinned add-menu search box each frame while the
-// picker is open, syncing typed text into the query and refreshing the
-// filtered rows. Mirrors updateTemplateSearch's per-frame poll — but unlike
-// the overflow menu (whose overflowPopupBtns runs unconditionally every
-// draw/input frame), the FX panel only rebuilds on explicit events, so a
-// buildFXPanel call here is required for typing to actually narrow the list.
+// Must rebuild: unlike the overflow menu, the FX panel only rebuilds on explicit events.
 func (dv *DrumView) updateFXAddSearch() {
 	if !dv.fxAddMenuOpen || dv.fxAddSearch == nil {
 		return
@@ -549,12 +455,8 @@ func (dv *DrumView) updateFXAddSearch() {
 	}
 }
 
-// fxPanelHandleEscape handles Esc while the FX panel is open: a non-empty
-// add-menu query is cleared first (menu stays open); otherwise the add-menu
-// itself closes back to the effect list. Returns false when the FX panel
-// isn't in the add-menu (the effect-list view has nothing Esc-specific to
-// do — the portal's universal Esc handler closes the whole panel instead).
-// Mirrors handleTemplateSearchEscape's clear-then-close two-step.
+// Clears a query first, then closes the add menu; false outside the add menu, so the portal's
+// Esc closes the whole panel.
 func (dv *DrumView) fxPanelHandleEscape() bool {
 	if !dv.fxAddMenuOpen {
 		return false
@@ -567,9 +469,7 @@ func (dv *DrumView) fxPanelHandleEscape() bool {
 	return true
 }
 
-// closeFXAddMenu leaves the add-effect picker sub-page and returns to the
-// effect list it replaced, at the scroll offset the list was left at (Back,
-// Esc, and a pick all route here).
+// Restores the list at the scroll offset it was left at.
 func (dv *DrumView) closeFXAddMenu() {
 	dv.fxAddMenuOpen = false
 	dv.clearFXAddSearch()
@@ -588,9 +488,6 @@ type fxSliderBinding struct {
 	def       audio.EffectParamDef
 }
 
-// fxShowParams returns whether parameter sliders should be shown for a given
-// effect slot. On desktop, enabled effects always show params. On mobile,
-// effects must also be expanded.
 func (dv *DrumView) fxShowParams(slotIdx int, enabled bool) bool {
 	if !enabled {
 		return false
@@ -601,10 +498,7 @@ func (dv *DrumView) fxShowParams(slotIdx int, enabled bool) bool {
 	return dv.fxExpandedSlots[slotIdx]
 }
 
-// buildFXPanel computes the layout and creates buttons/sliders for the FX panel.
-// fxMetrics bundles the FX-panel row geometry shared by buildFXPanel and
-// drawFXPanel. One source of truth: build computes hit rects and draw paints
-// rows from the SAME values, so the two can never drift.
+// Shared by build and draw, so hit rects and painted rows come from the same values.
 type fxMetrics struct {
 	lineH   int // effect header row height
 	headerH int // panel title band height
@@ -612,8 +506,6 @@ type fxMetrics struct {
 	footerH int // "+ Add Effect" footer height
 }
 
-// fxPanelMetrics returns the platform row geometry (mobile rows meet the
-// 44-px touch minimum; desktop rows are mouse-dense).
 func fxPanelMetrics() fxMetrics {
 	if Profile().IsMobile() {
 		return fxMetrics{
@@ -633,8 +525,7 @@ func (dv *DrumView) buildFXPanel() {
 		return
 	}
 
-	// Anchor fallback: prefer FX button, fall back to row label (on mobile
-	// the FX column has zero width).
+	// The FX column has zero width on mobile.
 	anchor := image.Rectangle{}
 	if row < len(dv.rowFXBtns()) {
 		anchor = dv.rowFXBtns()[row].Rect()
@@ -647,8 +538,6 @@ func (dv *DrumView) buildFXPanel() {
 	instID := r.Instrument
 	effects := audio.GetInsertEffects(instID)
 
-	// Panel dimensions — scaled up on mobile for touch targets. Row geometry
-	// comes from the shared fxPanelMetrics so build and draw can never drift.
 	m := fxPanelMetrics()
 	lineH, headerH, paramH, footerH := m.lineH, m.headerH, m.paramH, m.footerH
 	var panelW int
@@ -683,9 +572,7 @@ func (dv *DrumView) buildFXPanel() {
 		if dv.fxSliderLeft < 90 {
 			dv.fxSliderLeft = 90
 		}
-		// Ensure panel is wide enough for slider to have at least 120px usable track.
-		// Sliders are indented by SpaceXL and use label-above, so they need less
-		// horizontal space for the "XX%" label — 120px track minimum suffices.
+		// At least a 120 px usable slider track.
 		minPanelW := SpaceXL + dv.fxSliderLeft + 120 + 8
 		if panelW < minPanelW {
 			panelW = minPanelW
@@ -695,21 +582,13 @@ func (dv *DrumView) buildFXPanel() {
 		}
 	}
 
-	// searchH reserves a pinned row-height band for the fuzzy-search box,
-	// directly under the title and above every scrollable row (existing
-	// effects, Back, and the type picker) — present only while the add-menu
-	// picker is open. Mirrors the template/overflow menu's pinned search band.
 	searchH := 0
 	if dv.fxAddMenuOpen {
 		searchH = lineH
 	}
 
-	// The add-effect picker is a sub-page that REPLACES the effect list in
-	// the same panel frame (title → search → Back → types), never a footer
-	// appended under it: while it is open no effect card is laid out, built or
-	// drawn. listH is the list view's own content height — the picker panel is
-	// never shorter than it, so the picker always covers the list frame it
-	// opened from (and narrowing the search never shrinks the panel below it).
+	// The picker REPLACES the list in the same frame, never a footer under it, and is never shorter
+	// than the list, so it always covers what it opened from.
 	listH := headerH + footerH
 	if len(effects) == 0 {
 		listH += lineH // empty-state hint row above the Add button
@@ -760,10 +639,6 @@ func (dv *DrumView) buildFXPanel() {
 		panelH = maxH
 	}
 
-	// Compute scroll parameters. The scrollable area is everything between the
-	// fixed header (+ pinned search band) and the panel bottom. Configure
-	// clamps the offset (below, after fxViewportRect is known) — pixel mode,
-	// so Total/Visible are px.
 	scrollContentH := contentH - headerH - searchH
 	viewportH := panelH - headerH - searchH
 
@@ -802,8 +677,6 @@ func (dv *DrumView) buildFXPanel() {
 	}
 	dv.fxViewportRect = image.Rect(wantX, wantY+headerH+searchH, wantX+panelW, wantY+panelH)
 
-	// Feed the shared scroll engine the current content/viewport heights (px).
-	// Preserves the offset across rebuilds via Clamp; drives thumb geometry.
 	dv.ensureFXScroll().Configure(dv.fxViewportRect, scrollContentH, viewportH)
 
 	// Build buttons and sliders
@@ -813,8 +686,6 @@ func (dv *DrumView) buildFXPanel() {
 	dv.fxPanelSliders = nil
 	dv.fxSliderBindings = nil
 
-	// Scrollable content starts below the header (+ pinned search band when
-	// the add-menu is open), offset by scroll.
 	y := dv.fxPanelRect.Min.Y + headerH + searchH - dv.fxScrollOffset()
 	x := dv.fxPanelRect.Min.X
 	w := panelW
@@ -823,9 +694,7 @@ func (dv *DrumView) buildFXPanel() {
 		si := slotIdx
 		enabled := e.Enabled
 
-		// Button sizing: wider on mobile for touch targets.
-		// toggleBtnW = pill track width + SpaceSM padding so the hit area
-		// extends slightly past the pill on either side.
+		// A little wider than the pill, so the hit area extends past it.
 		toggleBtnW := FXToggleTrackW() + SpaceSM
 		btnW := 24
 		btnGap := 3
@@ -834,10 +703,7 @@ func (dv *DrumView) buildFXPanel() {
 			btnGap = 4
 		}
 
-		// Right-cluster inset: when a scrollbar is present it occupies the
-		// right edge, so the reorder/remove controls are inset by its width
-		// (plus a small gap) to keep the × off the scrollbar. Bug: previously
-		// the remove × sat at x+w-btnW-4 and overlapped the scrollbar thumb.
+		// Inset by the scrollbar's width so the × never overlaps the thumb.
 		rightInset := 4
 		if dv.fxHasScroll() {
 			rightInset += ScrollbarStyleForPlatform().Width + SpaceXS
@@ -865,8 +731,6 @@ func (dv *DrumView) buildFXPanel() {
 			}
 			dv.fxPanelBtns = append(dv.fxPanelBtns, toggle)
 
-			// Expand/collapse button on mobile (enabled effects only).
-			// Uses chevron icons per DESIGN.md §5c (no raw Unicode in chrome).
 			if mobile && enabled {
 				expBtn := NewButton("", InstButtonStyle, nil)
 				if dv.fxExpandedSlots[si] {
@@ -893,8 +757,7 @@ func (dv *DrumView) buildFXPanel() {
 				up := NewButton("", InstButtonStyle, nil)
 				up.Icon = string(IconChevronUp)
 				up.IconColor = colTextSecondary
-				// Reorder chevrons sit a SpaceMD gutter left of the destructive
-				// remove ×, so a mis-aimed reorder click can't delete the effect.
+				// A gutter before the destructive ×, so a mis-aimed reorder click cannot delete the effect.
 				upX := x + w - 3*(btnW+btnGap) - rightInset + btnGap - SpaceMD
 				up.SetRect(image.Rect(upX, y+2, upX+btnW, y+lineH-2))
 				up.OnClick = func() {
@@ -927,8 +790,6 @@ func (dv *DrumView) buildFXPanel() {
 			// Remove button — IconClose per §5c (no raw "✕").
 			remove := NewButton("", InstButtonStyle, nil)
 			remove.Icon = string(IconClose)
-			// Destructive tint (colError) distinguishes the remove control
-			// from the neutral collapse/reorder chevrons (colTextSecondary).
 			remove.IconColor = colError
 			removeX := x + w - btnW - rightInset
 			remove.SetRect(image.Rect(removeX, y+2, removeX+btnW, y+lineH-2))
@@ -944,8 +805,6 @@ func (dv *DrumView) buildFXPanel() {
 
 		y += lineH
 
-		// Parameter sliders (only if should be shown)
-		// Indent param rows under their effect header for visual grouping.
 		paramIndent := SpaceXL // 16px
 		if dv.fxShowParams(si, e.Enabled) {
 			cat := audio.InsertEffectCatalog()
@@ -970,15 +829,9 @@ func (dv *DrumView) buildFXPanel() {
 							sliderLeft = x + paramIndent + 100
 						}
 						sl.SetRect(image.Rect(sliderLeft, y+2, x+w-4, y+paramH-2))
-						// FX panel sliders: thicker track. The percent label is
-						// suppressed because the param row already shows the
-						// raw value via fxParamLabel ("Drive: 8.19"); the
-						// previous "80%" duplicate was redundant.
+						// No percent label: the row already shows the raw value.
 						sl.TrackH = 6
 						sl.SuppressLabel = true
-						// Tint the rail with the owning row's instrument color
-						// so the FX sliders match the instrument, not a fixed
-						// light-blue.
 						if dv.fxPanelRow >= 0 && dv.fxPanelRow < len(dv.Rows) {
 							sl.FillCol = rowShadeToRGBA(rowToggleBaseRGBA(dv.Rows[dv.fxPanelRow].Color))
 						}
@@ -1001,8 +854,6 @@ func (dv *DrumView) buildFXPanel() {
 	dv.fxAddMenuBackBtn = nil
 	dv.fxAddHeaderRows = nil
 	if dv.fxAddMenuOpen {
-		// Back row (shared flat menu row, leading chevron-left) — first row
-		// of the picker, replaces the old centered "Cancel" keycap.
 		bTop := y
 		bBot := y + lineH
 		bInView := bBot > dv.fxViewportRect.Min.Y && bTop < dv.fxViewportRect.Max.Y
@@ -1021,10 +872,6 @@ func (dv *DrumView) buildFXPanel() {
 		for _, et := range visibleEffectTypes {
 			etCopy := et
 
-			// Idle-only: interleave a category group-header row before the
-			// first effect of each contiguous category run (visibleEffectTypes
-			// is already category-sorted by fxAddVisibleEffects). Suppressed
-			// entirely while searching, per fxAddGroupHeaders' contract.
 			if !fxAddSearching {
 				cat := ""
 				if r := regs[et]; r != nil {
@@ -1042,10 +889,7 @@ func (dv *DrumView) buildFXPanel() {
 			fBot := y + lineH
 			fInView := fBot > dv.fxViewportRect.Min.Y && fTop < dv.fxViewportRect.Max.Y
 			if fInView {
-				// Text kept as the display name (back-compat with lookups in
-				// other FX test files) but the row is painted by drawMenuRow
-				// (leading IconFx + label) below — btn.Draw is never called for
-				// these rows, so Text is never rendered as keycap chrome.
+				// Text stays the display name for lookups; drawMenuRow paints the row, never btn.Draw.
 				name := effectTypeName(et)
 				btn := NewButton(name, InstButtonStyle, nil)
 				btn.SetRect(insetRect(image.Rect(x, y, x+w, y+lineH), SpaceXS))
@@ -1053,8 +897,7 @@ func (dv *DrumView) buildFXPanel() {
 					slot := audio.AddInsertEffect(instID, etCopy, nil)
 					emitInsertEffectAdded(channel.Of(instID), slot, string(etCopy))
 					dv.recordUndoStep(hooks.EventInsertEffectAdded)
-					// Back to the list, scrolled to its end so the effect
-					// just appended is in view (Configure clamps the offset).
+					// Scrolled to the end (Configure clamps) so the new effect is in view.
 					dv.fxListScrollPx = math.MaxInt32
 					dv.closeFXAddMenu()
 				}
@@ -1082,8 +925,6 @@ func (dv *DrumView) buildFXPanel() {
 					dv.fxScroll.ScrollBehavior().VS.First = 0
 				}
 				dv.buildFXPanel()
-				// Auto-focus (improvement C): mirrors the instrument menu
-				// focusing its search box the moment its picker opens.
 				if dv.fxAddSearch != nil {
 					dv.fxAddSearch.SetFocus(true)
 				}
@@ -1094,9 +935,7 @@ func (dv *DrumView) buildFXPanel() {
 		}
 	}
 
-	// Close button at top-right (fixed, not scrolled) — desktop only, via the
-	// shared newPopupCloseButton helper (nil on mobile, where tap-away closes).
-	// Only append when non-nil so fxPanelBtns never carries a nil entry.
+	// Desktop only (nil on mobile, where tap-away closes); appended only when non-nil.
 	dv.fxPanelCloseButton = newPopupCloseButton(func() { dv.closeFXPanel() })
 	if dv.fxPanelCloseButton != nil {
 		dv.fxPanelCloseButton.SetRect(closeButtonRect(dv.fxPanelRect, SpaceXS))
@@ -1104,9 +943,6 @@ func (dv *DrumView) buildFXPanel() {
 	}
 }
 
-// fxAddMenuTitle returns the FX panel header string ("FX · <row name>",
-// middot separator per DESIGN.md menu anatomy). Used by both the header draw
-// site and tests so the two can never drift.
 func (dv *DrumView) fxAddMenuTitle() string {
 	if dv.fxPanelRow < 0 || dv.fxPanelRow >= len(dv.Rows) {
 		return "FX"
@@ -1114,12 +950,7 @@ func (dv *DrumView) fxAddMenuTitle() string {
 	return fmt.Sprintf("FX · %s", dv.Rows[dv.fxPanelRow].Name)
 }
 
-// drawFXPanelHeader paints the pinned title band: the unified menu title
-// (leading instrument swatch + section-header role, per DESIGN.md "Menu
-// anatomy") over the header fill, rune-safe-clipped clear of the close ×.
 func (dv *DrumView) drawFXPanelHeader(dst *ebiten.Image, headerR image.Rectangle, row int) {
-	// Shared MenuCard band on the docked panel's own surface: row swatch +
-	// clipped title, the row's accent hairline, the panel's own close ×.
 	if dv.fxPanelCard == nil {
 		dv.fxPanelCard = NewMenuCard(nil)
 	}
@@ -1130,10 +961,6 @@ func (dv *DrumView) drawFXPanelHeader(dst *ebiten.Image, headerR image.Rectangle
 	dv.fxPanelCard.DrawBand(dst)
 }
 
-// drawFXAddSearchBand paints the pinned add-menu search band: a flat fill
-// (same tone as the title band, for visual continuity) behind the shared
-// drawMenuSearchBox widget. Mirrors drawMenuHeaderBandAccent + drawMenuSearchBox
-// in the overflow/template menu's pinned search row.
 func (dv *DrumView) drawFXAddSearchBand(dst *ebiten.Image, searchR image.Rectangle) {
 	if searchR.Empty() || dv.fxAddSearch == nil {
 		return
@@ -1142,11 +969,6 @@ func (dv *DrumView) drawFXAddSearchBand(dst *ebiten.Image, searchR image.Rectang
 	drawMenuSearchBox(dst, dv.fxAddSearch)
 }
 
-// drawFXAddEmptyState renders the fuzzy-search "no matches" hint — a label
-// line plus a muted caption beneath it, centered in r. Mirrors the
-// instrument menu's no-results message (drumview_overlay_inst_comp.go);
-// inlined here since the FX add-menu's flat-row layout has no equivalent
-// shared helper to reuse.
 func drawFXAddEmptyState(dst *ebiten.Image, r image.Rectangle) {
 	if r.Empty() {
 		return
@@ -1166,8 +988,7 @@ func drawFXAddEmptyState(dst *ebiten.Image, r image.Rectangle) {
 	DrawTextStyled(dst, hint, r.Min.X+(r.Dx()-hw)/2, topY+lh+SpaceXS, RoleCaption, colTextSecondary)
 }
 
-// refreshFXPortalHitAreas immediately updates the portal's hit areas for the
-// FX panel after a buildFXPanel() call changes geometry mid-frame.
+// After a mid-frame rebuild changes geometry.
 func (dv *DrumView) refreshFXPortalHitAreas() {
 	if dv.tree != nil && dv.portal().Has("fx-panel") {
 		dv.portal().RefreshEntry("fx-panel")
@@ -1192,8 +1013,6 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 	drawScrim(dst)
 	drawPanel(dst, r)
 
-	// Shared row geometry — the same fxPanelMetrics buildFXPanel used, so the
-	// drawn rows always land on the built hit rects.
 	fm := fxPanelMetrics()
 	lineH, headerH, paramH := fm.lineH, fm.headerH, fm.paramH
 	mobile := Profile().IsMobile()
@@ -1202,17 +1021,13 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 	headerR := image.Rect(r.Min.X, r.Min.Y, r.Max.X, r.Min.Y+headerH)
 	dv.drawFXPanelHeader(dst, headerR, row)
 
-	// Pinned search band (fixed, not scrolled) — only present while the
-	// add-menu picker is open. searchH is read from the rect buildFXPanel
-	// already computed so build/draw can never drift.
+	// Read from the rect build computed, so build and draw cannot drift.
 	searchH := 0
 	if !dv.fxAddSearchRect.Empty() {
 		searchH = dv.fxAddSearchRect.Dy()
 		dv.drawFXAddSearchBand(dst, dv.fxAddSearchRect)
 	}
 
-	// Draw effect names (scrollable content). The add picker replaces the
-	// list, so no effect card is painted under it (mirrors buildFXPanel).
 	effects := audio.GetInsertEffects(dv.Rows[row].Instrument)
 	if dv.fxAddMenuOpen {
 		effects = nil
@@ -1221,9 +1036,7 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 
 	paramIndent := SpaceXL // 16px indent for param labels
 
-	// Right edge of the bounded effect card: leave room for the right-cluster
-	// controls + scrollbar so the card never runs edge-to-edge under the
-	// reorder/remove buttons (bug: controls stretched the full panel width).
+	// Leaves room for the right-cluster controls and scrollbar.
 	cardRight := r.Max.X - 4
 	if dv.fxHasScroll() {
 		cardRight -= ScrollbarStyleForPlatform().Width + SpaceXS
@@ -1238,11 +1051,8 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 		// Whether this effect's params are shown inline (expanded) or summarized.
 		paramsShown := dv.fxShowParams(slotIdx, e.Enabled)
 
-		// One card per effect spanning the header row AND its inline param
-		// rows (the DESIGN.md fx-card recipe), so each effect reads as a unit
-		// instead of blurring into its neighbours. A disabled card recedes one
-		// surface level; an enabled card carries an instrument-tinted header
-		// band (identity, never chrome accent).
+		// One card per effect, header and params together, so each reads as a unit; an enabled card's
+		// band is instrument-tinted (identity, never the chrome accent).
 		cardH := lineH
 		if paramsShown {
 			if defs, ok := audio.InsertEffectCatalog()[e.Type]; ok {
@@ -1275,18 +1085,13 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 					nameX = r.Min.X + 88 // room for expand button
 				}
 			}
-			// A disabled effect keeps its plain name but drops to the muted
-			// text color — the dimmed card carries the "off" state, not
-			// parentheses.
 			nameCol := colTextPrimary
 			if !e.Enabled {
 				nameCol = colTextSecondary
 			}
 			DrawTextColorAt(dst, name, nameX, y+(lineH-12)/2, nameCol)
 
-			// Collapsed info scent: when params are not shown inline, render a
-			// one-line summary ("Drive 8.2 · Warmth 0.6") in on-surface-muted at
-			// caption scale so a collapsed effect still communicates its state.
+			// A collapsed effect still shows its state as a one-line summary.
 			if !paramsShown {
 				if summary := fxParamSummary(e); summary != "" {
 					nameW := TextWidth(name)
@@ -1325,9 +1130,6 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 		}
 	}
 
-	// Empty-state hint (DESIGN.md Menu-anatomy empty-state pattern): a
-	// centered muted line above the Add button so a fresh panel explains
-	// itself instead of showing a lone footer.
 	if len(effects) == 0 && !dv.fxAddMenuOpen {
 		hint := i18n.T(i18n.KeyFXEmptyHint)
 		hint = clipTextToWidth(hint, r.Dx()-2*SpaceMD)
@@ -1335,9 +1137,6 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 		hx := r.Min.X + (r.Dx()-hw)/2
 		DrawTextColorAt(dst, hint, hx, y+(lineH-12)/2, colTextSecondary)
 	} else if dv.fxAddMenuOpen && len(dv.fxAddVisibleEffects()) == 0 {
-		// No-match search state — mirrors the instrument menu's "No matches"
-		// placeholder (drumview_overlay_inst_comp.go), rendered as two
-		// centered lines (label + hint) below the pinned Back row.
 		emptyTop := dv.fxViewportRect.Min.Y
 		if dv.fxAddMenuBackBtn != nil {
 			emptyTop = dv.fxAddMenuBackBtn.Rect().Max.Y
@@ -1346,8 +1145,6 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 		drawFXAddEmptyState(dst, emptyR)
 	}
 
-	// Add-menu category group headers (idle only — dv.fxAddHeaderRows is only
-	// populated by buildFXPanel's idle branch, empty while searching).
 	for _, h := range dv.fxAddHeaderRows {
 		hTop, hBot := h.Y, h.Y+lineH
 		if hBot > dv.fxViewportRect.Min.Y && hTop < dv.fxViewportRect.Max.Y {
@@ -1356,8 +1153,6 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 		}
 	}
 
-	// Draw buttons (skip those outside viewport, except the close button which
-	// is pinned to the header).
 	for _, btn := range dv.fxPanelBtns {
 		if btn == nil {
 			continue
@@ -1381,9 +1176,6 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 				})
 			default:
 				if et, ok := dv.fxAddRowEffectFor(btn); ok {
-					// Effect-type picker row: shared flat menu row, leading FX icon.
-					// Highlights carries the fuzzy-match rune indices while a
-					// search query is active (nil/empty otherwise).
 					drawMenuRow(dst, btn, MenuRowSpec{
 						Accent:     fxAccent,
 						State:      hoverStateOf(btn),
@@ -1394,10 +1186,7 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 						Highlights: dv.fxAddSearchHighlights[et],
 					})
 				} else if isToggle, enabled := isFXToggleBtn(btn); isToggle {
-					// Render pill-style toggle for effect enable/disable buttons.
-					// FX enable toggle tints to the owning instrument's color so the
-					// effects panel reads as owned by that instrument (NOT the
-					// shared green default used by the synth stage pills).
+					// The instrument's color, not the green default the synth stage pills share.
 					drawFXTogglePillCol(dst, br, enabled, fxAccent)
 				} else {
 					btn.Draw(dst)
@@ -1417,9 +1206,7 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 		}
 	}
 
-	// Draw header (+ pinned search band) on top of scrolled content to cover
-	// any overflow — same reasoning as the header: rows can scroll up
-	// underneath a pinned band when content overflows the panel.
+	// Drawn last: rows can scroll up under the pinned bands.
 	dv.drawFXPanelHeader(dst, headerR, row)
 	if !dv.fxAddSearchRect.Empty() {
 		dv.drawFXAddSearchBand(dst, dv.fxAddSearchRect)
@@ -1429,16 +1216,11 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 		closeBtn.Draw(dst)
 	}
 
-	// Scrollbar — the shared engine draws track + thumb from VS.View (the
-	// viewport rect, set in computeFXLayout) and the pixel Total/Visible/First,
-	// so the FX thumb geometry is identical to every other menu's.
 	if dv.fxScroll != nil {
 		dv.fxScroll.Draw(dst)
 	}
 }
 
-// handleFXPanelInput processes mouse input for the FX panel.
-// Returns true if input was consumed.
 func (dv *DrumView) handleFXPanelInput(mx, my int, left bool) bool {
 	if !dv.IsFXPanelOpen() {
 		return false
@@ -1446,11 +1228,7 @@ func (dv *DrumView) handleFXPanelInput(mx, my int, left bool) bool {
 
 	p := image.Pt(mx, my)
 
-	// Pinned search box (add-menu only): a press on the clear-× wipes the
-	// query; any other press inside the band focuses the box (not a row
-	// tap). Runs before every other phase so a tap on the search band always
-	// wins, on both desktop and mobile. Mirrors handleOverflowMenuInput's
-	// templateSearchBox hit-test (drumview_context_menu.go:605-613).
+	// First, so a tap on the search band always wins: the clear-× wipes the query, anywhere else focuses.
 	if left && dv.fxAddMenuOpen && dv.fxAddSearch != nil &&
 		!dv.fxAddSearchRect.Empty() && p.In(dv.fxAddSearchRect) {
 		if dv.fxAddSearchQuery != "" && menuSearchAdornmentsActive(dv.fxAddSearch) &&
@@ -1462,19 +1240,14 @@ func (dv *DrumView) handleFXPanelInput(mx, my int, left bool) bool {
 		return true
 	}
 
-	// Phase 0: Continue active slider drag (both platforms).
-	// This runs before click-outside or deferred tap so a drag that leaves the
-	// panel rect is not interrupted.
+	// Before click-outside and deferred taps, so a drag that leaves the panel is not interrupted.
 	if dv.fxSliderDragging {
 		idx := dv.fxSliderDragIdx
 		if idx < len(dv.fxPanelSliders) {
 			sl := dv.fxPanelSliders[idx]
 			before := sl.Value
 			sl.HandleInputResult(mx, my, left)
-			// Only a value change reaches the audio graph: this runs every
-			// input tick of a held slider, and a write per tick drove a
-			// WebAudio insert-chain rebuild per frame (TestHeldFXSliderWrites
-			// AudioOnlyOnValueChange).
+			// Only a value change reaches the audio: this runs every input tick of a held slider.
 			if sl.Value != before {
 				dv.propagateFXSliderValue(idx)
 			}
@@ -1486,11 +1259,7 @@ func (dv *DrumView) handleFXPanelInput(mx, my int, left bool) bool {
 		return true
 	}
 
-	// Phase 1: Mobile — touch scroll + sliders + deferred tap coordination.
 	if Profile().IsMobile() {
-		// The FX list scrolls through the shared engine (pixel mode): the same
-		// touch-move/commit/momentum path every list menu uses. buildFXPanel +
-		// refreshFXPortalHitAreas re-lay the content out for the new offset.
 		sb := dv.ensureFXScroll().ScrollBehavior()
 		relayout := func() { dv.buildFXPanel(); dv.refreshFXPortalHitAreas() }
 
@@ -1564,14 +1333,12 @@ func (dv *DrumView) handleFXPanelInput(mx, my int, left bool) bool {
 		}
 	}
 
-	// Phase 2: Desktop button handling.
 	for _, btn := range dv.fxPanelBtns {
 		if btn != nil && btn.HandleInputResult(mx, my, left) != InputIgnored {
 			return true
 		}
 	}
 
-	// Phase 3: Desktop slider handling (enhanced with drag tracking).
 	for i, sl := range dv.fxPanelSliders {
 		if sl != nil && sl.HandleInputResult(mx, my, left) != InputIgnored {
 			if sl.dragging {
@@ -1583,7 +1350,6 @@ func (dv *DrumView) handleFXPanelInput(mx, my int, left bool) bool {
 		}
 	}
 
-	// Phase 4: Consume all input within panel rect.
 	if p.In(dv.fxPanelRect) {
 		return true
 	}
@@ -1591,9 +1357,7 @@ func (dv *DrumView) handleFXPanelInput(mx, my int, left bool) bool {
 	return false
 }
 
-// fireFXPanelTapAt finds the FX panel button at (x, y) and fires it.
-// Iterates in reverse: the close button is appended last and has highest
-// z-order, so it must be checked before buttons it spatially overlaps.
+// In reverse: the close button is appended last and overlaps the others.
 func (dv *DrumView) fireFXPanelTapAt(x, y int) {
 	pt := image.Pt(x, y)
 	for i := len(dv.fxPanelBtns) - 1; i >= 0; i-- {
@@ -1628,9 +1392,7 @@ func (dv *DrumView) fireFXPanelTapAt(x, y int) {
 	}
 }
 
-// fxParamLabel formats a parameter label with param-derived number display. It
-// shares fxFormatParam with the collapsed-row summary so the SAME value never
-// renders with two different precisions across expand/collapse.
+// Shares fxFormatParam with the summary, so one value never shows two precisions.
 func fxParamLabel(def audio.EffectParamDef, val float64) string {
 	return fmt.Sprintf("%s: %s", capitalize(def.Name), fxFormatParam(def, val))
 }
@@ -1639,15 +1401,9 @@ func capitalize(s string) string {
 	return audio.PrettyName(s)
 }
 
-// fxSummaryScale is the text scale for the collapsed-row param summary —
-// caption-sized so it reads as secondary info under the effect name.
 const fxSummaryScale = 0.8
 
-// fxParamSummary builds a compact one-line summary of an effect's current
-// parameter values for display on a collapsed row, e.g. "Drive 8.2 · Warmth
-// 0.6". Values are read live from the slot's Params (falling back to the
-// catalog default when absent) so the summary always reflects the CURRENT
-// chain state. Returns "" when the effect has no catalog params.
+// Read live from the slot (catalog default when absent); "" when the effect has no params.
 func fxParamSummary(e audio.EffectSlot) string {
 	defs, ok := audio.InsertEffectCatalog()[e.Type]
 	if !ok || len(defs) == 0 {
@@ -1669,18 +1425,12 @@ func fxParamSummary(e audio.EffectSlot) string {
 	return b.String()
 }
 
-// fxFormatParam renders a parameter value + unit — the ONE number formatter for
-// both the expanded param label and the collapsed-row summary. Precision and
-// unit are a property of the parameter DEFINITION (its declared range and
-// unit), never of the instantaneous value: this keeps the fractional-digit
-// count constant while a slider is dragged (no reflow) and lets frequencies
-// roll up to kHz. See DESIGN.md § Value formatting.
+// Precision and unit come from the parameter's definition, never the value, so the digit count
+// holds still while a slider drags.
 func fxFormatParam(def audio.EffectParamDef, val float64) string {
 	switch def.Unit {
 	case "Hz":
-		// Audio-frequency params (cutoff/tone/freq, Max >= 1000) read in
-		// integer Hz and roll up to kHz above 1000. Low-frequency params
-		// (LFO rate, Max < 1000) keep a decimal so sub-Hz motion is visible.
+		// Audio frequencies (Max >= 1000) read in integer Hz, kHz above 1000; LFO rates keep a decimal.
 		if def.Max >= 1000 {
 			if val >= 1000 {
 				return fmt.Sprintf("%.1f kHz", val/1000)
@@ -1701,10 +1451,7 @@ func fxFormatParam(def audio.EffectParamDef, val float64) string {
 	}
 }
 
-// fxDecimalsForSpan chooses a fixed fractional-digit count from a parameter's
-// value span. Sub-unit ranges (mix/feedback, 0..1) need two decimals to be
-// legible; mid ranges (drive/ratio/q) one; wide ranges none. The choice is a
-// function of the range alone, so it is constant for a given parameter.
+// A function of the range alone, so it is constant for a parameter.
 func fxDecimalsForSpan(span float64) int {
 	switch {
 	case span <= 1:

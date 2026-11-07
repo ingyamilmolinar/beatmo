@@ -5,9 +5,6 @@ import (
 	"strings"
 )
 
-// SetActiveEQTab switches the EQ panel tab. Accepts canonical slugs
-// ("eq", "wave", "spectrum", "levels", "chain", "synth", "sampler") and legacy
-// aliases ("meters" → levels, "scope" → chain). Mirrors the setEQTab JS export.
 func (g *Game) SetActiveEQTab(name string) error {
 	if g.drum == nil || g.drum.eqPanelZone == nil {
 		return fmt.Errorf("EQ panel not initialized")
@@ -37,8 +34,6 @@ func (g *Game) SetActiveEQTab(name string) error {
 	return nil
 }
 
-// ActiveEQTab returns the canonical lowercase slug for the current EQ
-// panel tab. Slugs: eq · wave · spectrum · levels · chain · synth · sampler.
 func (g *Game) ActiveEQTab() string {
 	if g.drum == nil || g.drum.eqPanelZone == nil {
 		return ""

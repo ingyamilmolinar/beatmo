@@ -11,8 +11,7 @@ import (
 func (dv *DrumView) drawWaveform(dst *ebiten.Image, snap audio.AnalyzerSnapshot) {
 	wave := snap.Waveform
 	if len(wave) == 0 {
-		// Idle: render the modern axis chrome + hint instead of a dead
-		// border-only rect (native desktop showed a blank Wave tab at boot).
+		// Idle still draws the axis chrome and hint, never a blank rect.
 		drawAnalyzerWaveform(dst, dv.eqRect, nil, nil, nil, 1.0, false, false)
 		return
 	}

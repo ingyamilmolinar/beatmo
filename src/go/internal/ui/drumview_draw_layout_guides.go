@@ -15,9 +15,7 @@ func (dv *DrumView) drawLayoutGuides(dst *ebiten.Image) {
 	if !Profile().ShowLayoutGuides {
 		return
 	}
-	// When drawing into a local buffer sized to the drum view (e.g., tests),
-	// use coordinates relative to the widget board. When drawing to the full
-	// screen, offset by the drum view's bounds.
+	// A buffer sized to the drum view (tests) uses local coordinates.
 	local := dv.Bounds.Dx() == dst.Bounds().Dx() && dv.Bounds.Dy() == dst.Bounds().Dy()
 	offX, offY := 0, 0
 	if !local {
@@ -85,9 +83,7 @@ func (dv *DrumView) drawLayoutGuides(dst *ebiten.Image) {
 	}
 }
 
-// drawLayoutPills renders pill handles on inner column/row dividers.
-// Called separately from drawLayoutGuides so pills draw on top of row
-// content and the rack panel mask, keeping them visible.
+// Separate from drawLayoutGuides so the pills draw above the rows and the rack mask.
 func (dv *DrumView) drawLayoutPills(dst *ebiten.Image) {
 	if dv.widgets == nil {
 		return

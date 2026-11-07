@@ -6,11 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// sbID names one element of the node sidebar: the key of its rects, buttons
-// and press animations. Fixed elements are the sb* values below; the element
-// families (a section's header, a field's stepper, a dropdown option, a group
-// row, a picker cell) are built by the constructors, so no element is ever
-// named by concatenating a string or recovered by parsing one.
+// Families are built by constructors, so no element is named by concatenating or parsing a string.
 type sbID struct {
 	el  sbEl
 	arg int // the element's operand: section, field, logic/groove kind, group id or packed cell
@@ -176,8 +172,7 @@ func parseSBSection(name string) (sbSection, bool) {
 	return 0, false
 }
 
-// laidOutID finds the laid-out element spelled name (sbID.String), for the JS
-// bridge's rect probes — the one place an element arrives as text.
+// For the JS bridge's rect probes, the one place an element arrives as text.
 func (sb *NodeSidebar) laidOutID(name string) (sbID, bool) {
 	for id := range sb.rects {
 		if id.String() == name {

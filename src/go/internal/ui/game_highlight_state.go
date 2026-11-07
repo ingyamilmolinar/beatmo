@@ -17,18 +17,11 @@ func (g *Game) highlightDelete(key int) {
 	g.highlightMu.Unlock()
 }
 
-// hlDroppedExemptFrames is how long (in frames, ~ a few seconds at 60 Hz) a
-// dropped-highlight exemption is honored before pruning. It need only outlast
-// the audio event's residence in the parity scan window (lookahead + grace),
-// which is well under a second; this is generous slack.
+// Only needs to outlast the audio event's stay in the parity scan window (under a second).
 const hlDroppedExemptFrames = 600
 
-// markHighlightDropped records that the sequencer dropped (row, idx)'s highlight
-// because hlCh was full. highlight_vs_audio parity then exempts that beat: the
-// UI legitimately never paints it, so "audio fired but no highlight" is an
-// expected cosmetic loss under load, not a desync. Called from the sequencer
-// goroutine (holds seqMu); takes highlightMu (seqMu -> highlightMu order, same
-// as applySequencerHighlight).
+// A highlight dropped because hlCh was full is an expected cosmetic loss under load, so parity
+// exempts it. Sequencer goroutine; lock order seqMu → highlightMu.
 func (g *Game) markHighlightDropped(row, idx int) {
 	if g == nil {
 		return
@@ -42,8 +35,7 @@ func (g *Game) markHighlightDropped(row, idx int) {
 	g.highlightMu.Unlock()
 }
 
-// highlightWasDropped reports whether (row, abs)'s highlight was dropped and the
-// exemption is still live. Caller must NOT hold highlightMu.
+// Caller must NOT hold highlightMu.
 func (g *Game) highlightWasDropped(row, abs int) bool {
 	if g == nil {
 		return false
@@ -61,8 +53,7 @@ type highlightEntry struct {
 	val int64 // expiration frame with mute flag in high bit
 }
 
-// highlightSnapshotByRow returns highlights bucketed by row for O(row_entries)
-// iteration in Draw instead of O(total_highlights) per visible row.
+// Bucketed so Draw iterates a row's own entries, not every highlight per row.
 func (g *Game) highlightSnapshotByRow(maxRows int) [][]highlightEntry {
 	g.highlightMu.RLock()
 	if len(g.highlightedBeats) == 0 {
@@ -143,20 +134,14 @@ func (g *Game) nodeAnimGet(id model.NodeID) float64 {
 	return val
 }
 
-// highlightAbsRetentionSlack is the lookback below drum.Offset that
-// clearExpiredHighlights still keeps. Anything strictly below
-// (drum.Offset - highlightAbsRetentionSlack) cannot be displayed and is
-// unconditionally evictable; the highlight animation is a transient visual
-// effect, so historical scroll-back does not replay it (timeline cold archive
-// owns playback history). 64 ≈ 8 visible windows of 8 — generous slack.
+// Anything further below Offset cannot be displayed: highlights are transient, and scroll-back
+// history belongs to the timeline archive.
 const highlightAbsRetentionSlack = 64
 
 func (g *Game) clearExpiredHighlights() {
 	g.highlightMu.Lock()
 	defer g.highlightMu.Unlock()
-	// Prune expired dropped-highlight exemptions (independent of highlightedBeats;
-	// runs even when no highlights are live so the map can't grow unbounded under
-	// sustained drop load).
+	// Pruned even with no live highlights, so sustained drops cannot grow the map without bound.
 	for key, until := range g.hlDropped {
 		if g.frame > until {
 			delete(g.hlDropped, key)
@@ -207,21 +192,14 @@ func (g *Game) resetHighlights() {
 	g.highlightMu.Unlock()
 }
 
-// drainAndDecayHighlights drains pending highlight events from the sequencer,
-// clears expired highlights, and decays per-node trigger animations. This is
-// extracted from Update() so it can also be called from the syncHighlights JS
-// export, allowing tests to process highlight state without a full Update().
+// Separate from Update so the syncHighlights JS export can run it alone.
 func (g *Game) drainAndDecayHighlights() {
-	// Drain any pending highlight events dispatched by the sequencer loop and
-	// apply them on the UI thread to avoid data races with highlight state.
+	// Applied on the UI thread, so highlight state has no races.
 	for {
 		select {
 		case ev := <-g.hlCh:
 			g.applySequencerHighlight(ev.row, ev.idx, ev.info)
-			// Sync handoff to the Synth tab's graph (the trigger glow). A no-op
-			// unless the tab is showing this row's instrument — and only for a
-			// row that is HEARD: a graph shining for a muted or soloed-out row
-			// would claim a sound that never played.
+			// Only for a HEARD row: a glow for a muted or soloed-out row would claim a sound that never played.
 			if g.drum != nil && ev.row >= 0 && ev.row < len(g.drum.Rows) && g.drum.Rows[ev.row] != nil &&
 				rowAudible(g.drum.Rows[ev.row], anySoloActive(g.drum.Rows)) {
 				g.drum.onInstrumentTriggered(g.drum.Rows[ev.row].Instrument)
@@ -231,12 +209,10 @@ func (g *Game) drainAndDecayHighlights() {
 		}
 	}
 hlDone:
-	// Highlight cleanup always runs - essential for WASM where fastPath is enabled.
-	// Without this, node highlights stay on forever in the browser.
+	// Always: on WASM's fast path nothing else clears node highlights.
 	g.clearExpiredHighlights()
 
-	// Decay per-node trigger animations. The audio clock is read once per pass,
-	// not per node: on WASM every audio.Now() is a JS bridge call.
+	// One audio.Now() per pass: on WASM each is a JS bridge call.
 	g.nodeAnimMu.Lock()
 	now, haveNow := 0.0, false
 	for id, v := range g.nodeAnim {
@@ -268,26 +244,14 @@ hlDone:
 	g.nodeAnimMu.Unlock()
 }
 
-// highlightVisual mirrors highlightBeat but never queues audio. It only
-// updates the highlight map and optional test hook.
-//
-// All in-tree callers (sequencer/audio schedule/sync-UI/pause-replay)
-// know the beat is firing at call time, so the call itself is the
-// authoritative trigger signal. The internal triggered/predictor
-// cascade exists only as defense for indirect callers that aren't
-// scheduler-driven — see highlightVisualUntrusted. Long-session
-// failure mode pre-fix: once the predictor's 4096-cap sliding window
-// passed `idx`, nodeTriggeredState returned (false, stateKnown=true)
-// via predictor fallback, which bypassed the regular-node rescue
-// branch and silently dropped the highlight write.
+// Never queues audio. Every caller knows the beat is firing, so the call itself is the trigger;
+// consulting the predictor dropped highlights once its sliding window passed idx.
 func (g *Game) highlightVisual(row, idx int, info model.BeatInfo, duration int64) {
 	g.highlightVisualImpl(row, idx, info, duration, true /*trusted: caller is firing the beat*/)
 }
 
-// highlightVisualUntrusted is for callers that don't have first-hand
-// knowledge that the beat is firing (e.g. exploratory probes from
-// tests). Reserved for future use; no in-tree callers today. The
-// fallback cascade lives here, isolated from the hot scheduler path.
+// For callers without first-hand knowledge that the beat fires; keeps the fallback cascade off
+// the scheduler path.
 //
 //nolint:unused // reserved for future indirect callers
 func (g *Game) highlightVisualUntrusted(row, idx int, info model.BeatInfo, duration int64) {
@@ -298,10 +262,7 @@ func (g *Game) highlightVisualImpl(row, idx int, info model.BeatInfo, duration i
 	key := makeBeatKey(row, idx)
 	shouldHighlight := false
 	if trusted {
-		// Scheduler/audio/sync path: trust the caller. Regular and mute
-		// beats have already been decided to fire; invisible/silent
-		// always show their highlight; the only state we still consult
-		// is mute-isMute (encoded in the highlight value) below.
+		// Trust the scheduler: the beat has already been decided to fire.
 		shouldHighlight = true
 	} else {
 		triggered, stateKnown := g.nodeTriggeredState(row, idx, info)

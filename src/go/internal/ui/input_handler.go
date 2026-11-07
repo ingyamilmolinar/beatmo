@@ -13,8 +13,7 @@ const (
 
 // InputHandler provides spatial input handling for UI components.
 type InputHandler interface {
-	// InputBounds returns the interactive area of the component.
-	// Named InputBounds (not Bounds) to avoid conflict with struct fields.
+	// Not Bounds, to avoid clashing with struct fields.
 	InputBounds() image.Rectangle
 	ZIndex() int
 	HandleInput(x, y int, pressed bool) InputResult

@@ -59,10 +59,8 @@ func New(logger *game_log.Logger) *Game {
 		importPrevParityFatal: true,
 		importPrevParityWatch: parityWatchDefault,
 	}
-	// playbackSlate owns the scheduling/beat-path/timeline/trigger field
-	// cluster (see playback_slate.go); set as statements because promoted
-	// (embedded) fields can't be keyed in a composite literal, and the
-	// struct carries atomics that must never be copied.
+	// Statements: promoted fields cannot be keyed in a composite literal, and the struct holds atomics
+	// that must not be copied.
 	g.playbackSlate.g = g
 	g.timeline = timeline.NewService()
 	g.beatInfos = []model.BeatInfo{}
@@ -88,14 +86,9 @@ func New(logger *game_log.Logger) *Game {
 	g.loopCountByRow = []int{}
 	g.lastStepsOffset = -1
 	g.lastCellTypesOffset = -1
-	// g.frame only increments while Playing() (see game_update.go), so it can
-	// stay at its zero value for many paused draws; seed the memo frame to -1
-	// (never equal to g.frame) so the very first guideTargetCached call always
-	// misses instead of matching a coincidental zero/zero.
+	// g.frame stays 0 while paused, so -1 makes the first lookup miss.
 	g.guideMemoFrame = -1
-	// Parity diagnostics state lives in the embedded parityTracker; set as
-	// statements because promoted (embedded) fields can't be keyed in a
-	// composite literal.
+	// Promoted fields cannot be keyed in a composite literal.
 	g.parityRing = newMismatchRing(256)
 	g.parityStreak = make(map[string]int)
 	g.parityWatch = parityWatchDefault
@@ -126,52 +119,31 @@ func New(logger *game_log.Logger) *Game {
 		g.rowSnapshotMode = true
 	}
 
-	// Defer embedded WAV autoload; we'll schedule it after the first Update so
-	// the demo instrument picks prefer built-ins and the UI becomes responsive.
+	// Deferred until after the first Update, so the demo prefers built-ins and the UI responds.
 
 	// bottom drum-machine view
 	audio.InitDefaultCatalog()
 	g.drum = NewDrumView(image.Rect(0, 600, 1280, 720), g.graph, logger)
-	// Weak back-reference so EQCallbacks closures (e.g. BeatGridFrac) can
-	// reach Game state. Must be set before any Draw that resolves the
-	// callback — every call site in drumview_ctor.go guards on nil.
+	// Before any Draw that resolves a callback; every call site guards nil.
 	g.drum.game = g
-	// Re-localize the UI on a language switch: invalidate text-baking caches so
-	// labels re-measure at the new locale's widths. Stored cancel lets tests
-	// drop the listener (the production Game is a process-lifetime singleton).
+	// The cancel lets tests drop the listener.
 	g.i18nCancel = i18n.OnChange(g.drum.OnLocaleChanged)
-	// Runtime theme: invalidate every color-baking cache after ApplyTheme so
-	// the next frame repaints in the new palette (game_theme.go).
 	g.themeCancel = OnThemeChange(g.OnThemeChanged)
 	themeWarnf = logger.Warnf
-	// Keep the browser landscape-block overlay's text in the active language
-	// (no-op off the browser). Visibility is pure CSS (orientation media query).
+	// Visibility is CSS; only the text needs the locale.
 	registerLandscapeNoticeLocaleSync()
-	// Grid-pane settings gear (desktop AND mobile): opens the same settings
-	// overlay as the "?"/"/" key. Drawn in the grid pane's top-right corner, NOT
-	// in the transport bar. Reuses the shared Button widget.
 	g.gridHelpBtn = NewSpecButton("", ComponentButtonSecondary, g.toggleSettingsOverlay)
 	g.gridHelpBtn.Icon = string(IconSettings)
-	// Folder button, one gap left of the gear: opens the file menu (Upload /
-	// Import / Export / Load Template). Both platforms.
 	g.gridFileBtn = NewSpecButton("", ComponentButtonSecondary, g.toggleFileMenu)
 	g.gridFileBtn.Icon = string(IconFolder)
-	// Logs button, one gap left of the folder button: opens the Logs Navigation
-	// Panel (event stream + notifications). Both platforms.
 	g.gridLogsBtn = NewSpecButton("", ComponentButtonSecondary, g.toggleLogsPanel)
 	g.gridLogsBtn.Icon = string(IconLogs)
-	// Theme button, one gap left of the logs button: opens the Theme editor
-	// (runtime UI color scheme). Both platforms.
 	g.gridThemeBtn = NewSpecButton("", ComponentButtonSecondary, g.toggleThemeOverlay)
 	g.gridThemeBtn.Icon = string(IconPalette)
-	// All four are rows of gridCornerButtons (grid_corner_buttons.go): input is
-	// routed through ONE opaque cluster handler in the grid pane's
-	// inputDispatcher (z=gridCornerButtonsInputZ). A button fires OnClick once
-	// per press edge; the cluster owns the whole gesture, so the release-time
-	// GestureTap never reaches the grid beneath (no double-fire, no stray node).
+	// One opaque cluster handler routes all four buttons: OnClick once per press edge, and the cluster
+	// owns the gesture, so the release-time tap never reaches the grid.
 	g.undoManager = NewUndoManager(g.undoCapture, g.undoRestore)
-	// The open circuit's instrument documents (Reset's target) are session
-	// state beside the document: an undo across a circuit open restores them.
+	// Session state beside the document: an undo across a circuit open restores them.
 	g.undoManager.SetCircuitState(
 		func() any { return audio.CircuitSnapshot() },
 		func(v any) {
@@ -179,10 +151,7 @@ func New(logger *game_log.Logger) *Game {
 			audio.RestoreCircuit(s)
 		})
 	registerUndoObserver(g.undoManager)
-	// Ensure the timeline header interprets offsets/length in beats while we
-	// track them internally in subdivision steps. Make the initial drum
-	// window span at least four full beats so the default view shows a
-	// meaningful portion of the circuit before any demo/import tweaks it.
+	// At least four beats in the initial window.
 	units := g.grid.MaxDiv()
 	if units <= 0 {
 		units = 1
@@ -192,35 +161,24 @@ func New(logger *game_log.Logger) *Game {
 	if g.drum.Length < minLen {
 		g.drum.SetLength(minLen)
 	}
-	// wire import handler - queue data for processing after seqMu is released
-	// to avoid recursive locking (drum.Update is called while holding seqMu)
+	// Queued until seqMu is released: drum.Update runs under it.
 	g.drum.onImport = func(data []byte, source string) error {
 		g.pendingImportData = data
 		g.pendingImportSource = source
-		// User-initiated load (template row / file picker): make it undoable so
-		// a mistap can't silently destroy the current circuit. Demo/startup/JS
-		// loads call g.Import directly and keep the clear-history behavior.
+		// A user load is undoable, so a mistap cannot destroy the circuit; startup and JS loads clear history.
 		g.importAsUndoStep = true
 		return nil // actual result will be notified via pendingImportCB
 	}
 	g.drum.onImportDialogStart = g.startImportDialog
 	g.drum.onImportDialogEnd = g.endImportDialog
-	// Parity coordination: DrumView mutations route through this hook so the
-	// parity generation, grace window, and buffer hygiene are kept in sync
-	// with state changes. The hook is reachable under seqMu (DrumView.Update
-	// runs while Game holds seqMu), so it must not re-acquire the lock.
+	// Reachable under seqMu, so it must not re-acquire it.
 	g.drum.onStructuralMutation = func(reason string) {
 		g.bumpParityGen(reason, structuralMutationOptions{})
 	}
 	g.drum.onRowRemoved = g.onDrumRowRemoved
 
-	// Subscribe to recording lifecycle hook events. Subscribers run on
-	// the hooks fan-out pool (off the UI thread); we queue notifications
-	// to be drained by Update so DrumView state is only touched on the
-	// game-thread goroutine.
-	// The bus is process-global: keep the unsubscribe so Close releases the
-	// closure (and with it the whole Game) — a test suite that builds
-	// hundreds of Games otherwise retains every one of them.
+	// Subscribers run off the UI thread, so queue for Update. Keep the unsubscribe: the bus is
+	// process-global and would otherwise retain every closed Game.
 	g.recordStopUnsub = hooks.Subscribe(hooks.EventRecordStop, func(e hooks.Event) {
 		p, ok := e.Payload.(audio.RecordStopPayload)
 		if !ok {
@@ -246,13 +204,8 @@ func New(logger *game_log.Logger) *Game {
 	}
 	g.state.SetAppliedBPM(g.drum.BPM())
 	g.prevBPM = g.state.AppliedBPM()
-	// Bounded scheduler for future-timestamped playFn calls. One worker is
-	// enough — the scheduler hands off to audio.PlayBatch via the override
-	// fn passed to SetPlayFunc, so the worker just dispatches; queue 64
-	// matches audioCh capacity (~64ms tolerance at 1kHz dispatch). Mirror
-	// hooks.fanout's pattern: prefer the global registry, fall back to a
-	// private pool if the budget is already claimed by other subsystems
-	// so the game still boots on resource-constrained CI.
+	// One worker that only dispatches; queue 64 matches audioCh. Registry first, private pool
+	// fallback, so constrained CI still boots.
 	timerOpts := async.Options{MaxConcurrent: 1, QueueSize: 64, Name: "audio.timers"}
 	timerPool, terr := async.DefaultRegistry().Get("audio.timers", timerOpts)
 	if terr != nil {
@@ -260,14 +213,10 @@ func New(logger *game_log.Logger) *Game {
 	}
 	g.audioScheduler = async.NewScheduler(timerPool)
 	g.voicePrewarmer = newVoicePrewarmer(g)
-	// Playback readiness gate: warms every voice the loaded circuit can
-	// trigger after a wholesale cache invalidation (import / sample-rate
-	// change) before Play unlocks. g.drum already exists at this point, so
-	// wireWarmupNotifications can bind the progress toast immediately.
+	// Warms every voice the circuit can trigger after a cache invalidation, before Play unlocks.
 	g.warmup = newWarmupController(g, newWarmBackend(g))
 	g.wireWarmupNotifications()
-	// The audio lane's channels exist BEFORE the loops that select on them
-	// (audioLoop: laneWake; sequencerLoop: laneKick) — initAudioLane runs later.
+	// Before the loops that select on them; initAudioLane runs later.
 	g.laneWake = make(chan struct{}, 1)
 	g.laneKick = make(chan struct{}, 1)
 	g.bgWG.Add(2)
@@ -276,29 +225,20 @@ func New(logger *game_log.Logger) *Game {
 	// Subscribe to engine ticks for scheduler-driven audio sequencing.
 	g.seqCh = eng.Subscribe()
 	g.seqQuit = make(chan struct{})
-	// Under tests we drive scheduling from Update() to keep state deterministic
-	// (no concurrent writes to UI state). Desktop/WASM runs use the background
-	// sequencer goroutine.
+	// Tests drive scheduling from Update, deterministically.
 	startSequencer := !runningUnderGoTest()
 	if startSequencer {
 		go g.sequencerLoop()
 	}
 	g.sequencerRunning = startSequencer
 	g.timingTestMode = (os.Getenv("BPM_TIMING_TEST") == "1")
-	// Set this Game as the active BPM owner so previous instances stop
-	// applying audio.SetBPM in background loops during tests.
+	// So older Games in a test process stop applying BPM.
 	bpmOwner.Store(g)
-	// Enable detailed node draw logs via environment variable for diagnostics.
-	// Enable draw logs when either DEBUG_DRAW_NODES or DEBUG_GEOM is set so
-	// a single env var (DEBUG_GEOM=1) is enough for real-time geometry debug.
 	if os.Getenv("DEBUG_DRAW_NODES") == "1" || os.Getenv("DEBUG_GEOM") == "1" {
 		g.logDrawNodes = true
 	}
 	g.initJS()
-	// Keep prediction buffer ahead in background with low priority. This runs
-	// independent of UI rendering and coalesces demand using a target-horizon
-	// function that considers the visible window, current next-beat indices,
-	// and grid lookahead.
+	// Low priority, independent of rendering; demand is coalesced through a target-horizon function.
 	if g.engine != nil && g.engine.Predictor != nil {
 		targetFn := func() int {
 			look := 32
@@ -344,15 +284,11 @@ func New(logger *game_log.Logger) *Game {
 	g.simpleDraw = RuntimeProf().SimpleDrawDefault
 	g.simpleDrawAutoDisableFrames = RuntimeProf().SimpleDrawAutoDisableFramesDefault
 
-	// Browser uses a longer audio lookahead (~40 ms) to absorb Go↔JS jitter;
-	// desktop's dedicated 1ms sequencer goroutine needs less buffer (20 ms).
-	// Combined with runtimeAudioLookahead() (+30ms dynamic, 60ms cap), this
-	// eliminates the zero-tolerance scheduling that caused overdue audio.
+	// The browser needs more cushion for Go↔JS jitter.
 	g.audioLookaheadSec = RuntimeProf().AudioLookaheadSec
 	g.initAudioLane()
 
-	// Defer demo construction to the first layout/update to avoid blocking
-	// constructor time. Layout will build it once when not under tests.
+	// Built on the first layout, not in the constructor.
 
 	// default cache pads (pixels)
 	g.edgeCachePad = RuntimeProf().EdgeCachePad
@@ -370,18 +306,8 @@ func New(logger *game_log.Logger) *Game {
 		g.notifyPredictorNode(id)
 		g.pathsDirty = true
 		if g.Playing() {
-			// A node-param change (volume/pitch/logic, or an edge add/remove that
-			// rewrites a node's input/output lists) updates predictor truth
-			// (notifyPredictorNode, above) without necessarily changing path
-			// topology, so updateBeatInfos's pathsChanged invalidation may not run.
-			// Drop in-flight audio for the AFFECTED ROW only (per-row structural
-			// generation) AND advance the parity generation (+grace) so the scan's
-			// parityGen filter excludes any decision/audio recorded under the
-			// pre-change params. Using the global audioGen here dropped in-flight
-			// beats on OTHER rows too — an audible gap when a node/edge on one row
-			// is touched. The explicit buffer wipe below is the memory-hygiene step
-			// (redundant with the gen filter). Skip the path-dirty/freeze/clear side
-			// effects — this hook owns paths-dirty itself.
+			// Drop in-flight audio for the affected row only (its structural generation) and advance parity:
+			// the global audioGen would drop beats on other rows too, an audible gap.
 			g.bumpRowStructGen(row)
 			g.bumpParityGen("node-param-change", structuralMutationOptions{
 				SkipPathsDirty:     true,

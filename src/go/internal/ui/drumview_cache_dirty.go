@@ -28,8 +28,6 @@ func (dv *DrumView) markAllRowsDirty() {
 	dv.rowsWinContentDirty = true // content changed → windowed cache must re-bake
 }
 
-// markRowsShiftDirty invalidates cached sprites for offset shifts while
-// allowing incremental reuse (no forced full rebuild).
 func (dv *DrumView) markRowsShiftDirty() {
 	dv.ensureRowCache()
 	for i := range dv.rowDirty {
@@ -38,9 +36,7 @@ func (dv *DrumView) markRowsShiftDirty() {
 	dv.rowsLayerDirty = true
 }
 
-// markRowCellsDirty marks a row as needing rebuild but allows the cheap
-// cell-patch path (does NOT set rowFullDirty). Use for small content changes
-// like playback beat advances where only a few cells changed.
+// Leaves rowFullDirty alone, so the cheap cell-patch path still applies.
 func (dv *DrumView) markRowCellsDirty(i int) {
 	dv.ensureRowCache()
 	if i >= 0 && i < len(dv.rowDirty) {
@@ -50,9 +46,7 @@ func (dv *DrumView) markRowCellsDirty(i int) {
 	dv.rowsWinContentDirty = true // cell content changed → windowed cache re-bake
 }
 
-// markRowDirty invalidates the cached sprite for a single row. Safe for
-// concurrent callers on the UI thread (Game.Update/Draw) which is the only
-// place DrumView is mutated.
+// UI thread only, like every DrumView mutation.
 func (dv *DrumView) markRowDirty(i int) {
 	dv.ensureRowCache()
 	if i >= 0 && i < len(dv.rowDirty) {
@@ -65,8 +59,6 @@ func (dv *DrumView) markRowDirty(i int) {
 	dv.rowsWinContentDirty = true // row content changed → windowed cache re-bake
 }
 
-// markRowShiftDirty invalidates the cached sprite for a single row but allows
-// incremental reuse (no forced full rebuild).
 func (dv *DrumView) markRowShiftDirty(i int) {
 	dv.ensureRowCache()
 	if i >= 0 && i < len(dv.rowDirty) {
@@ -85,21 +77,15 @@ func (dv *DrumView) invalidateRowCaches() {
 	dv.rowsLayerDirty = true
 }
 
-// OnLocaleChanged re-invalidates every text-baking cache and text-heavy zone so
-// a language switch re-measures and re-bakes labels at the new locale's string
-// widths. Wired to i18n.OnChange in game_new.go. Cheap: just marks caches dirty;
-// the next layout/draw rebuilds them.
+// Only marks caches dirty; the next layout/draw re-measures at the new locale's widths.
 func (dv *DrumView) OnLocaleChanged() {
 	dv.invalidateRowCaches()
 	dv.invalidateLabelCaches()
-	// The Synth graph's built plot carries its words (title, readout, axis
-	// words); its key does not change with the locale, so drop it.
+	// The plot's key does not include the locale, but it carries words.
 	if p := dv.synp(); p != nil {
 		p.graphPlot = nil
 	}
-	// Invalidate text-heavy panel zones so they re-layout at new string widths.
-	// Nil-guard each: a partially-built DrumView (or a Game without all zones)
-	// must not panic on a locale flip.
+	// Nil-guarded: a partially built DrumView must survive a locale flip.
 	if dv.eqPanelZone != nil {
 		dv.eqPanelZone.Invalidate()
 		// The Chain (Scope) tab is owned by the EQ panel zone, not DrumView.
@@ -110,18 +96,12 @@ func (dv *DrumView) OnLocaleChanged() {
 	if dv.rowRackZone != nil {
 		dv.rowRackZone.Invalidate()
 	}
-	// The Synth tab's TraceSprite caches (focus-graph caption + chip labels)
-	// bake localized text but key on geometry/params, not locale — a language
-	// flip alone leaves them stale until an edit/selection/tab-switch. Release
-	// them here (the whole-DrumView locale chokepoint) so they re-render in the
-	// new locale on the next Draw. ParamCards self-heal (localized name is in
-	// their key). Field, not synp(): don't force-create a panel on locale flip.
+	// TraceSprites bake localized text but key on geometry/params, so they must be released here.
+	// The field, not synp(): a locale flip must not create a panel.
 	if dv.synthPanel != nil {
 		dv.synthPanel.sprites.releaseAll()
 	}
-	// The mobile bottom-nav SegmentedControl copies its labels at construction,
-	// so it must be explicitly relabeled in the new locale (zone Invalidate does
-	// not reach it).
+	// Copies its labels at construction; zone Invalidate does not reach it.
 	if dv.viewSwitchSegmented != nil {
 		dv.viewSwitchSegmented.SetLabels(dv.bottomNavLabels())
 	}

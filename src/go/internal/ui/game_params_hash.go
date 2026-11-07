@@ -8,8 +8,7 @@ import (
 
 // paramsHash computes a lightweight hash of node parameters to detect edits.
 func (g *Game) paramsHash() uint64 {
-	// NOTE: This runs every Update to detect edits. It must be stable across map
-	// iteration order (Go maps do not guarantee iteration order stability).
+	// Runs every Update, so it must not depend on map iteration order.
 	const (
 		fnvOffset uint64 = 1469598103934665603
 		fnvPrime  uint64 = 1099511628211
