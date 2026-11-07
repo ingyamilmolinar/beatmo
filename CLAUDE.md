@@ -45,7 +45,10 @@ A comment says **why**, in one or two sentences (at most 3 lines): a non-obvious
 | Desktop run | `make run` |
 | Debug run | `make run-debug` |
 | Fast Go tests | `cd src/go && ../../.tools/go/bin/go test -tags test -modfile=go.test.mod ./...` |
-| Full pipeline | `make test` |
+| Full pipeline | `make test` (runs `make ci-build` first: the CI Build job's exact commands) |
+| Check host tools vs the CI pins | `make doctor` (`ci/versions.env` is the ONE place a tool version is pinned: Debian digest, Go, emsdk, golangci-lint, Node, Playwright, Chrome) |
+| Run any target in the CI image | `make dev TARGET=<target> [KIND=build\|browser]` (podman or docker; the exact image CI uses, `ci/images/*.Dockerfile`, tag = content hash) |
+| Reproduce one CI shard | `make test-go-shard SHARD=2/4` / `make test-real-go-shard SHARD=2/4` (`scripts/ci/go-shard.sh plan 2/4` prints what it runs) |
 | JS-bridge audit (no typed id/enum reaches `syscall/js`) | `make js-audit` |
 | Real Ebiten tests | `make test-real` |
 | Single browser test | `GO=$(pwd)/.tools/go/bin/go node src/js/<name>.browser.test.js` |
