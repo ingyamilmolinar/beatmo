@@ -76,10 +76,40 @@ jobs:
       - run: make lint
 
   test-go:
-    name: Test Go (-tags test)
+    name: Test Go (-tags test) ${{ matrix.shard }}/4
     needs: [images]
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
+    container: ${{ needs.images.outputs.build }}
+    strategy:
+      matrix:
+        shard: [1, 2, 3, 4]
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            /cache/go-build
+            /cache/gomod
+            /cache/npm
+            /cache/golangci-lint
+          key: go-${{ github.job }}-${{ hashFiles('ci/**') }}-${{ hashFiles('src/go/go.sum', 'src/go/**/*.go', 'src/c/**', 'src/js/package-lock.json') }}
+          restore-keys: go-${{ github.job }}-${{ hashFiles('ci/**') }}-
+      - run: make test-go-shard SHARD=${{ matrix.shard }}/4 COVER=1
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: covdata-${{ matrix.shard }}
+          path: coverage/covdata
+          retention-days: 3
+
+  go-coverage:
+    name: Go coverage
+    needs: [images, test-go]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     container: ${{ needs.images.outputs.build }}
     steps:
       - uses: actions/checkout@v4
@@ -92,11 +122,14 @@ jobs:
             /cache/golangci-lint
           key: go-${{ github.job }}-${{ hashFiles('ci/**') }}-${{ hashFiles('src/go/go.sum', 'src/go/**/*.go', 'src/c/**', 'src/js/package-lock.json') }}
           restore-keys: go-${{ github.job }}-${{ hashFiles('ci/**') }}-
-      - run: make test-go-tagged COVER=1
-      - if: always()
-        run: make coverage-summary
-      - if: always()
-        uses: actions/upload-artifact@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: covdata-*
+          path: coverage/covdata
+          merge-multiple: true
+      - run: make coverage-merge
+      - run: make coverage-summary
+      - uses: actions/upload-artifact@v4
         with:
           name: go-coverage
           path: coverage/go.out
@@ -122,11 +155,15 @@ jobs:
       - run: make test-audio-real
 
   test-real-go:
-    name: Test Go (real Ebiten + xvfb)
+    name: Test Go (real Ebiten + xvfb) ${{ matrix.shard }}/4
     needs: [images]
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 35
     container: ${{ needs.images.outputs.build }}
+    strategy:
+      matrix:
+        shard: [1, 2, 3, 4]
+      fail-fast: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
@@ -138,7 +175,7 @@ jobs:
             /cache/golangci-lint
           key: go-${{ github.job }}-${{ hashFiles('ci/**') }}-${{ hashFiles('src/go/go.sum', 'src/go/**/*.go', 'src/c/**', 'src/js/package-lock.json') }}
           restore-keys: go-${{ github.job }}-${{ hashFiles('ci/**') }}-
-      - run: make test-real-go
+      - run: make test-real-go-shard SHARD=${{ matrix.shard }}/4
 
   test-race:
     name: Test Go (race)
@@ -254,7 +291,7 @@ jobs:
   verdict:
     name: CI verdict
     if: always()
-    needs: [images, build, lint, test-go, test-audio-real, test-real-go, test-race, coverage-c, refs, browser-matrix, browser]
+    needs: [images, build, lint, test-go, go-coverage, test-audio-real, test-real-go, test-race, coverage-c, refs, browser-matrix, browser]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

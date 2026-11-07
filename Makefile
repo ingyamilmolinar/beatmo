@@ -906,6 +906,22 @@ test-go-tagged: $(C_LIB)
 	  $(if $(COVER),-coverprofile=../../coverage/go.out -covermode=atomic) $(or $(PKGS),./...) \
 	  $(if $(COVER),> ../../coverage/test-output.txt 2>&1; s=$$?; cat ../../coverage/test-output.txt; exit $$s)
 
+# Shard i of N of test-go-tagged / test-real-go (SHARD=i/N): same flags, so a
+# CI shard reproduces locally. COVER=1 writes covdata for `make coverage-merge`.
+test-go-shard: $(C_LIB)
+	cd src/go && $(LOG_ENV) GO=$(GO) $(if $(COVER),COVERDIR=$(CURDIR)/coverage/covdata/$(subst /,-of-,$(SHARD))) \
+	  ../../scripts/ci/go-shard.sh run $(SHARD) -tags test -modfile=go.test.mod -- \
+	  -timeout $(TEST_GO_TAGGED_TIMEOUT) $(if $(COVER),-cover -covermode=atomic)
+
+test-real-go-shard: $(C_LIB)
+	cd src/go && BPM_TIMING_TEST=1 GO=$(GO) xvfb-run -a ../../scripts/ci/go-shard.sh run $(SHARD) -- -timeout 30m
+
+# Merges every shard's covdata into coverage/go.out + per-package percentages.
+coverage-merge:
+	cd src/go && dirs=$$(ls -d ../../coverage/covdata/*/ | paste -sd, -) && \
+	  $(GO) tool covdata textfmt -i=$$dirs -o ../../coverage/go.out && \
+	  $(GO) tool covdata percent -i=$$dirs > ../../coverage/go-percent.txt
+
 # The real C DSP under the untagged build; the budget is whole-package.
 test-audio-real: $(C_LIB)
 	cd src/go; $(LOG_ENV) $(GO) test -timeout 900s ./internal/audio

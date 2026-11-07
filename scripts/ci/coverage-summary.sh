@@ -7,7 +7,17 @@ go="${GO:-go}"
 if [[ -f "$root/coverage/c-summary.txt" ]]; then
   { echo "## C Coverage (own DSP sources, miniaudio excluded)"; echo '```'; cat "$root/coverage/c-summary.txt"; echo '```'; } >> "$out"
 fi
-if [[ -f "$root/coverage/test-output.txt" ]]; then
+if [[ -f "$root/coverage/go-percent.txt" ]]; then
+  {
+    echo "## Go Test Coverage"; echo
+    echo "| Package | Coverage |"; echo "|---------|----------|"
+    sed 's|github.com/ingyamilmolinar/beatmo/||' "$root/coverage/go-percent.txt" |
+      awk '/coverage:/ { printf "| `%s` | %s |\n", $1, $3 }'
+    echo
+    [[ -f "$root/coverage/go.out" ]] &&
+      echo "**Total: $(cd "$root/src/go" && "$go" tool cover -func=../../coverage/go.out | tail -1 | awk '{print $NF}')**"
+  } >> "$out"
+elif [[ -f "$root/coverage/test-output.txt" ]]; then
   {
     echo "## Go Test Coverage"; echo
     echo "| Package | Coverage |"; echo "|---------|----------|"
