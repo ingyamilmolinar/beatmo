@@ -10,11 +10,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestInstMenuBackHeldNoSpuriousDeferredTap reproduces the desktop back-button
-// bug: after clicking Back (which switches mode and calls SuppressClicksUntilMouseUp),
-// the held mouse position could land inside the new scroll view area, capturing a
-// spurious deferred tap. On release, fireTapAt would hit a category button and flip
-// the mode back to instruments.
+// Back switches mode and suppresses clicks until mouse-up: the held pointer then sits over the new view and
+// must not capture a deferred tap that flips the mode back on release.
 func TestInstMenuBackHeldNoSpuriousDeferredTap(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -57,10 +54,7 @@ func TestInstMenuBackHeldNoSpuriousDeferredTap(t *testing.T) {
 	bx := br.Min.X + br.Dx()/2
 	by := br.Min.Y + br.Dy()/2
 
-	// Press on Back button and hold for multiple frames WITHOUT calling
-	// SetInputForTest between frames. SetInputForTest clears
-	// suppressClicksUntilRelease, which prevents the suppress guard from
-	// persisting across frames as it would in real runtime.
+	// One SetInputForTest for the whole hold: each call clears suppressClicksUntilRelease, which real input never does.
 	r := SetInputForTest(
 		func() (int, int) { return bx, by },
 		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
@@ -79,8 +73,7 @@ func TestInstMenuBackHeldNoSpuriousDeferredTap(t *testing.T) {
 		t.Fatalf("expected categories after back press, got %s", comp.Mode())
 	}
 
-	// Frames 2-4: Keep holding at same position. Suppress should block
-	// the deferred tap capture at line 729.
+	// Suppress must block the deferred-tap capture while the press is held.
 	for i := 0; i < 3; i++ {
 		dv.Update()
 		if !dv.IsInstMenuOpen() {
@@ -107,8 +100,7 @@ func TestInstMenuBackHeldNoSpuriousDeferredTap(t *testing.T) {
 	t.Log("back held no spurious deferred tap — PASS")
 }
 
-// TestInstMenuBackHeldMobileNoFlicker tests the same scenario on mobile layout
-// where the bottom-sheet categories VS.View covers a larger area.
+// The mobile bottom-sheet view covers a larger area.
 func TestInstMenuBackHeldMobileNoFlicker(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -154,8 +146,7 @@ func TestInstMenuBackHeldMobileNoFlicker(t *testing.T) {
 	bx := br.Min.X + br.Dx()/2
 	by := br.Min.Y + br.Dy()/2
 
-	// Press on Back button and hold for multiple frames using a single
-	// SetInputForTest call to preserve suppressClicksUntilRelease.
+	// One SetInputForTest preserves suppressClicksUntilRelease across frames.
 	r := SetInputForTest(
 		func() (int, int) { return bx, by },
 		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
@@ -189,9 +180,6 @@ func TestInstMenuBackHeldMobileNoFlicker(t *testing.T) {
 	t.Log("mobile back held no flicker — PASS")
 }
 
-// TestInstMenuCategoryHeldNoDeferredTapOnInstruments tests the reverse direction:
-// pressing a category button switches to instruments mode, and holding the mouse
-// at the same position should not capture a deferred tap that flips back.
 func TestInstMenuCategoryHeldNoDeferredTapOnInstruments(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -236,8 +224,7 @@ func TestInstMenuCategoryHeldNoDeferredTapOnInstruments(t *testing.T) {
 	catX := cr.Min.X + cr.Dx()/2
 	catY := cr.Min.Y + cr.Dy()/2
 
-	// Press on category and hold using a single SetInputForTest call
-	// to preserve suppressClicksUntilRelease across frames.
+	// One SetInputForTest preserves suppressClicksUntilRelease across frames.
 	r := SetInputForTest(
 		func() (int, int) { return catX, catY },
 		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
@@ -271,8 +258,7 @@ func TestInstMenuCategoryHeldNoDeferredTapOnInstruments(t *testing.T) {
 	t.Log("category held no deferred tap on instruments — PASS")
 }
 
-// TestInstMenuOpenClearsDeferredTapState verifies that Open() clears any
-// stale deferredTapActive state as a defense-in-depth measure.
+// Defence in depth: Open clears any stale deferred tap.
 func TestInstMenuOpenClearsDeferredTapState(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -302,9 +288,6 @@ func TestInstMenuOpenClearsDeferredTapState(t *testing.T) {
 	}
 }
 
-// TestEQChannelMenuSuppressBlocksDeferredTap verifies that DeferredTap.Begin()
-// does not capture a tap while suppressClicksUntilRelease is active. This is
-// the portal-era equivalent of the legacy handleEQChannelMenuInput guard.
 func TestEQChannelMenuSuppressBlocksDeferredTap(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -322,10 +305,7 @@ func TestEQChannelMenuSuppressBlocksDeferredTap(t *testing.T) {
 	}
 }
 
-// TestInstMenuCloseButtonAbsentOnMobile asserts the new contract: the mobile
-// instrument bottom sheet carries NO close × (it dismisses via tap-away). This
-// replaces the former "close via deferred tap" test — that mobile affordance
-// was removed so the close × is desktop-only. Opened here via a row-label click.
+// The mobile bottom sheet has no close ×: it dismisses on a tap away.
 func TestInstMenuCloseButtonAbsentOnMobile(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -355,8 +335,6 @@ func TestInstMenuCloseButtonAbsentOnMobile(t *testing.T) {
 	}
 }
 
-// TestInstMenuCloseButtonAbsentOnMobileProgrammatic is the same contract via the
-// programmatic open path + a full mobile bottom-sheet viewport.
 func TestInstMenuCloseButtonAbsentOnMobileProgrammatic(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -386,9 +364,6 @@ func TestInstMenuCloseButtonAbsentOnMobileProgrammatic(t *testing.T) {
 	}
 }
 
-// TestInstMenuAllPopupsHeldMouseStable verifies that for each popup type,
-// pressing inside for multiple frames and then releasing does not cause the
-// popup to close or change state unexpectedly.
 func TestInstMenuAllPopupsHeldMouseStable(t *testing.T) {
 	assertDefaultParityState(t)
 

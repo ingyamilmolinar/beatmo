@@ -11,9 +11,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
-// TestWarmupPushesExactlyOneNotification pins the anti-spam rule: START pushes
-// nothing into the notification ring (the toast carries it), COMPLETION pushes
-// exactly one durable line for the Logs panel.
+// The start puts nothing in the ring (the toast carries it); completion pushes exactly one durable line.
 func TestWarmupPushesExactlyOneNotification(t *testing.T) {
 	g, be := newWarmupTestGame(t)
 	g.wireWarmupNotifications()
@@ -42,8 +40,7 @@ func TestWarmupPushesExactlyOneNotification(t *testing.T) {
 	}
 }
 
-// TestWarmupTimeoutPushesAnError pins that a gate that opened on the deadline
-// tells the user, rather than silently degrading.
+// A gate opened by the deadline tells the user rather than silently degrading.
 func TestWarmupTimeoutPushesAnError(t *testing.T) {
 	g, _ := newWarmupTestGame(t)
 	g.wireWarmupNotifications()
@@ -60,12 +57,8 @@ func TestWarmupTimeoutPushesAnError(t *testing.T) {
 	}
 }
 
-// TestWarmupFullyCachedPathPublishesNothing pins Finding 2 (round 1 review):
-// a fully-cached circuit never shows the toast (onBegin is never called), so
-// it must not publish EventWarmupComplete either — an orphan "circuit ready —
-// 0 sounds" event/notification for a session the user never saw start is
-// exactly the noise the start/complete asymmetry exists to avoid. Start and
-// complete must stay paired: neither fires, or both do.
+// A fully cached circuit never shows the toast, so it publishes no completion either: start and complete stay
+// paired.
 func TestWarmupFullyCachedPathPublishesNothing(t *testing.T) {
 	g, be := newWarmupTestGame(t)
 	g.wireWarmupNotifications()
@@ -108,12 +101,8 @@ func TestWarmupFullyCachedPathPublishesNothing(t *testing.T) {
 	}
 }
 
-// TestWarmupSourceAttributionCarriesAcrossFinishPaths pins Finding 1 (round 1
-// review): the triggering action's hooks.Source is captured exactly once, in
-// Begin(), and must be identical whichever of the three finish() paths that
-// actually publish (natural completion via itemDone on the feeder goroutine,
-// deadline timeout via Tick, and Cancel) closes the session — none of them
-// may re-derive their own (wrong) source via a fixed CaptureSource skip.
+// The trigger's hooks.Source is captured once in Begin() and carried by every finish path (completion, deadline,
+// Cancel); none re-derives it.
 func TestWarmupSourceAttributionCarriesAcrossFinishPaths(t *testing.T) {
 	t.Run("natural completion", func(t *testing.T) {
 		g, be := newWarmupTestGame(t)
@@ -161,19 +150,9 @@ func TestWarmupSourceAttributionCarriesAcrossFinishPaths(t *testing.T) {
 	})
 }
 
-// warmCircuitForTest warms every voice the current circuit needs and returns
-// once the warm-up has fully ended — its "Circuit ready" line included — so a
-// test that then asserts on the NEWEST notification reads its own action's line.
-//
-// Import, undo/redo (a re-import) and a BPM change each start a warm-up. On a
-// cold voice cache it renders off-thread and posts "Circuit ready" whenever it
-// lands — often after the action's own notification, which Latest() then no
-// longer sees. With the circuit already warm, those later warm-ups take the
-// fully-cached fast path and post nothing. (Tests that skipped this passed only
-// when an earlier test in the run happened to have warmed the same voice.)
-//
-// It waits on onEnd, not Ready(): finish() clears `active` BEFORE it calls
-// onEnd, so Ready() turns true while the notification is still unposted.
+// Import, undo/redo and BPM changes start a warm-up whose "Circuit ready" can land after the action's own
+// notification; with the circuit warm they post nothing, so the newest line is the action's. Waits on onEnd, not
+// Ready(): finish() clears `active` before calling onEnd.
 func warmCircuitForTest(t *testing.T, g *Game) {
 	t.Helper()
 	w := g.warmup

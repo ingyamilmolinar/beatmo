@@ -11,17 +11,10 @@ import (
 	"testing"
 )
 
-// bareRadiusRE matches a drawRoundedRect(...) call whose radius argument (the
-// int just before the trailing fill/stroke bool) is a BARE INTEGER LITERAL.
-// Token reads (RadiusXXS/XS/SM/MD/...) and computed expressions (RadiusMD/2,
-// hr, pillRadius) do not match.
+// Tokens and computed expressions (RadiusMD/2, hr) do not match.
 var bareRadiusRE = regexp.MustCompile(`drawRoundedRect\(.*, [0-9]+, (?:true|false)\)`)
 
-// TestNoBareRadiusLiterals enforces that every corner radius drawn in
-// internal/ui comes from the DESIGN.md `rounded:` scale (a Radius* token),
-// never a hand-typed pixel literal. This is what keeps corner rounding
-// re-styleable from one place — a new literal here drifts off the scale and
-// can't be retuned centrally. Use RadiusXXS(4)/XS(6)/SM(8)/MD(12)/LG/XL.
+// Every radius comes from the DESIGN.md `rounded:` scale, so rounding stays retunable from one place.
 func TestNoBareRadiusLiterals(t *testing.T) {
 	entries, err := os.ReadDir(".")
 	if err != nil {

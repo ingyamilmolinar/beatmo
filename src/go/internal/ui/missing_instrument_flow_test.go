@@ -12,8 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
-// Full flow: import missing instrument -> menu includes id -> switch to available ->
-// missing id persists in menu -> register WAV with same id -> becomes available & playable.
+// The missing id stays in the menu after switching away, and registering a WAV under it makes it playable.
 func TestMissingInstrumentMenuAndAvailabilityFlow(t *testing.T) {
 	withDefaultAudio(t)
 	g := New(testLogger)

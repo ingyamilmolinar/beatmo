@@ -6,10 +6,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestUndoRoundTripPerAction proves that each canonical mutation changes the
-// document, that Undo restores a byte-identical snapshot of the pre-mutation
-// state, and that Redo restores a byte-identical snapshot of the post-mutation
-// state — all through the real export serializer.
 func TestUndoRoundTripPerAction(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -42,19 +38,11 @@ func TestUndoRoundTripPerAction(t *testing.T) {
 	}
 }
 
-// TestUndoNodeDeleteCascade proves that deleting a node cascades the removal of
-// its incident edge, and that Undo restores BOTH the node and the cascaded edge.
-//
-// Setup builds two regular nodes A and B and an orthogonal edge A->B via the
-// canonical UI mutation sites (tryAddNode + addEdge). The delete is exercised
-// through the real UI delete path (deleteNode), which drops the incident edge
-// from both g.edges and g.graph.Edges. After Undo we inspect g.graph directly
-// to assert node A and edge A->B are present again.
+// Through the real delete path, which drops the incident edge from both g.edges and g.graph.Edges.
 func TestUndoNodeDeleteCascade(t *testing.T) {
 	g := newTestGameForUndo(t)
 
-	// Place two nodes on the same row (orthogonal) at coordinates well clear of
-	// the default start node so the placement creates fresh nodes.
+	// Clear of the default start node, so these are fresh nodes.
 	a := g.tryAddNode(5, 5, model.NodeTypeRegular)
 	b := g.tryAddNode(6, 5, model.NodeTypeRegular)
 	if a == nil || b == nil {
@@ -97,11 +85,7 @@ func TestUndoNodeDeleteCascade(t *testing.T) {
 	}
 }
 
-// TestUndoPreservesPlayheadDuringPlayback proves that undoing a mutation while
-// transport is running keeps the playhead at the same beat (the snapshot
-// restore re-seeks to the captured beat). A ±1 subdivision tolerance is allowed
-// because the stub sequencer may advance the playhead by a tick between the
-// reads; the key invariant is that the playhead does NOT reset to beat 0.
+// The restore re-seeks to the captured beat; ±1 subdivision allows a stub tick between reads.
 func TestUndoPreservesPlayheadDuringPlayback(t *testing.T) {
 	g := newTestGameForUndo(t)
 	g.SetPlaying(true)

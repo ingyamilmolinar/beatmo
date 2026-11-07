@@ -22,8 +22,7 @@ func buildComplexGraph(g *Game) []*uiNode {
 	g.addEdge(D, E)
 	g.addEdge(E, F)
 	g.addEdge(F, A)
-	// Add some invisible intermediate nodes that the graph will expand
-	// Note: UI handles invisible intermediates; include few true invisibles too
+	// The UI expands invisible intermediates; a few true invisibles are added too.
 	inv := g.tryAddNode(1, 2, model.NodeTypeInvisible)
 	_ = inv
 	// Mixed logic

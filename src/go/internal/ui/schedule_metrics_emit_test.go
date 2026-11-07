@@ -5,13 +5,8 @@ import (
 	"testing"
 )
 
-// TestScheduleMetricsEmitDrift verifies Stage D (emission drift) records
-// signed samples for the systematic-bias mean while using |drift| for the
-// max/percentile/stddev tail metrics, and that Reset clears it.
-//
-// Note: ObserveEmitDrift mirrors ObserveBridge/ObserveSeqFireLate, which do
-// NOT gate on schedWarmupSec/startAt (only Stage C's Observe does), so no
-// warmup advancement is needed here.
+// Signed samples feed the bias mean, |drift| the tail metrics. Unlike Stage C's Observe, this does not gate on
+// the warm-up, so none is needed.
 func TestScheduleMetricsEmitDrift(t *testing.T) {
 	m := &scheduleMetrics{}
 	for _, d := range []float64{0.001, -0.002, 0.003, -0.001} {

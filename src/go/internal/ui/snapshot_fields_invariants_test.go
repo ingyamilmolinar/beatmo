@@ -11,20 +11,13 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// These tests lock the building blocks that fullLayoutSnapshot's new keys
-// depend on (menu/tabs/bottomNav + richer state). The snapshot function itself
-// is //go:build js && !test (it needs syscall/js + a browser), so its end-to-end
-// shape is asserted by the browser smoke test; here we pin the pure Go pieces it
-// reads so a future refactor that breaks them fails fast in the fast path.
+// fullLayoutSnapshot needs syscall/js, so the browser smoke test checks its shape; these pin the pure Go pieces
+// it reads.
 
-// snapshotNavSlugs mirrors the navSlugs list the snapshot emits under
-// obj.bottomNav, in segmented-control order.
+// In segmented-control order.
 var snapshotNavSlugs = []string{"pads", "eq", "wave", "spectrum", "levels", "chain", "synth", "sampler"}
 
-// TestViewModeSlug_MatchesBottomNavOrder asserts viewModeSlug is total over the
-// viewMode enum and produces exactly the bottomNav slug list, in enum order.
-// The mobile bottom-nav segmented control (Pads/EQ/Wave/Spec/Lvl/Chn/Syn/Smpl)
-// maps segment i -> viewMode i, so the slug order must line up 1:1.
+// Segment i maps to viewMode i, so the slug order must line up 1:1.
 func TestViewModeSlug_MatchesBottomNavOrder(t *testing.T) {
 	modes := []viewMode{
 		viewModeRows, viewModeEQ, viewModeWave, viewModeSpectrum,
@@ -40,10 +33,7 @@ func TestViewModeSlug_MatchesBottomNavOrder(t *testing.T) {
 	}
 }
 
-// TestPanelTabSlugs_CoverTabMap asserts AllPanelTabs() yields unique non-empty
-// slugs, and that every audio-panel tab slug (except "pads", which is the Rows
-// view) appears in the bottomNav slug list — i.e. the desktop `tabs` map keys
-// and the mobile `bottomNav` keys describe the same surface set.
+// The desktop `tabs` keys and the mobile `bottomNav` keys describe the same surfaces ("pads" is the Rows view).
 func TestPanelTabSlugs_CoverTabMap(t *testing.T) {
 	seen := map[string]bool{}
 	for _, tab := range AllPanelTabs() {
@@ -71,9 +61,7 @@ func TestPanelTabSlugs_CoverTabMap(t *testing.T) {
 	}
 }
 
-// TestRowMenuKebab_PresentOnDesktop pins that the per-row kebab the snapshot
-// exports as rows[i].menu has a real (non-empty) rect on desktop — this is the
-// only inline way an agent reaches color/edit/origin/delete now.
+// The kebab is the only inline way to reach colour / edit / origin / delete.
 func TestRowMenuKebab_PresentOnDesktop(t *testing.T) {
 	assertDefaultParityState(t)
 	const W, H = 1280, 800
@@ -101,12 +89,7 @@ func TestRowMenuKebab_PresentOnDesktop(t *testing.T) {
 	}
 }
 
-// TestMobileInlineMuteSoloReachable pins that on MOBILE (390x844 portrait) the
-// inline M/S buttons have non-empty rects for the top rows and that rows 1–2 are
-// within the visible window. The mobile sanity test's Phase 4 drives mute/solo
-// via click_ui (inline) — NOT the context menu, which contains only
-// Instrument/Rename/Origin/Delete (see contextMenuItems). This guards against
-// reverting Phase 4 to the (impossible) menu_click "Mute"/"Solo" path.
+// Mobile keeps M/S inline: the context menu holds only Instrument / Rename / Origin / Delete.
 func TestMobileInlineMuteSoloReachable(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -133,13 +116,10 @@ func TestMobileInlineMuteSoloReachable(t *testing.T) {
 	if !Profile().IsMobile() {
 		t.Fatalf("expected mobile profile at %dx%d", W, H)
 	}
-	// Portrait 390x844 must show many row slots (no fragile scrolling to reach
-	// the top rows the sanity test touches). 750x340 landscape showed only 1.
+	// Enough row slots that the top rows need no fragile scrolling.
 	if vis := dv.visibleRows(); vis < 4 {
 		t.Fatalf("only %d row slots visible at %dx%d — too cramped for the mobile sanity test", vis, W, H)
 	}
-	// Row 0's inline mute/solo must have non-empty rects (mobile keeps M/S inline,
-	// NOT in the context menu) so click_ui button="mute"/"solo" works.
 	if len(dv.rowMuteBtns()) == 0 || dv.rowMuteBtns()[0] == nil || dv.rowMuteBtns()[0].Rect().Empty() {
 		t.Errorf("mobile row 0 inline mute rect empty — click_ui button=\"mute\" would fail")
 	}

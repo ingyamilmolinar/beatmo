@@ -9,8 +9,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestControlButtonsClickable ensures that top-panel buttons respond to clicks
-// when unobstructed.
 func TestControlButtonsClickable(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -19,9 +17,7 @@ func TestControlButtonsClickable(t *testing.T) {
 	g.drum.recalcButtons()
 	g.drum.calcLayout() // positions trackBtn in the timeline area
 
-	// File ops (upload/import/export) moved behind the overflow "..." menu on
-	// desktop; the overflow button is the inline control that took upload's old
-	// toolbar slot, so it's the representative right-edge file-ops control here.
+	// The overflow button stands for the file-ops control at the right edge on desktop.
 	buttons := []*Button{g.drum.playBtn(), g.drum.stopBtn(), g.drum.bpmDecBtn(), g.drum.bpmIncBtn(), g.drum.lenDecBtn, g.drum.lenIncBtn, g.drum.trackBtn()}
 	for i, btn := range buttons {
 		called := false
@@ -37,8 +33,7 @@ func TestControlButtonsClickable(t *testing.T) {
 	}
 }
 
-// TestButtonsDoNotOverlap verifies that control-panel buttons have disjoint
-// rectangles so clicks are unambiguous.
+// Disjoint, so clicks are unambiguous.
 func TestButtonsDoNotOverlap(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -47,9 +42,7 @@ func TestButtonsDoNotOverlap(t *testing.T) {
 	g.drum.recalcButtons()
 	g.drum.calcLayout()
 
-	// File ops (upload/import/export) moved behind the overflow "..." menu on
-	// desktop; the overflow button is the inline control that took upload's old
-	// toolbar slot, so it's the representative right-edge file-ops control here.
+	// The overflow button stands for the file-ops control at the right edge on desktop.
 	buttons := []*Button{g.drum.playBtn(), g.drum.stopBtn(), g.drum.bpmDecBtn(), g.drum.bpmIncBtn(), g.drum.lenDecBtn, g.drum.lenIncBtn, g.drum.trackBtn()}
 	for i := 0; i < len(buttons); i++ {
 		ri := buttons[i].Rect()
@@ -61,8 +54,7 @@ func TestButtonsDoNotOverlap(t *testing.T) {
 	}
 }
 
-// TestButtonHoldRepeat verifies that holding a repeat-enabled button triggers
-// repeats after a 1s delay and then every ~100ms with acceleration.
+// Repeats after 1 s, then every ~100 ms, accelerating.
 func TestButtonHoldRepeat(t *testing.T) {
 	assertDefaultParityState(t)
 	b := NewButton("+", ButtonStyle{}, nil)

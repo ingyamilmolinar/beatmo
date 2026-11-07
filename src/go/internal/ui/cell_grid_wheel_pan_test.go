@@ -8,9 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// wheelPanHarness wires SetInputForTest so a test can place the cursor and
-// drive wheel deltas (the way a trackpad two-finger scroll arrives) through the
-// real Game.Update loop. Returns pointers the test mutates between frames.
+// Cursor placement and wheel deltas, as a trackpad scroll arrives, through the real Update loop.
 type wheelPanHarness struct {
 	mx, my *int
 	wx, wy *float64
@@ -32,8 +30,7 @@ func newWheelPanHarness(t *testing.T) *wheelPanHarness {
 	return &wheelPanHarness{mx: mx, my: my, wx: wx, wy: wy}
 }
 
-// setupWheelGame builds a scrollable game with the cursor parked over the drum
-// cell grid (the steps region).
+// The cursor parked over the cell grid.
 func setupWheelGame(t *testing.T) (*Game, *wheelPanHarness) {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -53,10 +50,7 @@ func setupWheelGame(t *testing.T) (*Game, *wheelPanHarness) {
 	return g, h
 }
 
-// scrollWheelAt parks the cursor at (px,py), then drives n vertical wheel
-// notches there, returning the resulting row-offset delta. It first clears any
-// pending step cooldown and resets the offset so two regions are compared from
-// the same baseline.
+// From a cleared cooldown and reset offset, so two regions compare from one baseline.
 func scrollWheelAt(g *Game, h *wheelPanHarness, px, py, notches int) int {
 	g.drum.rowRackZone.SetRowOffset(0)
 	*h.wx, *h.wy = 0, 0
@@ -87,8 +81,7 @@ func driveWheel(g *Game, h *wheelPanHarness, wx, wy float64, frames int) {
 	g.Update()
 }
 
-// TestCellGridHorizontalWheelMovesTimeline: a mostly-horizontal two-finger
-// (trackpad) scroll over the cell grid moves the timeline view, NOT the rows.
+// Moves the timeline, not the rows.
 func TestCellGridHorizontalWheelMovesTimeline(t *testing.T) {
 	g, h := setupWheelGame(t)
 	offBefore := g.drum.Offset
@@ -104,8 +97,7 @@ func TestCellGridHorizontalWheelMovesTimeline(t *testing.T) {
 	}
 }
 
-// TestCellGridVerticalWheelScrollsRows: a mostly-vertical scroll over the cell
-// grid scrolls rows, NOT the timeline.
+// Scrolls the rows, not the timeline.
 func TestCellGridVerticalWheelScrollsRows(t *testing.T) {
 	g, h := setupWheelGame(t)
 	offBefore := g.drum.Offset
@@ -121,8 +113,7 @@ func TestCellGridVerticalWheelScrollsRows(t *testing.T) {
 	}
 }
 
-// TestCellGridDiagonalHorizontalDominantOnlyTimeline: a diagonal scroll whose
-// horizontal component dominates moves ONLY the timeline — never both.
+// Only the timeline, never both.
 func TestCellGridDiagonalHorizontalDominantOnlyTimeline(t *testing.T) {
 	g, h := setupWheelGame(t)
 	offBefore := g.drum.Offset
@@ -138,8 +129,7 @@ func TestCellGridDiagonalHorizontalDominantOnlyTimeline(t *testing.T) {
 	}
 }
 
-// TestCellGridDiagonalVerticalDominantOnlyRows: a diagonal scroll whose vertical
-// component dominates scrolls ONLY the rows — never both.
+// Only the rows, never both.
 func TestCellGridDiagonalVerticalDominantOnlyRows(t *testing.T) {
 	g, h := setupWheelGame(t)
 	offBefore := g.drum.Offset
@@ -155,17 +145,10 @@ func TestCellGridDiagonalVerticalDominantOnlyRows(t *testing.T) {
 	}
 }
 
-// TestVerticalWheelOverCellGridMatchesLabelScroll pins the no-drift contract:
-// scrolling up/down over the drum cell grid must move the rows by the EXACT
-// same amount as scrolling up/down directly over the instrument labels — the
-// two reuse one scroll behavior (one row per notch, cooldown-throttled). Before
-// the fix the cell-grid path used HandleWheel (steps rows at once, no cooldown)
-// while the label path used WheelStep (one row, throttled), so identical input
-// produced different row movement.
+// Over the cells the rows move exactly as over the labels: one behaviour, one row per notch, cooldown-throttled.
 func TestVerticalWheelOverCellGridMatchesLabelScroll(t *testing.T) {
 	g, h := setupWheelGame(t)
-	// Grow the rack well past the visible window so the per-notch vs
-	// scroll-by-steps difference is unambiguous (not masked by clamping).
+	// Far past the window, so clamping cannot mask a difference.
 	for i := 0; len(g.drum.Rows) < g.drum.visibleRows()+12 && i < 40; i++ {
 		g.drum.AddRow()
 		g.Update()

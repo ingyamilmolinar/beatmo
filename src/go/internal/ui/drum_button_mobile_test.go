@@ -6,10 +6,7 @@ import (
 	"testing"
 )
 
-// TestSplitterDoesNotStealDrumButtonTouches verifies that a touch just
-// below the splitter divider (where drum transport buttons live) is NOT
-// captured by the splitter on small screens. Previously, the splitter's
-// TouchGrabZone (22px) extended into the drum area and stole button taps.
+// The splitter's grab zone must not reach into the drum area and steal button taps below it.
 func TestSplitterDoesNotStealDrumButtonTouches(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -29,8 +26,6 @@ func TestSplitterDoesNotStealDrumButtonTouches(t *testing.T) {
 	}
 }
 
-// TestSplitterInitiationOnDivider verifies that touching directly on the
-// divider still starts a drag (the fix should not break normal splitter use).
 func TestSplitterInitiationOnDivider(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -56,8 +51,7 @@ func TestSplitterInitiationOnDivider(t *testing.T) {
 	}
 }
 
-// TestSplitterInputBoundsReduced verifies that the below-divider extent
-// in InputBounds is small (<=4px), not the full TouchGrabZone (22px).
+// ≤ 4 px below the divider, not the full 22 px grab zone.
 func TestSplitterInputBoundsReduced(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -69,10 +63,7 @@ func TestSplitterInputBoundsReduced(t *testing.T) {
 
 	bounds := s.InputBounds()
 
-	// Below the divider the strip extends only far enough to cover the visible
-	// handle pill — NOT the full TouchGrabZone (which would re-introduce the
-	// drum-button-steal bug). No-steal off the pill is enforced by HandleInput
-	// (see TestSplitterCapturesPillButNotOffPillBelowDivider).
+	// Only far enough to cover the visible pill; off the pill HandleInput declines.
 	pill := s.HandleRect().Inset(-SpaceSM)
 	belowExtent := bounds.Max.Y - s.Y
 	pillBelow := pill.Max.Y - s.Y
@@ -90,8 +81,6 @@ func TestSplitterInputBoundsReduced(t *testing.T) {
 	}
 }
 
-// TestSplitterInputBoundsReducedSideBySide verifies the side-by-side
-// (vertical divider) mode also has a reduced right-of-divider extent.
 func TestSplitterInputBoundsReducedSideBySide(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -105,8 +94,7 @@ func TestSplitterInputBoundsReducedSideBySide(t *testing.T) {
 
 	bounds := s.InputBounds()
 
-	// Right of the divider the strip extends only far enough to cover the
-	// visible handle pill — NOT the full TouchGrabZone.
+	// Only far enough to cover the pill.
 	pill := s.HandleRect().Inset(-SpaceSM)
 	rightExtent := bounds.Max.X - s.X
 	pillRight := pill.Max.X - s.X
@@ -123,8 +111,7 @@ func TestSplitterInputBoundsReducedSideBySide(t *testing.T) {
 	}
 }
 
-// TestDrumPlayButtonMobileTap verifies that a simulated tap on the play
-// button area in mobile mode reaches the DrumView and triggers PlayPressed().
+// Reaches the DrumView and triggers PlayPressed().
 func TestDrumPlayButtonMobileTap(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -143,7 +130,6 @@ func TestDrumPlayButtonMobileTap(t *testing.T) {
 	advanceFrames(g, 1)
 
 	if !g.drum.PlayPressed() {
-		// PlayPressed is a one-shot, might have been consumed by Update.
-		// The fact that pressPlay didn't panic is sufficient.
+		// A one-shot Update may already have consumed.
 	}
 }

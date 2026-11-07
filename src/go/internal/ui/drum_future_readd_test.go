@@ -235,8 +235,7 @@ func TestDrumView_ReaddDuringPlaybackLeavesFutureStale(t *testing.T) {
 	g.Layout(960, 600)
 	g.drum.SetFollow(false)
 
-	// Build a square loop so deleting one corner fully breaks the circuit
-	// without the auto-reconnect logic restoring a straight edge.
+	// A square, so deleting a corner breaks the circuit and no straight edge reconnects it.
 	coords := []struct{ i, j int }{
 		{0, 0}, {4, 0}, {4, 4}, {0, 4},
 	}
@@ -264,8 +263,7 @@ func TestDrumView_ReaddDuringPlaybackLeavesFutureStale(t *testing.T) {
 	pressPlay(t, g.drum)
 	advancePlayback(g, 260*time.Millisecond)
 
-	// Operate on the corner at coords[1]; scan ahead so the edit occurs well
-	// into the future window during playback.
+	// Well into the future window during playback.
 	targetNode := nodes[1]
 	targetNodeID := targetNode.ID
 	if len(g.nextBeatIdxs) == 0 {
@@ -315,9 +313,7 @@ func TestDrumView_ReaddDuringPlaybackLeavesFutureStale(t *testing.T) {
 		t.Fatalf("future step remained active after delete rel=%d", targetRel)
 	}
 
-	// Simulate the stale-freeze state we observe in the regression: the guard,
-	// max, and preserved history extend into the future beat even before we
-	// re-add the node.
+	// The stale-freeze state: the guard, max and preserved history already extend into the future beat.
 	if len(g.frozenUpToByRow) != len(g.drum.Rows) {
 		buf := make([]int, len(g.drum.Rows))
 		for i := range buf {
@@ -330,8 +326,7 @@ func TestDrumView_ReaddDuringPlaybackLeavesFutureStale(t *testing.T) {
 	info := g.beatInfoAtRow(0, targetAbs)
 	g.recordTimelineCommitKind(0, targetAbs, false, info.NodeType, timeline.CommitKindSeeded)
 
-	// Re-add the node at the same coordinates and stitch the edges, again in
-	// the UI queue to mirror runtime behaviour.
+	// On the UI queue, as at runtime.
 	g.enqueueUI(func() {
 		if g.nodeAt(targetNode.I, targetNode.J) != nil {
 			return

@@ -31,9 +31,7 @@ func openTestMatrix(t *testing.T, offset, current float64) (*NoteMatrixComponent
 	return c, &picked
 }
 
-// The component publishes cells for the sidebar to wire as Buttons; it no
-// longer hit-tests them itself. These assert the published geometry, and the
-// end-to-end click path lives in note_matrix_e2e_test.go.
+// The component publishes cells for the sidebar to wire as Buttons; it no longer hit-tests them.
 func TestNoteMatrixComponent_PublishesVisibleSelectableCells(t *testing.T) {
 	c, _ := openTestMatrix(t, 0, 0)
 	cells := c.VisibleCells()
@@ -68,8 +66,7 @@ func TestNoteMatrixComponent_PublishesVisibleSelectableCells(t *testing.T) {
 	}
 }
 
-// Every published cell must carry the pitch its label names, so the sidebar
-// button wired from it sets what the user read.
+// The button wired from a cell sets what the user read.
 func TestNoteMatrixComponent_CellPitchMatchesItsLabel(t *testing.T) {
 	c, _ := openTestMatrix(t, 3, 0)
 	for _, cell := range c.VisibleCells() {
@@ -101,8 +98,7 @@ func TestNoteMatrixComponent_PressOutsideCloses(t *testing.T) {
 	}
 }
 
-// Out-of-range cells are published as non-selectable, so the sidebar never
-// wires a Button for them and a mis-tap costs nothing.
+// No Button is wired for them, so a mis-tap costs nothing.
 func TestNoteMatrixComponent_DimmedCellsAreNotSelectable(t *testing.T) {
 	c, _ := openTestMatrix(t, 0, 0)
 	for _, cell := range c.VisibleCells() {
@@ -115,8 +111,7 @@ func TestNoteMatrixComponent_DimmedCellsAreNotSelectable(t *testing.T) {
 	}
 }
 
-// The selected note must be scrolled into view on open, so the picker never
-// hides the note it is about to change.
+// The picker never hides the note it is about to change.
 func TestNoteMatrixComponent_ScrollsSelectionIntoView(t *testing.T) {
 	for _, pitch := range []float64{-24, -12, 0, 11, 24} {
 		c, _ := openTestMatrix(t, 0, pitch)
@@ -131,8 +126,7 @@ func TestNoteMatrixComponent_ScrollsSelectionIntoView(t *testing.T) {
 	}
 }
 
-// Every visible cell must clear the touch minimum on mobile — the reason the
-// grid is 12 rows × octave columns and scrolls rather than squeezing.
+// Why the grid is 12 rows × octave columns and scrolls rather than squeezing.
 func TestNoteMatrixComponent_CellsMeetTouchMinimumOnMobile(t *testing.T) {
 	restore := SetDensityForTest(DensitySpacious)
 	defer restore()

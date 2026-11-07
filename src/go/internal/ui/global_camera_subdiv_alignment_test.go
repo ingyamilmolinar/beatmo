@@ -12,13 +12,9 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestGlobalCameraAlignment_Subdivisions verifies that after changing grid
-// subdivisions, nodes, edges, and the grid remain pixel-aligned from the
-// user's perspective across a few zoom/pan states.
 func TestGlobalCameraAlignment_Subdivisions(t *testing.T) {
 	assertDefaultParityState(t)
-	// Use embedded test fixture demo which is aligned on multiples of 16 so we can
-	// safely reduce subdivisions.
+	// The fixture's nodes sit on multiples of 16, so subdivisions can be reduced safely.
 	out := io.Discard
 	if testing.Verbose() {
 		out = os.Stdout

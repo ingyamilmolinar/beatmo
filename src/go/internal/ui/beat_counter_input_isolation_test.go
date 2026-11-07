@@ -7,21 +7,8 @@ import (
 	"testing"
 )
 
-// TestBeatCounterTapDoesNotTriggerNotification pins the user-reported bug: a
-// tap on the beat-counter pill opened the notification history popup. Root
-// cause — the beat counter is a visible opaque surface that registered NO
-// hit area, so its band-mates' touch-expanded hit areas (the notification
-// area on its right and the track chip on its left, both Touch:true with
-// ClipRect == the whole timeline zone) grew 44 px inward over the pill. A tap
-// on the counter resolved to the notif (or track) handler instead of doing
-// nothing.
-//
-// Contract (opaque-to-z): a tap whose exact point lands on the beat counter
-// must resolve to the beat counter's own catch-all, NOT a neighbour's
-// touch-expanded handler. We assert the WINNING hit (hits[0], the first the
-// dispatcher tries) at the centre of the counter pill is not a neighbour's
-// interactive handler — the neighbour areas may still appear lower in the
-// list via touch expansion, but they must never win.
+// A tap on the counter resolves to its own catch-all, never to a neighbour's touch-expanded handler (the
+// notification area or track chip); neighbours may appear lower in the list but never win.
 func TestBeatCounterTapDoesNotTriggerNotification(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -70,9 +57,6 @@ func TestBeatCounterTapDoesNotTriggerNotification(t *testing.T) {
 	}
 }
 
-// TestBeatCounterTapOpensNavigation asserts tapping the beat-counter chip opens
-// the navigation menu (dv.OpenNavigation), which is now its own first-class
-// portal component (navMenuComp).
 func TestBeatCounterTapOpensNavigation(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -95,10 +79,7 @@ func TestBeatCounterTapOpensNavigation(t *testing.T) {
 	}
 }
 
-// TestMobileBeatCounterShowsTime pins the second request: the mobile beat
-// counter must show the elapsed time, not just the beat position. Desktop
-// already renders "Beat N · M:SS"; mobile previously dropped the time entirely
-// ("Beat N"). The compact mobile form keeps both ("N · M:SS").
+// Both beat and time: "N · M:SS".
 func TestMobileBeatCounterShowsTime(t *testing.T) {
 	assertDefaultParityState(t)
 	restore := SetForceSmallScreen(t, true)

@@ -10,12 +10,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestRackMaskBelowRowRack pins the load-bearing invariant for the regression
-// where the rack-column surface fill was registered above ZRowRack and so
-// painted opaquely on top of every row label/button on desktop. The rack
-// surface MUST render before the row rack zone or its opaque fill erases the
-// row controls. This is a Z-order constant check — fast, deterministic, and
-// independent of layer registration order.
+// The rack surface draws before the row rack, or its opaque fill erases the row controls.
 func TestRackMaskBelowRowRack(t *testing.T) {
 	if ZRackMask >= ZRowRack {
 		t.Fatalf("ZRackMask (%d) must be below ZRowRack (%d): the rack-column surface fill is opaque (alpha=255) and would erase per-row labels/buttons if painted above the row rack zone (regression that hid every instrument label on desktop screenshots).",
@@ -23,12 +18,7 @@ func TestRackMaskBelowRowRack(t *testing.T) {
 	}
 }
 
-// TestDesktopRowRack_NoOpaqueOverpaintOnRackColumn pins the user-observable
-// outcome at a higher level than the Z-constant check: with default desktop
-// startup at 1280x720, the live merged-layer order produced by the
-// DrumViewTree must place the rack-mask layer BEFORE the row-rack zone. This
-// catches mistakes where a layer is registered with a stale Z (e.g., copied
-// from an older constant) even when ZRackMask itself is correct.
+// The live layer order, catching a layer registered with a stale Z even when the constant is right.
 func TestDesktopRowRack_NoOpaqueOverpaintOnRackColumn(t *testing.T) {
 	assertDefaultParityState(t)
 	UpdateProfile()
@@ -73,10 +63,7 @@ func TestDesktopRowRack_NoOpaqueOverpaintOnRackColumn(t *testing.T) {
 			rackMaskIdx, rowRackIdx, ids)
 	}
 
-	// Defense-in-depth: verify the rack-mask layer's actual Draw produces an
-	// opaque colRackSurface fill (its raison d'être), and that this fill
-	// covers the rack column. Catches a future "no-op the layer" regression
-	// that would silently leave the rack column visually undifferentiated.
+	// The mask really paints an opaque rack fill over the column, so no-oping the layer fails.
 	wantSurface := color.RGBAModel.Convert(colRackSurface).(color.RGBA)
 	dst := ebiten.NewImage(1280, 720)
 	rects := collectFilledRects(t, func() {
@@ -94,8 +81,7 @@ func TestDesktopRowRack_NoOpaqueOverpaintOnRackColumn(t *testing.T) {
 		if r.Color.A != 0xFF {
 			continue
 		}
-		// Mask covers the rack column horizontally and the rows region
-		// vertically (header is excluded by the layer's Y clamp).
+		// The layer's Y clamp excludes the header.
 		if !rectContains(r.Rect, image.Rect(rackRect.Min.X, rackRect.Min.Y, rackRect.Max.X, rackRect.Min.Y+1)) {
 			continue
 		}

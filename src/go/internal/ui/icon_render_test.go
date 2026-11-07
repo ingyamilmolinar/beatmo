@@ -61,8 +61,7 @@ func TestPencilIconRenders(t *testing.T) {
 		t.Fatalf("no row edit buttons")
 	}
 	b := dv.rowEditBtns()[0]
-	// Edit button is hidden on desktop (empty rect); give it a test rect
-	// so we can verify the pencil icon draws correctly.
+	// The Edit button is hidden on desktop (empty rect), so it gets a rect to draw into.
 	testRect := image.Rect(0, 0, 24, 24)
 	img := ebiten.NewImage(testRect.Dx(), testRect.Dy())
 	old := b.r
@@ -90,8 +89,7 @@ func TestSaveIconRenders(t *testing.T) {
 		t.Fatalf("no row save buttons")
 	}
 	b := dv.rowSaveBtns()[0]
-	// Save button is hidden on desktop (empty rect); give it a test rect
-	// so we can verify the save icon draws correctly.
+	// The Save button is hidden on desktop (empty rect), so it gets a rect to draw into.
 	testRect := image.Rect(0, 0, 24, 24)
 	img := ebiten.NewImage(testRect.Dx(), testRect.Dy())
 	old := b.r

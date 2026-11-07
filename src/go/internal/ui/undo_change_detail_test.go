@@ -14,10 +14,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
-// TestDescribeUndoChange covers the snapshot-diff that turns a generic undo step
-// into a concrete "param: from → to" detail. Each case is a before/after export
-// JSON pair differing in exactly one scalar; describeUndoChange must report the
-// changed parameter and its old → new values (omitempty defaults handled).
+// Each pair differs in exactly one scalar, reported as "param: from → to" (omitempty defaults included).
 func TestDescribeUndoChange(t *testing.T) {
 	cases := []struct {
 		name             string
@@ -60,11 +57,7 @@ func TestDescribeUndoChange(t *testing.T) {
 	}
 }
 
-// TestDescribeUndoChangeAllParams asserts EVERY user-mutable parameter class
-// resolves to a concrete from → to detail (not the generic action label). Each
-// case differs in exactly one parameter; the label is "@<i18n key>" (localized)
-// or a literal, and the values are formatted in the param's natural unit by the
-// SAME formatters the UI renders with (the unified paramFacet registry).
+// Every user-mutable parameter class gets a concrete detail, formatted by the SAME paramFacet formatters the UI uses.
 func TestDescribeUndoChangeAllParams(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	i18n.SetLocale(i18n.LocaleEN)
@@ -134,16 +127,13 @@ func TestDescribeUndoChangeAllParams(t *testing.T) {
 	}
 }
 
-// TestUndoNotificationSamplerEdit reproduces the reported bug: changing a Sampler
-// knob and undoing showed the generic "Undo: edit sample" instead of the concrete
-// value change. Driven through the real performUndo path with a real descriptor.
+// A Sampler knob undo names the value change, not "edit sample". Through the real performUndo.
 func TestUndoNotificationSamplerEdit(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	i18n.SetLocale(i18n.LocaleEN)
 	g := newTestGameForUndo(t)
 	instID := g.drum.Rows[0].Instrument
-	// Global audio sample-edit state is process-wide; clear any leak from a prior
-	// test and re-baseline so the diff sees a clean "no edit → +3 dB" change.
+	// Sample-edit state is process-wide; cleared and re-baselined so the diff sees "no edit → +3 dB".
 	audio.ClearSampleEdit(instID)
 	g.undoManager.OnExternalLoad()
 	t.Cleanup(func() { audio.ClearSampleEdit(instID) })
@@ -158,9 +148,7 @@ func TestUndoNotificationSamplerEdit(t *testing.T) {
 	}
 }
 
-// TestDescribeUndoChangeStructuralReturnsFalse: an add/delete (node count change)
-// has no single scalar diff, so describeUndoChange returns ok=false and the undo
-// notification falls back to the generic action label.
+// An add or delete has no single scalar diff, so the notification uses the generic action label.
 func TestDescribeUndoChangeStructuralReturnsFalse(t *testing.T) {
 	before := `{"schema_version":"0.0.1","nodes":[{"id":1}]}`
 	after := `{"schema_version":"0.0.1","nodes":[{"id":1},{"id":2}]}`
@@ -169,9 +157,7 @@ func TestDescribeUndoChangeStructuralReturnsFalse(t *testing.T) {
 	}
 }
 
-// TestUndoNotificationShowsValueChange is the user-facing requirement: undoing a
-// parameter edit shows the concrete "param: from → to" instead of a generic
-// "edit node". Driven through the real performUndo path.
+// Through the real performUndo path.
 func TestUndoNotificationShowsValueChange(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	g := newTestGameForUndo(t)
@@ -193,16 +179,13 @@ func TestUndoNotificationShowsValueChange(t *testing.T) {
 		t.Fatalf("undo notification = %q, want %q", got, "Undo: Volume 100% → 90%")
 	}
 
-	// The detail notification is stored as key+args (not frozen text), so it
-	// re-renders the parameter label AND the prefix in the active locale.
+	// Stored as key+args, so label and prefix re-render in the active locale.
 	i18n.SetLocale(i18n.LocaleES)
 	if got := g.drum.notifStore.Latest().display(); got != "Deshacer: Volumen 100% → 90%" {
 		t.Fatalf("ES undo notification = %q, want %q", got, "Deshacer: Volumen 100% → 90%")
 	}
 }
 
-// TestDescribeUndoChangeNamesTheDocumentKnob: an edit to an instrument document
-// is described by the knob it moved, through the same facet as its readout.
 func TestDescribeUndoChangeNamesTheDocumentKnob(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	i18n.SetLocale(i18n.LocaleEN)

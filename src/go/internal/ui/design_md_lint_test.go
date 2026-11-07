@@ -10,26 +10,9 @@ import (
 	"testing"
 )
 
-// TestDesignMDLintSnapshot pins the set of warnings emitted by
-// `npx @google/design.md@0.1.1 lint DESIGN.md` against a checked-in
-// snapshot at testdata/design_md_lint.expected.json.
-//
-// The lint produces real positive findings for tokens whose runtime
-// rendering is acceptable but whose Stitch model can't represent the
-// rendering (icon-only buttons, outline-only synthetic components, the
-// destructive-text-on-overlay context menu pattern). Each such warning
-// is intentional and documented in DESIGN.md prose + the design-token
-// memory; a snapshot keeps that set bounded so new warnings cannot creep
-// in unnoticed and removed warnings cannot be silently re-introduced.
-//
-// The test:
-//   - Skips when `npx` or network is unavailable (offline CI / sandbox).
-//     This is intentional — the snapshot is normative, but verifying it
-//     requires a network/tool dependency we don't want to make blocking.
-//   - Compares only (path, severity) tuples, not message text, because
-//     contrast ratios may shift by ±0.01 due to floating point and the
-//     text would otherwise be brittle.
-//   - Always fails on errors; warnings must match the snapshot exactly.
+// Pins `npx @google/design.md@0.1.1 lint` to the snapshot: its warnings are intentional (renderings the Stitch model
+// cannot express), so none may appear or vanish unnoticed. Compares (path, severity) only; errors always fail;
+// skips without npx or network.
 func TestDesignMDLintSnapshot(t *testing.T) {
 	if _, err := exec.LookPath("npx"); err != nil {
 		t.Skip("npx not available; skipping DESIGN.md lint snapshot check")
@@ -40,10 +23,7 @@ func TestDesignMDLintSnapshot(t *testing.T) {
 	cmd.Dir = repoRoot
 	out, err := cmd.Output()
 	if err != nil {
-		// npx failed to fetch, network blocked, etc. Treat as skip rather
-		// than fail so offline runs stay green. The snapshot remains
-		// normative — anyone running this locally with network gets the
-		// real check.
+		// Offline stays green; the snapshot is still normative.
 		t.Skipf("npx lint unavailable: %v", err)
 	}
 

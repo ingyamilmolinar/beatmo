@@ -17,32 +17,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/theme"
 )
 
-// theme_drift_test.go — two guards that everything the UI renders is wired
-// through the runtime theme, run over EVERY scene in the catalog:
-//
-//  1. TestRuntimeThemeSwitchMatchesBootEveryScene — switching the theme at
-//     runtime must produce the SAME frame as booting with it. Any difference
-//     is a color cached or captured somewhere a theme change does not reach.
-//     It runs on the REAL cache path (no RENDER_SAFE bypass) with a "loud"
-//     theme that moves every category, because the drifts it exists for live
-//     in caches: the transport toolbar sprite kept the old key colors until a
-//     hover changed its hash, and the grid pad-shift cache, the timeline
-//     ribbon, the drum background, every TraceSprite and the Chain trace
-//     cache all did the same.
-//
-//  2. TestNoColorRendersOutsideTheTheme — every color drawn must follow the
-//     theme or the instrument palette. Each scene is rendered twice: default
-//     theme + real instrument palette, then a loud theme + a SHIFTED
-//     instrument palette. A color that survives both changes comes from
-//     neither — it is hard-coded (a literal, a raw palette ramp entry, a value
-//     captured at init) — unless it is a declared fixed token
-//     (themeFixedTokens: the semantic reds/greens) or achromatic black/white.
-//
-// Both turn on ebiten.FaithfulCompositing (withFaithfulCompositing): SubImage
-// views share their parent's pixels and ColorScale tints are applied. Without
-// it every zone drawn through a clipped sub-image is discarded and both guards
-// are blind — the reason the original 15-scene RENDER_SAFE parity test passed
-// while the transport visibly kept its old colors.
+// Over EVERY scene, with faithful compositing (else clipped sub-image draws are lost): a runtime theme switch gives
+// the boot frame on the real cache path, and a colour surviving a loud theme AND a shifted instrument palette is
+// hard-coded unless it is a fixed token or black/white.
 
 // loudThemeCategories moves every theme category far from the default.
 var loudThemeCategories = map[string]string{
@@ -51,8 +28,7 @@ var loudThemeCategories = map[string]string{
 	"nodes": "cyan-500", "dividers": "mint-100", "viz": "hot-pink-300",
 }
 
-// themeDriftExempt lists scenes whose two renders legitimately differ for a
-// reason that is not a color, with that reason.
+// Each with its reason.
 var themeDriftExempt = map[string]string{
 	"theme_editor_picker": "the swatch picker's keyboard cursor is placed on the current swatch when it OPENS — navigation state seeded before the runtime switch, not a color",
 }
@@ -63,17 +39,11 @@ func applyLoudTheme(g *Game) {
 	}
 }
 
-// renderThemeSwitchFrame renders scene under the loud theme, either applied
-// before the first frame (boot) or after every cache has been warmed under
-// the default theme (runtime). sceneSetTheme reports a scene that changes the
-// theme itself (theme_pick_*): its two paths end on different themes by
-// construction, and TestRuntimeThemePickMatchesStartup covers presets.
+// A scene that sets the theme itself ends its two paths on different themes by construction; presets have their own
+// parity test.
 func renderThemeSwitchFrame(t *testing.T, scene string, boot, mobile bool, w, h int) (img *ebiten.Image, sceneSetTheme bool) {
 	t.Helper()
-	// Mobile scenes force the small-screen profile through a package-level
-	// flag; restore it when THIS render returns, or the next render in the
-	// same subtest boots in a different profile (an order-dependent diff
-	// that has nothing to do with the theme).
+	// Restored when THIS render returns, or the next render in the subtest boots in another profile.
 	defer restoreScreenProfile(forceSmallScreenForTest)
 	ApplyTheme(theme.Doc{})
 	audio.ClearAllInsertEffects()
@@ -154,9 +124,7 @@ func TestRuntimeThemeSwitchMatchesBootEveryScene(t *testing.T) {
 
 // ── color provenance ────────────────────────────────────────────────────
 
-// shiftInstrumentColor maps an instrument color to a different one that no
-// default color coincides with, so instrument-identity colors (which a theme
-// deliberately leaves alone) change between the two provenance renders too.
+// Instrument colours are left alone by a theme, so they are shifted to change between the two renders too.
 func shiftInstrumentColor(c color.Color) color.Color {
 	if c == nil {
 		return nil
@@ -165,10 +133,8 @@ func shiftInstrumentColor(c color.Color) color.Color {
 	return color.RGBA{R: r.G ^ 0x2D, G: r.B ^ 0x2D, B: r.R ^ 0x2D, A: r.A}
 }
 
-// shiftInstrumentPalette swaps every instrument color table for a shifted
-// copy and returns the restore func. Call it AFTER the theme is applied:
-// ApplyTheme → rebuildThemeAliases rebuilds instColors / customPalette /
-// customColors, which would silently undo an earlier shift.
+// Call it AFTER the theme is applied: rebuildThemeAliases rebuilds the instrument tables and would undo an earlier
+// shift.
 func shiftInstrumentPalette() func() {
 	oldInst, oldCustom, oldAssigned := instColors, customPalette, customColors
 	oldSeq, oldSw := genInstrumentSequence, SuggestedInstrumentSwatches
@@ -176,8 +142,7 @@ func shiftInstrumentPalette() func() {
 	for k, v := range instColors {
 		ni[k] = shiftInstrumentColor(v)
 	}
-	// customColors memoizes fallback colors already handed out (package-global,
-	// it outlives a Game) — shift those too.
+	// customColors is package-global and outlives a Game.
 	na := make(map[instrument.ID]color.Color, len(customColors))
 	for k, v := range customColors {
 		na[k] = shiftInstrumentColor(v)
@@ -208,8 +173,7 @@ type colorSite struct {
 	stack string
 }
 
-// drawnColorKey is the unpremultiplied RGB of a drawn color (alpha is a
-// strength, not an identity: WithAlpha(token, a) is still the token).
+// Alpha is a strength, not an identity: WithAlpha(token, a) is still the token.
 func drawnColorKey(c color.RGBA) (color.RGBA, bool) {
 	if c.A == 0 {
 		return color.RGBA{}, false
@@ -218,8 +182,7 @@ func drawnColorKey(c color.RGBA) (color.RGBA, bool) {
 	return color.RGBA{R: un(c.R), G: un(c.G), B: un(c.B), A: 255}, true
 }
 
-// provenanceStack is the first few ui-package frames that are not drawing
-// primitives — the call site that CHOSE the color.
+// The call site that CHOSE the colour.
 func provenanceStack() string {
 	pcs := make([]uintptr, 24)
 	n := runtime.Callers(3, pcs)
@@ -244,22 +207,17 @@ func provenanceStack() string {
 	return strings.Join(parts, " ← ")
 }
 
-// recordDrawnColors renders scene once and returns every color written by a
-// draw (fills: the 1×1 pixel blit's color; text/icons: the tint), keyed by
-// RGB. loud selects the loud theme + shifted instrument palette.
+// Fills by their pixel blit's colour, text and icons by their tint.
 func recordDrawnColors(t *testing.T, scene string, loud, mobile bool) (map[color.RGBA]*colorSite, bool) {
 	t.Helper()
 	defer restoreScreenProfile(forceSmallScreenForTest)
-	// Every piece of global state is restored when THIS render returns (not
-	// at test end): the test renders hundreds of scenes in one function, and
-	// a palette shift leaking into the next base render poisons the diff.
+	// Restored when THIS render returns: a palette shift leaking into the next base render poisons the diff.
 	ApplyTheme(theme.Doc{})
 	audio.ClearAllInsertEffects()
 	defer audio.ClearAllInsertEffects()
 	if loud {
-		// Rows loaded from a project (the startup demo — imported inside New —
-		// and templates) take their color from the file, and rows built in the
-		// constructor draw from the palette tables: shift both before New.
+		// Imported rows take their colour from the file and constructed rows from the palette tables: both are shifted before
+		// New.
 		importedRowColorTransform = shiftInstrumentColor
 		defer func() { importedRowColorTransform = nil }()
 		defer shiftInstrumentPalette()()
@@ -290,8 +248,7 @@ func recordDrawnColors(t *testing.T, scene string, loud, mobile bool) (map[color
 	}
 	advanceFrames(g, 4)
 	setTheme := ThemeGeneration() != gen
-	// Flush every color-baking cache so the recorded frame re-renders all of
-	// them under the final colors.
+	// Flushes every colour-baking cache.
 	g.OnThemeChanged()
 	advanceFrames(g, 2)
 	settleAsyncForCapture(g)
@@ -346,9 +303,7 @@ func fixedThemeColors() []color.RGBA {
 	return out
 }
 
-// isFixedColor matches c against the fixed colors with a small per-channel
-// tolerance: a low-alpha draw (WithAlpha(success, AlphaSubtle)) loses a few
-// RGB steps to premultiplied rounding before it is observed.
+// A low-alpha draw loses a few RGB steps to premultiplied rounding.
 func isFixedColor(c color.RGBA, fixed []color.RGBA) bool {
 	near := func(a, b uint8) bool {
 		d := int(a) - int(b)
@@ -422,16 +377,13 @@ func TestNoColorRendersOutsideTheTheme(t *testing.T) {
 		"theme token, or declare them in themeFixedTokens if they are genuinely semantic:%s", len(list), b.String())
 }
 
-// stopSceneSideEffects ends what a scene may have started that outlives the
-// Game (a recording session owns goroutines goleak checks at TestMain).
+// A recording session owns goroutines that goleak checks at TestMain.
 func stopSceneSideEffects(g *Game) {
 	if g.IsRecording() {
 		_, _ = g.StopRecording()
 	}
 }
 
-// restoreScreenProfile resets the package-level small-screen override a
-// mobile scene may have set.
 func restoreScreenProfile(prev bool) {
 	if forceSmallScreenForTest != prev {
 		forceSmallScreenForTest = prev
@@ -439,8 +391,7 @@ func restoreScreenProfile(prev bool) {
 	}
 }
 
-// withFaithfulCompositing turns on the stub's real-ebiten compositing (shared
-// SubImage views, applied ColorScale tints) for the test's duration.
+// Shared SubImage views and applied ColorScale tints, as real Ebiten does.
 func withFaithfulCompositing(t *testing.T) {
 	t.Helper()
 	prev := ebiten.FaithfulCompositing
@@ -448,10 +399,7 @@ func withFaithfulCompositing(t *testing.T) {
 	t.Cleanup(func() { ebiten.FaithfulCompositing = prev })
 }
 
-// settleAsyncForCapture renders what production fills asynchronously (the
-// Synth tab's pool-rendered stage thumbnails) synchronously when it is on
-// screen, so two captures of the same state cannot differ by whether a worker
-// finished first.
+// Settled synchronously so two captures cannot differ by whether a worker finished first.
 func settleAsyncForCapture(g *Game) {
 	if g == nil || g.drum == nil || g.drum.eqPanelZone == nil {
 		return

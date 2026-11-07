@@ -12,10 +12,6 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestGlobalCameraLogging_DefaultStart spawns the default single-node circuit
-// and logs pixel positions for nodes, edges (if any), and grid phase at
-// multiple zoom levels. It asserts alignment and prints detailed values to
-// help diagnose offsets when regressions occur.
 func TestGlobalCameraLogging_DefaultStart(t *testing.T) {
 	out := io.Discard
 	if testing.Verbose() {
@@ -98,8 +94,6 @@ func TestGlobalCameraLogging_DefaultStart(t *testing.T) {
 	}
 }
 
-// TestGlobalCameraLogging_DemoWithPulse logs and checks a mid-edge pulse position
-// against DrawLineCam projection at various zoom levels, in addition to node/edge alignment.
 func TestGlobalCameraLogging_DemoWithPulse(t *testing.T) {
 	out := io.Discard
 	if testing.Verbose() {

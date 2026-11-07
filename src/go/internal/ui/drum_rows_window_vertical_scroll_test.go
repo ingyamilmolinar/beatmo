@@ -8,27 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// TestRowsWindowedCacheRebakesOnVerticalScroll pins the fix for the
-// "scrolling up/down corrupts future drum cells during playback" bug.
-//
-// During scrolled follow playback the rows composite is served from the
-// WIDE windowed buffer (drumview_cache_rows_window.go). That buffer bakes
-// each visible row's cells at y = rowBase + (i-rowOffset)*rowHeight, so its
-// pixels are tied to the CURRENT vertical scroll position (dv.rowOffset).
-//
-// Pre-fix the rebake predicate keyed only on the HORIZONTAL offset, buffer
-// size, baseX, length and a content-dirty flag — never on dv.rowOffset. A
-// vertical scroll therefore left the stale buffer in place and kept blitting
-// it (showing the previous rows' cells at the new positions) until some other
-// trigger — a content change or the playhead drifting past the pad — forced a
-// rebake. That is exactly the user-visible "messed up for a while, then snaps
-// back to consistent" corruption.
-//
-// A rebake re-renders the buffer against the current dv.rowOffset and bumps
-// rowsLayerGen (drumview_cache_rows_window.go). This test drives steady-state
-// scrolled follow playback until the windowed path is engaged, then performs a
-// pure vertical scroll (no playhead/content change) and asserts the next draw
-// rebakes the buffer so the freshly-scrolled-in rows are rendered.
+// The windowed buffer bakes cells at the CURRENT vertical scroll, so a pure vertical scroll must rebake it on the
+// next draw, or it shows the previous rows' cells until something else forces a rebake.
 func TestRowsWindowedCacheRebakesOnVerticalScroll(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultAudio(t)
@@ -37,14 +18,12 @@ func TestRowsWindowedCacheRebakesOnVerticalScroll(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(900, 600)
 
-	// Enough drum rows that the rack cannot show them all at once, so a
-	// vertical scroll has headroom.
+	// More rows than the rack shows.
 	for len(g.drum.Rows) < 16 {
 		g.drum.AddRow()
 	}
 
-	// Minimal looping circuit so the playhead advances and the window scrolls
-	// (Offset > 0), which is what engages the windowed composite path.
+	// A looping circuit, so the window scrolls and the windowed path engages.
 	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.start = n0
 	g.graph.StartNodeID = n0.ID
@@ -60,16 +39,14 @@ func TestRowsWindowedCacheRebakesOnVerticalScroll(t *testing.T) {
 
 	scr := ebiten.NewImage(900, 600)
 
-	// Advance into the steady-state scrolling regime so the windowed buffer is
-	// baked and the playhead is following.
+	// Into steady scrolling, buffer baked and following.
 	for i := 1; i <= 96; i++ {
 		setPlayStartForAbs(g, i)
 		_ = g.Update()
 		g.Draw(scr)
 	}
 
-	// Preconditions: the windowed path must actually be engaged for this test
-	// to exercise the bug. If it is not, the setup is wrong, not the code.
+	// Not engaged means the setup is wrong.
 	if !g.drum.rowsWinValid {
 		t.Fatalf("windowed rows cache never engaged (rowsWinValid=false) — test cannot exercise the bug")
 	}
@@ -80,9 +57,7 @@ func TestRowsWindowedCacheRebakesOnVerticalScroll(t *testing.T) {
 		t.Fatalf("no vertical scroll headroom: visibleRows=%d rows=%d", g.drum.visibleRows(), len(g.drum.Rows))
 	}
 
-	// Perform a PURE vertical scroll: change rowOffset only. Do NOT advance the
-	// playhead or mutate content, so the ONLY reason for a rebake on the next
-	// draw is the new vertical scroll position.
+	// rowOffset only, so the new scroll is the only reason to rebake.
 	offBefore := g.drum.rowOffset
 	genBefore := g.drum.rowsLayerGen
 	g.drum.syncRowScroll()

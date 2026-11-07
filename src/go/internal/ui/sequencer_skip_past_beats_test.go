@@ -7,10 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Regression: when the UI playhead (nextBeatIdxs) advances via syncUIToTime but
-// the sequencer falls behind, seqScheduleTime must not "catch up" by scheduling
-// already-past beats (which would be emitted as a burst of late audio and is
-// ignored by parity scanners by design).
+// Catching up by scheduling past beats would emit a burst of late audio, which parity ignores by design.
 func TestSequencerSkipsSchedulingBeatsBehindPlayhead(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -26,8 +23,7 @@ func TestSequencerSkipsSchedulingBeatsBehindPlayhead(t *testing.T) {
 	g.addEdge(b, a)
 	g.updateBeatInfos()
 
-	// Enable parity audio recording (via recordParityAudio) while leaving
-	// parity checks in their default state so the test reflects runtime behavior.
+	// Parity checks stay in their default state so the test reflects runtime behaviour.
 	g.parityWatch = parityWatchLog
 	g.parityMu.Lock()
 	g.parityAudio = nil
@@ -38,8 +34,6 @@ func TestSequencerSkipsSchedulingBeatsBehindPlayhead(t *testing.T) {
 	g.SetPlaying(true)
 	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 
-	// Simulate the wall-clock being at abs=10 (so UI playhead would be 11) but the
-	// sequencer counter being far behind.
 	target := 10
 	setPlayStartForAbs(g, target)
 	g.nextBeatIdxs = []int{target + 1}

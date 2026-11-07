@@ -4,10 +4,7 @@ package ui
 
 import "testing"
 
-// TestNewPopupCloseButton_DesktopVsMobile pins the shared close-button policy:
-// the × exists on desktop and is absent (nil) on mobile, where tap-away is the
-// sole dismiss. Every floating pop-up routes its close × through this helper, so
-// this one test guards the platform gate for all of them.
+// × on desktop, nil on mobile where tap-away dismisses; every pop-up routes through this helper.
 func TestNewPopupCloseButton_DesktopVsMobile(t *testing.T) {
 	// Desktop: a real close button with the close icon.
 	withSmallScreen(t, false)

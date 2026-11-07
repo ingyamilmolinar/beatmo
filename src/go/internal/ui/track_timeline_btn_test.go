@@ -27,10 +27,6 @@ func newDrumViewForTrackTest(t *testing.T, mobile bool) *DrumView {
 	return dv
 }
 
-// TestTrackButtonInline_Mobile verifies the Track button is rendered as an
-// inline chip on the right edge of the timeline ruler header on mobile
-// (Theme 2 of the mobile UI consistency pass). Previously the button was
-// hidden and the toggle was only reachable through the overflow menu.
 func TestTrackButtonInline_Mobile(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -82,10 +78,7 @@ func TestTrackButtonToggle_Mobile(t *testing.T) {
 	}
 }
 
-// TestTrackButtonNotInOverflowMenu_Mobile verifies the Track entry was
-// removed from the overflow kebab now that the toggle lives inline on
-// the timeline ruler header (Theme 2). Single source of truth for the
-// follow control on mobile.
+// The inline chip is the one place the toggle lives on mobile.
 func TestTrackButtonNotInOverflowMenu_Mobile(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -98,10 +91,6 @@ func TestTrackButtonNotInOverflowMenu_Mobile(t *testing.T) {
 	}
 }
 
-// TestTrackButtonNotInTransportRow_Mobile verifies the Track button does
-// not paint inside the top toolbar — it lives inline on the timeline
-// ruler header (Theme 2). Catches regressions that would put the toggle
-// back into the transport row on mobile.
 func TestTrackButtonNotInTransportRow_Mobile(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -121,8 +110,6 @@ func TestTrackButtonNotInTransportRow_Mobile(t *testing.T) {
 	}
 }
 
-// TestTrackButtonDesktopUnchanged verifies that on desktop, the Track button
-// is icon-only in the single transport row.
 func TestTrackButtonDesktopUnchanged(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, false)

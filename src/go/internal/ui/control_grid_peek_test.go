@@ -7,15 +7,12 @@ import (
 	"testing"
 )
 
-// peekTestGrid builds a single-column ControlGrid (maxCols=1 so row index == cell
-// index) that overflows its content rect, using rowH=20 and a 40px-tall rect so a
-// no-peek layout fits 2 rows but the reserved peek band drops the window to 1.
+// One column (row == cell), rowH 20 in a 40 px rect: two rows fit without a peek, one with the band.
 func peekTestGrid(t *testing.T, count int) *ControlGrid {
 	t.Helper()
 	g := NewControlGrid(DefaultScrollbarStyle)
 	g.SetMaxCols(1)
-	// cellH=20, vGap=0 → rowH=20; rect Dy=40 → fullRows=2; peekH=int(0.4*20)=8;
-	// visRows=(40-8)/20=1.
+	// peekH = 0.4·20 = 8, so (40-8)/20 = 1 visible row.
 	g.Layout(image.Rect(0, 100, 60, 140), count, 40, 20, 0, 0)
 	return g
 }
@@ -76,8 +73,7 @@ func TestControlGridPeek_RectIsClippedFirstOffWindowRow(t *testing.T) {
 
 func TestControlGridPeek_PublishesNoHitArea(t *testing.T) {
 	g := peekTestGrid(t, 10)
-	// The peek cell (index 1) shows a sliver via PeekRect but is off-window for
-	// CellRect — so the caller never registers a hit area for it (draw-only).
+	// Draw-only: off-window for CellRect, so no hit area is registered.
 	if _, ok := g.CellRect(1); ok {
 		t.Fatal("peek cell must be off-window for CellRect (no hit area)")
 	}
@@ -130,9 +126,7 @@ func TestControlGridPeek_WindowStableAcrossScroll(t *testing.T) {
 	}
 }
 
-// SetPeekBand(false) gives the stolen row back: the same overflowing grid shows
-// both rows and reserves no band (so no fade paints over a visible row either).
-// The Synth root opts out — on a phone its band cost the second dial card.
+// Opting out gives the row back with no band; the Synth root opts out, since on a phone the band cost a card.
 func TestControlGridPeek_OptOutKeepsEveryFullRow(t *testing.T) {
 	g := NewControlGrid(DefaultScrollbarStyle)
 	g.SetMaxCols(1)

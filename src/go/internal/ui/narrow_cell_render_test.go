@@ -110,8 +110,7 @@ func TestNormalWidthCellBorderPresent(t *testing.T) {
 		t.Fatal("normal-width active cell must have stroked border")
 	}
 
-	// Flat (DESIGN.md Rule 2 — nothing is 3D): exactly one fill, no lit
-	// top-strip highlight.
+	// Nothing is 3D: one fill, no lit top strip.
 	fills := 0
 	for _, c := range rec.calls {
 		if c.Kind == drawCallRect && c.Filled {

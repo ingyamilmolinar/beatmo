@@ -1,10 +1,5 @@
 //go:build test
 
-// Phase 1B baseline alloc tests. These intentionally FAIL on the
-// pre-fix code to record the leak slope as a CI artefact ("confirm
-// through logs"). The Phase 2 fix flips the assertions so they pass
-// — the test contract is locked at that point.
-
 package ui
 
 import (
@@ -16,18 +11,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// stubAnalyzerFetch returns a fixed-size populated AnalyzerSnapshot.
-//
-// Sized from audio.BridgeSpectrumBins / BridgeWaveformSamples rather than
-// from a literal, so the budget is measured against what the bridge
-// ACTUALLY ships. It used to hardcode 512 of each; when the spectrum grew
-// to the analyser's full bin count (analyzer.SpectrumFFTSize — the low
-// display bands were holding no bins) the fixture would otherwise have gone
-// on measuring a payload production no longer sends.
-//
-// The returned slices are freshly allocated each call to mimic
-// ChannelAnalyzerSnapshot's per-call allocation pattern — this is the point
-// of the measurement.
+// Sized from the bridge constants, so the budget measures what the bridge actually ships. Fresh slices on every
+// call, as ChannelAnalyzerSnapshot allocates.
 func stubAnalyzerFetch(id channel.ID) audio.AnalyzerSnapshot {
 	spec := make([]float64, audio.BridgeSpectrumBins)
 	wave := make([]float64, audio.BridgeWaveformSamples)
@@ -45,12 +30,8 @@ func stubAnalyzerFetch(id channel.ID) audio.AnalyzerSnapshot {
 	}
 }
 
-// fixedFetch returns a single shared snapshot per call. Removes the
-// allocator noise from the fetch itself so the test measures the
-// builder's own allocation budget — not the JS bridge.
+// One shared snapshot, so only the builder's own allocations are counted.
 func fixedFetch(id channel.ID) audio.AnalyzerSnapshot {
-	// Keep a package-level cache so repeated calls return the same
-	// slice headers without re-allocating.
 	return fixedSnap
 }
 
@@ -83,11 +64,6 @@ func fakeRows(n int) []*DrumRow {
 	return rows
 }
 
-// TestBuildAnalyzerStateAllocsBudget asserts the per-call allocation
-// budget for BuildAnalyzerStateFromSnapshots. On the current (pre-fix)
-// code this fails by an order of magnitude — the failure log is the
-// Phase 1 baseline evidence. After Phase 2 the budget tightens to
-// `<= maxAllocsAfterFix` (rewritten in Phase 3A).
 func TestBuildAnalyzerStateAllocsBudget(t *testing.T) {
 	rows := fakeRows(6)
 
@@ -96,21 +72,15 @@ func TestBuildAnalyzerStateAllocsBudget(t *testing.T) {
 	})
 	t.Logf("BuildAnalyzerStateFromSnapshots allocs/op = %.1f (rows=%d)", allocs, len(rows))
 
-	// PHASE 1 BASELINE — must FAIL on current code. The fixedFetch
-	// itself is alloc-free; everything counted here is the builder's
-	// own slice/state churn (Spectrum dB conversion, Waveform copy,
-	// FreqBins, instrument metrics, state struct).
+	// fixedFetch allocates nothing: everything counted is the builder's own churn. Under the floor means the
+	// instrumentation broke.
 	const phase1Floor = 5
 	if allocs < phase1Floor {
 		t.Logf("BASELINE NOTE: allocs/op (%.1f) is already under phase1Floor (%d) — "+
 			"either the fix has landed or the test is mis-instrumented.", allocs, phase1Floor)
 	}
 
-	// PHASE 2 BUDGET — flipped on after the fix lands. Until then,
-	// this assertion FAILS, which is intentional. After Phase 2A the
-	// metrics-only path bypasses BuildAnalyzerStateFromSnapshots for
-	// TabMeters, but full-state callers still need a tight budget on
-	// the heavy path.
+	// Full-state callers still need a tight budget on the heavy path.
 	const maxAllocsAfterFix = 60
 	if allocs > maxAllocsAfterFix {
 		t.Errorf("BuildAnalyzerStateFromSnapshots allocs/op = %.1f, want <= %d "+
@@ -119,10 +89,7 @@ func TestBuildAnalyzerStateAllocsBudget(t *testing.T) {
 	}
 }
 
-// TestBuildAnalyzerStateBytesPerCall measures heap-allocated bytes per
-// builder call via TotalAlloc deltas across 1 000 invocations. Locks
-// the budget at the byte level so a regression that shrinks alloc
-// COUNT but blows up alloc SIZE still trips the test.
+// Bytes as well as count: fewer but larger allocations still trip it.
 func TestBuildAnalyzerStateBytesPerCall(t *testing.T) {
 	rows := fakeRows(6)
 	const iters = 1000
@@ -142,11 +109,7 @@ func TestBuildAnalyzerStateBytesPerCall(t *testing.T) {
 	t.Logf("BuildAnalyzerStateFromSnapshots TotalAlloc/call = %d bytes (rows=%d, iters=%d)",
 		bytesPerCall, len(rows), iters)
 
-	// Phase 2 budget: under 64 KB per call. Pre-fix exceeds this
-	// because every call materializes Spectrum+Waveform+FFT slices
-	// for master + every row + detail. Post-fix the heavy path stays
-	// under the cap because reuseable scratch buffers replace the
-	// per-call allocations.
+	// Reused scratch buffers keep the heavy path under it.
 	const maxBytesPerCall = 64 * 1024
 	if bytesPerCall > maxBytesPerCall {
 		t.Errorf("BuildAnalyzerStateFromSnapshots bytes/call = %d, want <= %d "+
@@ -155,8 +118,7 @@ func TestBuildAnalyzerStateBytesPerCall(t *testing.T) {
 	}
 }
 
-// itoaSmallTest is a test-local copy of the ui itoaSmall helper to
-// avoid leaning on the WASM-only file from this -tags test build.
+// The original lives in a WASM-only file.
 func itoaSmallTest(n int) string {
 	if n < 0 {
 		n = -n

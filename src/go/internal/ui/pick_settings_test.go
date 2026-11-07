@@ -10,11 +10,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Spec 2026-10-31 §2.9 + residency spec §5.2: choosing an instrument never
-// drops or silently changes settings. A row with no settings takes the
-// instrument's; a row's settings carry over to an instrument with none; when
-// both have different settings — or keeping the row's would change another row
-// that plays the instrument — the user is asked, and a cancel changes nothing.
+// Choosing an instrument never drops or silently changes settings: a bare row takes the instrument's, a row's
+// settings carry to an instrument with none, and when both differ, or keeping the row's would change another
+// row, the user is asked; cancel changes nothing.
 
 func eqBundle(band int, db float64) audio.AudioBundle {
 	s := audio.NewEQSettings()
@@ -22,8 +20,7 @@ func eqBundle(band int, db float64) audio.AudioBundle {
 	return audio.AudioBundle{EQ: s}
 }
 
-// pickGame: row 0 = the melodic test instrument, row 1 = kick; every
-// instrument a test touches starts and ends with no settings.
+// Every touched instrument starts and ends with no settings.
 func pickGame(t *testing.T, touched ...instrument.ID) *Game {
 	t.Helper()
 	withPrivateInstrumentLibrary(t)
@@ -177,10 +174,8 @@ func TestKitSwapAsksOnceAndNeverDrops(t *testing.T) {
 	}
 }
 
-// TestCancelledPickCanBePickedAgain: the instrument menu previews by picking;
-// a pick waiting on the question and then cancelled must not leave the menu
-// believing the instrument is applied (the next pick of it would only close
-// the menu).
+// The menu previews by picking; a cancelled pick must not leave it believing the instrument applied, or the next
+// pick of it would only close the menu.
 func TestCancelledPickCanBePickedAgain(t *testing.T) {
 	g := pickGame(t, roster.Snare)
 	audio.ApplyAudioBundle(roster.Kick, eqBundle(2, -5))
@@ -205,10 +200,7 @@ func TestCancelledPickCanBePickedAgain(t *testing.T) {
 	}
 }
 
-// TestKitSwapOntoOneInstrumentNamesWhoseSettingsWin: two rows the kit moves
-// onto ONE instrument (one channel, one set of settings) with different
-// settings — the question says whose settings it keeps and which row that
-// changes; nothing is dropped silently.
+// One instrument has one channel and one set of settings: the question says whose it keeps and which row changes.
 func TestKitSwapOntoOneInstrumentNamesWhoseSettingsWin(t *testing.T) {
 	g := pickGame(t, roster.KickDeep, roster.Snare)
 	first, second := eqBundle(1, 3), eqBundle(6, -2)

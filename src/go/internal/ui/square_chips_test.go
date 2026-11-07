@@ -9,11 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestBeatCounterRendersRoundedKeycap verifies the beat/time counter renders as
-// a matte keycap (a rounded cap face with the shared secondary fill), matching
-// every other Button per DESIGN.md "Keycap elevation" — the old flat square
-// chip did not comply. Squareness is no longer asserted; the keycap is rounded
-// by design.
+// A matte keycap with the shared secondary fill, like every other Button.
 func TestBeatCounterRendersRoundedKeycap(t *testing.T) {
 	assertDefaultParityState(t)
 	beatRect := image.Rect(0, 0, 240, 28)

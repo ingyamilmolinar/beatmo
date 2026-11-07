@@ -9,9 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestSetInstrumentWarmsVoiceCache: switching a row to a new instrument must
-// pre-warm that instrument's voice cache (audio.WarmInstrument) so the first
-// notes after the switch don't pay a cold per-pitch render during playback.
+// Warming on the switch spares the first notes a cold per-pitch render during playback.
 func TestSetInstrumentWarmsVoiceCache(t *testing.T) {
 	g := New(testLogger)
 	dv := g.drum
@@ -42,8 +40,6 @@ func TestSetInstrumentWarmsVoiceCache(t *testing.T) {
 	}
 }
 
-// TestSetInstrumentSameIDNoWarm: re-selecting the SAME instrument must not
-// trigger a warm (no change, nothing to render).
 func TestSetInstrumentSameIDNoWarm(t *testing.T) {
 	g := New(testLogger)
 	dv := g.drum

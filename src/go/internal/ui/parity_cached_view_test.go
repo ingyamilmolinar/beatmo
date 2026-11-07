@@ -69,10 +69,8 @@ func TestParityScanUsesCachedViewState(t *testing.T) {
 	g.seqNextIdxs = []int{0}
 
 	g.ClearParityMismatches()
-	// This test inspects a cell the stopped view treats as live; on a paused
-	// or playing transport it is already past (frozen, never checked). It
-	// only exercises the stopped-state scan production never runs — rewrite
-	// it against a live cell.
+	// This cell is past on a paused or playing transport; only the stopped-state scan, which production never runs,
+	// checks it.
 	g.parityScanStoppedForTest = true
 	g.parityScan("test-cache-view")
 
@@ -163,28 +161,20 @@ func TestParityScanDetectsSeqVsViewMismatch(t *testing.T) {
 		t.Fatalf("expected initial step to be on")
 	}
 
-	// Record a decision. Since the node is visible, recordSeqDecision will
-	// query the predictor and set Visible=true.
+	// The node is visible, so recordSeqDecision sets Visible=true from the predictor.
 	g.recordSeqDecision(0, 0, true, model.NodeTypeRegular, false)
 	g.nextBeatIdxs = []int{0}
 	g.seqNextIdxs = []int{0}
 
-	// Manually corrupt the slate to create a mismatch: predictor says
-	// VisibleAt=true, but slate now shows false.
 	g.drum.Rows[0].Steps[0] = false
 
 	g.ClearParityMismatches()
-	// This test inspects a cell the stopped view treats as live; on a paused
-	// or playing transport it is already past (frozen, never checked). It
-	// only exercises the stopped-state scan production never runs — rewrite
-	// it against a live cell.
+	// This cell is past on a paused or playing transport; only the stopped-state scan, which production never runs,
+	// checks it.
 	g.parityScanStoppedForTest = true
 	g.parityScan("test-seq-vs-view")
 
-	// The parity scan has multiple checks that compare view truth against the
-	// slate. Either view_vs_truth or seq_vs_view can fire when the slate is
-	// corrupted. Both detect the same class of mismatches (predictor visible
-	// state vs DrumView slate).
+	// view_vs_truth and seq_vs_view both detect a predictor-vs-slate mismatch; either may fire.
 	found := false
 	for _, m := range g.ParityMismatchSnapshot() {
 		if (m.Kind == "seq_vs_view" || m.Kind == "view_vs_truth") && m.Abs == 0 {

@@ -8,8 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Ensure that when playback is active but a different circuit is greyed out (muted or
-// excluded by solo), we allow selecting a node from that circuit as a new origin.
+// A circuit greyed out by mute or solo can supply a new origin while playing.
 func TestOriginSelectAllowsMutedOtherCircuit(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

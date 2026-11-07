@@ -9,14 +9,11 @@ func TestEvalTimingStage(t *testing.T) {
 	if br := evalTimingStage("emitdrift", b, 100, 0.001, 0.005, 0.002, 0.02, 64); br != nil {
 		t.Fatalf("unexpected breach: %+v", br)
 	}
-	// Not enough samples → never breach even if huge (absMax kept within
-	// bounds here since the absmax check is deliberately MinSamples-
-	// independent — see the dedicated absmax-dropout case below).
+	// Too few samples never breach; absMax stays in bounds here because its check ignores MinSamples.
 	if br := evalTimingStage("emitdrift", b, 10, 1.0, 1.0, 1.0, 0.02, 64); br != nil {
 		t.Fatalf("breach below MinSamples: %+v", br)
 	}
-	// Absmax dropout fires even at low sample count? No — MinSamples still
-	// governs statistical stages; absmax uses its own single-sample rule:
+	// absMax uses its own single-sample rule, independent of MinSamples.
 	if br := evalTimingStage("emitdrift", b, 1, 0, 0, 0, 0.5, 64); br == nil || br.Stat != "absmax" {
 		t.Fatalf("absmax dropout should fire alone, got %+v", br)
 	}

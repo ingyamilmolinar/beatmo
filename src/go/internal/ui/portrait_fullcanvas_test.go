@@ -7,10 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestPortraitMobileNoTopGap verifies that in portrait mobile mode, grid
-// content starts at y=0 — there must be no dead zone (black section) at the
-// top of the canvas. Historically, gridTopOffset() pushed all grid content down
-// by 40px, wasting that space on mobile where no transport bar exists.
+// Mobile has no transport bar above the grid, so grid content starts at y=0 with no dead band.
 func TestPortraitMobileNoTopGap(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -35,10 +32,6 @@ func TestPortraitMobileNoTopGap(t *testing.T) {
 	_, y1, _, y2 := g.nodeScreenRect(n)
 	centerY := (y1 + y2) / 2
 
-	// On mobile portrait, the node at world (0,0) with camera at (0,0)
-	// should appear near the top of the grid pane (y close to 0).
-	// The UI must cover the full canvas — no 40px dead zone at the top.
-	// gridTopOffset() returns 0 on mobile, so center should be at ~0.
 	if centerY > 5 {
 		t.Fatalf("node at world (0,0) with cam (0,0) has screen center y=%.1f; "+
 			"expected y near 0 (no dead zone), but content is shifted down — "+
@@ -47,9 +40,7 @@ func TestPortraitMobileNoTopGap(t *testing.T) {
 	}
 }
 
-// TestPortraitMobileInputAcceptsTopOfGrid verifies that touch/click input
-// is accepted at the very top of the grid pane (y near 0). On mobile,
-// there should be no dead zone where taps are silently rejected.
+// No dead zone where taps are silently rejected.
 func TestPortraitMobileInputAcceptsTopOfGrid(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -65,8 +56,6 @@ func TestPortraitMobileInputAcceptsTopOfGrid(t *testing.T) {
 		t.Fatal("failed to add node at (0,0)")
 	}
 
-	// Position camera so node appears at a small y value (near top of screen).
-	// On mobile, y=5 should be a valid interactive coordinate.
 	g.cam.OffsetX = 200
 	g.cam.OffsetY = 5
 	g.cam.Snap()
@@ -75,19 +64,13 @@ func TestPortraitMobileInputAcceptsTopOfGrid(t *testing.T) {
 	centerX := int((x1 + x2) / 2)
 	centerY := (y1 + y2) / 2
 
-	// The node should be near the top of the grid pane.
-	// On mobile, a node at world (0,0) with camera OffsetY=5 should appear
-	// at screen y ≈ 5. With gridTopOffset(), it appears at y ≈ 45 instead.
 	if centerY > 20 {
 		t.Fatalf("expected node near top of grid (y<20), got y=%.1f — "+
 			"gridTopOffset() is likely shifting content down", centerY)
 	}
 
-	// Attempt to find the node via nodeAtScreen at its visual center.
-	// This simulates a user tap at where they see the node.
+	// A tap where the user sees the node.
 	found := g.nodeAtScreen(centerX, int(centerY))
-	// On mobile, taps at y < gridTopOffset() should NOT be rejected.
-	// Input must be accepted anywhere in the grid pane including near y=0.
 	if found == nil {
 		t.Fatalf("nodeAtScreen(%d, %.0f) returned nil — tap rejected at top "+
 			"of grid pane; mobile input should accept the full grid area",
@@ -95,9 +78,7 @@ func TestPortraitMobileInputAcceptsTopOfGrid(t *testing.T) {
 	}
 }
 
-// TestPortraitMobileContentFillsFullGridHeight verifies that the grid pane's
-// content area equals the full grid pane rect. On mobile, the usable content
-// height should be splitY (the entire grid pane), not splitY - gridTopOffset().
+// The usable height is the whole grid pane, not splitY - gridTopOffset().
 func TestPortraitMobileContentFillsFullGridHeight(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -109,18 +90,11 @@ func TestPortraitMobileContentFillsFullGridHeight(t *testing.T) {
 
 	splitY := g.split.Y
 
-	// The grid pane occupies [0, 0, 400, splitY].
-	// On mobile, the camera should center content within the FULL height
-	// (0 to splitY), not within a reduced height (gridTopOffset() to splitY).
-	//
-	// With camera centered in the grid pane, the camera center Y should be
-	// at splitY/2, not at (splitY + gridTopOffset())/2 or (splitY - gridTopOffset())/2.
+	// Centred within the FULL pane height: the centre Y is splitY/2.
 	g.cam.OffsetX = float64(g.split.GridW(g.winW)) / 2
 	g.cam.OffsetY = float64(splitY) / 2
 	g.cam.Snap()
 
-	// Place a node at world (0,0); it should appear at the center of the
-	// full grid pane (near y = splitY/2).
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	if n == nil {
 		t.Fatal("failed to add node")
@@ -129,9 +103,6 @@ func TestPortraitMobileContentFillsFullGridHeight(t *testing.T) {
 	_, y1, _, y2 := g.nodeScreenRect(n)
 	centerY := (y1 + y2) / 2
 
-	// The node should be centered at approximately splitY/2.
-	// If gridTopOffset() is applied, the center will be at splitY/2 + gridTopOffset()
-	// instead, which wastes the top portion of the grid pane.
 	expectedCenter := float64(splitY) / 2
 	tolerance := 5.0
 
@@ -143,8 +114,6 @@ func TestPortraitMobileContentFillsFullGridHeight(t *testing.T) {
 	}
 }
 
-// TestPortraitMobileDrumPaneBottomEdge verifies that the drum pane extends
-// exactly to the bottom of the canvas (y = winH) with no gap or overflow.
 func TestPortraitMobileDrumPaneBottomEdge(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -170,9 +139,6 @@ func TestPortraitMobileDrumPaneBottomEdge(t *testing.T) {
 	}
 }
 
-// TestPortraitMobileGridAndDrumTileCanvas verifies that the grid pane and
-// drum pane together cover the ENTIRE canvas with no gap between them,
-// no gap at the top, and no gap at the bottom.
 func TestPortraitMobileGridAndDrumTileCanvas(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -214,10 +180,7 @@ func TestPortraitMobileGridAndDrumTileCanvas(t *testing.T) {
 		t.Fatalf("drum pane width %d != canvas width %d", drumRect.Max.X, winW)
 	}
 
-	// CRITICAL: The effective content height of the grid pane must equal its
-	// allocated height. On mobile, gridTopOffset() should NOT reduce the usable
-	// grid area. The camera should place world origin at y=0 of the grid
-	// pane, not at y=gridTopOffset().
+	// gridTopOffset() must not shrink the usable area on mobile.
 	gridH := gridRect.Dy()
 	effectiveGridH := gridH - gridTopOffset()
 	if effectiveGridH < gridH {
@@ -227,9 +190,6 @@ func TestPortraitMobileGridAndDrumTileCanvas(t *testing.T) {
 	}
 }
 
-// TestPortraitMobileCameraUsesFullGridHeight verifies that the camera offset
-// calculation for portrait mobile centers content within the full grid pane
-// height (0 to splitY), not within a reduced area that accounts for gridTopOffset().
 func TestPortraitMobileCameraUsesFullGridHeight(t *testing.T) {
 	setupMobileTest(t, true)
 	// Enable default start so Layout sets the camera center.
@@ -244,10 +204,6 @@ func TestPortraitMobileCameraUsesFullGridHeight(t *testing.T) {
 
 	splitY := g.split.Y
 
-	// The camera center Y should place the world origin near the center
-	// of the full grid pane: approximately splitY / 2.
-	// If gridTopOffset() is subtracted: (splitY - gridTopOffset()) / 2 = (400 - 40) / 2 = 180
-	// Correct (no gridTopOffset()): splitY / 2 = 400 / 2 = 200
 	expectedCameraY := float64(splitY) / 2.0
 	actualCameraY := g.cam.OffsetY
 

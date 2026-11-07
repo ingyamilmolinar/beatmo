@@ -20,8 +20,6 @@ func mkWheelForLadder(t *testing.T) (*MobileWheelPopup, *Knob, *KnobStepBadge) {
 	return w, k, b
 }
 
-// Every ladder rung gets a tappable rect; tapping one jumps straight to it
-// and syncs the knob's StepMul.
 func TestWheelLadderTapJumpsToRung(t *testing.T) {
 	w, k, b := mkWheelForLadder(t)
 	rungs := w.rungRects()
@@ -43,8 +41,7 @@ func TestWheelLadderTapJumpsToRung(t *testing.T) {
 	}
 }
 
-// Plain cursor-over (the portalHoverer seam) tracks the hovered rung and
-// clears when the cursor leaves the popup entirely.
+// Through the portalHoverer seam; clears when the cursor leaves the popup.
 func TestWheelLadderHoverTracksRung(t *testing.T) {
 	w, _, _ := mkWheelForLadder(t)
 	rungs := w.rungRects()
@@ -58,10 +55,3 @@ func TestWheelLadderHoverTracksRung(t *testing.T) {
 		t.Fatalf("hover off-popup must clear, got %d", w.hoverRung)
 	}
 }
-
-// The ladder's vertical ORDER (coarsest rung at the top, so the strip reads the
-// same way as the value barrel beside it) is pinned by
-// TestWheelResolutionLadderCoarsestOnTop and TestWheelResolutionTopPillSelectsCoarsest
-// in mobile_wheel_res_order_test.go. The two tests above deliberately stay
-// order-agnostic: they index rungRects() by LADDER rung, which is the contract
-// that survives the flip.

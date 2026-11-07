@@ -8,10 +8,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestOverflowSubgroups_HasFileHeader verifies the overflow menu groups
-// File-group items under a labelled "File" header. The "View" subgroup
-// was removed when its only entries (Window length +/−) were retired in
-// favour of the inline timeline controls.
 func TestOverflowSubgroups_HasFileHeader(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -59,8 +55,6 @@ func TestOverflowSubgroups_HasFileHeader(t *testing.T) {
 	}
 }
 
-// TestOverflowSubgroups_HeadersNotClickable verifies header rows have
-// no onClick handler and don't fire actions when tapped.
 func TestOverflowSubgroups_HeadersNotClickable(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -75,9 +69,7 @@ func TestOverflowSubgroups_HeadersNotClickable(t *testing.T) {
 	}
 }
 
-// TestOverflowSubgroups_HeaderRowsNotInButtonList verifies the popup
-// button list (overflowPopupBtns) skips header rows so taps on them
-// don't fire actions even if they sit at a hit-area position.
+// Taps on a header never fire, even at a hit-area position.
 func TestOverflowSubgroups_HeaderRowsNotInButtonList(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -90,8 +82,6 @@ func TestOverflowSubgroups_HeaderRowsNotInButtonList(t *testing.T) {
 	popupRect := g.drum.overflowPopupRect()
 	btns := g.drum.overflowPopupBtns(popupRect)
 	for _, b := range btns {
-		// Header text is "File" or "View"; if either appears in the button
-		// list, that's a regression.
 		if b.Text == "File" || b.Text == "View" {
 			t.Errorf("button list contains header %q (should be excluded)", b.Text)
 		}

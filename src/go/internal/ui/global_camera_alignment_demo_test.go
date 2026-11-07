@@ -8,11 +8,6 @@ import (
 	assets_pkg "github.com/ingyamilmolinar/beatmo/internal/assets"
 )
 
-// TestGlobalCameraAlignment_DefaultDemo loads the embedded default demo and
-// verifies, at the global camera view level, that:
-//   - Every visible node center is phase-aligned with the grid pixel lattice
-//   - Every edge endpoint projects to the exact same screen pixel as its node
-//   - After an initial Draw pass (which builds caches), alignment still holds
 func TestGlobalCameraAlignment_DefaultDemo(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

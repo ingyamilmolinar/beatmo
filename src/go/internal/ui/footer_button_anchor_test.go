@@ -9,8 +9,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// footerCaptures takes a screenshot of all footer-strip button rects so the
-// anchor tests below can compare layouts before and after a row-count change.
 type footerCapture struct {
 	addRow  image.Rectangle
 	zoomDec image.Rectangle
@@ -36,13 +34,8 @@ func captureFooter(t *testing.T, g *Game) footerCapture {
 	return c
 }
 
-// addRowFollowsRows asserts the add-row ghost row's contract for the
-// current layout: while the visible rows leave room it sits exactly one slot
-// UNDER the last visible row and spans the same content extent as the rows
-// (label left edge → kebab right edge), so it reads as "one more row". It
-// used to pin to the rack bottom regardless of row count, which opened an
-// empty strip between the last row and a floating "+" whenever the drum pane
-// was taller than the rows.
+// The add-row ghost row sits one slot under the last visible row and spans the rows' extent (label to kebab),
+// so it reads as one more row rather than a floating "+".
 func addRowFollowsRows(t *testing.T, g *Game, label string) image.Rectangle {
 	t.Helper()
 	dv := g.drum
@@ -85,11 +78,8 @@ func addRows(g *Game, n int) {
 	g.drum.calcLayout()
 }
 
-// TestAddRowButtonFollowsRowsThenPins (mobile + desktop): the ghost row
-// tracks the last visible row while there is room; once the rows overflow and
-// scroll it stays under the last VISIBLE row and stops moving as more rows
-// are added (a user clicking "+" repeatedly past saturation keeps the same
-// target).
+// Past saturation the ghost row stays under the last VISIBLE row and stops moving, so repeated "+" clicks keep
+// the same target.
 func TestAddRowButtonFollowsRowsThenPins(t *testing.T) {
 	for _, mobile := range []bool{false, true} {
 		name := "desktop"
@@ -124,9 +114,7 @@ func TestAddRowButtonFollowsRowsThenPins(t *testing.T) {
 			if more := z.AddRowBtnRect(); more != sat {
 				t.Errorf("addRow moved after saturation: %v -> %v", sat, more)
 			}
-			// Still flush under the last VISIBLE row (the modulo slack of a
-			// rack that is not a whole number of rows tall falls BELOW the
-			// ghost row, never between it and the rows), and inside the rack.
+			// The slack of a rack that is not a whole number of rows tall falls BELOW the ghost row, never between it and the rows.
 			addRowFollowsRows(t, g, "saturated")
 			if sat.Max.Y > z.rect.Max.Y {
 				t.Errorf("saturated addRow %v extends past the rack %v", sat, z.rect)
@@ -135,14 +123,7 @@ func TestAddRowButtonFollowsRowsThenPins(t *testing.T) {
 	}
 }
 
-// TestFooterButtonsAboveBottomActionBar asserts the addRow + zoom chips
-// sit ABOVE the mobile bottom action bar (Pads/EQ/Wave/Spec/Mtr/Scope)
-// — never overlapping its surface. The first anchor pass put the
-// rack rect's Max.Y at dv.Bounds.Max.Y, which made addRowBtn land
-// exactly on top of the segmented switcher (regression caught in
-// screenshot review 2026-05-10). The fix clamps the rack rect's
-// Max.Y to dv.rowsBottom() so the WidgetBoard's rack column ends
-// above the bottom action bar.
+// The rack zone must end above the mobile bottom action bar, or the add-row button lands on the view switcher.
 func TestFooterButtonsAboveBottomActionBar(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -177,11 +158,7 @@ func TestFooterButtonsAboveBottomActionBar(t *testing.T) {
 		}
 	}
 
-	// Sanity: the rack ZONE rect (after the rowsBottom() clamp in
-	// drumview_layout.go) must end at or above bar.Min.Y. The raw
-	// WidgetBoard rect (dv.widgetRects[WidgetRack]) extends to
-	// dv.Bounds.Max.Y by design — only the clamped zone rect knows
-	// about the bottom action bar.
+	// The raw WidgetBoard rack rect reaches dv.Bounds.Max.Y by design; only the clamped zone rect knows about the bar.
 	zoneRect := dv.rowRackZone.rect
 	if zoneRect.Max.Y > bar.Min.Y {
 		t.Errorf("rowRackZone.rect.Max.Y=%d extends past bar top Y=%d — rack zone rect is overlapping the bottom action bar",

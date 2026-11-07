@@ -30,9 +30,7 @@ func TestSubdivMenu_ScrollsWhenOptionsOverflow(t *testing.T) {
 		t.Fatalf("expected HasScroll()=true with %d options in a short card", len(manyOpts))
 	}
 
-	// Scroll down via the component's OWN wheel entry point (the production
-	// path: HandleWheel → rebuildButtons), not the raw MenuScroll. The last
-	// option's button must move up into the card.
+	// Through the component's own HandleWheel, the production path, not the raw MenuScroll.
 	last := c.Buttons()[len(c.Buttons())-1].Rect()
 	for i := 0; i < len(manyOpts); i++ {
 		c.HandleWheel(0, 0, -1)

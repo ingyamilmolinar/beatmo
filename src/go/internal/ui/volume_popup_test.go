@@ -11,12 +11,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// TestVolumePopupRailUsesRowColor pins that the per-row volume slider popup
-// paints its rail in the row's instrument color — the SAME color the grid nodes
-// use (DrumRow.Color) — not the cyan genColorPrimary accent. The popup's rail
-// fill is the widest filled rounded rect narrower than the full rail, so we look
-// for a filled rounded rect carrying the row's color and assert it is NOT the
-// cyan fallback.
+// The rail takes the row's DrumRow.Color, the colour the grid nodes use, not the cyan accent fallback.
 func TestVolumePopupRailUsesRowColor(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -27,8 +22,7 @@ func TestVolumePopupRailUsesRowColor(t *testing.T) {
 		t.Skip("rowVolSliders[0] has empty rect — cannot test popup rail")
 	}
 
-	// A distinctly non-cyan instrument color on row 0, and a non-zero level so
-	// the rail draws a fill segment.
+	// Distinctly non-cyan, with a non-zero level so the rail draws a fill.
 	rowCol := color.RGBA{R: 220, G: 40, B: 90, A: 255}
 	dv.Rows[0].Color = rowCol
 	dv.Rows[0].Volume = 0.8
@@ -57,13 +51,8 @@ func TestVolumePopupRailUsesRowColor(t *testing.T) {
 	}
 }
 
-// TestRowColorSwitchUpdatesVolumeIcon pins that switching a row's instrument
-// color repaints the per-row volume control (speaker icon + level indicator) in
-// the NEW color on the next frame. The row controls are cached into an offscreen
-// image gated by controlsCacheValid(); before the fix, SetRowColor* marked only
-// the grid step-cell cache dirty, never the controls cache, so the cached
-// speaker icon kept the STALE color until some unrelated state change happened
-// to rebuild it. The popup (drawn uncached) updated, but the in-row icon did not.
+// The row controls are cached offscreen behind controlsCacheValid(); a colour switch must invalidate that cache too,
+// or the in-row speaker icon keeps the old colour while the uncached popup updates.
 func TestRowColorSwitchUpdatesVolumeIcon(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -86,15 +75,11 @@ func TestRowColorSwitchUpdatesVolumeIcon(t *testing.T) {
 	newCol := color.RGBA{R: 7, G: 222, B: 131, A: 255}
 	dv.SetRowColorManual(0, newCol)
 
-	// Contract: the color switch must invalidate the controls cache so the
-	// cached volume icon is rebuilt with the new color next frame.
 	if dv.rowRackZone.controlsCacheValid() {
 		t.Error("switching a row's color must invalidate the row-rack controls cache so the volume icon repaints in the new color")
 	}
 
-	// End-to-end: the next draw must actually paint the new color (the volume
-	// level-indicator fill draws a filled rounded rect in the row color). A stale
-	// cache would blit the old image and draw nothing here.
+	// A stale cache would blit the old image and draw nothing here.
 	calls := captureRoundedRectCalls(t, func() { dv.rowRackZone.Draw(img) })
 	wr, wg, wb, _ := rgba8(newCol)
 	painted := false
@@ -114,8 +99,6 @@ func TestRowColorSwitchUpdatesVolumeIcon(t *testing.T) {
 
 // ---------- per-row volume popup ----------
 
-// TestVolumePopupOpenClose verifies that openVolumePopup sets the expected
-// state and closeVolumePopup resets it.
 func TestVolumePopupOpenClose(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -152,8 +135,6 @@ func TestVolumePopupOpenClose(t *testing.T) {
 	}
 }
 
-// TestVolumePopupBoundsCheck verifies that openVolumePopup is a no-op for
-// out-of-range row indices.
 func TestVolumePopupBoundsCheck(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -174,8 +155,6 @@ func TestVolumePopupBoundsCheck(t *testing.T) {
 	}
 }
 
-// TestVolumePopupInputDrag verifies that pressing inside the popup activates
-// dragging and changes the row volume.
 func TestVolumePopupInputDrag(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -214,8 +193,6 @@ func TestVolumePopupInputDrag(t *testing.T) {
 	}
 }
 
-// TestVolumePopupInputClamping verifies that dragging above the track top
-// clamps to 1.0 and dragging below clamps to 0.0.
 func TestVolumePopupInputClamping(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -255,8 +232,6 @@ func TestVolumePopupInputClamping(t *testing.T) {
 	dv.volPopup.HandleInput(mx, r.Max.Y+100, false)
 }
 
-// TestVolumePopupInputOutside verifies that pressing outside the popup rect
-// (and not already dragging) does not consume input.
 func TestVolumePopupInputOutside(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -279,8 +254,6 @@ func TestVolumePopupInputOutside(t *testing.T) {
 
 // ---------- master volume popup ----------
 
-// TestMasterVolumePopupOpenClose verifies that openMasterVolumePopup sets
-// state correctly and closeMasterVolumePopup resets it.
 func TestMasterVolumePopupOpenClose(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -315,8 +288,6 @@ func TestMasterVolumePopupOpenClose(t *testing.T) {
 	}
 }
 
-// TestMasterVolumePopupInputDrag verifies that dragging inside the master
-// volume popup changes the slider value and calls audio.SetMainVolume.
 func TestMasterVolumePopupInputDrag(t *testing.T) {
 	withDefaultAudio(t)
 
@@ -365,10 +336,7 @@ func TestMasterVolumePopupInputDrag(t *testing.T) {
 
 // ---------- on-screen containment + proximity ----------
 
-// TestSliderPopupBottomAnchorStaysOnScreen is the regression case for the
-// "popup renders ~300px from its trigger over the EQ panel and clips below the
-// screen so the LOW volume range is unreachable" bug. Opening from a
-// bottom-edge anchor must keep the whole popup inside bounds.
+// Opened from a bottom-edge anchor, the whole popup stays on screen, so the low volume range stays reachable.
 func TestSliderPopupBottomAnchorStaysOnScreen(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -399,8 +367,7 @@ func TestSliderPopupBottomAnchorStaysOnScreen(t *testing.T) {
 	}
 }
 
-// TestSliderPopupSitsNearTrigger verifies the popup is positioned adjacent to
-// its anchor (not detached ~300px away over the EQ panel).
+// Adjacent to its anchor, never detached over the EQ panel.
 func TestSliderPopupSitsNearTrigger(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -416,8 +383,6 @@ func TestSliderPopupSitsNearTrigger(t *testing.T) {
 	sp.Open(anchor, bounds, 44)
 
 	r := sp.Rect()
-	// The popup must be adjacent to the anchor: its top/bottom edge within a
-	// sane gap of the anchor's band, and horizontally overlapping the anchor.
 	const maxGap = 24
 	gapBelow := r.Min.Y - anchor.Max.Y // popup placed below the anchor
 	gapAbove := anchor.Min.Y - r.Max.Y // or above
@@ -433,8 +398,6 @@ func TestSliderPopupSitsNearTrigger(t *testing.T) {
 
 // ---------- overlay wrappers ----------
 
-// TestVolumePopupOverlayInterface verifies that SliderPopupOverlay (volume)
-// satisfies the expected Overlay behaviour.
 func TestVolumePopupOverlayInterface(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -481,8 +444,6 @@ func TestVolumePopupOverlayInterface(t *testing.T) {
 	}
 }
 
-// TestMasterVolumePopupOverlayInterface verifies that SliderPopupOverlay (master)
-// satisfies the expected Overlay behaviour.
 func TestMasterVolumePopupOverlayInterface(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -527,8 +488,6 @@ func TestMasterVolumePopupOverlayInterface(t *testing.T) {
 	}
 }
 
-// TestVolumePopupOverlayHandleInput verifies that the overlay HandleInput
-// returns the correct InputResult for drag vs consume vs ignore.
 func TestVolumePopupOverlayHandleInput(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -569,8 +528,6 @@ func TestVolumePopupOverlayHandleInput(t *testing.T) {
 	o.HandleInput(mx, my, false)
 }
 
-// TestMasterVolumePopupOverlayHandleInput verifies the master overlay's
-// HandleInput returns appropriate results.
 func TestMasterVolumePopupOverlayHandleInput(t *testing.T) {
 	withDefaultAudio(t)
 

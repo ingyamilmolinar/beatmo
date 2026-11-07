@@ -6,11 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestOrientationChangeDrumLengthPreserved verifies that rotating from portrait
-// to landscape and back does not permanently shrink the drum Length.
-// Bug 1: SetBounds() clamps dv.Length via clampLength, but on returning to a
-// wider orientation, the already-clamped value is used as input, so Length
-// never grows back.
+// SetBounds clamps Length; feeding the clamped value back in would keep it from growing on a wider orientation.
 func TestOrientationChangeDrumLengthPreserved(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -49,8 +45,6 @@ func TestOrientationChangeDrumLengthPreserved(t *testing.T) {
 	}
 }
 
-// TestOrientationChangeNoGapsNoOverlap verifies that after rotation the grid
-// and drum panes cover the full screen without gaps.
 func TestOrientationChangeNoGapsNoOverlap(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -80,8 +74,6 @@ func TestOrientationChangeNoGapsNoOverlap(t *testing.T) {
 	check("portrait2", 390, 844)
 }
 
-// TestOrientationChangeButtonsInBounds verifies that after rotation all button
-// rects are non-empty and within drum bounds.
 func TestOrientationChangeButtonsInBounds(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -118,9 +110,7 @@ func TestOrientationChangeButtonsInBounds(t *testing.T) {
 	check("landscape", 844, 390)
 }
 
-// TestOrientationChangeCellWidthPositive verifies that after rotation the cell
-// width is at least 1 pixel.
-// Bug 2: calcLayout() computes dv.cell = w / len(Steps) which can be 0.
+// calcLayout's w / len(Steps) can round to 0.
 func TestOrientationChangeCellWidthPositive(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -142,8 +132,6 @@ func TestOrientationChangeCellWidthPositive(t *testing.T) {
 	check("tiny", 320, 480)
 }
 
-// TestOrientationChangeTimelineRectValid verifies that after rotation the
-// timeline rect is non-empty with positive dimensions inside drum bounds.
 func TestOrientationChangeTimelineRectValid(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -173,8 +161,6 @@ func TestOrientationChangeTimelineRectValid(t *testing.T) {
 	check("landscape", 844, 390)
 }
 
-// TestOrientationChangeWidgetRectsValid verifies that Transport, Rack, and
-// Timeline widget rects are non-empty and within drum bounds after rotation.
 func TestOrientationChangeWidgetRectsValid(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -210,8 +196,6 @@ func TestOrientationChangeWidgetRectsValid(t *testing.T) {
 	check("landscape", 844, 390)
 }
 
-// TestOrientationRapidCycleStability cycles portrait↔landscape 10 times and
-// checks that the final state has valid splitter, bounds, and length.
 func TestOrientationRapidCycleStability(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -243,8 +227,6 @@ func TestOrientationRapidCycleStability(t *testing.T) {
 	}
 }
 
-// TestDesktopResizePreservesDrumLength verifies that a desktop window resize
-// from wide to narrow and back preserves drum length.
 func TestDesktopResizePreservesDrumLength(t *testing.T) {
 	setupMobileTest(t, false) // desktop path
 
@@ -266,8 +248,6 @@ func TestDesktopResizePreservesDrumLength(t *testing.T) {
 	}
 }
 
-// TestOrientationChangeRowsVisible verifies that at least one row is visible
-// after rotation in both orientations.
 func TestOrientationChangeRowsVisible(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -288,10 +268,7 @@ func TestOrientationChangeRowsVisible(t *testing.T) {
 	check("landscape", 844, 390)
 }
 
-// TestOrientationChangeLabelWidthReasonable verifies that after rotation the
-// label width is positive and not more than half the drum pane width.
-// Bug 3: label width cache isn't invalidated on orientation change, so a cached
-// value from a wide orientation may be too large for a narrow one.
+// A label width cached in a wide orientation can be too large for a narrow one.
 func TestOrientationChangeLabelWidthReasonable(t *testing.T) {
 	setupMobileTest(t, true)
 

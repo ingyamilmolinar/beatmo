@@ -10,24 +10,9 @@ import (
 	"testing"
 )
 
-// TestThemeColorsTokenized AST-parses theme.go and asserts every top-level
-// color.RGBA / color.NRGBA constant is *either* token-backed (i.e. mapped
-// to a DESIGN.md YAML entry by design_md_drift_test.go) *or* listed in
-// the untokenized allowlist below with a justification.
-//
-// Why: design_md_drift_test.go only checks tokens that appear in DESIGN.md.
-// New colors added on the Go side that are not in the YAML are invisible
-// to the drift test. This guard inverts the relationship — every theme.go
-// color must be claimed somewhere, ratchet-style.
-//
-// Adding a new color to theme.go: pick one.
-//  1. Token-backed (preferred) — add the YAML entry to DESIGN.md and the
-//     mapping to design_md_drift_test.go's wantColors / rgbOnly. Then
-//     add the name to tokenBackedColorNames below.
-//  2. Untokenized (escape hatch) — add the name to untokenizedAllowlist
-//     with a one-line justification. Use this only when the value is a
-//     runtime-derived alpha composite, a platform-specific variant, or
-//     otherwise has no place in a Stitch-modeled component.
+// The drift test only sees colours already in DESIGN.md; this inverts it so every theme.go colour is claimed. A new
+// one is token-backed (YAML entry, drift mapping, tokenBackedColorNames) or, only for runtime composites and
+// variants with no component, allowlisted with a reason.
 func TestThemeColorsTokenized(t *testing.T) {
 	uiDir := findUIDir(t)
 	themePath := filepath.Join(uiDir, "theme.go")
@@ -61,8 +46,7 @@ func TestThemeColorsTokenized(t *testing.T) {
 		}
 	}
 
-	// Since the runtime-theme refactor the initialisers live as assignments
-	// inside rebuildThemeAliases() (re-run after ApplyTheme); walk them too.
+	// The initialisers also live inside rebuildThemeAliases(), re-run after ApplyTheme.
 	for _, decl := range file.Decls {
 		fd, ok := decl.(*ast.FuncDecl)
 		if !ok || fd.Name.Name != "rebuildThemeAliases" || fd.Body == nil {
@@ -103,9 +87,7 @@ func TestThemeColorsTokenized(t *testing.T) {
 			strings.Join(unclaimed, "\n  "))
 	}
 
-	// Ratchet: catch token-backed / untokenized entries that no longer
-	// correspond to a real declaration. Forces cleanup when a constant is
-	// removed.
+	// Entries without a declaration fail, forcing cleanup when a constant goes.
 	declaredSet := map[string]bool{}
 	for _, n := range declared {
 		declaredSet[n] = true
@@ -135,23 +117,8 @@ func TestThemeColorsTokenized(t *testing.T) {
 	}
 }
 
-// isColorLiteral reports whether expr declares a *new* color value. After
-// Phase 1 of the design-system refactor, color constants in theme.go come
-// in three shapes that introduce a color; all count:
-//  1. A `color.RGBA{...}` / `color.NRGBA{...}` composite literal — the
-//     original form, preserved for runtime alpha composites whose
-//     generated form would lose information.
-//  2. A bare identifier whose name starts with `genColor` — the Phase 1
-//     alias form, where a hand-named constant points directly at a
-//     generated token (e.g. `colAccent = genColorPrimary`).
-//  3. A call to one of the alpha-rebind helpers — `WithAlpha(c, a)`,
-//     `WithAlphaNRGBA(c, a)`, `WithAlphaFromColor(c, a)`. Phase B/C of
-//     the refactor migrated many `color.NRGBA{R, G, B, A}` literals to
-//     these helpers so the alpha picker is centralised in theme_tokens.go.
-//
-// Bare-`col*` aliases (e.g. `colBPMBox = colSurface2`) are intentionally
-// NOT detected: they don't introduce a new color, they retag an existing
-// one. The pre-Phase-1 test ignored them, and Phase 1 preserves that.
+// A composite literal, a bare genColor* identifier, or a WithAlpha* call introduces a colour. A bare col* alias
+// only retags an existing one and is not counted.
 func isColorLiteral(expr ast.Expr) bool {
 	switch v := expr.(type) {
 	case *ast.CompositeLit:
@@ -180,10 +147,7 @@ func isColorLiteral(expr ast.Expr) bool {
 	return false
 }
 
-// tokenBackedColorNames mirrors the union of design_md_drift_test.go's
-// wantColors and rgbOnly maps: every Go constant claimed by a DESIGN.md
-// YAML entry. Updates to this set must mirror updates to the drift test
-// — the discipline is "three places to update" by design.
+// Must mirror the drift test's wantColors and rgbOnly.
 var tokenBackedColorNames = map[string]bool{
 	"colRackSurface":      true, // DESIGN.md rack-bed
 	"colTransportSurface": true, // DESIGN.md toolbar-bed
@@ -206,7 +170,7 @@ var tokenBackedColorNames = map[string]bool{
 	"colEQBar":            true,
 	"colEQBarPeak":        true,
 	"colWaveTrace":        true,
-	"colVizBass":          true, // viz-bass (Phase 5 audio-panel spectrum tinting)
+	"colVizBass":          true, // viz-bass
 	"colVizMids":          true, // viz-mids
 	"colVizTreble":        true, // viz-treble
 	"colPanelBG":          true, // surface-overlay
@@ -219,12 +183,7 @@ var tokenBackedColorNames = map[string]bool{
 	"colGridHorizon":      true, // grid-horizon (sunset grid-pane backdrop)
 }
 
-// untokenizedAllowlist names colors that are intentionally not in DESIGN.md's
-// YAML. Each entry must carry a one-line justification — runtime-derived
-// alphas, platform variants, aliases, or chrome that has no Stitch component
-// to anchor against. Adding to this list is a ratchet failure mode: the
-// preference is always to lift values into DESIGN.md when a real semantic
-// role exists.
+// Each entry needs a reason; lift a value into DESIGN.md whenever a real semantic role exists.
 var untokenizedAllowlist = map[string]string{
 	// ── Folded per-file derivations (theme rebuild) ──
 	"colScopeA":               "folded into rebuildThemeAliases from its owning render/chrome file (runtime-theme refactor); composes generated tokens + a named alpha bucket, re-derived on ApplyTheme",
@@ -266,10 +225,7 @@ var untokenizedAllowlist = map[string]string{
 	// Surfaces / backgrounds
 	"colBGBottom": "alias of colBGTop (gradient endpoint, currently identical) — collapse if gradient remains flat",
 
-	// Grid hierarchy — six levels of subdivision lines, derived shades. A
-	// single token would obscure the level relationship; lifting six tokens
-	// into DESIGN.md adds noise without capturing the constraint that they
-	// must monotonically lighten.
+	// Six derived shades: six tokens would add noise without the constraint that they lighten monotonically.
 	"colGridLine":         "grid base line — derived shade above surface-1",
 	"colGridHalf":         "grid half-beat — derived shade above colGridLine",
 	"colGridQuarter":      "grid quarter — derived shade",
@@ -277,14 +233,10 @@ var untokenizedAllowlist = map[string]string{
 	"colGridSixteenth":    "grid sixteenth — derived shade",
 	"colGridThirtySecond": "grid thirty-second — lightest derived shade",
 
-	// Border ladder — runtime composites of genColorBorder + named alpha
-	// buckets. Each is a function-call expression, not a YAML token, so they
-	// stay on the allowlist with the alpha bucket spelled out.
+	// Runtime composites of genColorBorder and named alpha buckets.
 	"colBorderMedium": "WithAlpha(genColorBorder, AlphaBorderDefault=15) — control borders",
 	"colBorderStrong": "WithAlpha(genColorBorder, AlphaBorderEmphasis=25) — focused inputs",
-	// colButtonBorder and colSubtleBorder are bare aliases of the above
-	// (colBorderMedium / colBorderSubtle) and are intentionally not detected
-	// by isColorLiteral. They MUST NOT be added back to this allowlist.
+	// colButtonBorder and colSubtleBorder are bare aliases, not detected; they must not be re-added here.
 
 	// Accent / state aliases and runtime-alpha composites
 	"colAccentSubtle": "primary at 20/255 alpha for fills — migrate to WithAlpha(TokenAccent(), AlphaFaint)",
@@ -293,8 +245,7 @@ var untokenizedAllowlist = map[string]string{
 	"colDropdownEdge": "accent at 50/255 alpha for dropdown borders — runtime alpha composite",
 	"colError":        "alias of colStopRed for error-text role — collapse",
 
-	// Splitter chrome — one sunset-gold handle color shared by desktop + mobile
-	// (the splitter-handle token). No DESIGN.md component slot.
+	// One handle colour shared by both platforms, with no DESIGN.md component slot.
 	"colSplitterHandle":      "splitter handle — sunset-gold touch affordance, shared desktop+mobile",
 	"colSplitterHandleHover": "splitter handle hover — runtime brightening",
 

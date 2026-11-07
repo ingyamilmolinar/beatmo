@@ -9,14 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestInstMenuActiveHighlightFollowsSelection reproduces the "buttons stay
-// toggled" bug. The instrument menu stays open after a selection (audition
-// mode) but drawInstRow marks a row "active" by comparing its id to
-// props.CurrentInstrument — a snapshot captured when the menu was opened and
-// never refreshed while open. So the instrument that was current at open time
-// stays highlighted forever, no matter what the user picks next, and the
-// highlight never follows the live selection. Only ONE row should ever read as
-// selected: the one the user most recently chose.
+// The menu stays open after a pick (audition mode), so the active row must follow the live selection, not the
+// instrument current when it opened: only the latest pick reads as selected.
 func TestInstMenuActiveHighlightFollowsSelection(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -37,8 +31,6 @@ func TestInstMenuActiveHighlightFollowsSelection(t *testing.T) {
 		if got := dv.Rows[0].Instrument; got != want {
 			t.Fatalf("selecting %q did not change the row (got %q)", want, got)
 		}
-		// The active highlight must track the live selection, not the open-time
-		// snapshot — otherwise the original instrument stays "toggled".
 		if got := comp.ActiveInstrumentID(); got != want {
 			t.Fatalf("after selecting %q the active highlight is still %q "+
 				"(stale props.CurrentInstrument snapshot — old row stays toggled)",

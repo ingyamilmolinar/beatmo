@@ -32,9 +32,7 @@ func TestDividerThickDefaultAndHover(t *testing.T) {
 		t.Fatalf("divider thick default=%v", g.dividerThick)
 	}
 
-	// On the divider line but FAR from the centre pill (x=10) → must NOT hover.
-	// The pill is the only interactive surface; the bare line is not draggable,
-	// so it must not light up just because the cursor crosses its Y.
+	// Only the pill is interactive, so the bare line must not light up.
 	restore = SetInputForTest(
 		func() (int, int) { return 10, g.split.Y },
 		func(ebiten.MouseButton) bool { return false },

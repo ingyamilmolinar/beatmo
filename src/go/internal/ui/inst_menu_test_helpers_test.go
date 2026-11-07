@@ -9,9 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// itoaPad returns a 3-digit zero-padded decimal representation of i.
-// Used by inst-menu pagination tests to generate stable, sortable
-// instrument labels (Item 000, Item 001, …).
+// Stable, sortable labels (Item 000, Item 001, …).
 func itoaPad(i int) string {
 	s := strconv.Itoa(i)
 	for len(s) < 3 {
@@ -20,9 +18,6 @@ func itoaPad(i int) string {
 	return s
 }
 
-// keyState is a tiny test stub for ebiten.IsKeyPressed. Tests press a
-// key, call comp.Update() (rising-edge fires), release, then call
-// Update again (edge resets). pressKey wraps that two-frame cycle.
 type keyState struct {
 	pressed map[ebiten.Key]bool
 }
@@ -35,9 +30,6 @@ func (k *keyState) release(key ebiten.Key) { delete(k.pressed, key) }
 
 func (k *keyState) isKeyPressed(key ebiten.Key) bool { return k.pressed[key] }
 
-// installInputStub registers a keyState as the active input source
-// for the duration of the test. Returns the keyState so tests can
-// drive press/release directly. Restoration is deferred via t.Cleanup.
 func installInputStub(t *testing.T) *keyState {
 	t.Helper()
 	ks := newKeyState()

@@ -2,23 +2,9 @@
 
 package ui
 
-// Two guards over the Go<->JS bridge SEAM, both born from the same defect.
-//
-// The Spectrum tab rendered an empty plot for every per-instrument channel
-// in the browser because Go invoked channelAnalyzerSnapshot(id) with no
-// `bins` argument and silently inherited JS's default of 64 — 375 Hz between
-// bins, coarser than the display bands. Nothing failed. Nothing could: the
-// call compiles, returns the right shape, and is wrong only in a value
-// neither side states.
-//
-// Chasing it then cost another round, because the browser test probing the
-// defect called `rowInstrumentIDs()` — a GO TEST HELPER that was never a JS
-// export — behind a `typeof … === "function"` guard with a hardcoded
-// fallback. The guard swallowed the missing export and the fallback named an
-// instrument the circuit did not contain, so the probe measured an empty
-// channel and reported it as a dead analyser.
-//
-// Both are the same class: an omission at the seam that fails OPEN.
+// The Go↔JS seam fails OPEN: an argument Go omits takes a JS default nothing reconciles (the Spectrum tab
+// went blank on 64 bins), and a `typeof X === "function"` guard naming a non-export silently runs a fallback
+// that measures the wrong thing.
 
 import (
 	"os"
@@ -29,12 +15,7 @@ import (
 	"testing"
 )
 
-// noDefaultBridgeFns are JS exports whose parameters Go must pass in FULL.
-//
-// A JS default is invisible from the Go side, so for any parameter that
-// carries a real decision — a resolution, a size, a mode — the default is a
-// second source of truth that nothing reconciles. These are the functions
-// where that already went wrong or would go equally unnoticed.
+// A JS default is invisible from Go, so for these parameters it would be a second source of truth.
 var noDefaultBridgeFns = []string{
 	"enableChannelAnalyzer",
 	"channelAnalyzerSnapshot",
@@ -47,8 +28,7 @@ var noDefaultBridgeFns = []string{
 var (
 	// Arity parse: only the arrow form, which is what the bridge exports use.
 	jsWindowFnRe = regexp.MustCompile(`(?m)^\s*(?:window|globalThis)\.([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?\(([^)]*)\)\s*=>`)
-	// Existence parse: ANY assignment to a global, whatever the RHS shape
-	// (`window.x = async (…) =>`, `= function`, `= someLocal`, …).
+	// ANY assignment to a global, whatever the right-hand side.
 	jsWindowAnyRe = regexp.MustCompile(`(?m)^\s*(?:window|globalThis)\.([A-Za-z_$][\w$]*)\s*=[^=]`)
 	goInvokeRe    = regexp.MustCompile(`js\.Global\(\)\.Get\("([^"]+)"\)`)
 	typeofFnRe    = regexp.MustCompile(`typeof\s+(?:window|globalThis)\.?([A-Za-z_$][\w$]*)\s*===\s*["']function["']`)
@@ -56,10 +36,7 @@ var (
 	goAliasedSetRe = regexp.MustCompile(`\bg\.Set\("([^"]+)"`)
 )
 
-// repoPath resolves a path under the repo root. Three levels up from
-// internal/ui lands on `src/` in the normal layout and on the repo root in
-// the alternate one CI uses, so try both — same defence as
-// js_exports_catalogue_drift_test.go.
+// Three levels up lands on `src/` in the normal layout and on the repo root in the one CI uses.
 func repoPath(rel ...string) string {
 	withSrc := filepath.Join(append([]string{"..", "..", "..", "src"}, rel...)...)
 	if _, err := os.Stat(filepath.Dir(withSrc)); err == nil {
@@ -78,8 +55,6 @@ func readRepoFile(t *testing.T, rel ...string) string {
 	return string(b)
 }
 
-// jsDeclaredArity maps every `window.X = (a, b) =>` export in audio.js to its
-// declared parameter count.
 func jsDeclaredArity(t *testing.T) map[string]int {
 	t.Helper()
 	src := readRepoFile(t, "js", "audio.js")
@@ -98,13 +73,8 @@ func jsDeclaredArity(t *testing.T) map[string]int {
 	return out
 }
 
-// TestBridgeCallsPassEveryDeclaredArgument — for the functions where a JS
-// default would be a hidden second source of truth, every Go call site must
-// pass the full parameter list.
 func TestBridgeCallsPassEveryDeclaredArgument(t *testing.T) {
 	arity := jsDeclaredArity(t)
-	// Every browser-side bridge file of package audio (analyzer_wasm.go,
-	// instrument_docs_wasm.go, graph_render_wasm.go, …).
 	files, err := filepath.Glob(repoPath("go", "internal", "audio", "*_wasm.go"))
 	if err != nil || len(files) == 0 {
 		t.Fatalf("no internal/audio/*_wasm.go files found (%v) — the scan is broken", err)
@@ -129,9 +99,7 @@ func TestBridgeCallsPassEveryDeclaredArgument(t *testing.T) {
 		if !want[name] {
 			continue
 		}
-		// The .Invoke follows its Get inside the same helper. Search forward
-		// by OFFSET, not by a line window: a comment between the two (there
-		// is one, explaining the argument) must not hide the call site.
+		// Searched forward by OFFSET, not a line window: a comment between Get and Invoke must not hide the call.
 		rest := src[loc[1]:]
 		k := strings.Index(rest, ".Invoke(")
 		if k < 0 {
@@ -155,13 +123,8 @@ func TestBridgeCallsPassEveryDeclaredArgument(t *testing.T) {
 	}
 }
 
-// TestTypeofGuardsNameRealExports — a `typeof X === "function"` guard in a
-// browser test must name an export that actually exists.
-//
-// The guard idiom is fine; naming a function that was never registered is
-// not. It turns a typo (or a Go test helper mistaken for a bridge export)
-// into a silently-skipped check, or worse, into a fallback path that
-// measures the wrong thing and reports it as a finding.
+// The guard idiom is fine; naming something never registered turns a typo, or a Go test helper taken for an
+// export, into a skipped check or a fallback that reports the wrong measurement.
 func TestTypeofGuardsNameRealExports(t *testing.T) {
 	goFiles, err := filepath.Glob("*.go")
 	if err != nil {
@@ -179,10 +142,7 @@ func TestTypeofGuardsNameRealExports(t *testing.T) {
 		for _, m := range jsGlobalSetRe.FindAllStringSubmatch(string(b), -1) {
 			known[m[1]] = true
 		}
-		// Also the aliased form: several files do `g := js.Global()` once and
-		// then `g.Set("name", …)`. The literal-only regex the catalogue drift
-		// test uses cannot see those (_kbProxyEscapeGo is one), and a name it
-		// cannot see looks exactly like a name that does not exist.
+		// The aliased `g := js.Global(); g.Set(…)` form too: a name the scan cannot see looks like one that doesn't exist.
 		for _, m := range goAliasedSetRe.FindAllStringSubmatch(string(b), -1) {
 			known[m[1]] = true
 		}
@@ -254,8 +214,6 @@ func TestTypeofGuardsNameRealExports(t *testing.T) {
 	}
 }
 
-// standardJSGlobals are platform globals a browser test may legitimately
-// feature-detect.
 var standardJSGlobals = map[string]bool{
 	"AudioContext": true, "webkitAudioContext": true, "OfflineAudioContext": true,
 	"requestAnimationFrame": true, "queueMicrotask": true, "structuredClone": true,
@@ -263,9 +221,7 @@ var standardJSGlobals = map[string]bool{
 	"showOpenFilePicker": true, "showSaveFilePicker": true, "reportError": true,
 }
 
-// invokeArgs returns the argument list of a call whose opening parenthesis
-// was just consumed, and how many top-level arguments it has: commas and
-// the closing parenthesis inside a nested call (string(id)) do not count.
+// Commas and the closing parenthesis inside a nested call (string(id)) do not count.
 func invokeArgs(s string) (string, int) {
 	depth, args, end := 0, 0, len(s)
 	nonEmpty := false
@@ -298,11 +254,8 @@ func invokeArgs(s string) (string, int) {
 	return inner, args + 1
 }
 
-// TestAudioJSGlobalsNeverShadowGoExports — a global audio.js assigns must not
-// share its name with a JS export Go registers. Whichever assignment runs last
-// wins, silently: audio.js once named its live insert-effect retune
-// `setInsertEffectParam`, Go's own export of that name won, and Go's push to
-// "the browser" called Go's export, which pushed again — until the page died.
+// Whichever assignment runs last wins, silently: an audio.js global named like a Go export once made Go's push
+// call itself until the page died.
 func TestAudioJSGlobalsNeverShadowGoExports(t *testing.T) {
 	goExports := map[string]string{}
 	for _, dir := range []string{".", filepath.Join("..", "audio")} {

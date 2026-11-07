@@ -6,16 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestParityGroupRuleNeverAltersTriggerParity is the spec §8 gap: a group
-// rule (batch pitch/volume/duration stepping across rounds) must only ever
-// touch vol/pitch/dur — never a node's trigger/audible decision. This drives
-// the same predictor-vs-audible comparison TestMuteNodeDrumViewPredictionConsistency
-// (mute_node_audio_test.go) uses, applied to a 2-node loop group with a
-// pitch rule (delta 2, every 1 round), plus the evalNodeParamsOnly
-// round-boundary check from TestGroupRulePitchAppliesByRound
-// (game_groups_test.go) strengthened to also assert trigger parity at the
-// exact (row, idx, info) form both callers (game_tick_highlight.go and
-// game_sequencer_schedule.go) use.
+// A group rule steps vol/pitch/dur across rounds and must never touch whether a node triggers or is audible.
 func TestParityGroupRuleNeverAltersTriggerParity(t *testing.T) {
 	assertDefaultParityState(t)
 	g, aID, bID := buildGroupLoopCircuit(t)
@@ -48,8 +39,6 @@ func TestParityGroupRuleNeverAltersTriggerParity(t *testing.T) {
 	}
 	g.refreshDrumRow()
 
-	// Trigger parity must be UNCHANGED by the rule: same rendered Steps, same
-	// predictor VisibleAt, at every position the baseline covered.
 	for i, on := range baseline {
 		abs := g.drum.Offset + i
 		if got := g.drum.Rows[0].Steps[i]; got != on {
@@ -60,11 +49,8 @@ func TestParityGroupRuleNeverAltersTriggerParity(t *testing.T) {
 		}
 	}
 
-	// Round-boundary pitch stepping (game_groups_test.go's
-	// TestGroupRulePitchAppliesByRound), strengthened here to also assert
-	// nodeTriggered (the (row, idx, info) form both game_tick_highlight.go's
-	// and game_sequencer_schedule.go's evalNodeParamsOnly callers use)
-	// agrees the node still fires despite the rule.
+	// nodeTriggered in the (row, idx, info) form both evalNodeParamsOnly callers use must still fire at the round
+	// boundary.
 	loopStart := g.loopStartByRow[0]
 	loopLen := len(g.beatInfosByRow[0]) - loopStart
 	if !g.isLoopByRow[0] || loopLen <= 0 {

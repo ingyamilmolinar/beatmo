@@ -8,10 +8,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// buildIncrementalReconcileScene builds a 1-row 2-node loop scene with
-// playback running, advances `steps` abs, and returns the configured game.
-// Mirrors the structure of drum_live_edit_mask_freeze_test.go's setup so
-// the playback mechanics match production paths.
 func buildIncrementalReconcileScene(t *testing.T, steps int) *Game {
 	t.Helper()
 	g := New(testLogger)
@@ -35,18 +31,11 @@ func buildIncrementalReconcileScene(t *testing.T, steps int) *Game {
 	return g
 }
 
-// TestReconcileFrozenScanIsIncremental drives playback through two stages —
-// short (5 000 abs) and long (50 000 abs) — and asserts that the per-row
-// reconciliation watermark advances roughly with freezeLimit so the scan
-// cost stays bounded by "newly frozen abs since last refresh", not by total
-// frozen history. Without the incremental gating, scan cost grows O(N).
+// The per-row watermark advances with freezeLimit, so each refresh scans only newly frozen abs, not the whole
+// frozen history.
 func TestReconcileFrozenScanIsIncremental(t *testing.T) {
 	g := buildIncrementalReconcileScene(t, 5_000)
 
-	// After 5 000 abs of playback, the row's reconciliation watermark should
-	// have advanced past 0 — proving the scan is running and recording high
-	// water. The exact value depends on visibleWindow + freezeLimit growth,
-	// but for a row with playback running it should be well above 0.
 	if len(g.reconciledUpToByRow) == 0 {
 		t.Fatalf("reconciledUpToByRow not initialised after 5000 abs of playback")
 	}
@@ -60,18 +49,13 @@ func TestReconcileFrozenScanIsIncremental(t *testing.T) {
 		t.Fatalf("reconciledUpToByRow[0] regressed: early=%d late=%d", earlyMark, lateMark)
 	}
 
-	// The watermark must reflect ongoing reconciliation. If it hasn't
-	// advanced at all over 45 000 additional abs of playback, the resume
-	// path is broken (or freezeLimit isn't growing — in either case a bug).
+	// A watermark that never advances means the resume is broken or freezeLimit isn't growing.
 	if lateMark <= earlyMark && earlyMark > 0 {
 		t.Logf("watermark unchanged early=%d late=%d (acceptable if visible window not advancing)", earlyMark, lateMark)
 	}
 }
 
-// TestReconcileFrozenInvalidatesOnPathChange asserts that pushing a path
-// change via SetPaths (or the wrapper that triggers pathsDirty) resets every
-// row's reconciliation watermark to -1, forcing the next refresh to re-scan
-// from futureReleaseStart.
+// The next refresh then re-scans from futureReleaseStart.
 func TestReconcileFrozenInvalidatesOnPathChange(t *testing.T) {
 	g := buildIncrementalReconcileScene(t, 1_000)
 
@@ -80,25 +64,16 @@ func TestReconcileFrozenInvalidatesOnPathChange(t *testing.T) {
 	}
 	beforeMark := g.reconciledUpToByRow[0]
 	if beforeMark < 0 {
-		// Reconciliation may not yet have a positive watermark depending on
-		// visibleWindow vs. freezeLimit. Force at least one frozen abs by
-		// driving past the window end.
+		// Past the window end, so at least one abs is frozen.
 		advancePlaybackByAbs(g, 200)
 		beforeMark = g.reconciledUpToByRow[0]
 	}
 
-	// Trigger a path change. tryAddNode + addEdge sets pathsDirty via
-	// updateBeatInfos; refreshDrumRow consumes that flag and calls
-	// invalidateReconciledAll. After refresh, the watermark must be -1.
 	c := g.tryAddNode(2, 0, model.NodeTypeRegular)
 	g.addEdge(c, c) // self-loop just to reuse a fresh node
 	g.updateBeatInfos()
 	g.refreshDrumRow()
-	// During the refresh the scan re-ran and may have advanced the watermark.
-	// What we care about is that BEFORE the scan resumed it was reset — the
-	// proof is that the post-refresh watermark differs from the pre-refresh
-	// "advance by 0" expectation. Test the helper directly to avoid timing
-	// races: invalidateReconciledAll must zero the slice.
+	// The refresh re-scans and may advance the watermark again, so the helper is checked directly.
 	g.invalidateReconciledAll()
 	for r, mark := range g.reconciledUpToByRow {
 		if mark != -1 {

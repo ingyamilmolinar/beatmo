@@ -7,22 +7,14 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// Reproducer for click-through bug: when the color dropdown overlaps the
-// Upload button, selecting a swatch must not also trigger Upload. Previously,
-// swatch clicks would close the menu and a still-held mouse press could fire
-// the underlying Upload button on the following Update.
+// A swatch pick over the Upload button must not also fire Upload on the still-held press.
 func TestColorMenuOverUploadDoesNotClickThrough(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 700)
 
-	// Make drum pane small enough to force the color menu to open upward,
-	// towards the control panel area where Upload lives.
-	// Set bounds directly to avoid depending on splitter input.
-	// Keep the drum view short so the color menu opens upward towards the
-	// control panel. Use the current header size plus ~3 rows to avoid
-	// depending on a hardcoded timelineHeight.
+	// Short enough that the menu opens upward toward Upload, from the header plus ~3 rows.
 	h := timelineHeight + 3*g.drum.rowHeight()
 	g.drum.SetBounds(image.Rect(0, g.split.Y, 800, g.split.Y+h))
 	g.drum.recalcButtons()
@@ -41,14 +33,11 @@ func TestColorMenuOverUploadDoesNotClickThrough(t *testing.T) {
 		t.Fatalf("color picker not built")
 	}
 
-	// Pick a swatch near the top of the menu (opens upward) so it is likely
-	// to overlap the Upload region. Index 2 (3rd) satisfies timeline math.
+	// Near the top of the upward menu, likely over Upload.
 	r := g.drum.colorWheelComp.WheelRect()
 	cx, cy := r.Min.X+r.Dx()*2/3, r.Min.Y+r.Dy()/2
 
-	// Hold mouse pressed across two updates to emulate the scenario where
-	// the swatch click closes the menu, then the same held press could fire
-	// the underlying Upload button on the next frame.
+	// Held across two updates: the pick closes the menu, and the same press must not reach Upload next frame.
 	restore := SetInputForTest(
 		func() (int, int) { return cx, cy },
 		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
@@ -60,7 +49,6 @@ func TestColorMenuOverUploadDoesNotClickThrough(t *testing.T) {
 	t.Cleanup(restore)
 	// First update: click swatch (menu handles and closes)
 	_ = g.Update()
-	// Second update: still held; without suppression this used to trigger Upload
 	_ = g.Update()
 	restore()
 

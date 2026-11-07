@@ -56,9 +56,7 @@ func TestTextInputFocusCallbacksFired(t *testing.T) {
 
 // TestTextInputSoftKBCharsAppear verifies that soft keyboard chars update Text.
 func TestTextInputSoftKBCharsAppear(t *testing.T) {
-	// This test verifies the inputChars() path (used by both soft keyboard and
-	// hardware keyboard). When softKeyboardActive() returns false (stub mode),
-	// the TextInput uses inputChars() which we can mock.
+	// With no soft keyboard (stub), TextInput reads inputChars(), which the test controls.
 	ti := NewTextInput(image.Rect(10, 10, 200, 40), BPMBoxStyle)
 	ti.focused = true
 	ti.prevFocused = true
@@ -164,20 +162,15 @@ func TestTextInputDesktopRegression(t *testing.T) {
 	}
 }
 
-// TestFocusRectCoordinatesMatchGameCoords verifies that softKeyboardRegisterRect
-// receives game coordinates (CSS pixels), not DPR-scaled coordinates.
+// CSS pixels, never DPR-scaled.
 func TestFocusRectCoordinatesMatchGameCoords(t *testing.T) {
 	assertDefaultParityState(t)
 
-	// iPhone 12 CSS dimensions (390×844). Layout returns the same values
-	// since Game.Layout echoes its inputs; these are game coordinates.
+	// Game.Layout echoes its inputs, so these are game coordinates.
 	dv := newTestDrumView(t, 390, 844)
 	dv.calcLayout()
 
-	// Tree-owned native-gesture rect isolation: the candidate producer is
-	// queried directly and gated by the per-frame sync phase. A live text field
-	// (TextField — BPM no longer has a text box) must produce a candidate whose
-	// rect is exactly the field's rect in game coordinates.
+	// A live TextField's candidate rect is exactly its rect in game coordinates.
 	box := NewTextField(dv.textFields, TextFieldSpec{ID: "probe-coords", Owner: "probe"}, 32)
 	box.Rect = image.Rect(120, 700, 300, 736) // a field near the bottom of a 390x844 view
 	box.Update()                              // live this frame

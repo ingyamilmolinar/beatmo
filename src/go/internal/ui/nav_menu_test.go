@@ -11,10 +11,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// TestNavAndFileMenusAreSeparatePortals asserts the split: the nav menu
-// (OpenNavigation) is its OWN portal component (navMenuComp), NOT the overflow
-// file portal; the file menu (OpenFileMenu) opens the overflow portal whose
-// items carry the FILE header and no nav content.
 func TestNavAndFileMenusAreSeparatePortals(t *testing.T) {
 	g := newGameWithStart(t)
 
@@ -47,10 +43,7 @@ func TestNavAndFileMenusAreSeparatePortals(t *testing.T) {
 	}
 }
 
-// TestNavPrevNextJumpByAmountAndUnit drives the NavigationPanel's callbacks
-// directly (bypassing gesture simulation) to prove OnNext/OnPrev seek by the
-// live jumpBeats amount, honoring jumpUnitBeats: true -> whole beats
-// (RequestSeekDeltaBeats), false -> raw subdivisions (RequestSeekDeltaSteps).
+// Beats seek whole beats, subdiv seeks raw steps.
 func TestNavPrevNextJumpByAmountAndUnit(t *testing.T) {
 	g := newGameWithStart(t)
 	div := g.grid.MaxDiv()
@@ -70,9 +63,7 @@ func TestNavPrevNextJumpByAmountAndUnit(t *testing.T) {
 	}
 }
 
-// TestNavAmountPickerStacksOverNavMenu guards the portal-stacking: opening the
-// ×N amount dropdown from inside the nav menu must stack the picker OVER the nav
-// menu (both portal entries alive, picker on top), not tear the nav menu down.
+// Both portal entries stay alive; the picker must not tear the nav menu down.
 func TestNavAmountPickerStacksOverNavMenu(t *testing.T) {
 	g := newGameWithStart(t)
 	g.drum.OpenNavigation()
@@ -91,9 +82,7 @@ func TestNavAmountPickerStacksOverNavMenu(t *testing.T) {
 	}
 }
 
-// TestNavGotoWheelIsInlineInTheNavMenu: the go-to wheel lives INSIDE the nav
-// card (no separate editor to open) and is seated on the playhead the moment
-// the menu opens.
+// Seated on the playhead the moment the menu opens.
 func TestNavGotoWheelIsInlineInTheNavMenu(t *testing.T) {
 	g := newGameWithStart(t)
 	g.drum.OpenNavigation()
@@ -108,13 +97,7 @@ func TestNavGotoWheelIsInlineInTheNavMenu(t *testing.T) {
 	}
 }
 
-// TestNavAmountPickerSelectionMutatesJumpBeats closes the coverage gap left by
-// deleting transport_jump_test.go's TestJumpSizeConfigurable (Task-5 review
-// M1): opening the NAVIGATION panel's ×N amount menu and picking an option
-// must actually update dv.jumpBeats — the value NavigationPanel reads for its
-// prev/next jump distance. Drives the real OnPickAmount → OpenJumpMenu path and
-// fires the option button's OnSelect through the component (press edge), rather
-// than poking the field directly.
+// Through the real OnPickAmount → OpenJumpMenu path and the option's press edge, never by poking the field.
 func TestNavAmountPickerSelectionMutatesJumpBeats(t *testing.T) {
 	g := newGameWithStart(t)
 	g.drum.OpenNavigation()

@@ -8,8 +8,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Spec 2026-10-31 §1.2: the held set is the instruments the rows play, kept
-// current through real frames.
 func TestHeldSetFollowsTheRows(t *testing.T) {
 	g := newMelodicCircuitGame(t, 0, 2)
 	t.Cleanup(audio.ResetHeldInstruments)

@@ -5,8 +5,7 @@ import (
 	"testing"
 )
 
-// A button at rest or steadily-on must do ZERO per-frame state work and
-// allocate nothing — the single WASM audio thread cannot afford chrome churn.
+// Zero per-frame work and no allocation: the one WASM thread cannot afford chrome churn.
 func TestButtonSettlesToSilence(t *testing.T) {
 	b := NewButton("Play", InstButtonStyle, nil)
 	b.SetRect(image.Rect(0, 0, 60, 30))

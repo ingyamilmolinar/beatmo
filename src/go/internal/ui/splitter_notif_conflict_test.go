@@ -9,11 +9,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestSplitterCapturesPillButNotOffPillBelowDivider proves the real invariant
-// preserved by widening InputBounds to cover the pill: a press ON the visible
-// handle pill (even below the divider line) captures the splitter, but a press
-// below the divider that MISSES the pill is NOT captured — so drum-area
-// controls beneath the divider are never stolen.
+// A press on the pill below the line captures; one below the line that misses it does not, so drum controls
+// beneath the divider are never stolen.
 func TestSplitterCapturesPillButNotOffPillBelowDivider(t *testing.T) {
 	s := NewSplitter(600)
 	s.Y = 300
@@ -44,11 +41,7 @@ func TestSplitterCapturesPillButNotOffPillBelowDivider(t *testing.T) {
 	}
 }
 
-// TestTreeExternalCaptureBlocksNewPress pins the GENERIC half of the fix: the
-// DrumViewTree must NOT dispatch a new press to its hit areas when an external
-// handler (the legacy InputDispatcher — splitter, sidebar, …) already owns the
-// press. This is the cross-system coordination that prevents ANY tree
-// component from stealing a press a higher-priority legacy component captured.
+// A press the legacy InputDispatcher (splitter, sidebar…) already owns must not also reach the tree's hit areas.
 func TestTreeExternalCaptureBlocksNewPress(t *testing.T) {
 	var mx, my int
 	var pressed bool

@@ -6,9 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Guard: parity checks must be skipped while the import dialog is open so the
-// sequencer cannot panic on slate/predictor mismatches that occur while the UI
-// thread is blocked by the file picker.
+// The file picker blocks the UI thread, so slate and predictor disagree until it closes.
 func TestParityCheckSkippedDuringImportDialog(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

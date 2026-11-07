@@ -7,17 +7,9 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// These tests pin the invariant the user asked for: while ANY text input is
-// open, Left/Right arrows must reach the text caret only and must NOT trigger
-// main-grid behaviours such as camera panning. They complement the existing
-// TestArrowKeysYieldToSynthValueEditor / TestArrowKeysYieldToEQValueEditor
-// (which cover the shared inline numeric editor) by covering the text-input
-// surfaces the global-shortcut gate currently misses.
+// While any text input is open, Left/Right reach the caret only and never pan the grid.
 
-// TestArrowKeysYieldToSaveAsDialog covers the Synth/Sampler "Save As" dialog.
-// It is a focused TextInput but is neither a tree-focused zone nor the shared
-// numeric editor, so handleGlobalShortcuts' gate does not yield to it — Left
-// pans the grid while the user is typing a preset name.
+// A focused TextInput that is neither a tree-focused zone nor a numeric editor.
 func TestArrowKeysYieldToSaveAsDialog(t *testing.T) {
 	g := newTestGameForUndo(t)
 	ti := NewTextInput(image.Rect(0, 0, 120, 24), BPMBoxStyle)
@@ -53,10 +45,7 @@ func TestArrowKeysYieldToSaveAsDialogRight(t *testing.T) {
 	}
 }
 
-// TestArrowKeysYieldToRenameTextInput covers the portal-hosted instrument
-// rename field. While the rename portal is open the user is typing into a
-// TextInput, yet the global-shortcut gate has no portal check, so Left/Right
-// pan the grid underneath the dialog.
+// The portal-hosted rename field.
 func TestArrowKeysYieldToRenameTextInput(t *testing.T) {
 	g := newTestGameForUndo(t)
 	rc := g.drum.renameComp
@@ -120,8 +109,7 @@ func TestArrowKeysYieldToNamingBox(t *testing.T) {
 	}
 }
 
-// openTemplateMenuSearchFocused opens the overflow menu on the template page
-// (page 1), lays it out so the pinned search box is created, and focuses it.
+// Laid out so the pinned search box exists, then focused.
 func openTemplateMenuSearchFocused(t *testing.T, g *Game) {
 	t.Helper()
 	dv := g.drum
@@ -135,11 +123,7 @@ func openTemplateMenuSearchFocused(t *testing.T, g *Game) {
 	dv.templateSearchBox.SetFocus(true)
 }
 
-// Arrows must not pan the grid while the template-menu search box (overflow
-// page 1) is open + focused — the caret must move, the camera must not.
-// Regression: the overflow menu overlay (dvOverlayPortal) did not implement
-// KeyboardClaimant, so the grid keyboard gate never yielded to it and Left/Right
-// panned the grid under the open menu (a sibling-tree menu leaking into the grid).
+// The overflow menu overlay claims the keyboard, so arrows move the caret, not the camera beneath.
 func TestArrowKeysYieldToTemplateMenuSearch(t *testing.T) {
 	g := newTestGameForUndo(t)
 	openTemplateMenuSearchFocused(t, g)
@@ -169,11 +153,7 @@ func TestArrowKeysYieldToTemplateMenuSearchRight(t *testing.T) {
 	}
 }
 
-// TestOverflowMenuClaimsKeyboardWhileOpen pins the per-tree isolation invariant
-// at the contract level: while the overflow (template) menu is open, its subtree
-// (overlayTree) owns the keyboard so DrumView.KeyboardClaimed() is true and the
-// sibling GridTree's keyboard shortcuts yield entirely. Mirrors the instrument
-// menu's claim-while-open semantics (InstrumentMenuComponent.ClaimsKeyboard).
+// While open its overlay tree owns the keyboard, so the grid's shortcuts yield, as the instrument menu's do.
 func TestOverflowMenuClaimsKeyboardWhileOpen(t *testing.T) {
 	g := newTestGameForUndo(t)
 	dv := g.drum

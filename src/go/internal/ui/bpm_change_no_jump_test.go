@@ -7,9 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Build a single-row loop where every subdivision step lands on a regular node
-// so audio callbacks occur at subdivision resolution. The path goes 0->1->...->N
-// then back N->N-1->...->0 to form a loop with uniform 1-subdiv segments.
+// Every subdivision step lands on a regular node, out and back, so callbacks arrive at subdivision resolution.
 func buildSubdivLoop(g *Game) {
 	div := g.grid.MaxDiv()
 	// Create nodes at each subdivision on a horizontal line.
@@ -28,9 +26,7 @@ func buildSubdivLoop(g *Game) {
 	g.updateBeatInfos()
 }
 
-// When changing BPM during playback, inter-event audio intervals must not
-// collapse into a burst. This catches a regression where the scheduler jumps
-// ahead relative to the original playStart when BPM changes.
+// Intervals never collapse into a burst: the scheduler must not jump ahead relative to the old playStart.
 func TestBPMChange_NoAudioBurst(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -99,8 +95,7 @@ func TestBPMChange_NoAudioBurst(t *testing.T) {
 	}
 }
 
-// Visually, changing BPM mid-play must not cause large jumps in the tracked
-// subdivision index within a single frame.
+// No large jump in the tracked subdivision within a frame.
 func TestBPMChange_NoSubdivJump(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)

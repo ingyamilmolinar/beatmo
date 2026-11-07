@@ -17,8 +17,6 @@ func TestIconPaletteDispatch(t *testing.T) {
 	}
 }
 
-// The theme button sits one gap left of Logs, same size, inside the
-// protected top-right cluster on desktop AND mobile.
 func TestThemeButtonPlacementAndReservedZone(t *testing.T) {
 	for _, mobile := range []bool{false, true} {
 		if mobile {
@@ -54,8 +52,6 @@ func TestThemeButtonPlacementAndReservedZone(t *testing.T) {
 	}
 }
 
-// A real click on the theme button opens the theme overlay through the grid
-// inputDispatcher; a second click closes it; opening it closes Settings.
 func TestThemeButtonRealClickTogglesOverlay(t *testing.T) {
 	g := newGameWithStart(t)
 	g.Layout(1280, 720)

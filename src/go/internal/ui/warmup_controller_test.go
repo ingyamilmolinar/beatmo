@@ -12,8 +12,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// fakeWarmBackend records warm requests and completes them on demand, so the
-// controller's diff/progress/deadline logic is tested without a real render.
+// Tests the diff/progress/deadline logic without a real render.
 type fakeWarmBackend struct {
 	mu      sync.Mutex
 	cached  map[warmItem]bool
@@ -49,14 +48,8 @@ func (f *fakeWarmBackend) completeAll() {
 	}
 }
 
-// waitForAskedCount blocks until the fake backend has recorded at least n
-// Warm() requests, or fails the test after a short timeout. Needed because
-// Begin() feeds the backend off the caller's goroutine (see the "feed OFF
-// the caller's goroutine" fix in warmup_controller.go): the asked/pending
-// slices populate asynchronously relative to Begin() returning, so a test
-// that wants to act on the full request set (complete it, capture it as
-// "stale", etc.) must synchronize on it explicitly rather than assuming
-// Begin() has already fed every item by the time it returns.
+// Begin() feeds the backend off the caller's goroutine, so a test that acts on the full request set must wait for
+// it.
 func waitForAskedCount(t *testing.T, f *fakeWarmBackend, n int) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
@@ -106,8 +99,6 @@ func TestWarmupNotReadyUntilEveryItemCompletes(t *testing.T) {
 	}
 }
 
-// TestWarmupSkipsAlreadyCachedItems is the cache-hit requirement: an item the
-// backend already holds must never be re-rendered.
 func TestWarmupSkipsAlreadyCachedItems(t *testing.T) {
 	g, be := newWarmupTestGame(t)
 	set := g.buildWarmSet()
@@ -127,8 +118,7 @@ func TestWarmupSkipsAlreadyCachedItems(t *testing.T) {
 	}
 }
 
-// TestWarmupDeadlineOpensTheGate pins the never-deadlock rule: a backend that
-// never completes must still let the user press Play once the deadline passes.
+// A backend that never completes must still let the user press Play once the deadline passes.
 func TestWarmupDeadlineOpensTheGate(t *testing.T) {
 	g, _ := newWarmupTestGame(t)
 	g.warmup.Begin() // fake backend never calls done()
@@ -151,9 +141,7 @@ func TestWarmupCancelOpensTheGate(t *testing.T) {
 	}
 }
 
-// TestWarmupFinishFiresOnEndOnce pins Finding 1: natural completion followed
-// by a Cancel() (an ordinary sequence — the user presses Stop just after
-// warm-up finished on its own) must fire onEnd exactly once, not twice.
+// Natural completion then Cancel (Stop right after warm-up finished) fires onEnd once, not twice.
 func TestWarmupFinishFiresOnEndOnce(t *testing.T) {
 	g, be := newWarmupTestGame(t)
 	var mu sync.Mutex
@@ -181,12 +169,8 @@ func TestWarmupFinishFiresOnEndOnce(t *testing.T) {
 	}
 }
 
-// concurrentWarmBackend is a REAL concurrent backend: Warm completes on its
-// own goroutine after a short delay, so completion races against the test
-// goroutine's Tick/Ready/Progress/Cancel calls for real (unlike
-// fakeWarmBackend, whose done() fires synchronously on the caller's
-// goroutine and therefore never exercises warmupController's lock
-// discipline under -race).
+// Completes on its own goroutine, so completion really races the test's calls under -race; fakeWarmBackend
+// completes synchronously and never exercises the lock discipline.
 type concurrentWarmBackend struct {
 	mu     sync.Mutex
 	cached map[warmItem]bool
@@ -209,11 +193,8 @@ func (c *concurrentWarmBackend) Warm(inst instrument.ID, pitch float64, done fun
 	}()
 }
 
-// TestWarmupConcurrentCompletionIsRaceFree exercises invariant 2 (Warm's done
-// callback may fire from a worker goroutine) for real: completions land on
-// background goroutines while the test goroutine hammers Tick/Ready/Progress
-// concurrently. Run with -race; also asserts Progress() never overshoots
-// total, which a missing/misplaced lock could produce.
+// Completions land on background goroutines while the test hammers Tick/Ready/Progress; Progress() never overshoots
+// total, which a misplaced lock could produce. Run with -race.
 func TestWarmupConcurrentCompletionIsRaceFree(t *testing.T) {
 	g, _ := newWarmupTestGame(t)
 	be := newConcurrentWarmBackend()
@@ -256,12 +237,8 @@ func TestWarmupConcurrentCompletionIsRaceFree(t *testing.T) {
 	}
 }
 
-// slowWarmBackend's Warm blocks on the CALLING goroutine for delay before
-// calling done — it stands in for the real desktop backend's SubmitBlocking
-// against a bounded queue, which blocks its feeder for roughly the whole warm
-// duration when the queue is saturated. It is intentionally synchronous (no
-// internal goroutine) so the only way Begin() can avoid blocking the test
-// goroutine is for warmupController itself to feed off-thread.
+// Synchronous on purpose, standing in for SubmitBlocking on a saturated queue: Begin() avoids blocking only if the
+// controller feeds off-thread.
 type slowWarmBackend struct {
 	delay time.Duration
 }
@@ -273,17 +250,8 @@ func (s *slowWarmBackend) Warm(inst instrument.ID, pitch float64, done func()) {
 	done()
 }
 
-// TestWarmupBeginFeedsBackendOffCallerGoroutine pins the non-blocking-caller
-// contract: Begin() must return promptly even against a backend whose Warm
-// blocks per item, because desktop's real backend blocks on a bounded
-// SubmitBlocking queue and Begin() runs on the UI goroutine at import time —
-// blocking it would freeze the frame for the whole warm duration and starve
-// the progress toast (a later task) of any chance to paint or animate.
-//
-// Verified to FAIL without the fix: temporarily reverting the feeder in
-// warmup_controller.go back to the inline `for _, it := range todo { ...
-// w.be.Warm(...) }` loop makes Begin() block for len(todo)*delay, which for
-// any non-empty warm set clearly exceeds the 100ms bound below.
+// Begin() runs on the UI goroutine at import; a backend that blocks per item would otherwise freeze the frame for
+// the whole warm-up and starve the progress toast.
 func TestWarmupBeginFeedsBackendOffCallerGoroutine(t *testing.T) {
 	g, _ := newWarmupTestGame(t)
 	set := g.buildWarmSet()
@@ -303,9 +271,7 @@ func TestWarmupBeginFeedsBackendOffCallerGoroutine(t *testing.T) {
 		t.Fatalf("Begin() blocked the caller for %v (n=%d items x %v delay); "+
 			"the feeder must run off the caller's goroutine", elapsed, n, be.delay)
 	}
-	// The gate-correctness state must already be set SYNCHRONOUSLY, even
-	// though feeding itself is async — otherwise Ready() could flip true
-	// between Begin() returning and the feeder starting.
+	// Set SYNCHRONOUSLY although feeding is async, or Ready() could flip true before the feeder starts.
 	if g.warmup.Ready() {
 		t.Fatal("Ready() true immediately after Begin() with unfinished slow items")
 	}
@@ -317,8 +283,7 @@ func TestWarmupBeginFeedsBackendOffCallerGoroutine(t *testing.T) {
 		t.Fatalf("Progress() done = %d, want 0 immediately after Begin()", done)
 	}
 
-	// Drain: let the slow backend actually finish so no goroutine outlives the
-	// test (t.Cleanup(g.CloseForTest) runs via newWarmupTestGame).
+	// So no goroutine outlives the test.
 	deadline := time.Now().Add(time.Duration(n)*be.delay + 2*time.Second)
 	for time.Now().Before(deadline) {
 		if g.warmup.Ready() {
@@ -329,16 +294,8 @@ func TestWarmupBeginFeedsBackendOffCallerGoroutine(t *testing.T) {
 	t.Fatal("warm-up with the slow backend never completed")
 }
 
-// TestWarmupStaleCompletionsDoNotCreditNewSession pins Finding 2: a Warm()
-// completion callback issued by a superseded session (Begin() called again
-// before the prior session's callbacks all fired — e.g. import immediately
-// followed by a BPM change) must never credit the new session's counters or
-// open the gate early.
-//
-// Verified to fail without the epoch guard: temporarily reverting itemDone to
-// check only `!w.active` (dropping the `ep != w.epoch` clause) makes this
-// test fail, because the single stale callback below is then enough to
-// satisfy the second session's total=1 and flip Ready() true immediately.
+// A completion from a superseded session (Begin called again before the previous one's callbacks all fired) must
+// never credit the new session or open the gate early: the epoch guard.
 func TestWarmupStaleCompletionsDoNotCreditNewSession(t *testing.T) {
 	g, be := newWarmupTestGame(t)
 

@@ -8,11 +8,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestDividerIsGoldHorizon pins the split divider to the sunset-gold chrome
-// accent (the Vice City "horizon line"), not the old bright-gray hairline that
-// out-shone every other element. Reads the divider row back from a real image
-// and asserts a gold hue (red-dominant: R>G>B, matching #FFB30A), which
-// holds for both the rest (colAccent) and hover (colAccentBright) variants.
+// The sunset-gold horizon line, not a bright grey hairline: read back from a real image as red-dominant, at rest and
+// on hover.
 func TestDividerIsGoldHorizon(t *testing.T) {
 	withDefaultStart(t, false)
 	g := New(testLogger)

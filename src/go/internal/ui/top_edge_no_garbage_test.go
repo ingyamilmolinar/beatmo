@@ -11,25 +11,13 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestTopEdgeNoGarbage asserts that the gap between the top edge of the
-// drum pane (dv.Bounds.Min.Y) and the top edge of the transport surface
-// (transportRect.Min.Y) contains ONLY the canonical background pixels —
-// no stray 1-px ticks from layout guides, no row-color bleed, no
-// debug chrome.
-//
-// Reproduces the user-visible bug from screenshot.png: thin vertical
-// tick marks across the top edge of the drum pane, caused by
-// drawLayoutGuides being called directly from (*DrumView).Draw and
-// enabled by default on desktop. With LayoutGuidesLayer hidden by
-// default (BEATMO_DEBUG_LAYOUT=0) and rendering routed through the
-// tree, the gap must read back the bg color and nothing else.
+// The strip between the drum-pane top and the transport surface shows only the background: no layout-guide ticks,
+// no row-colour bleed, no debug chrome.
 func TestTopEdgeNoGarbage(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
 
-	// Explicitly clear the debug override so this test exercises the
-	// production default. (UpdateProfile on cleanup restores whatever
-	// the test runner had set.)
+	// The production default; UpdateProfile on cleanup restores the runner's setting.
 	t.Setenv("BEATMO_DEBUG_LAYOUT", "")
 	UpdateProfile()
 	t.Cleanup(UpdateProfile)
@@ -48,15 +36,10 @@ func TestTopEdgeNoGarbage(t *testing.T) {
 		t.Fatal("transport widget rect is empty")
 	}
 
-	// The "gap" is the strip between the drum-pane top and the transport
-	// surface top. It is normally a few pixels of bg fill — the legacy
-	// drawLayoutGuides used to paint 1-px ticks here. Sample a row of
-	// pixels at y = (dv.Bounds.Min.Y + transportRect.Min.Y) / 2, which
-	// sits in the middle of the gap.
+	// The middle of the gap.
 	gapY := (dv.Bounds.Min.Y + transportRect.Min.Y) / 2
 	if gapY <= dv.Bounds.Min.Y || gapY >= transportRect.Min.Y {
-		// Degenerate gap (zero-height) — nothing to verify; this profile
-		// has the transport surface flush with the pane top.
+		// This profile puts the transport flush with the pane top.
 		t.Skipf("no gap above transport (dv.Min.Y=%d transport.Min.Y=%d)",
 			dv.Bounds.Min.Y, transportRect.Min.Y)
 	}
@@ -82,11 +65,7 @@ func readPx(img *ebiten.Image, x, y int) color.RGBA {
 	return color.RGBA{uint8(r >> 8), uint8(g >> 8), uint8(b >> 8), uint8(a >> 8)}
 }
 
-// TestTransportBottomNoBleed asserts that the last 2 px of the transport
-// widget do not contain any row colors, FX-orange, or kick-brown — the
-// brown stripe at #6f4a42 visible in screenshot.png at y=57-58. With
-// strict per-zone clipping enforced by DrumViewTree.Draw, no row content
-// can paint into the transport zone's vertical band.
+// Per-zone clipping keeps row content out of the transport band.
 func TestTransportBottomNoBleed(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -109,8 +88,7 @@ func TestTransportBottomNoBleed(t *testing.T) {
 	screen := ebiten.NewImage(1280, 720)
 	g.Draw(screen)
 
-	// Bleeds we want to catch — saturated row colors that would never
-	// legitimately appear in the transport surface.
+	// Saturated row colours never belong in the transport surface.
 	const badRedThreshold = 100 // R channel above this AND
 	const badRedDominance = 30  // R - G > this AND R - B > this
 	bottomBand := image.Rect(transportRect.Min.X, transportRect.Max.Y-2, transportRect.Max.X, transportRect.Max.Y)

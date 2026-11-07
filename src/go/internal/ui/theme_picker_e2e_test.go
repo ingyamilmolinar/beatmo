@@ -23,9 +23,8 @@ func swatchCellNamed(t *testing.T, g *Game, name string) image.Rectangle {
 	return image.Rectangle{}
 }
 
-// Full path: palette button → overlay → Accent chip → picker → orchid-300
-// released → screen recolors, prefs saved, picker closed, overlay still open
-// with the chip ringed.
+// Palette button → Accent chip → picker → release: the screen recolours, prefs save, the picker closes and the
+// overlay stays with the chip ringed.
 func TestThemePickAccentEndToEnd(t *testing.T) {
 	defer SetThemeSink(nil)
 	sink := &fakeThemeSink{}
@@ -81,8 +80,6 @@ func TestThemePickAccentEndToEnd(t *testing.T) {
 	}
 }
 
-// Circuit scope: the pick lands in the circuit theme, is undoable, and the
-// user theme is untouched.
 func TestThemePickCircuitScopeUndoEndToEnd(t *testing.T) {
 	g, ov, tap := openThemeOverlayForTest(t, 1280, 720)
 	_, circuit := ov.ScopePillRects()
@@ -114,8 +111,6 @@ func TestThemePickCircuitScopeUndoEndToEnd(t *testing.T) {
 	}
 }
 
-// Override rule through the UI: with a circuit theme loaded, toggling
-// "Always use my theme" flips which accent is on screen.
 func TestThemeOverrideToggleFlipsEffectiveThemeEndToEnd(t *testing.T) {
 	g, ov, tap := openThemeOverlayForTest(t, 1280, 720)
 	g.SetCircuitTheme(theme.Doc{Categories: map[string]string{"accent": "mint-300"}})
@@ -161,9 +156,7 @@ func TestThemePickerEscapeOrder(t *testing.T) {
 	}
 }
 
-// A tap outside the picker (on the theme panel itself) closes ONLY the picker
-// — the way a mobile user cancels a pick, since the picker header carries no
-// close button there. The overlay beneath stays open.
+// The picker header has no close button on mobile, so this tap is how a pick is cancelled there.
 func TestThemePickerOutsideTapClosesPickerOnly(t *testing.T) {
 	g, ov, tap := openThemeOverlayForTest(t, 1280, 720)
 	p := g.drum.portal()
@@ -175,8 +168,7 @@ func TestThemePickerOutsideTapClosesPickerOnly(t *testing.T) {
 	if !p.Has(themePickerID) {
 		t.Fatal("picker did not open")
 	}
-	// Any point on the theme panel that the picker does not cover is inside
-	// the (now filtered-out) theme overlay: the press must dismiss the picker.
+	// The modal filter removes the panel beneath, so the press dismisses the picker.
 	pk := g.drum.colorWheelComp.InputBounds()
 	tx, ty, found := 0, 0, false
 	for y := ov.Rect().Min.Y + 4; y < ov.Rect().Max.Y-4 && !found; y += 8 {

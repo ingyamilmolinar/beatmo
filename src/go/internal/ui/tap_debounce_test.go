@@ -8,17 +8,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestMobileTapDebounceDropsSameSpotDoubleTap drives the REAL mobile touch
-// pipeline (globalTouchState → Game.Update → injectTouchTap chokepoint) and
-// proves the shared gate drops a same-spot re-tap inside the window while
-// letting a later one through. Observed via isTouchTapInjecting(): a dropped tap
-// never starts an injection cycle.
-//
-// The tap lands in the mobile ROW-SCROLL dead zone — the one region where the
-// hold-press is blocked from live dispatch, so the tap is (correctly) delivered
-// by injection. Outside the dead zone the touch-down dispatches live and the
-// injection gate (!suppressClicksUntilRelease) suppresses the redundant replay,
-// so there is no injection cycle to debounce there.
+// Through the real touch pipeline, in the row-scroll dead zone: the one region where a tap is delivered by
+// injection. Elsewhere the press dispatches live and there is no injection cycle to debounce.
 func TestMobileTapDebounceDropsSameSpotDoubleTap(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -83,10 +74,7 @@ func TestMobileTapDebounceDropsSameSpotDoubleTap(t *testing.T) {
 	}
 }
 
-// TestTapDebounceRejectsSameSpotBurst pins the shared mobile tap-debounce
-// primitive: after an accepted tap, a second tap at (nearly) the same point
-// within the debounce window is rejected (touch-bounce / accidental double-tap),
-// while a tap far enough away, or one after the window elapses, is accepted.
+// Touch-bounce or an accidental double-tap at the same point within the window is rejected.
 func TestTapDebounceRejectsSameSpotBurst(t *testing.T) {
 	var d tapDebounce
 
@@ -111,8 +99,6 @@ func TestTapDebounceRejectsSameSpotBurst(t *testing.T) {
 	}
 }
 
-// TestTapDebounceAcceptsAfterWindow verifies the window is time-bounded: once
-// enough frames elapse, a same-spot tap is a fresh interaction and fires.
 func TestTapDebounceAcceptsAfterWindow(t *testing.T) {
 	var d tapDebounce
 

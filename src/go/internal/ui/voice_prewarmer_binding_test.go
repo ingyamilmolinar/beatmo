@@ -7,9 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// A param edit must warm the NEW binding at every pitch the instrument is
-// currently enumerated to play, so the next trigger hits the cache instead of
-// cold-rendering on the audio dispatch goroutine.
+// So the next trigger hits the cache instead of cold-rendering on the dispatch goroutine.
 func TestParamEditWarmsNewBindingAtEnumeratedPitches(t *testing.T) {
 	g := buildTestGame(t)
 	p := g.voicePrewarmer
@@ -41,8 +39,7 @@ func TestParamEditWarmsNewBindingAtEnumeratedPitches(t *testing.T) {
 	}
 }
 
-// An edit to an instrument with no enumerated pitches must not warm anything
-// (nothing is going to trigger it).
+// Nothing is going to trigger it.
 func TestParamEditOnUnenumeratedInstrumentWarmsNothing(t *testing.T) {
 	g := buildTestGame(t)
 	p := g.voicePrewarmer

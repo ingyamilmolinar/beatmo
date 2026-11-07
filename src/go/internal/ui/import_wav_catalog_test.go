@@ -10,8 +10,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
-// TestExportWAVInstrumentIncludesKindAndPath verifies that WAV-based instruments
-// are exported with kind="sample" and include their path.
 func TestExportWAVInstrumentIncludesKindAndPath(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -19,8 +17,7 @@ func TestExportWAVInstrumentIncludesKindAndPath(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
-	// Set up catalog with a WAV instrument that doesn't have "sample-" prefix
-	// AFTER New() to prevent InitDefaultCatalog from overwriting it
+	// After New(), or InitDefaultCatalog overwrites it.
 	audio.ResetCatalogForTest([]audio.SoundMeta{
 		{
 			ID:     "kick-goldbaby-bd-test",
@@ -62,8 +59,6 @@ func TestExportWAVInstrumentIncludesKindAndPath(t *testing.T) {
 	}
 }
 
-// TestImportWAVInstrumentFromCatalog verifies that importing a project with
-// WAV instruments loads them via catalog lookup.
 func TestImportWAVInstrumentFromCatalog(t *testing.T) {
 	assertDefaultParityState(t)
 

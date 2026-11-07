@@ -8,10 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestLogsSearchCaretInsertMidString reproduces the reported bug: in the logs
-// search box, moving the caret left with ArrowLeft and typing a character must
-// insert it AT the caret, not at the end. Drives the real integrated path
-// (LogsComponent.Update -> searchBox.Update) with stubbed input.
+// Through LogsComponent.Update → searchBox.Update, the real path.
 func TestLogsSearchCaretInsertMidString(t *testing.T) {
 	assertDefaultParityState(t)
 	prevSuppress := suppressClicksUntilRelease
@@ -87,8 +84,7 @@ func TestLogsSearchCaretInsertMidString(t *testing.T) {
 	}
 }
 
-// TestArrowKeysYieldToLogsSearch pins that while the logs panel is open the
-// grid does NOT pan on ArrowLeft — the caret owns the key.
+// The caret owns ArrowLeft while the panel is open; the grid must not pan.
 func TestArrowKeysYieldToLogsSearch(t *testing.T) {
 	g := newGameWithStart(t)
 	g.toggleLogsPanel()

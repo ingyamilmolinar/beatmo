@@ -10,20 +10,14 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// An idle analyzer panel (no channel data yet — e.g. before the first play)
-// must render its axis chrome (midline + amplitude labels), not a bare
-// outline. Regression: the native-desktop Wave/Spectrum tabs drew ~200px of
-// pure black at boot while the browser drew a full axis — a dead-panel UX
-// and an accidental platform divergence (2026-07-04 screenshot critique,
-// A5).
+// Before any data the panel draws its axis chrome (midline and labels), not a bare outline, as the browser does.
 func TestWaveformIdleStateDrawsAxisChrome(t *testing.T) {
 	dst := ebiten.NewImage(400, 200)
 	rect := image.Rect(0, 0, 400, 200)
 
 	var gotMidline bool
 	restore := interceptDrawRect(func(_ *ebiten.Image, r image.Rectangle, _ color.Color, filled bool) {
-		// The zero/midline: a filled 1-px-tall horizontal line spanning the
-		// wave area, vertically inside the panel (not a border row).
+		// A filled 1 px midline across the wave area, inside the panel.
 		if filled && r.Dy() == 1 && r.Dx() > rect.Dx()/2 &&
 			r.Min.Y > rect.Min.Y+10 && r.Max.Y < rect.Max.Y-10 {
 			gotMidline = true
@@ -38,8 +32,7 @@ func TestWaveformIdleStateDrawsAxisChrome(t *testing.T) {
 	}
 }
 
-// Same contract for the Spectrum tab: an idle panel draws a baseline rule
-// (where the bars will rise from) rather than a bare outline.
+// The idle Spectrum draws the baseline the bars rise from.
 func TestSpectrumIdleStateDrawsBaseline(t *testing.T) {
 	dst := ebiten.NewImage(400, 200)
 	rect := image.Rect(0, 0, 400, 200)

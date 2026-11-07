@@ -8,11 +8,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestBottomBar_PersistsInAllViewModes (Theme 1) verifies that the
-// 6-segment bottom-bar view switcher remains visible inside the bottom
-// action bar in EVERY mobile view mode (Pads/EQ/Wave/Spec/Mtr/Scope).
-// The previous design dimmed/hid the bar when the EQ panel expanded,
-// stranding the user inside the panel.
+// Visible in every mobile view mode, so the user is never stranded inside a panel.
 func TestBottomBar_PersistsInAllViewModes(t *testing.T) {
 	assertDefaultParityState(t)
 	setupMobileTest(t, true)

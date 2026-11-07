@@ -401,8 +401,7 @@ func TestSplitterInputBoundsHorizontal(t *testing.T) {
 	grab := TouchGrabZone()
 	r := s.InputBounds()
 
-	// InputBounds covers the full-width grab strip AND the visible handle pill
-	// (which extends past s.Y±grab when the pill is taller than the grab zone).
+	// The pill extends past s.Y±grab when it is taller than the grab zone.
 	gripStrip := image.Rect(0, 300-grab, 800, 300+4)
 	pill := s.HandleRect().Inset(-SpaceSM)
 	if r.Union(gripStrip) != r {

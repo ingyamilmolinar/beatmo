@@ -147,8 +147,7 @@ func TestSplitter_ClickOnLineNotHandle_Ignored(t *testing.T) {
 	s.winW = 800
 	s.totalH = 600
 
-	// Click exactly on the divider line (y=300) but at x=100, far from handle (center x=400)
-	// This is within the old grab zone but NOT within the handle
+	// On the line but far from the handle: inside a full-width grab, outside the pill.
 	result := s.HandleInput(100, 300, true)
 	if s.dragging {
 		t.Error("click on line but outside handle should NOT start drag")
@@ -230,8 +229,6 @@ func TestLayoutDivider_HandleOnlyInitiatesDrag(t *testing.T) {
 	}
 	_ = axis
 
-	// Click on divider line but NOT on the pill handle center
-	// Handle is centered vertically in the DrumView bounds
 	handleR := h.columnHandleRect(idx)
 	// Click well outside handle Y range
 	offHandleY := handleR.Min.Y - 50
@@ -300,8 +297,7 @@ func TestLayoutDivider_RowHandleOnlyInitiatesDrag(t *testing.T) {
 	dv := newTestDrumViewWithBounds(image.Rect(0, 300, 800, 600))
 	h := dv.layoutHandler
 
-	// Row 0 divider is fully suppressed (Timeline spans rows 0-1).
-	// Use the EQ boundary pill (row divider 1) instead.
+	// Row divider 0 is suppressed (the timeline spans rows 0-1), so the EQ boundary pill is used.
 	rowY := dv.widgets.rowPos[2] + dv.widgets.offset.Y
 
 	// Verify detection via the EQ pill-only path
@@ -398,18 +394,13 @@ func TestSplitterHandleDimensions_DesktopVsMobile(t *testing.T) {
 	}
 }
 
-// ─── Unified Splitter Handle Render Tests ───────────────────────────────────
-// The handle renders identically on every platform: a square (sharp-cornered)
-// handle plus a soft glow halo, with NO grip lines. Desktop's former grip-line
-// variant was retired so the same component renders one way everywhere.
+// One handle on every platform: a square body with a soft glow halo and no grip lines.
 
 type capturedHandleRect struct {
 	r   image.Rectangle
 	col color.Color
 }
 
-// captureSplitterHandleDraws records every filled rect (with its color) drawn
-// by a single non-hover DrawSplitterHandle call (horizontal pill at 100,100).
 func captureSplitterHandleDraws() []capturedHandleRect {
 	dst := ebiten.NewImage(200, 200)
 	var got []capturedHandleRect
@@ -425,9 +416,7 @@ func captureSplitterHandleDraws() []capturedHandleRect {
 	return got
 }
 
-// assertUnifiedSplitterHandle asserts: no grip lines, a square handle rect
-// exactly equal to the pill bounds, and a glow halo strictly larger than it.
-// Returns the handle's fill color for color-unification checks.
+// Returns the fill so the platforms can be compared.
 func assertUnifiedSplitterHandle(t *testing.T) color.Color {
 	t.Helper()
 	draws := captureSplitterHandleDraws()
@@ -471,10 +460,6 @@ func TestDrawSplitterHandle_Unified_Mobile(t *testing.T) {
 	assertUnifiedSplitterHandle(t)
 }
 
-// TestSplitterHandle_ColorUnified verifies the resting (non-hover) handle fill
-// color is identical on desktop and mobile, and is the sunset-gold
-// splitter-handle token (red channel dominant) — desktop is no longer a gray
-// pill.
 func TestSplitterHandle_ColorUnified(t *testing.T) {
 	forceSmallScreenForTest = false
 	deskCol := assertUnifiedSplitterHandle(t)

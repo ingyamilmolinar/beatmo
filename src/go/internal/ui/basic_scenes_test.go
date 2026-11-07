@@ -8,9 +8,7 @@ import (
 	"testing"
 )
 
-// TestBasicScenesListValid guards scripts/basic_scenes.txt (the curated
-// `make screenshots-basic` set) against catalog drift: every listed name
-// must exist in the scene catalog, and the list must not carry duplicates.
+// Every curated name exists in the catalogue, with no duplicates.
 func TestBasicScenesListValid(t *testing.T) {
 	path := findRepoFile(t, filepath.Join("scripts", "basic_scenes.txt"))
 	f, err := os.Open(path)

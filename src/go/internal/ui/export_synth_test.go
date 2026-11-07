@@ -14,13 +14,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
-// Phase 3 schema tests: the per-instrument / per-node synth fields. Every
-// field is additive (`omitempty`); the fixtures carry the current
-// schema_version.
+// Every field is additive (omitempty); fixtures carry the current schema_version.
 
-// newPhase3Game returns a Game with one row + one node ready for
-// export/import round-trip testing. Mirrors the setup pattern from
-// eq_export_import_test.go.
 func newPhase3Game(t *testing.T) (*Game, *uiNode) {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -36,8 +31,7 @@ func newPhase3Game(t *testing.T) (*Game, *uiNode) {
 	return g, ui
 }
 
-// exportedDoc exports g and returns the instrument document the file carries
-// for id, read through its flat field view.
+// Through its flat field view.
 func exportedDocFields(t *testing.T, g *Game, id instrument.ID) (map[string]float64, instrument.Doc) {
 	t.Helper()
 	data, err := g.drum.exportBytes()
@@ -91,8 +85,7 @@ func TestExportNeverWritesRecipeEraFields(t *testing.T) {
 	}
 }
 
-// TestExportStampsSchemaVersion pins the write side: every exported project
-// carries the current schema_version, and never the retired integer marker.
+// Never the retired integer marker.
 func TestExportStampsSchemaVersion(t *testing.T) {
 	g, _ := newPhase3Game(t)
 	data, err := g.drum.exportBytes()

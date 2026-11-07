@@ -105,12 +105,8 @@ func TestGrooveRushClampedWithinSubdivision(t *testing.T) {
 	}
 }
 
-// TestGrooveAppliesOnlyToItsOwnNode pins that a node's groove is that node's
-// alone. The scheduler used to lend the nearest grooved node's offset (within
-// two beats) to every following node that had none, so a single swung offbeat
-// delayed the next downbeat by the same amount — swing degenerated into a
-// shift of the whole phrase. Generated templates rely on this: swing, tuplets
-// and grace notes are all per-node delay/rush on otherwise straight nodes.
+// Swing, tuplets and grace notes are per-node delay/rush on otherwise straight nodes; a borrowed offset would
+// turn one swung offbeat into a shift of the whole phrase.
 func TestGrooveAppliesOnlyToItsOwnNode(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

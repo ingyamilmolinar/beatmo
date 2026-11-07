@@ -1,14 +1,5 @@
-// Code review follow-up (P2.1): forbidden-glyph audit, deferred during the
-// original Phase 6 of the design-system refactor. The plan specified that
-// DESIGN.md's permitted-text-glyph table (lines 1152-1166) be machine-
-// enforced — every raw chrome glyph must route through IconID, with a
-// short allowlist of ASCII / mathematical exceptions. This test is the
-// forcing function.
-//
-// We parse every internal/ui/*.go source file's AST and inspect string
-// literals only — comments and identifiers are exempt by construction.
-// A forbidden Unicode glyph that appears as a UI label triggers a
-// failure with the precise file:line for the offending literal.
+// Raw chrome glyphs must route through IconID; only DESIGN.md's permitted text-glyph exceptions may appear in
+// string literals. The AST is parsed, so comments and identifiers are exempt by construction.
 
 package ui
 
@@ -22,11 +13,7 @@ import (
 	"testing"
 )
 
-// forbiddenChromeGlyphs lists Unicode characters that must never appear
-// in a user-facing string literal under internal/ui/. The set mirrors
-// CLAUDE.md's "Forbidden glyphs" list and DESIGN.md §icons-and-glyphs.
-// New entries should also be added to internal/ui/icons.go as IconID
-// values so call sites can drawIconByID instead of typing the rune.
+// Each entry also needs an IconID so call sites draw the icon instead of typing the rune.
 var forbiddenChromeGlyphs = []rune{
 	'▶', // play — IconPlay
 	'▼', // chevron-down — IconChevronDown
@@ -43,30 +30,14 @@ var forbiddenChromeGlyphs = []rune{
 	'‹', // single-left-pointing-quotation — IconChevronLeft
 }
 
-// permittedLiterals enumerates string literals that DESIGN.md's permitted-
-// text-glyph table (DESIGN.md:1152-1166) explicitly allows. Each entry is
-// the exact literal text a Go source file may contain. Adding to this set
-// requires a corresponding row in DESIGN.md and a justification line in
-// the table.
-//
-// Note: this set is intentionally narrow. If a literal contains a glyph
-// from forbiddenChromeGlyphs above, it is rejected even if it appears
-// here — the two lists must be disjoint by construction.
+// Each entry needs its row in DESIGN.md's permitted text-glyph table. A literal holding a forbidden glyph is
+// rejected even if listed here.
 var permittedLiterals = map[string]string{
-	// Subdivision label on the transport bar; ÷ is a math operator, not a
-	// chrome glyph. The full literal varies (÷4, ÷8, ÷16, ÷32) and is built
-	// at runtime, so we whitelist the prefix only.
+	// ÷ is a math operator, not chrome; the label is built at runtime (÷4…÷32), so only the prefix is listed.
 	"÷": "transport_zone.go subdivision label (DESIGN.md:1163)",
-	// Freeze indicators (analyzer-tab freeze pill + Chain freeze button) now
-	// render IconPause (live) / IconPlay (frozen) via applyFreezeVisual — the
-	// old ">" / "||" text-glyph exception was retired.
 }
 
-// TestNoForbiddenChromeGlyphs walks every non-test, non-generated source
-// file under internal/ui/ and asserts that no string literal contains a
-// rune from forbiddenChromeGlyphs. It uses go/parser (not byte grep) so
-// that runes appearing in comments — including arrows in
-// "Layout → Update" prose — are correctly ignored.
+// go/parser, not grep, so glyphs in comments ("Layout → Update") are ignored.
 func TestNoForbiddenChromeGlyphs(t *testing.T) {
 	pkgDir := "."
 	entries, err := os.ReadDir(pkgDir)
@@ -91,8 +62,7 @@ func TestNoForbiddenChromeGlyphs(t *testing.T) {
 		if !strings.HasSuffix(name, ".go") {
 			continue
 		}
-		// Skip tests, generated files, and the icon definitions
-		// themselves (which list the glyphs as documentation).
+		// The icon definitions list the glyphs as documentation.
 		if strings.HasSuffix(name, "_test.go") {
 			continue
 		}
@@ -118,9 +88,7 @@ func TestNoForbiddenChromeGlyphs(t *testing.T) {
 			if !ok || lit.Kind != token.STRING {
 				return true
 			}
-			// Strip the surrounding quotes / backticks. Use the raw value
-			// rather than strconv.Unquote — we want the source bytes
-			// exactly as written.
+			// The raw literal, not strconv.Unquote: the check is on the source bytes as written.
 			val := lit.Value
 			if len(val) >= 2 {
 				val = val[1 : len(val)-1]
@@ -150,10 +118,6 @@ func TestNoForbiddenChromeGlyphs(t *testing.T) {
 	}
 }
 
-// TestPermittedGlyphsAreNotForbidden enforces the construction invariant
-// that the two sets above are disjoint: a glyph cannot be both forbidden
-// and permitted. This catches inadvertent rule contradictions before
-// they confuse a future contributor reading the test output.
 func TestPermittedGlyphsAreNotForbidden(t *testing.T) {
 	for lit := range permittedLiterals {
 		for _, fr := range forbiddenChromeGlyphs {

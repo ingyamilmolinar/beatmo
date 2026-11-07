@@ -1,25 +1,8 @@
 //go:build test
 
-// Platform wheel-dynamics boundary.
-//
-// Bug (2026-09-02): in the browser one mouse-wheel notch scrolled a menu
-// through its entire list. DrumViewTree's wheel dispatch read the raw platform
-// delta (`steps := int(wy)`) and handed it to MenuScroll.HandleWheel, which by
-// design RESPECTS magnitude — one step, one row. Correct for native GLFW, which
-// reports +/-1 per detent; catastrophic in a browser, where Ebiten's JS backend
-// assigns `WheelY = -deltaY` RAW (ebiten/internal/ui/input_js.go, which carries
-// an upstream "TODO: What if e.deltaMode is not DOM_DELTA_PIXEL?"). One Chrome
-// notch arrives as ~100 and scrolled ~100 rows.
-//
-// The boundary is now explicit and one-way:
-//
-//	raw platform units --[wheelNotchesFromRaw]--> DETENTS --[WheelNormalizer]--> rows
-//	        ^ platform-specific                     ^ platform-neutral from here up
-//
-// These tests pin both halves. Layering matters: a raw delta of 100 is
-// genuinely 100 detents on native GLFW and ~1 detent in a pixel-mode browser,
-// so the raw->detent conversion is tested as a pure unit (where deltaMode is
-// known) and the detent->rows dispatch is tested through the real Game.
+// Ebiten's JS backend passes the browser's raw deltaY (~100 per notch) where native GLFW reports ±1 per detent, so
+// the boundary is one-way: raw units → wheelNotchesFromRaw → DETENTS → WheelNormalizer → rows. The conversion is
+// tested as a pure unit, the detent dispatch through the real Game.
 
 package ui
 
@@ -31,9 +14,7 @@ import (
 
 // --- Layer 1: raw platform units -> detents -------------------------------
 
-// TestWheelNotchesFromRaw_OneNotchPerPlatform pins the conversion that makes
-// every runtime speak detents. The raw magnitudes are what the DOM actually
-// reports for ONE physical wheel notch in each deltaMode.
+// The raw magnitudes the DOM reports for ONE physical notch in each deltaMode.
 func TestWheelNotchesFromRaw_OneNotchPerPlatform(t *testing.T) {
 	cases := []struct {
 		name string
@@ -56,9 +37,7 @@ func TestWheelNotchesFromRaw_OneNotchPerPlatform(t *testing.T) {
 	}
 }
 
-// TestWheelNotchesFromRaw_SubNotchIsFractional pins that a trackpad glide is
-// NOT rounded away at the boundary: small deltas stay fractional so the
-// normalizer's carry can accumulate them into real movement.
+// Small deltas stay fractional so the normaliser's carry can accumulate a trackpad glide.
 func TestWheelNotchesFromRaw_SubNotchIsFractional(t *testing.T) {
 	got := wheelNotchesFromRaw(12, WheelDeltaPixel)
 	if got <= 0 || got >= 1 {
@@ -67,8 +46,7 @@ func TestWheelNotchesFromRaw_SubNotchIsFractional(t *testing.T) {
 	}
 }
 
-// TestWheelNotchesFromRaw_PreservesSign guards the scroll direction across the
-// conversion — an inverted sign here would flip every list on one platform.
+// An inverted sign would flip every list on one platform.
 func TestWheelNotchesFromRaw_PreservesSign(t *testing.T) {
 	if up, down := wheelNotchesFromRaw(100, WheelDeltaPixel), wheelNotchesFromRaw(-100, WheelDeltaPixel); up <= 0 || down >= 0 {
 		t.Errorf("sign not preserved: +100 -> %v, -100 -> %v", up, down)
@@ -85,8 +63,6 @@ func TestWheelNormalizer_OneNotchOneRow(t *testing.T) {
 	}
 }
 
-// TestWheelNormalizer_CarriesSubNotchDeltas pins that a slow trackpad glide
-// eventually moves the list instead of being silently truncated to zero.
 func TestWheelNormalizer_CarriesSubNotchDeltas(t *testing.T) {
 	n := NewWheelNormalizer(defaultWheelDynamics())
 	total := 0
@@ -99,8 +75,7 @@ func TestWheelNormalizer_CarriesSubNotchDeltas(t *testing.T) {
 	}
 }
 
-// TestWheelNormalizer_CapsPerFrameButCarriesRemainder pins that one violent
-// flick glides instead of teleporting — and that the excess is not discarded.
+// A violent flick glides instead of teleporting, and the excess is kept.
 func TestWheelNormalizer_CapsPerFrameButCarriesRemainder(t *testing.T) {
 	d := defaultWheelDynamics()
 	n := NewWheelNormalizer(d)
@@ -116,8 +91,7 @@ func TestWheelNormalizer_CapsPerFrameButCarriesRemainder(t *testing.T) {
 	}
 }
 
-// TestWheelNormalizer_StaleCarryDecays pins that a remainder left over from an
-// old gesture cannot accumulate into a phantom jump much later.
+// An old remainder cannot turn into a phantom jump later.
 func TestWheelNormalizer_StaleCarryDecays(t *testing.T) {
 	n := NewWheelNormalizer(defaultWheelDynamics())
 	n.Rows(0.4) // leaves carry, emits nothing
@@ -130,9 +104,7 @@ func TestWheelNormalizer_StaleCarryDecays(t *testing.T) {
 
 // --- Layer 3: end-to-end through the real dispatcher ----------------------
 
-// scrollRowsForNotches drives a real Game with the template menu open, feeding
-// exactly one frame of wheel movement expressed in DETENTS, and reports how
-// many rows the menu scrolled.
+// One frame of wheel movement in DETENTS through a real Game with the template menu open.
 func scrollRowsForNotches(t *testing.T, notches float64) int {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -188,17 +160,14 @@ func scrollRowsForNotches(t *testing.T, notches float64) int {
 	return sc.ScrollBehavior().VS.First - before
 }
 
-// TestMenuWheel_OneNotchScrollsOneRow is the end-to-end regression test: with
-// the boundary in place, one detent moves the menu exactly one row no matter
-// which platform produced it.
+// Whichever platform produced the detent.
 func TestMenuWheel_OneNotchScrollsOneRow(t *testing.T) {
 	if got := scrollRowsForNotches(t, 1); got != 1 {
 		t.Errorf("one detent scrolled %d menu rows, want 1", got)
 	}
 }
 
-// TestMenuWheel_FlickIsCapped is the direct regression for the reported bug:
-// a large single wheel event must not run through the whole list at once.
+// One large event must not run through the whole list.
 func TestMenuWheel_FlickIsCapped(t *testing.T) {
 	d := defaultWheelDynamics()
 	got := scrollRowsForNotches(t, 40)

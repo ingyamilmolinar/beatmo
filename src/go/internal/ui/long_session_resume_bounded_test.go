@@ -8,26 +8,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// TestLongSessionResumeBackfillBounded reproduces the user-reported bug:
-// "after a long playback session, pausing and playing again hangs for a few
-// seconds before audio resumes." The hang is O(session-length): on resume the
-// transport path resets frozenUpToByRow to -1 (game_update.go), and the very
-// next refreshDrumRow re-freezes the ENTIRE elapsed history [0, playhead] in a
-// single UI frame via the safety-net back-fill loop — per row. Because the
-// playhead grows unbounded with session length, that one frame stalls for
-// seconds on a long session, blocking the UI/sequencer before audio restarts.
-//
-// The fix bounds the back-fill loop to the predictor's retained window (the
-// same guard syncUIToTime already uses at game_sync_ui.go). Indices below
-// windowStart are already immutable past AND evicted from the predictor, so
-// re-freezing them is both pointless and the source of the O(session) stall.
-//
-// Invariant under test: the work done by the safety-net back-fill on the resume
-// frame must be bounded by the predictor window (windowCap) + the visible row
-// length, NOT by elapsedBeats. We drive a synthetic long session with a small
-// windowCap so windowStart is far above 0, pause, then resume through the real
-// transport flow and assert the resume frame's back-fill iteration count is
-// bounded — regardless of how long the session played.
+// Resume resets frozenUpToByRow, and the next refresh's back-fill must stay inside the predictor's window:
+// re-freezing the whole elapsed history per row stalls the frame for seconds on a long session. The work
+// is bounded by windowCap + the row length, never by elapsedBeats.
 func TestLongSessionResumeBackfillBounded(t *testing.T) {
 	withDefaultAudio(t)
 	withDefaultStart(t, false)
@@ -44,8 +27,7 @@ func TestLongSessionResumeBackfillBounded(t *testing.T) {
 	buildSoakScene(t, g, rows, 8 /* nodesPerRow */)
 	g.drum.SetFollow(true)
 
-	// Compressed retained window so windowStart slides far past 0 while the
-	// synthetic playhead climbs to N — exactly the long-session precondition.
+	// Small enough that windowStart slides far past 0 while the playhead climbs.
 	const windowCap = 256
 	g.engine.Predictor.SetWindowCap(windowCap)
 	g.StopBackgroundPredictorForTest()
@@ -96,9 +78,7 @@ func TestLongSessionResumeBackfillBounded(t *testing.T) {
 	}
 	resumeIters := g.FreezeBackfillIters() - before
 
-	// Bound: a small multiple of the predictor window + visible length, per row.
-	// The buggy path does ~= elapsedBeats * rows iterations (>> this bound); the
-	// fixed path re-freezes only the retained window.
+	// An unbounded back-fill does about elapsedBeats × rows iterations, far above this.
 	bound := int64(rows) * int64(windowCap+g.drum.Length+64)
 	t.Logf("resume back-fill iters=%d bound=%d (elapsedBeats=%d rows=%d windowCap=%d length=%d window=[%d,%d))",
 		resumeIters, bound, g.elapsedBeats, rows, windowCap, g.drum.Length, winStart, winEnd)

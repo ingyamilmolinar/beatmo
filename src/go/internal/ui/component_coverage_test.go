@@ -1,15 +1,5 @@
-// Code review follow-up (P2.2): per-file budget for hand-coded *Style
-// constructions in internal/ui/, mirroring the inline-literal ratchet in
-// token_discipline_test.go. The original Phase 3 plan demanded a coverage
-// test that "enumerates every ButtonStyle/TextInputStyle/ColorSwatchStyle
-// instantiation in zone files and confirms each is sourced via Spec(ID)."
-// Until the legacy *Style types are fully retired, the equivalent forcing
-// function is a per-file count that monotonically tightens — adding a new
-// hand-coded ButtonStyle in a file at budget 0 fails the test, and the
-// budgets only ever go down.
-//
-// The eventual end-state is allowedStyleBudget = {} (empty map) and the
-// *Style types deleted; this test ratchets toward that.
+// A per-file budget of hand-coded *Style constructions that only goes down, toward an empty map and the legacy types
+// deleted.
 
 package ui
 
@@ -22,66 +12,26 @@ import (
 	"testing"
 )
 
-// allowedStyleBudget pins the current count of `XxxStyle{` literal
-// constructions per file, where Xxx is one of ButtonStyle, TextInputStyle,
-// ColorSwatchStyle, DrumCellStyle, DrumRowStyle. Files not in this map are
-// required to contain zero such constructions.
-//
-// Decrement (or remove) an entry when its constructions are replaced with
-// `Spec(ComponentXxx)` + `NewSpecButton`. Never increment without code
-// review — adding a new *Style instantiation undermines the design-system-
-// driven UI promise.
-//
-// Audit baseline (2026-04-26 / 2026-04-27 post-M2):
-//
-// theme.go's 32-construction count was reduced to 2 by routing all
-// migratable vars through ButtonStyleFromSpec / TextInputStyleFromSpec.
-// The 2 remaining constructions are:
-//   - DrumCellUI = DrumCellStyle{...} (struct fields don't match
-//     ComponentSpec; needs a separate spec-from-cell helper)
-//   - ContextMenuItemStyle = ButtonStyle{0, 0, 0, 0} (transparent
-//     fill — no DESIGN.md component represents this; future PR could
-//     add a `transparent-button` spec to take this to zero).
-//
-// components.go contains the helper struct returns
-// (ButtonStyle{Fill, Border} inside ButtonStyleFromSpec; same shape
-// inside TextInputStyleFromSpec). These are infrastructure: they're
-// the bridge code by which all theme.go vars become spec-derived.
-// Both helpers MUST construct the legacy struct type — that's the
-// whole point. Allowlisting them is correct.
+// Per file; any file not listed must have none. Lower an entry when its constructions move to Spec(...); never raise
+// one without review.
 var allowedStyleBudget = map[string]int{
-	// theme.go: 2 transitional hand-coded vars left (DrumCellUI,
-	// ContextMenuItemStyle). Both have no equivalent ComponentSpec yet.
+	// DrumCellUI and ContextMenuItemStyle have no ComponentSpec yet.
 	"theme.go": 2,
-	// components.go: 2 helper-internal constructions (Button/TextInput
-	// FromSpec). Required to bridge from generated specs to legacy types.
+	// The FromSpec bridges must build the legacy types.
 	"components.go": 2,
-	// NewButton.SetActive constructs a transient highlight style. Migration
-	// requires giving Button a "active spec ID" path; trivial but separate.
+	// SetActive's transient highlight style needs an active-spec path.
 	"ui_style.go": 1,
-	// ColorSwatchStyle binds a runtime color closure. Only the dynamic-
-	// anchor registry (review priority P4) lets this go through Spec(ID),
-	// so this stays at 1 until the registry lands.
+	// ColorSwatchStyle binds a runtime colour closure.
 	"row_rack_zone.go": 1,
 	"button_styles.go": 0,
-	// row_instrument_shades.go derives the per-row mute/solo/FX ACTIVE fills
-	// DYNAMICALLY from each instrument's color (rowToggleStyle; the kebab and
-	// every off state reuse it with the neutral row-control fill). These cannot
-	// come from a static ComponentSpec because the active fill is a
-	// per-instrument shade computed at draw time (adjustColor — no literals).
+	// The active fills are per-instrument shades computed at draw time, which no static spec can hold.
 	"row_instrument_shades.go": 1,
 }
 
-// styleConstructionRE matches `XxxStyle{` literal construction sites for
-// the five legacy *Style types. The pattern is anchored to the type name
-// (after a non-identifier byte) so identifier prefixes like
-// `addRowButtonStyle` are not counted.
+// Anchored after a non-identifier byte, so prefixes like addRowButtonStyle do not count.
 var styleConstructionRE = regexp.MustCompile(`(^|[^A-Za-z0-9_])(ButtonStyle|TextInputStyle|ColorSwatchStyle|DrumCellStyle|DrumRowStyle)\{`)
 
-// TestComponentCoverage walks every non-test, non-generated source file
-// under internal/ui/ and asserts that hand-coded *Style construction sites
-// are covered by allowedStyleBudget. Any new construction in a file at
-// budget 0 fails the test; counts must monotonically tighten.
+// Every non-test, non-generated file under internal/ui/.
 func TestComponentCoverage(t *testing.T) {
 	root := findUIDir(t)
 	entries, err := os.ReadDir(root)
@@ -89,9 +39,7 @@ func TestComponentCoverage(t *testing.T) {
 		t.Fatalf("read internal/ui: %v", err)
 	}
 
-	// We exclude generated files and tests; we *do* scan theme.go (which
-	// is the primary site of hand-coded styles and the one most in need of
-	// a forcing function).
+	// theme.go is scanned on purpose: it most needs the forcing function.
 	excludedSuffix := []string{"_test.go", ".gen.go"}
 
 	overBudget := map[string]int{}

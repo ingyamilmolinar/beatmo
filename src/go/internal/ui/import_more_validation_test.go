@@ -14,8 +14,6 @@ func TestImportClampsRowAndNodeParams(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
-	// One instrument with excessive volume; one node with invalid params.
-	// Local node with groove fields for this test
 	type node2 struct {
 		ID         int     `json:"id"`
 		I          int     `json:"i"`
@@ -67,9 +65,7 @@ func TestImportClampsRowAndNodeParams(t *testing.T) {
 		t.Fatalf("missing node")
 	}
 	if mn, ok := g.graph.GetNodeByID(any.ID); ok {
-		// Node volume is floored at 0 (the imported -5 becomes 0) but has no
-		// upper clamp — per-node gain is intentionally allowed to go arbitrarily
-		// high. (Row/instrument volume, checked above, is still clamped to [0,4].)
+		// Node volume is floored at 0 with no upper clamp: per-node gain may go arbitrarily high, unlike row volume.
 		if mn.Params.Volume < 0 {
 			t.Fatalf("node volume not floored at 0: %v", mn.Params.Volume)
 		}
@@ -85,8 +81,7 @@ func TestImportClampsRowAndNodeParams(t *testing.T) {
 	}
 }
 
-// TestImportRejectsUnknownGroove: a groove has one spelling; anything else
-// rejects the file before anything resets (it used to be silently dropped).
+// A groove has one spelling; anything else rejects the file before anything resets.
 func TestImportRejectsUnknownGroove(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -100,11 +95,8 @@ func TestImportRejectsUnknownGroove(t *testing.T) {
 	}
 }
 
-// TestImportNeverReplacesABuiltinWithAWAV: a row naming a shipped instrument
-// with a WAV path would have registered that file under the built-in's id and
-// replaced it for the session. A built-in is a sample only through embedded
-// PCM (the Sampler's edit of it), so such a file is rejected — and so is a row
-// that carries a path but claims to be the synth.
+// A built-in is a sample only through embedded PCM: a WAV path on a shipped id would replace it for the
+// session, so the file is rejected, as is a row with a path that claims to be the synth.
 func TestImportNeverReplacesABuiltinWithAWAV(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

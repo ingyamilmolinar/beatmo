@@ -13,50 +13,19 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// scene_integrity_test.go — the variant→base guard.
-//
-// Several "variant" scenes in the catalog are meant to capture a state
-// that is VISIBLY different from a base scene (HPF engaged, a band muted,
-// a high BPM, more rows, …). A bug class we keep hitting is a Setup func
-// that flips a flag on a path that never renders — the captured PNG ends
-// up byte-identical to the base scene, so the "variant" screenshot is a
-// lie that no bounds-only check (scene_crop_test.go) catches.
-//
-// This guard renders each variant scene AND its declared base to an
-// ebitenstub framebuffer, builds a digest from every drawRect call emitted
-// during Draw (the canonical render-content signal — see
-// audio_panel_render_pixels_test.go / render_verify_test.go), and asserts
-// the two digests DIFFER. If a Setup silently no-ops, the digests match
-// and the test fails — exactly the signal the audit needed.
-//
-// Why drawRect digests and not raw pixels: under the test stub,
-// DrawImage of sprite-cached content (nodes, glyphs) copies only the
-// first pixel, and SubImage draws land in an independent buffer, so a
-// raw framebuffer hash misses most content. drawRect is intercepted at
-// the package-level var and captures every filled/stroked rect + color
-// the renderer emits, regardless of sprite caching.
+// A variant scene must render differently from its base: a Setup that flips a flag on a path that never renders
+// captures a PNG identical to the base. drawRect digests, not pixels: under the stub sprite-cached content copies
+// one pixel and SubImage draws land elsewhere, while drawRect sees every rect the renderer emits.
 
-// sceneDigestWarmup runs one throwaway render so the process-global text
-// sprite cache and first-frame full-repaint are populated before any
-// measured render. Without it the FIRST scene drawn in the process emits
-// extra one-time warmup rects, which would make whichever variant/base
-// rendered first look "different" for the wrong reason (a false negative
-// that masks a real Setup no-op, or a false positive that hides a match).
+// The first scene drawn in a process emits one-time warm-up rects, which would make it look different for the
+// wrong reason.
 var sceneDigestWarmup sync.Once
 
-// sceneDigestHeight is taller than the 1280x720 capture window on purpose:
-// at 720p the EQ panel's gain-plot collapses to ~14px (below drawEQCurve's
-// 16px floor), so the curve never draws and EQ-gain variants can't show
-// their distinguishing state. Rendering the guard at a height where the
-// plot is tall enough to draw the curve lets the guard observe that the
-// Setup actually applied gains/filters — the layout-cramping at 720p is a
-// separate, known constraint of the capture window itself.
+// Taller than 720 on purpose: at 720 the EQ gain plot is below drawEQCurve's floor, so EQ variants could not show
+// their state.
 const sceneDigestWidth, sceneDigestHeight = 1280, 900
 
-// renderSceneDigest applies the named scene, settles a few frames, draws
-// to a fresh framebuffer, and returns a content digest over every drawRect
-// call plus the BPM (BPM-only changes render as glyphs the stub can't
-// pixel-diff, so we fold it into the digest explicitly).
+// BPM is folded in: a BPM-only change renders as a glyph the stub can't diff.
 func renderSceneDigest(t *testing.T, name string, w, h int) [32]byte {
 	t.Helper()
 	sceneDigestWarmup.Do(func() {
@@ -70,8 +39,7 @@ func renderSceneDigest(t *testing.T, name string, w, h int) [32]byte {
 		wg.Draw(ebiten.NewImage(w, h))
 	})
 
-	// Each scene starts from a clean global audio baseline so a prior
-	// scene's HPF/analyzer state can't bleed into this render.
+	// A clean audio baseline, so a previous scene's HPF or analyzer state can't bleed in.
 	audio.Reset()
 
 	g := New(testLogger)
@@ -106,9 +74,6 @@ func renderSceneDigest(t *testing.T, name string, w, h int) [32]byte {
 		put(int(r.Color.B))
 		put(int(r.Color.A))
 	}
-	// Fold BPM in: a BPM-only variant changes a glyph the stub renders as a
-	// near-transparent sprite that won't show up in drawRect output, so the
-	// digest would otherwise miss it.
 	if g.drum != nil {
 		put(g.drum.BPM())
 	}
@@ -117,9 +82,6 @@ func renderSceneDigest(t *testing.T, name string, w, h int) [32]byte {
 	return out
 }
 
-// TestSceneVariantsDifferFromBase — every variant scene must render a
-// content digest distinct from its declared base scene. A match means the
-// variant's Setup silently failed to apply its distinguishing state.
 func TestSceneVariantsDifferFromBase(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -145,8 +107,7 @@ func TestSceneVariantsDifferFromBase(t *testing.T) {
 		{variant: "graph_complex_3_nodes_4_edges", base: "transport_idle"},
 	}
 
-	// Sanity: every variant/base referenced here must exist in the catalog,
-	// so a rename can't silently drop a guard entry.
+	// A rename must not silently drop a guard entry.
 	known := map[string]bool{}
 	for _, s := range sceneCatalog {
 		known[s.Name] = true
@@ -174,11 +135,7 @@ func TestSceneVariantsDifferFromBase(t *testing.T) {
 	}
 }
 
-// TestNoCoordBadgeLeaksIntoGraphScenes — the graph scenes place nodes,
-// which selects them and arms the coordinate badge ("(i, j)" pill). That
-// debug-ish hover affordance must not leak into a screenshot: the scene
-// Setup clears g.coordBadgeNode after placement. This pins the
-// suppression so a future Setup that re-arms the badge is caught.
+// Placing nodes selects them and arms the coordinate badge; the Setup clears it so it never reaches a screenshot.
 func TestNoCoordBadgeLeaksIntoGraphScenes(t *testing.T) {
 	assertDefaultParityState(t)
 	for _, name := range []string{
@@ -205,9 +162,7 @@ func TestNoCoordBadgeLeaksIntoGraphScenes(t *testing.T) {
 	}
 }
 
-// TestCropMasterChooserOpensChooser — crop_synth_tab_master_chooser must
-// actually open the channel chooser surface; otherwise it captures the
-// same thing as the plain synth-tab crop and the name is a lie.
+// Otherwise it captures the plain synth-tab crop.
 func TestCropMasterChooserOpensChooser(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -219,21 +174,14 @@ func TestCropMasterChooserOpensChooser(t *testing.T) {
 	if g.drum == nil || g.drum.eqPanelZone == nil {
 		t.Fatal("eq panel zone unreachable")
 	}
-	// Assert right after Setup: the chooser must be open as a direct result
-	// of the scene's Setup. We deliberately do NOT drive Update frames here —
-	// a sibling test that leaks ebiten mock cursor/touch state can synthesize
-	// an outside-click during Update that auto-closes the portal, which is an
-	// input-isolation concern of those tests, not a defect of this scene's
-	// Setup. (The chooser does survive settle frames in isolation.)
+	// Right after Setup, with no Update frames: leaked mock cursor state from a sibling test can synthesise an outside
+	// click that closes the portal.
 	if !g.drum.eqPanelZone.ChannelDropdownOpen() {
 		t.Error("crop_synth_tab_master_chooser did not open the channel chooser dropdown")
 	}
 }
 
-// TestEqTabSynthCapturesWithoutPanic — the plain (non-crop) Synth EQ tab
-// scene must apply + draw without panicking. The audit reported it as the
-// one outright capture failure; this exercises the same Setup+Draw path
-// the harness uses.
+// The same Setup+Draw path the harness uses.
 func TestEqTabSynthCapturesWithoutPanic(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

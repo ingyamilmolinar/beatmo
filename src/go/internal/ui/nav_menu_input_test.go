@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// navPanelForTest builds a laid-out NavigationPanel backed by a mutable unit
-// flag + jump amount, so tests can drive HandleInput and observe toggles.
 func navPanelForTest(unitBeats *bool, amount *int, prev, next *int) *NavigationPanel {
 	p := &NavigationPanel{}
 	p.SetCallbacks(NavPanelCallbacks{
@@ -24,10 +22,7 @@ func navPanelForTest(unitBeats *bool, amount *int, prev, next *int) *NavigationP
 
 func center(r image.Rectangle) (int, int) { return r.Min.X + r.Dx()/2, r.Min.Y + r.Dy()/2 }
 
-// TestNavPanelSegmentTogglesBothWays reproduces the "can't click Beats after
-// Subdiv" bug: a full press+release on Subdiv must switch to subdiv, and a
-// following press+release on Beats must switch back. The segArmed latch must
-// reset on the release edge so the second tap fires.
+// The segArmed latch must reset on release, or the second tap never fires.
 func TestNavPanelSegmentTogglesBothWays(t *testing.T) {
 	unit := true // start on Beats
 	amount, prev, next := 4, 0, 0
@@ -49,9 +44,6 @@ func TestNavPanelSegmentTogglesBothWays(t *testing.T) {
 	}
 }
 
-// TestNavPanelSegmentNoDoubleFireWhileHeld verifies a HELD press (pressed==true
-// re-delivered every frame) fires the segment toggle exactly once, not on every
-// frame — the segArmed latch's original purpose.
 func TestNavPanelSegmentNoDoubleFireWhileHeld(t *testing.T) {
 	unit := true
 	amount, prev, next := 4, 0, 0
@@ -70,9 +62,6 @@ func TestNavPanelSegmentNoDoubleFireWhileHeld(t *testing.T) {
 	}
 }
 
-// TestNavPanelJogButtonMomentary verifies the prev/next jog buttons are
-// momentary: OnPrev fires once on the press edge, and the button is NOT left
-// stuck in the pressed state after the release edge (the "buttons toggle" bug).
 func TestNavPanelJogButtonMomentary(t *testing.T) {
 	unit := true
 	amount, prev, next := 4, 0, 0
@@ -91,9 +80,3 @@ func TestNavPanelJogButtonMomentary(t *testing.T) {
 		t.Fatalf("OnPrev fired again on release; count=%d want 1", prev)
 	}
 }
-
-// The bespoke overflowNavCapturing integration guard was removed: the nav menu
-// is now a first-class portal component (NavigationMenuComponent), so release
-// delivery is handled natively by the tree's compHitHandler. The replacement
-// guards live in drumview_overlay_nav_comp_test.go
-// (TestNavMenuComponentCapturesControlPress / SegmentTogglesBothWays).

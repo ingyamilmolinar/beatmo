@@ -64,8 +64,6 @@ func TestSliderPopupPositioning(t *testing.T) {
 	anchor := image.Rect(100, 30, 130, 60)
 	sp.Open(anchor, bounds, 30)
 	if sp.Rect().Min.Y < anchor.Max.Y {
-		// Popup should be below the anchor when near the top.
-		// Allowing for the case where it fits above.
 	}
 	sp.Close()
 
@@ -179,8 +177,6 @@ func TestSliderPopupWithLabel(t *testing.T) {
 	bounds := image.Rect(0, 0, 800, 600)
 	sp.Open(anchor, bounds, 30)
 
-	// With a label (no title): SpaceXS + RoleBody height + SpaceXS + TextHeight + SpaceXS
-	// = 3 + 18 + 3 + 16 + 3 = 43.
 	expectedTrackTop := sp.Rect().Min.Y + SpaceXS + StyledTextHeight(RoleBody) + SpaceXS + TextHeight() + SpaceXS
 	if sp.trackTop() != expectedTrackTop {
 		t.Fatalf("trackTop() = %d, want %d", sp.trackTop(), expectedTrackTop)
@@ -329,10 +325,7 @@ func TestSliderPopupOverlayInterface(t *testing.T) {
 	}
 }
 
-// TestSliderPopupHorizontalDrawEmitsHorizontalRail verifies that the mobile
-// (horizontal) Draw path emits a clearly-landscape rail rect (Dx >= 2*Dy) and a
-// near-square round thumb. A regression that swapped axes would draw a vertical
-// rail (Dx < Dy) and this test would catch it.
+// Swapped axes would draw a vertical rail.
 func TestSliderPopupHorizontalDrawEmitsHorizontalRail(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true
@@ -380,9 +373,7 @@ func TestSliderPopupHorizontalDrawEmitsHorizontalRail(t *testing.T) {
 	}
 }
 
-// TestSliderPopupHorizontalLongTitleStaysInViewport verifies that a very long
-// Title cannot push the mobile popup width past the bounds.Dx()-2*SpaceMD
-// margin (regression guard for the Title-expansion-after-clamp ordering bug).
+// The title must not widen the popup after it is clamped to the viewport.
 func TestSliderPopupHorizontalLongTitleStaysInViewport(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true

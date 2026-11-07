@@ -6,8 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Changing DrumView length during active playback must not blank the rows.
-// Steps must be recomputed immediately and caches updated without clearing.
+// Steps recompute at once and caches update without clearing.
 func TestNoBlankOnLengthChangeDuringPlayback(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)

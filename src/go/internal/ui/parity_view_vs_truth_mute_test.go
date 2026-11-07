@@ -6,17 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestParityDetectsViewVsTruthForMuteNode is the mute-node true-positive
-// counterpart to TestParityScanUsesCachedViewState (parity_cached_view_test.go),
-// which only exercises the NodeTypeRegular branch of the view_vs_truth check
-// (game_parity_diff_scan.go ~L379-386: for a NodeTypeRegular cell the
-// predictor truth is `pred.VisibleAt`, but for a NodeTypeMute cell it's
-// `pred.TriggeredAt` instead). That branch previously had no positive
-// coverage. This test builds a genuine mute node whose predictor truth
-// (TriggeredAt) is true, corrupts the rendered slate to the opposite value,
-// and asserts view_vs_truth fires for that cell with NodeType==NodeTypeMute
-// and Expected==the TriggeredAt value -- proving the TriggeredAt branch (not
-// VisibleAt) is what the comparator used.
+// A mute cell's truth is TriggeredAt, not VisibleAt: view_vs_truth must fire on that branch.
 func TestParityDetectsViewVsTruthForMuteNode(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -26,13 +16,7 @@ func TestParityDetectsViewVsTruthForMuteNode(t *testing.T) {
 	g.parityWatch = parityWatchLog
 	g.ClearParityMismatches()
 
-	// Two-node loop: start (regular) -> mute -> start. Mirrors the
-	// construction used by TestApplySequencerHighlight_CommitsMuteAsOn
-	// (mute_timeline_commit_test.go) and TestMuteSequencerMatchesPredictorLogicCallback
-	// (mute_logic_unified_test.go). No custom node logic is attached to the
-	// mute node, so per TestApplySequencerHighlight_CommitsMuteAsOn it
-	// defaults to TriggeredAt==true every time it's reached; we assert that
-	// explicitly below rather than assuming it.
+	// No custom logic on the mute node, so it should trigger every time; asserted below, not assumed.
 	start := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	mute := g.tryAddNode(1, 0, model.NodeTypeMute)
 	if start == nil || mute == nil {
@@ -73,18 +57,14 @@ func TestParityDetectsViewVsTruthForMuteNode(t *testing.T) {
 		t.Fatalf("expected CellTypes[%d]=Mute, got %+v", muteAbs, g.drum.Rows[0].CellTypes)
 	}
 
-	// Confirm the predictor truth this branch reads is TriggeredAt (not
-	// VisibleAt) and that it's true, so corrupting the slate to false is a
-	// genuine mismatch rather than a vacuous no-op.
+	// TriggeredAt is true, so a false slate is a real mismatch, not a no-op.
 	g.engine.Predictor.Ensure(muteAbs + 2)
 	truth := g.engine.Predictor.TriggeredAt(0, muteAbs)
 	if !truth {
 		t.Fatalf("expected predictor TriggeredAt(0,%d)=true for an unlogic-gated mute node, got false", muteAbs)
 	}
 
-	// Corrupt the rendered slate to the opposite of predictor truth. No row
-	// cache is built here, so parityScan's slateAt() reads g.drum.Rows[0].Steps
-	// directly (mirrors TestParityScanDetectsSeqVsViewMismatch).
+	// No row cache, so slateAt() reads Steps directly.
 	g.drum.Rows[0].Steps[muteAbs] = !truth
 
 	g.nextBeatIdxs = []int{0}

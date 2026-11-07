@@ -6,19 +6,13 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestDrumViewMatchesPredictionAcrossComplexCircuits verifies DrumView windows
-// render directly from the engine predictor across a circuit with mixed logic
-// and invisible nodes.
+// Rendered straight from the predictor, across mixed logic and invisible nodes.
 func TestDrumViewMatchesPredictionAcrossComplexCircuits(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	assertDefaultParityState(t)
 	g.Layout(640, 480)
-	// Build a rectangular loop with invisible links and mixed logic:
-	// A(0,0) -> inv(1,0) -> B(2,0) -> C(3,0)
-	//   ^                             |
-	//   |                             v
-	//  D(0,1) <- inv(1,1) <- inv(2,1) <- inv(3,1)
+	// A loop A → inv → B → C, back through three invisible nodes to D and up to A.
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	inv1 := g.tryAddNode(1, 0, model.NodeTypeInvisible)
 	b := g.tryAddNode(2, 0, model.NodeTypeRegular)
@@ -90,9 +84,3 @@ func TestDrumViewMatchesPredictionAcrossComplexCircuits(t *testing.T) {
 		}
 	}
 }
-
-// TestAudioSchedulerMatchesPrediction uses the deterministic step scheduler to
-// confirm audible playback matches predVisible timeline exactly across steps.
-// Note: audio scheduling is verified indirectly via eval-on-idx equivalence
-// above. A direct scheduler-vs-prediction test is intentionally omitted here
-// to avoid coupling to seam/visual policy.

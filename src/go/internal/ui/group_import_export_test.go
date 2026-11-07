@@ -98,12 +98,7 @@ func TestLegacyFileWithoutGroupsImportsClean(t *testing.T) {
 	}
 }
 
-// TestEnabledFlagRoundTripsExportImport is task-enabled-status brief test C5
-// (part 1): an ENABLED group with configured rules survives export ->
-// Import byte-faithfully, and a DISABLED group with configured rules ALSO
-// round-trips as disabled (the flag is explicit in every export this build
-// writes — see exportGroup's doc comment — so it is never confused with the
-// legacy "rules present -> assume enabled" backward-compat default).
+// A disabled group with configured rules must come back disabled, never switched on by its rules.
 func TestEnabledFlagRoundTripsExportImport(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gidOn, _ := g.graph.CreateGroup("on", []model.NodeID{aID, bID})
@@ -123,9 +118,6 @@ func TestEnabledFlagRoundTripsExportImport(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SetGroupRules(off): %v", err)
 	}
-	// gidOff deliberately left Disabled (the model default) — pins that a
-	// disabled group with configured rules is NOT silently flipped to
-	// enabled by the round trip.
 
 	data, err := g.drum.exportBytes()
 	if err != nil {
@@ -168,10 +160,7 @@ func TestEnabledFlagRoundTripsExportImport(t *testing.T) {
 	}
 }
 
-// TestImportCancelsActiveMarquee is the final-review follow-up: Import must
-// cancel a stranded marquee drag (mirroring dismissLongPressPopup /
-// g.modes.Cancel / groupMenu.Close(), all of which already clear transient
-// gesture state before an import mutates the graph out from under it).
+// Import must cancel a stranded marquee drag, like every other transient gesture, before it rewrites the graph.
 func TestImportCancelsActiveMarquee(t *testing.T) {
 	g, _, _ := buildGroupLoopCircuit(t)
 	data, _ := g.drum.exportBytes()
@@ -185,9 +174,7 @@ func TestImportCancelsActiveMarquee(t *testing.T) {
 	}
 }
 
-// TestGroupImportRejectsUnknownRuleParam: a rule param has one spelling per
-// param; an unknown one rejects the file before anything resets (it used to
-// be dropped silently, rule by rule).
+// A rule param has one spelling; an unknown one rejects the file before anything resets.
 func TestGroupImportRejectsUnknownRuleParam(t *testing.T) {
 	g, aID, _ := buildGroupLoopCircuit(t)
 	data, _ := g.drum.exportBytes()

@@ -5,12 +5,8 @@ import (
 	"testing"
 )
 
-// TestButtonPressDepthSpring pins the press/release spring that survived the
-// flat-tonal restyle. The spring no longer drives cap TRAVEL (there is no cap
-// — see button_flat.go), but it is still the button's settle-to-silence
-// contract: a released button must ease back to exactly 0 so an idle control
-// performs zero per-frame work. Formerly TestButtonPressDepthTravel in
-// button_keycap_test.go, minus the retired travel-in-pixels assertion.
+// The spring drives no geometry but is the settle-to-silence contract: a released button eases back to exactly 0 so
+// an idle control does no per-frame work.
 func TestButtonPressDepthSpring(t *testing.T) {
 	b := NewButton("Play", InstButtonStyle, nil)
 	b.SetRect(image.Rect(0, 0, 60, 30))

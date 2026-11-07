@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// TestHoverOnlyActivatesNearColumnPill verifies that hover feedback only
-// activates when the cursor is near the pill handle, not anywhere on the divider line.
 func TestHoverOnlyActivatesNearColumnPill(t *testing.T) {
 	dv := newTestDrumViewWithBounds(image.Rect(0, 300, 800, 600))
 	h := dv.layoutHandler
@@ -48,10 +46,7 @@ func TestHoverOnlyActivatesNearColumnPill(t *testing.T) {
 	}
 }
 
-// TestHoverOnlyActivatesNearRowPill verifies that hover feedback only
-// activates when the cursor is near the row pill handle.
-// Row divider 0 is fully suppressed (Timeline spans rows 0-1).
-// Row divider 1 (EQ boundary) has a pill-only handle centered on full width.
+// Row divider 0 is suppressed (the timeline spans rows 0-1); divider 1, the EQ boundary, is a pill-only handle.
 func TestHoverOnlyActivatesNearRowPill(t *testing.T) {
 	dv := newTestDrumViewWithBounds(image.Rect(0, 300, 800, 600))
 	h := dv.layoutHandler
@@ -78,8 +73,7 @@ func TestHoverOnlyActivatesNearRowPill(t *testing.T) {
 	// Point ON the divider Y but FAR from the pill X
 	farX := dv.widgets.colPos[0] + dv.widgets.offset.X + 5
 
-	// detectRowDivider returns the index (EQ pill path), but HandleInput
-	// further filters by pill proximity, so hover should not activate.
+	// detectRowDivider still returns the EQ index; HandleInput filters by pill proximity, so hover stays off.
 	h.syncHoverState("", -1)
 	h.HandleInput(farX, rowY, false)
 	if dv.layoutHoverAxis != "" {
@@ -95,13 +89,8 @@ func TestHoverOnlyActivatesNearRowPill(t *testing.T) {
 	}
 }
 
-// TestEQDividerHoverStaysOnPill verifies that the EQ-boundary divider's hover /
-// grab footprint is the visible pill (plus the standard SpaceSM forgiveness),
-// NOT a wide band that bleeds into the sticky bar below. Previously the EQ
-// boundary used a special comfort band (160px wide, 28px tall, biased downward
-// into the sticky bar's centre); reaching for an EQ tab control lit the divider
-// glow and flipped the resize cursor, which felt invasive. Hover must stop the
-// moment the cursor leaves the pill.
+// The EQ divider's hover/grab footprint is the visible pill plus SpaceSM, never a band reaching into the sticky
+// bar: reaching for a tab control must not light the divider or flip the resize cursor.
 func TestEQDividerHoverStaysOnPill(t *testing.T) {
 	dv := newTestDrumViewWithBounds(image.Rect(0, 300, 800, 600))
 	h := dv.layoutHandler

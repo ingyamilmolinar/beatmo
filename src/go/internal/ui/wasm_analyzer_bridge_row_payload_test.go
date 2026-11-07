@@ -9,16 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
-// Only Master and Detail carry slice data in an analyzer.State. A row
-// becomes an InstrumentMetrics, which holds two levels and two flags — so
-// pulling a full snapshot per row hauls a Spectrum and a Waveform across
-// the JS bridge for the builder to discard.
-//
-// That was merely wasteful while the bridge downsampled the spectrum to 64
-// bins. Once it carries the analyser's full bin count — which it must, or
-// the low display bands hold no bins at all (analyzer.SpectrumFFTSize) —
-// the same waste is 16x bigger, on the hot path that drove a production
-// OOM once already. Rows go through the scalar-only bridge call instead.
+// A row becomes an InstrumentMetrics (two levels, two flags), so a full snapshot per row hauls a spectrum and a
+// waveform across the JS bridge to be discarded, at the analyser's full bin count. Rows use the scalar-only call.
 func TestAnalyzerStateFetchesSliceDataOnlyForMasterAndDetail(t *testing.T) {
 	rows := fakeRows(6)
 

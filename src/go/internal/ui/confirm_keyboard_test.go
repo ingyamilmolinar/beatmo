@@ -10,19 +10,11 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestConfirm_EnterConfirms_EscCancels is the functional regression guard for
-// Task 6 (consolidating the headless Esc fallback for paste-overwrite /
-// break-circuit confirms). newTestGameForUndo builds a full Game with a real
-// overlay portal, so beginPasteConfirm opens an actual ConfirmDialog overlay
-// — this exercises the WITH-PORTAL Enter/Esc seam (handleEnter/handleEscape
-// dispatching to ConfirmDialog.HandleEnter/HandleEscape via the
-// portalEnterHandler/portalEscapeHandler interfaces), not the headless
-// portal==nil fallback.
+// With a real portal, Enter and Esc reach the ConfirmDialog through the portal handlers.
 func TestConfirm_EnterConfirms_EscCancels(t *testing.T) {
 	g := newTestGameForUndo(t)
 
-	// Enter accepts the overwrite: paste onto an occupied cell arms the
-	// confirmation, then Enter must confirm and close the dialog.
+	// A paste onto an occupied cell arms the confirm.
 	n := g.tryAddNode(3, 1, model.NodeTypeRegular)
 	g.updateBeatInfos()
 	if !g.snapshotNodeToClipboard(n) {
@@ -43,8 +35,7 @@ func TestConfirm_EnterConfirms_EscCancels(t *testing.T) {
 		t.Fatal("Enter must confirm the paste-overwrite dialog (dialog stayed open)")
 	}
 
-	// Esc cancels: a fresh occupied-cell paste, then Esc must cancel and close
-	// the dialog without mutating the graph.
+	// Esc closes it without touching the graph.
 	m := g.tryAddNode(5, 1, model.NodeTypeRegular)
 	g.updateBeatInfos()
 	if !g.snapshotNodeToClipboard(m) {

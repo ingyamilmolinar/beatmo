@@ -12,23 +12,8 @@ import (
 	"testing"
 )
 
-// TestDesignMDContrast computes WCAG AA contrast ratios for every
-// (textColor, backgroundColor) pair in DESIGN.md's components block and
-// asserts each is ≥ 4.5:1 unless explicitly exempted.
-//
-// This duplicates the @google/design.md Stitch lint's contrast check on
-// the Go side so the rule applies hermetically — no network, no npx.
-// design_md_lint_test.go pins the npx output; this test pins the same
-// invariant via a local computation. The exception list is shared with
-// the lint snapshot at testdata/design_md_lint.expected.json so a
-// component cannot drift between the two guards.
-//
-// WCAG 2.1 luminance:
-//
-//	c_lin = c/12.92                 if c ≤ 0.03928
-//	c_lin = ((c + 0.055)/1.055)^2.4 otherwise
-//	L     = 0.2126·R_lin + 0.7152·G_lin + 0.0722·B_lin
-//	ratio = (L_max + 0.05) / (L_min + 0.05)
+// Every components (text, background) pair clears WCAG AA 4.5:1 unless exempt, computed locally (no npx). The
+// exceptions are the lint snapshot's warnings, so the two guards cannot drift.
 const wcagAAThreshold = 4.5
 
 func TestDesignMDContrast(t *testing.T) {
@@ -128,10 +113,7 @@ func TestDesignMDContrast(t *testing.T) {
 	}
 }
 
-// loadContrastExceptions reads the lint snapshot and returns the set of
-// component paths exempted from the AA threshold. The snapshot is shared
-// with design_md_lint_test.go; the warnings list there is the exception
-// list here.
+// The snapshot's warnings are the exceptions.
 func loadContrastExceptions(t *testing.T) map[string]bool {
 	t.Helper()
 	uiDir := findUIDir(t)
@@ -156,12 +138,7 @@ func loadContrastExceptions(t *testing.T) map[string]bool {
 	return out
 }
 
-// parseComponentsBlock walks the YAML front matter and returns
-// `components.<name> -> { backgroundColor: <ref>, textColor: <ref>, ... }`.
-// The grammar is restricted to two-space indent for component names and
-// four-space indent for key:value scalars, matching DESIGN.md's actual
-// shape. Any deviation is silently ignored — `parseComponentsBlock` is
-// not a general YAML parser.
+// Two-space component names, four-space scalars, as DESIGN.md is written; not a general YAML parser.
 func parseComponentsBlock(front string) map[string]map[string]string {
 	out := map[string]map[string]string{}
 	lines := strings.Split(front, "\n")
@@ -204,9 +181,7 @@ func parseComponentsBlock(front string) map[string]map[string]string {
 	return out
 }
 
-// resolveColorRef resolves a `{colors.NAME}` reference to a #RRGGBB hex
-// string by looking up `colors[NAME]`. A literal `#RRGGBB` value is
-// passed through.
+// A literal #RRGGBB passes through.
 func resolveColorRef(ref string, colors map[string]string) (string, bool) {
 	ref = strings.TrimSpace(ref)
 	if strings.HasPrefix(ref, "#") {

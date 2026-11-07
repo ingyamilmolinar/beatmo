@@ -8,9 +8,6 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// Build a simple 2x2 loop, set a secondary row's origin, delete that origin
-// node and then delete the row; ensure no panic occurs on subsequent node
-// deletions and the row clears its origin state.
 func TestDeleteOriginNodeThenDeleteRow_NoPanicAndClearsRow(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
@@ -47,8 +44,6 @@ func TestDeleteOriginNodeThenDeleteRow_NoPanicAndClearsRow(t *testing.T) {
 		t.Fatalf("expected origin row to be deleted automatically; rows=%d", len(g.drum.Rows))
 	}
 
-	// Delete another node in the loop and ensure no panic occurs.
-	// Run a draw to exercise paths; should not panic.
 	g.deleteNode(n2)
 	// Exercise Update/Draw path without a window system; stubs suffice.
 	_ = g.Update()

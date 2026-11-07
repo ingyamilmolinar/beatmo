@@ -5,14 +5,8 @@ import (
 	"testing"
 )
 
-// TestTooltipOverlayLayoutClampsAndDraws exercises the new lightweight
-// TooltipOverlay portal helper used by the chain-panel hover dwell flow.
-// The overlay must:
-//   - Layout a rectangle below its anchor sized to the caption-scaled text.
-//   - Clamp to the screen bounds (Max.X never escapes the screen).
-//   - Flip above the anchor when there is no room below.
-//   - Report HitAreas() == nil (it is purely decorative).
-//   - Report ShouldClose() == false initially, true after Close().
+// Sized to the caption below its anchor, clamped to the screen, flipped above when there is no room; purely
+// decorative, so no hit areas.
 func TestTooltipOverlayLayoutClampsAndDraws(t *testing.T) {
 	o := NewTooltipOverlay("hi")
 	if o == nil {

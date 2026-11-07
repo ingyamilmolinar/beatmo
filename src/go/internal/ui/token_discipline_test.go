@@ -9,26 +9,9 @@ import (
 	"testing"
 )
 
-// TestTokenDiscipline guards against new inline color.RGBA{} / color.NRGBA{}
-// literals in internal/ui/ source files.
-//
-// The literal allowlist is per-file. Each entry pins the maximum number of
-// literals that file is allowed to contain. When a literal is replaced with
-// a Token* accessor, decrement the entry. A file not in the map is required
-// to have zero literals.
-//
-// Adding a new entry to allowedLiteralBudget is permitted only with review.
-// The DESIGN.md §0/§5 rule is: every meaningful color in chrome must come
-// from a token; only color math, computed gradients, fully-transparent
-// fills, and explicit infrastructure are exempt.
-//
-// Infrastructure files (theme_tokens.go, drawing.go, icons.go,
-// design_tokens.gen.go) and *_test.go are not scanned at all.
-//
-// theme.go is scanned with a small budget (transparent zero-value
-// sentinels only) — every meaningful color literal previously inside
-// theme.go now flows through a gen* token, and the budget ratchet
-// catches regressions in the file the rest of the chrome inherits from.
+// Every meaningful chrome colour comes from a token; only colour math, computed gradients, transparent fills and
+// infrastructure are exempt. Per-file budgets ratchet: decrement when a literal goes, add an entry only with
+// review; infrastructure files and tests are not scanned.
 func TestTokenDiscipline(t *testing.T) {
 	root := findUIDir(t)
 	entries, err := os.ReadDir(root)
@@ -120,13 +103,7 @@ func TestTokenDiscipline(t *testing.T) {
 	}
 }
 
-// allowedLiteralBudget pins the current count of inline color literals
-// per file. Decrement when literals are replaced; never increment without
-// review. Files not in this map are required to have zero literals.
-//
-// Total: 119 literals across 30 files (audit baseline 2026-04-26 after
-// Phase B sweep — render_meters / render_scope / row_rack_zone migrated to
-// AlphaPanelBorder / AlphaRowActive + WithAlphaNRGBA / WithAlphaFromColor).
+// Decrement when literals are replaced; never increment without review.
 var allowedLiteralBudget = map[string]int{
 	"theme.go":                       2, // ContextMenuItemStyle Fill+Border are transparent zero-value sentinels (color.RGBA{0,0,0,0} / color.NRGBA{0,0,0,0}); every other color in theme.go flows through gen* tokens
 	"design_types.go":                1, // BorderRef.Resolve() constructs an NRGBA value at runtime

@@ -11,9 +11,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestTouchScrollDoesNotActivateSplitter verifies that starting a touch scroll
-// in the drum view rows and dragging upward (cursor moves into splitter grab
-// zone) does not cause the splitter to start dragging.
+// A row scroll dragging up into the grab zone never starts a splitter drag.
 func TestTouchScrollDoesNotActivateSplitter(t *testing.T) {
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	graph := model.NewGraph(logger)
@@ -62,9 +60,7 @@ func TestTouchScrollDoesNotActivateSplitter(t *testing.T) {
 	}
 }
 
-// TestSplitterDragDoesNotActivateDrumScroll verifies that when the splitter is
-// being dragged downward (cursor moves into drum area), the drum view does not
-// start a touch scroll.
+// The reverse: a splitter drag into the drum area starts no scroll.
 func TestSplitterDragDoesNotActivateDrumScroll(t *testing.T) {
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	graph := model.NewGraph(logger)
@@ -118,8 +114,6 @@ func TestSplitterDragDoesNotActivateDrumScroll(t *testing.T) {
 	}
 }
 
-// TestDrumViewHandleInputCapturesOnPress verifies that HandleInput returns
-// InputCaptured (not InputConsumed) for a new press within bounds.
 func TestDrumViewHandleInputCapturesOnPress(t *testing.T) {
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	graph := model.NewGraph(logger)
@@ -131,9 +125,7 @@ func TestDrumViewHandleInputCapturesOnPress(t *testing.T) {
 	}
 }
 
-// TestDrumViewCaptureMaintainedAcrossFrames verifies that Capturing() returns
-// true while mouseDownInBounds is set and HandleInput keeps returning
-// InputCaptured even when the cursor moves outside bounds.
+// Capture holds while the cursor leaves the bounds.
 func TestDrumViewCaptureMaintainedAcrossFrames(t *testing.T) {
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	graph := model.NewGraph(logger)
@@ -155,8 +147,6 @@ func TestDrumViewCaptureMaintainedAcrossFrames(t *testing.T) {
 	}
 }
 
-// TestDrumViewCaptureReleasedOnMouseUp verifies that mouseDownInBounds clears
-// when the mouse button is released and no touch scroll is active.
 func TestDrumViewCaptureReleasedOnMouseUp(t *testing.T) {
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	graph := model.NewGraph(logger)
@@ -182,9 +172,7 @@ func TestDrumViewCaptureReleasedOnMouseUp(t *testing.T) {
 	}
 }
 
-// TestTouchFlickerDoesNotReleaseDrumCapture simulates a mobile touch flicker:
-// press in drum rows, start touch scroll, then release arrives while
-// TouchActive() is still true. mouseDownInBounds must NOT be cleared.
+// A release arriving while the touch is still active keeps the capture.
 func TestTouchFlickerDoesNotReleaseDrumCapture(t *testing.T) {
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	graph := model.NewGraph(logger)
@@ -215,9 +203,7 @@ func TestTouchFlickerDoesNotReleaseDrumCapture(t *testing.T) {
 	}
 }
 
-// TestTouchScrollMaintainsCaptureBeforeCommit verifies that Capturing() returns
-// true when a touch scroll is active but not yet committed past the dead zone.
-// This exercises Layer 2 (TouchActive in Capturing) independently.
+// Through TouchActive, before the scroll commits.
 func TestTouchScrollMaintainsCaptureBeforeCommit(t *testing.T) {
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	graph := model.NewGraph(logger)
@@ -232,16 +218,13 @@ func TestTouchScrollMaintainsCaptureBeforeCommit(t *testing.T) {
 		t.Fatal("ScrollingCommitted should be false before movement past dead zone")
 	}
 
-	// anyDragActive checks ScrollingCommitted, which is false.
-	// But Capturing() should still return true via TouchActive().
+	// ScrollingCommitted is false; TouchActive still captures.
 	if !dv.Capturing() {
 		t.Error("Capturing() should be true when TouchActive is true, even before scroll commits")
 	}
 }
 
-// TestDrumViewCaptureReleasedAfterTouchEnds verifies no stuck state: after
-// HandleTouchEnd makes TouchActive() false, a subsequent HandleInput release
-// clears mouseDownInBounds and Capturing() returns false.
+// No stuck capture once the touch ends.
 func TestDrumViewCaptureReleasedAfterTouchEnds(t *testing.T) {
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	graph := model.NewGraph(logger)
@@ -265,12 +248,10 @@ func TestDrumViewCaptureReleasedAfterTouchEnds(t *testing.T) {
 	if dv.mouseDownInBounds {
 		t.Error("mouseDownInBounds should be cleared after touch ended and release received")
 	}
-	// Capturing may still be true for one frame due to momentum, but
-	// mouseDownInBounds must be cleared to allow eventual release.
+	// Momentum may hold one more frame; mouseDownInBounds must clear.
 }
 
-// TestSplitterGuardFramesBlockNewDrag verifies that guardFrames > 0 prevents
-// the splitter from initiating a new drag, but does not block an ongoing drag.
+// Blocks a new drag, never an ongoing one.
 func TestSplitterGuardFramesBlockNewDrag(t *testing.T) {
 	s := NewSplitter(600)
 	s.Y = 300
@@ -310,9 +291,7 @@ func TestSplitterGuardFramesBlockNewDrag(t *testing.T) {
 	}
 }
 
-// TestTouchScrollDoesNotActivateLayoutResize verifies that when a touch scroll
-// is active in the drum view rows, the LayoutResizeHandler.Update() is not
-// called by DrumView.Update(), preventing the handler from stealing the drag.
+// While a row scroll is active the layout handler does not run, so it cannot steal the drag.
 func TestTouchScrollDoesNotActivateLayoutResize(t *testing.T) {
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	graph := model.NewGraph(logger)
@@ -330,16 +309,11 @@ func TestTouchScrollDoesNotActivateLayoutResize(t *testing.T) {
 		t.Fatal("TouchActive should be true after HandleTouchBegin")
 	}
 
-	// Track whether layoutHandler.Update() was called by instrumenting it.
-	// We do this by checking that the handler did NOT start dragging even
-	// with cursor positioned right on a row divider with press active.
-	// Find a row divider Y coordinate from widgets (if available).
+	// With the cursor on a row divider and the press active, it must not start dragging.
 	var dividerY int
 	if dv.widgets != nil && len(dv.widgets.rowPos) > 2 {
 		dividerY = dv.widgets.rowPos[1] + dv.Bounds.Min.Y
 	} else {
-		// Fallback: use a position near the top of drum view where
-		// a divider would typically be.
 		dividerY = dv.Bounds.Min.Y + 40
 	}
 
@@ -360,9 +334,7 @@ func TestTouchScrollDoesNotActivateLayoutResize(t *testing.T) {
 		t.Error("layoutHandler started resize drag while touch scroll was active — guard should prevent this")
 	}
 
-	// Verify the guard is specifically due to TouchActive: end touch, then
-	// confirm layoutHandler CAN run (it may or may not detect a divider, but
-	// at minimum it should not be blocked).
+	// Once the touch ends the handler is no longer blocked.
 	dv.rowScroll().HandleTouchEnd()
 	if dv.rowScroll().TouchActive() {
 		t.Fatal("TouchActive should be false after HandleTouchEnd")

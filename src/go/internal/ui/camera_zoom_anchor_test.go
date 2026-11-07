@@ -8,9 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestZoomAnchorsAtCursor exercises the full Game.Update input path to ensure
-// wheel zoom keeps the world point under the cursor fixed in screen space, and
-// that nodes and edges remain colocated after zoom.
+// Wheel zoom keeps the world point under the cursor fixed, with nodes and edges still colocated.
 func TestZoomAnchorsAtCursor(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -28,8 +26,7 @@ func TestZoomAnchorsAtCursor(t *testing.T) {
 	cx := int(math.Round((x1 + x2) * 0.5))
 	cy := int(math.Round((y1 + y2) * 0.5))
 
-	// Wheel zoom in at the node center. Provide input through SetInputForTest
-	// so Game.Update() drives zoom via zoomAtScreen and Camera.HandleMouse.
+	// Through SetInputForTest, so Update drives the zoom.
 	wheelY := 1.0
 	pressed := false
 	restore := SetInputForTest(
@@ -54,8 +51,7 @@ func TestZoomAnchorsAtCursor(t *testing.T) {
 		t.Fatalf("anchored zoom failed: node moved to (%.2f,%.2f) want (%d,%d)", ncx, ncy, cx, cy)
 	}
 
-	// Also verify the connected edge endpoint projects to the same screen pos.
-	// Rebuild the same projection used in Draw.
+	// Projected the way Draw does.
 	unitPx := g.grid.UnitPixels(g.cam.Scale)
 	offX := math.Round(g.cam.OffsetX)
 	offY := math.Round(g.cam.OffsetY)

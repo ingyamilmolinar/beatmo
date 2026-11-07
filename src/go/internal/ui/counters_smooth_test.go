@@ -10,8 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// parseMS extracts the current time in milliseconds from a timelineInfo string.
-// Format: "Beat X · M:SS" — only has second-level precision.
+// "Beat X · M:SS" has second precision only.
 func parseMS(info string) int {
 	p := strings.Index(info, "· ")
 	if p < 0 {
@@ -23,9 +22,7 @@ func parseMS(info string) int {
 	return (m*60 + s) * 1000
 }
 
-// Verify that the displayed beat counter advances smoothly (strictly
-// increasing) across frames and that the formatted time in milliseconds tracks
-// it monotonically without large jumps.
+// Strictly increasing across frames, with the time tracking it monotonically.
 func TestCountersAdvanceSmoothly(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -45,8 +42,7 @@ func TestCountersAdvanceSmoothly(t *testing.T) {
 	// Drive secPerBeat via the draw path once.
 	g.drawDrumPane(ebiten.NewImage(1, 1))
 
-	// Start playback via the UI path, then clear time anchors so displayBeat
-	// uses deterministic engineProgress values.
+	// Cleared anchors, so displayBeat uses the deterministic progress values.
 	pressPlay(t, g.drum)
 	if err := g.Update(); err != nil {
 		t.Fatalf("start: %v", err)
@@ -85,10 +81,7 @@ func TestCountersAdvanceSmoothly(t *testing.T) {
 			t.Fatalf("beat delta out of range: %.6f", d)
 		}
 	}
-	// With the simplified "M:SS" format, displayed time only has second-level
-	// precision — multiple samples may map to the same second. Verify that the
-	// displayed time is monotonically non-decreasing and reaches at least the
-	// last sample's second boundary.
+	// At second precision several samples share a second: non-decreasing, reaching the last sample's second.
 	for i := 1; i < len(mss); i++ {
 		if mss[i] < mss[i-1] {
 			t.Fatalf("ms went backwards: %d -> %d", mss[i-1], mss[i])

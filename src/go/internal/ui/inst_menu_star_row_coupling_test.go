@@ -8,14 +8,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// The star column is a per-row adornment: exactly one star belongs to each
-// instrument row currently laid out by the menu, and nothing else. These
-// tests pin that coupling structurally so a build path that produces zero
-// rows can never leave a previous build's stars behind — the "stars float
-// down the screen over an empty Favorites menu" bug.
+// One star per laid-out instrument row and nothing else, so a build that produces no rows can never leave a
+// previous build's stars floating over the menu.
 
-// starCouplingProps builds an instruments-with-categories menu wired to a
-// favorites store, sized so several rows are visible at once.
 func starCouplingProps(store FavoritesStore) InstrumentMenuProps {
 	p := instMenuTestProps(
 		[]InstrumentOption{
@@ -31,10 +26,7 @@ func starCouplingProps(store FavoritesStore) InstrumentMenuProps {
 	return p
 }
 
-// firstStarRow returns the index, rect and instrument id of the first row
-// that carries a drawable star. ok is false when the menu has no stars.
-// Tests use this instead of indexing favRects[0] directly: favRects is
-// row-indexed, so index 0 is only a star when row 0 happens to have one.
+// favRects is row-indexed, so index 0 is a star only when row 0 has one.
 func firstStarRow(m *InstrumentMenuComponent) (idx int, rect image.Rectangle, id string, ok bool) {
 	for i, r := range m.favRects {
 		if r.Empty() || i >= len(m.instIDs) || m.instIDs[i] == "" {
@@ -56,12 +48,7 @@ func nonEmptyStars(m *InstrumentMenuComponent) int {
 	return n
 }
 
-// TestInstMenu_EmptyFavoritesViewDrawsNoStars reproduces the reported bug:
-// browse a populated category (which lays out one star per row), navigate
-// back to the category list, then open the empty Favorites view. The menu
-// shows only the "no favorites yet" placeholder, so there must be zero star
-// rects — previously the category listing's stars survived the empty-list
-// build and were drawn (and hit-tested) far outside the shrunken menu.
+// The empty Favorites view shows only its placeholder, so a category's stars must not survive into it.
 func TestInstMenu_EmptyFavoritesViewDrawsNoStars(t *testing.T) {
 	store := NewInMemoryFavoritesStore() // no ★s at all
 	comp := NewInstrumentMenuComponent()
@@ -91,10 +78,8 @@ func TestInstMenu_EmptyFavoritesViewDrawsNoStars(t *testing.T) {
 	}
 }
 
-// TestInstMenu_CategoriesModeDrawsNoStars pins that popping back to the
-// category list drops the instrument rows' stars. Categories mode renders no
-// instrument rows, and its global-search tap path hit-tests favRects — stale
-// rects there would toggle a favorite for an instrument that is not on screen.
+// Categories mode has no instrument rows, and its global-search tap path hit-tests favRects: a stale rect would
+// toggle an instrument that is not on screen.
 func TestInstMenu_CategoriesModeDrawsNoStars(t *testing.T) {
 	store := NewInMemoryFavoritesStore()
 	comp := NewInstrumentMenuComponent()
@@ -115,9 +100,6 @@ func TestInstMenu_CategoriesModeDrawsNoStars(t *testing.T) {
 	}
 }
 
-// TestInstMenu_NoMatchesDrawsNoStars covers the other empty-list path: a
-// search query inside a category that matches nothing. Same early return,
-// same stale-star exposure.
 func TestInstMenu_NoMatchesDrawsNoStars(t *testing.T) {
 	store := NewInMemoryFavoritesStore()
 	comp := NewInstrumentMenuComponent()
@@ -138,10 +120,8 @@ func TestInstMenu_NoMatchesDrawsNoStars(t *testing.T) {
 	}
 }
 
-// TestInstMenu_StarRectsPairWithVisibleRows is the structural invariant that
-// makes the three cases above impossible by construction: favRects is
-// parallel to instBtns, and every non-empty star sits on its row's Y band
-// inside the menu's own rect. A star that outlives its row breaks this.
+// favRects is parallel to instBtns and every star sits on its row's band inside the menu: a star that
+// outlives its row breaks it.
 func TestInstMenu_StarRectsPairWithVisibleRows(t *testing.T) {
 	store := NewInMemoryFavoritesStore(roster.Kick)
 	comp := NewInstrumentMenuComponent()
@@ -167,17 +147,13 @@ func TestInstMenu_StarRectsPairWithVisibleRows(t *testing.T) {
 		}
 	}
 
-	// The invariant must hold in the empty-list state too — that is the
-	// state the bug shipped in. The placeholder row is a row: it gets an
-	// (empty) star slot and an (empty) id slot like every other.
+	// The placeholder row is a row: it gets an empty star slot and an empty id slot like every other.
 	store.Set(roster.Kick, false)
 	comp.BackBtn().OnClick()
 	comp.CategoryBtns()[0].OnClick()
 	assertStarRowParallel(t, comp, "empty favorites view")
 }
 
-// assertStarRowParallel checks the per-row slices stay index-aligned so the
-// star for row i is always instIDs[i]'s star and never a leftover.
 func assertStarRowParallel(t *testing.T, m *InstrumentMenuComponent, when string) {
 	t.Helper()
 	if len(m.favRects) != len(m.instBtns) {
@@ -190,9 +166,6 @@ func assertStarRowParallel(t *testing.T, m *InstrumentMenuComponent, when string
 	}
 }
 
-// TestInstMenu_EmptyAnchorDropsStars pins the last early return: a menu whose
-// anchor collapses (row removed, panel closed) lays out nothing, so it must
-// carry no stars either.
 func TestInstMenu_EmptyAnchorDropsStars(t *testing.T) {
 	store := NewInMemoryFavoritesStore()
 	comp := NewInstrumentMenuComponent()

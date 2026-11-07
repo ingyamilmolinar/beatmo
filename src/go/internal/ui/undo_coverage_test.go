@@ -6,10 +6,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
-// TestUndoRecordedSetMatchesDeclared asserts every undoable kind in the registry
-// has a non-empty label in the derived documentScopeKinds, and no extra keys
-// exist. (Focused label-presence guard; the deeper equality check is
-// TestUndoableSetMatchesRegistry in undo_registry_drift_test.go.)
 func TestUndoRecordedSetMatchesDeclared(t *testing.T) {
 	for _, a := range hooks.AllActions() {
 		if !hooks.Undoable(a.Kind) {
@@ -26,10 +22,7 @@ func TestUndoRecordedSetMatchesDeclared(t *testing.T) {
 	}
 }
 
-// TestUndoRecordedSetExcludesNonDocument asserts kinds that emit events for
-// coverage but cannot be snapshot-undone are NOT in the recorded-set. The
-// excluded set is derived from the registry (everything not Undoable), so this
-// can never drift from the classification.
+// Derived from the registry (everything not Undoable), so it cannot drift.
 func TestUndoRecordedSetExcludesNonDocument(t *testing.T) {
 	for _, a := range hooks.AllActions() {
 		if hooks.Undoable(a.Kind) {
@@ -41,9 +34,7 @@ func TestUndoRecordedSetExcludesNonDocument(t *testing.T) {
 	}
 }
 
-// TestDocumentGapsAreReasoned asserts every document-scope kind that is NOT
-// undoable carries an ExcludedReason — the honest record of a known gap
-// (e.g. row pan / sends are exported but have no UI commit site yet).
+// Each gap is an honest record: a document-scope kind that is not undoable says why.
 func TestDocumentGapsAreReasoned(t *testing.T) {
 	for _, a := range hooks.AllActions() {
 		if a.Scope == hooks.ScopeDocument && !hooks.Undoable(a.Kind) {

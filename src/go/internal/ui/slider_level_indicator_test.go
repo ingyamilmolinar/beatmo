@@ -10,9 +10,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// captureDrawRects swaps the package-level drawRect var for one that records
-// every filled rect drawn during fn(). Returns recorded rects and the map of
-// the color used for each rect (one slice entry per drawRect call).
 func captureDrawRects(t *testing.T, fn func()) ([]image.Rectangle, []color.Color) {
 	t.Helper()
 	var rects []image.Rectangle
@@ -33,10 +30,7 @@ func captureDrawRects(t *testing.T, fn func()) ([]image.Rectangle, []color.Color
 // indicatorIconRect is a stand-in icon rect used by helper tests.
 func indicatorIconRect() image.Rectangle { return image.Rect(20, 30, 60, 70) } // 40x40 icon
 
-// findIndicatorRoundedRects filters captureRoundedRectCalls results to the
-// filled rounded-rect calls that form the level gauge (track + fill): thin
-// (<=6px) strips at or below iconR.Max.Y. The gauge spans the BUTTON's bottom
-// inner edge (volumeGaugeRect), not the icon's footprint.
+// Thin strips at or below the icon: the gauge spans the BUTTON's bottom inner edge, not the icon's footprint.
 func findIndicatorRoundedRects(calls []roundedDraw, iconR image.Rectangle) []roundedDraw {
 	var found []roundedDraw
 	for _, c := range calls {
@@ -126,12 +120,7 @@ func TestSliderLevelIndicator_HalfValueDrawsHalfFill(t *testing.T) {
 	}
 }
 
-// TestVolIconColorMatchesInstrumentNodeColor pins that an active per-row volume
-// slider paints the SAME color as that instrument's grid nodes. The node fill
-// for a regular node is the row's Color at full opacity (grid_pane_draw.go:
-// fillCol = base, where base = g.drum.Rows[rowIdx].Color). DrumRow.Color is the
-// single source of truth both surfaces read live, so they must agree exactly —
-// no alpha dimming on the slider that would make it read as a different shade.
+// DrumRow.Color is the one source both read, so the slider takes the node's exact colour with no alpha dimming.
 func TestVolIconColorMatchesInstrumentNodeColor(t *testing.T) {
 	assertDefaultParityState(t)
 	rowColor := color.RGBA{R: 220, G: 40, B: 90, A: 255}
@@ -151,13 +140,7 @@ func TestVolIconColorMatchesInstrumentNodeColor(t *testing.T) {
 	}
 }
 
-// TestSliderLevelIndicator_NRGBAFillUsesIconColor pins the contract that the
-// fill carries the icon's foreground color even when that color arrives as a
-// color.NRGBA (the common case: per-row volume cells get their tint from
-// WithAlphaFromColor, which returns color.NRGBA). A naive
-// fgCol.(color.RGBA) assertion would miss this and silently substitute the
-// cyan fallback — so we assert the fill is NOT the fallback and DOES match
-// the converted icon color.
+// Row cells get their tint as color.NRGBA; a naive fgCol.(color.RGBA) would silently fall back to cyan.
 func TestSliderLevelIndicator_NRGBAFillUsesIconColor(t *testing.T) {
 	assertDefaultParityState(t)
 	dst := ebiten.NewImage(200, 200)
@@ -175,8 +158,7 @@ func TestSliderLevelIndicator_NRGBAFillUsesIconColor(t *testing.T) {
 	if countFilled(got) < 2 {
 		t.Fatalf("NRGBA fill: want rail+fill (>=2 filled), got %d", countFilled(got))
 	}
-	// The fill is the narrowest filled rect (< full gauge width); its color
-	// must be the converted icon color, not the fallback genColorPrimary.
+	// The fill is the narrowest filled rect; its colour is the converted icon colour, not the fallback.
 	var fillCol color.Color
 	for _, c := range got {
 		if c.Rect.Dx() < volumeGaugeRect(btnR).Dx() {
@@ -191,8 +173,7 @@ func TestSliderLevelIndicator_NRGBAFillUsesIconColor(t *testing.T) {
 	if gr == cr && gg == cg && gb == cb {
 		t.Fatalf("NRGBA fill: fell back to cyan genColorPrimary instead of the row color")
 	}
-	// Compare at 8 bits: the gauge passes the NRGBA through unconverted, so
-	// the 16-bit premultiplied values differ by sub-8-bit rounding only.
+	// At 8 bits: the 16-bit premultiplied values differ only by rounding.
 	if gr>>8 != wantR>>8 || gg>>8 != wantG>>8 || gb>>8 != wantB>>8 {
 		t.Errorf("NRGBA fill: color mismatch: want (%d,%d,%d), got (%d,%d,%d)",
 			wantR>>8, wantG>>8, wantB>>8, gr>>8, gg>>8, gb>>8)
@@ -272,10 +253,7 @@ func TestSliderLevelIndicator_PositionedBelowIcon(t *testing.T) {
 	}
 }
 
-// TestSliderLevelIndicator_StaysInsideBtnRect pins the contract that the
-// indicator never draws outside the button's hit-area — otherwise a tightly
-// laid-out toolbar (master volume on dense desktop) clips it and the user
-// sees no level marker at all.
+// A dense toolbar would clip an indicator that spills, leaving no level marker at all.
 func TestSliderLevelIndicator_StaysInsideBtnRect(t *testing.T) {
 	assertDefaultParityState(t)
 	dst := ebiten.NewImage(200, 200)
@@ -303,9 +281,7 @@ func TestSliderLevelIndicator_StaysInsideBtnRect(t *testing.T) {
 	}
 }
 
-// TestVolumeButton_RowAndMasterRenderIdentically_TightLayout repeats the
-// row vs master parity check for a small, dense button — catches
-// path-divergence that only shows up in real toolbar sizes.
+// Small, dense buttons expose divergence that only shows at real toolbar sizes.
 func TestVolumeButton_RowAndMasterRenderIdentically_TightLayout(t *testing.T) {
 	assertDefaultParityState(t)
 	btnR := image.Rect(10, 10, 42, 42) // 32x32
@@ -323,9 +299,7 @@ func TestVolumeButton_RowAndMasterRenderIdentically_TightLayout(t *testing.T) {
 	}
 	tz.mainVolSlider.Value = vol
 
-	// The indicator (and rail/fill) is drawn via drawRoundedRect; compare the
-	// full rounded-rect call sequence (geometry + color + radius + filled) so
-	// the two paths render byte-identically — not just "both nonzero".
+	// The full rounded-rect call sequence, so the two paths render byte-identically, not merely both non-zero.
 	callsA := captureRoundedRectCalls(t, func() {
 		drawVolIcon(dstA, s, vol, false, nil)
 	})
@@ -371,8 +345,6 @@ func TestDrawVolIcon_DrawsIndicatorBeneathIcon(t *testing.T) {
 	s := NewSlider(0.6)
 	s.SetRect(image.Rect(0, 0, 60, 60)) // generous so icon is large enough
 
-	// The indicator is now drawn via drawRoundedRect (via drawSliderRail).
-	// Capture rounded rects and look for thin ones below the vertical midpoint.
 	midY := 30
 	calls := captureRoundedRectCalls(t, func() {
 		drawVolIcon(dst, s, 0.6, false, nil)
@@ -394,8 +366,7 @@ func TestDrawVolIcon_MutedDrawsIndicatorButNoFill(t *testing.T) {
 	s := NewSlider(0.6)
 	s.SetRect(image.Rect(0, 0, 60, 60))
 
-	// Muted: indicator is present (track/rail) but no fill — so exactly 1 thin
-	// filled rounded rect (the rail) below mid-line.
+	// Muted: the rail is present but there is no fill.
 	midY := 30
 	calls := captureRoundedRectCalls(t, func() {
 		drawVolIcon(dst, s, 0.6, true /* muted */, nil)
@@ -411,10 +382,7 @@ func TestDrawVolIcon_MutedDrawsIndicatorButNoFill(t *testing.T) {
 	}
 }
 
-// TestVolumeButton_RowAndMasterRenderIdentically pins the contract that the
-// master volume button is the same component as the per-row volume button,
-// hooked to a different channel. Same input rect + level + neutral state must
-// yield identical draw calls (count, geometry, color).
+// The master button is the row component on a different channel.
 func TestVolumeButton_RowAndMasterRenderIdentically(t *testing.T) {
 	assertDefaultParityState(t)
 	btnR := image.Rect(20, 20, 80, 80)

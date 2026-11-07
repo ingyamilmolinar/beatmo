@@ -9,8 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestEdgeColorTracksRowColor ensures edges are drawn with the same color as
-// their row's node color and that changing the row color rebuilds the cache.
+// A row colour change rebuilds the cache.
 func TestEdgeColorTracksRowColor(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

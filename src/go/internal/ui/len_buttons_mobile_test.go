@@ -8,9 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestLenButtons_HiddenOnMobile verifies that the inline timeline length
-// +/− buttons are not rendered on mobile (A7 in the screenshot critique).
-// The pair was too narrow to discover on phone-class screens.
+// The pair was too narrow to discover on a phone.
 func TestLenButtons_HiddenOnMobile(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -26,9 +24,6 @@ func TestLenButtons_HiddenOnMobile(t *testing.T) {
 	}
 }
 
-// TestLenButtons_VisibleOnDesktop is a regression guard that the inline
-// pair is preserved on desktop where there's room for the inline +/−
-// affordance next to the timeline.
 func TestLenButtons_VisibleOnDesktop(t *testing.T) {
 	setupMobileTest(t, false)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -44,10 +39,7 @@ func TestLenButtons_VisibleOnDesktop(t *testing.T) {
 	}
 }
 
-// TestLenButtons_OverflowAbsent verifies that neither mobile nor desktop
-// overflow menus duplicate the window-length +/− controls. The inline
-// timeline +/− pair (desktop) and inline mobile exposure are the only
-// surfaces; overflow entries were removed as redundant.
+// The inline pairs are the only surfaces; an overflow entry would duplicate them.
 func TestLenButtons_OverflowAbsent(t *testing.T) {
 	for _, mobile := range []bool{true, false} {
 		mobile := mobile

@@ -6,15 +6,10 @@ import (
 	"testing"
 )
 
-// nameRE is the kebab-case-with-digits-and-underscores pattern. Existing
-// scenes use underscores liberally (e.g. transport_high_bpm), so we accept
-// `[a-z][a-z0-9_]*` rather than strict kebab-case-with-hyphens.
+// Existing scenes use underscores (transport_high_bpm), so strict kebab-case is not required.
 var sceneNameRE = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
-// TestSceneCatalogNamesUniqueAndKebabCase guards the most basic catalog
-// invariants: names must be unique (the screenshot harness keys on them)
-// and conform to a stable lowercase format so external tooling can match
-// them without surprise.
+// The screenshot harness keys on names; a stable lowercase format lets tooling match them.
 func TestSceneCatalogNamesUniqueAndKebabCase(t *testing.T) {
 	seen := map[string]int{}
 	for i, s := range sceneCatalog {
@@ -28,11 +23,8 @@ func TestSceneCatalogNamesUniqueAndKebabCase(t *testing.T) {
 	}
 }
 
-// TestSceneCatalogCropSubjectInvariant enforces the "subject ↔ crop_"
-// rule. Per CLAUDE.md § Screenshot Subjects, every crop_* scene must
-// declare a Subject (the harness uses it to clip the PNG), and every
-// non-crop scene must NOT declare one (or the harness silently crops a
-// full-screen capture).
+// A crop_ scene needs a Subject to clip the PNG; any other scene must not have one, or a full-screen capture is
+// cropped silently.
 func TestSceneCatalogCropSubjectInvariant(t *testing.T) {
 	for _, s := range sceneCatalog {
 		isCrop := strings.HasPrefix(s.Name, "crop_")
@@ -46,11 +38,7 @@ func TestSceneCatalogCropSubjectInvariant(t *testing.T) {
 	}
 }
 
-// TestSceneCatalogMobileScenesHaveSetup verifies that every Mobile=true
-// scene is actually invokable on the mobile pass — either MobileSetup is
-// non-nil, or Setup is non-nil (which RunSceneMobile falls back to).
-// Without this guard, a Mobile entry with both nil would no-op silently
-// and the screenshot would duplicate the bare mobile_default.
+// A Mobile entry with neither setup would no-op and duplicate mobile_default.
 func TestSceneCatalogMobileScenesHaveSetup(t *testing.T) {
 	for _, s := range sceneCatalog {
 		if !s.Mobile {
@@ -62,10 +50,7 @@ func TestSceneCatalogMobileScenesHaveSetup(t *testing.T) {
 	}
 }
 
-// TestSceneCatalogSettleFramesBounded keeps a ceiling on declared
-// SettleFrames. The default is 90; any single scene above 300 (5 seconds
-// at 60fps) is almost certainly a misconfigured copy-paste. This guard
-// fails loudly so the screenshot harness doesn't grind for minutes.
+// A scene above the cap is almost certainly a copy-paste error, and the harness would grind for minutes.
 func TestSceneCatalogSettleFramesBounded(t *testing.T) {
 	const ceiling = 300
 	for _, s := range sceneCatalog {
@@ -78,10 +63,7 @@ func TestSceneCatalogSettleFramesBounded(t *testing.T) {
 	}
 }
 
-// TestSceneCatalogListScenesStable asserts that ListScenes returns the
-// catalog sorted by Name (so external tooling that depends on iteration
-// order — manifest.json, the screenshots-all SCENES filter — sees stable
-// output).
+// manifest.json and the SCENES filter depend on the order.
 func TestSceneCatalogListScenesStable(t *testing.T) {
 	scenes := ListScenes()
 	for i := 1; i < len(scenes); i++ {
@@ -94,11 +76,7 @@ func TestSceneCatalogListScenesStable(t *testing.T) {
 	}
 }
 
-// TestSceneCatalogSceneNamesFilters covers the SceneNames(includeMobile)
-// branches: mobile-only entries (name prefix "mobile_") are excluded
-// when includeMobile=false, but Mobile=true entries that ALSO run on
-// desktop (e.g. transport_idle) remain visible. This is the contract
-// SceneNames(false) gives `screenshots-all` for the desktop pass.
+// Mobile-only entries ("mobile_") drop out of the desktop pass; Mobile=true entries that also run on desktop stay.
 func TestSceneCatalogSceneNamesFilters(t *testing.T) {
 	full := SceneNames(true)
 	desktopOnly := SceneNames(false)
@@ -122,9 +100,7 @@ func TestSceneCatalogSceneNamesFilters(t *testing.T) {
 	}
 }
 
-// TestSceneCatalogRunSceneUnknownReturnsError nails the documented
-// "RunScene returns an error if the name is not in the catalog" contract
-// — important because tooling depends on it (not a panic).
+// Tooling depends on an error, not a panic.
 func TestSceneCatalogRunSceneUnknownReturnsError(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

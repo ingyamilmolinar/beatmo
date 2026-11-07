@@ -6,9 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// expectedFromZero returns the next n visible preview booleans for row starting
-// at absolute index base, computed from a clean state (no reliance on live
-// counters). It uses the game's internal prediction engine.
+// Computed from a clean state, never the live counters.
 func expectedFromZero(g *Game, row, base, n int) []bool {
 	if base < 0 {
 		base = 0
@@ -65,10 +63,7 @@ func buildComplexLoop(g *Game) (a, b, c, d *uiNode) {
 	return
 }
 
-// TestPreviewRewindMatchesPredictions exposes a desync when the timeline is
-// rewound: the drum-row preview uses live counters as seed, which produces
-// incorrect visible steps for windows before the current playback index. It
-// should instead match predictions computed from zero.
+// A rewound window must match predictions computed from zero, not ones seeded from live counters.
 func TestPreviewRewindMatchesPredictions(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

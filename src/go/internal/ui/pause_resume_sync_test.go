@@ -8,8 +8,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Verifies that pausing and resuming resumes from the exact position and does
-// not jump forward/backward.
 func TestPauseResumeKeepsPosition(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

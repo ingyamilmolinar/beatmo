@@ -8,10 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestIconStarDispatch verifies the new IconStar / IconStarFilled /
-// IconChevronLeft entries are wired through drawIconByID. The body
-// just exercises the switch — pixel-level rendering is covered by
-// the broader icon_renderer tests.
+// Dispatch only: the stub backend does not reflect vector draws in dst.At.
 func TestIconStarDispatch(t *testing.T) {
 	dst := ebiten.NewImage(24, 24)
 	r := image.Rect(0, 0, 24, 24)
@@ -23,9 +20,7 @@ func TestIconStarDispatch(t *testing.T) {
 	}
 }
 
-// TestIconUnknownReturnsFalse pins the contract that drawIconByID
-// returns false for unmapped IconID values. Callers rely on this to
-// fall back to a text label.
+// Callers fall back to a text label when drawIconByID returns false.
 func TestIconUnknownReturnsFalse(t *testing.T) {
 	dst := ebiten.NewImage(24, 24)
 	r := image.Rect(0, 0, 24, 24)
@@ -35,17 +30,13 @@ func TestIconUnknownReturnsFalse(t *testing.T) {
 	}
 }
 
-// TestStarPathPointCount sanity-checks that the star polygon has the
-// expected ten vertices (alternating outer/inner). A regression here
-// usually means a hand edit damaged the path table.
+// Ten vertices, alternating outer/inner; anything else means the path table was damaged.
 func TestStarPathPointCount(t *testing.T) {
 	if got := len(starPathPoints); got != 10 {
 		t.Fatalf("starPathPoints len=%d, want 10 (5 outer + 5 inner)", got)
 	}
 }
 
-// TestIconNodeActionDispatch verifies the node quick-action icons are wired
-// through drawIconByID (used by the long-press popup keycaps).
 func TestIconNodeActionDispatch(t *testing.T) {
 	dst := ebiten.NewImage(24, 24)
 	r := image.Rect(0, 0, 24, 24)
@@ -57,11 +48,7 @@ func TestIconNodeActionDispatch(t *testing.T) {
 	}
 }
 
-// TestIconFolderDispatch verifies the folder glyph (grid-pane file button) is
-// wired through drawIconByID. Pixel-level rendering is covered by the broader
-// icon_renderer tests; the stub backend does not reflect vector draws in
-// dst.At, so this only exercises the dispatch switch (matching the other icon
-// dispatch tests in this file).
+// Dispatch only: the stub backend does not reflect vector draws in dst.At.
 func TestIconFolderDispatch(t *testing.T) {
 	dst := ebiten.NewImage(24, 24)
 	r := image.Rect(0, 0, 24, 24)

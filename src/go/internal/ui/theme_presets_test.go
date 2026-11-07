@@ -36,8 +36,7 @@ func TestThemePresetsWellFormed(t *testing.T) {
 	}
 }
 
-// Vice City IS the shipped palette: every token identical except the one
-// deliberate refinement (focus ring → hot-pink-400, the signature magenta).
+// Vice City is the shipped palette plus one refinement: the hot-pink-400 focus ring.
 func TestVicePresetIsShippedPaletteButFocusRing(t *testing.T) {
 	got, warns := resolveThemeTokens(theme.Doc{Preset: "vice-city"})
 	if len(warns) != 0 {

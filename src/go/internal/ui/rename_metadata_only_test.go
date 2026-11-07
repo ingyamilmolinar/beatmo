@@ -17,8 +17,7 @@ func TestRenameIsMetadataOnly(t *testing.T) {
 	}
 	t.Cleanup(func() { audio.ClearInstrumentDisplayName(origID) })
 
-	// Seed per-row audio state that the spec requires a rename to preserve
-	// (rename is metadata-only — it must touch ONLY the display name).
+	// A rename touches only the display name; this state must survive it.
 	if len(rowEQ(dv.Rows[row]).GainsDB) == 0 {
 		rowEQ(dv.Rows[row]).GainsDB = make([]float64, 10)
 	}

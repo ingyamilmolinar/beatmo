@@ -17,8 +17,6 @@ type roundedDraw struct {
 	Filled bool
 }
 
-// captureRoundedRectCalls intercepts drawRoundedRect during fn and returns
-// the captured calls. Used by the chip styling tests below.
 func captureRoundedRectCalls(t *testing.T, fn func()) []roundedDraw {
 	t.Helper()
 	var calls []roundedDraw
@@ -50,19 +48,12 @@ func newBeatCounterTestZone(rect image.Rectangle) *TimelineZone {
 	})
 }
 
-// beatCounterKeycapCap returns the keycap CAP-FACE rect drawn inside beatRect by
-// drawBeatCounter — the rounded button painted with the secondary keycap fill
-// (TransportMiscStyle.Fill, or its hover-brightened variant). The counter now
-// renders as a matte keycap via drawKeycapPanelButton (drawRoundedButton), not
-// a flat drawRect, matching every other Button (DESIGN.md "Keycap elevation").
+// The cap face drawn inside beatRect with the secondary keycap fill.
 func beatCounterKeycapCap(t *testing.T, z *TimelineZone, dst *ebiten.Image, beatRect image.Rectangle) (image.Rectangle, bool) {
 	t.Helper()
 	restFill := color.RGBAModel.Convert(TransportMiscStyle.Fill).(color.RGBA)
 	hoverFill := color.RGBAModel.Convert(adjustColor(TransportMiscStyle.Fill, 12)).(color.RGBA)
-	// Flat-tonal (2026-07-25): the counter's body is painted by
-	// drawFlatPanelButton -> drawFlatButtonBody -> drawRoundedRect(filled),
-	// not by the drawRoundedButton fill+border composite. Intercept the
-	// primitive the flat path actually uses.
+	// The flat path paints the body through drawRoundedRect(filled), so that is the primitive intercepted.
 	var caps []image.Rectangle
 	orig := drawRoundedRect
 	drawRoundedRect = func(d *ebiten.Image, r image.Rectangle, c color.Color, radius int, filled bool) {
@@ -88,9 +79,7 @@ func beatCounterKeycapCap(t *testing.T, z *TimelineZone, dst *ebiten.Image, beat
 	return best, true
 }
 
-// TestBeatCounterKeycap_DrawsSecondaryFill verifies the counter renders a matte
-// keycap cap face with the shared secondary fill, so it reads as a pressable
-// control consistent with the neighbouring track/lock keycap.
+// So it reads as a pressable control, like the track/lock keycap beside it.
 func TestBeatCounterKeycap_DrawsSecondaryFill(t *testing.T) {
 	assertDefaultParityState(t)
 	beatRect := image.Rect(0, 0, 240, 28)
@@ -102,9 +91,7 @@ func TestBeatCounterKeycap_DrawsSecondaryFill(t *testing.T) {
 	}
 }
 
-// TestBeatCounterKeycap_LeftAligned verifies the keycap's left edge sits near
-// the allotted rect's left edge — the counter is a left-anchored slot next to
-// the track/lock keycap.
+// A left-anchored slot next to the track/lock keycap.
 func TestBeatCounterKeycap_LeftAligned(t *testing.T) {
 	assertDefaultParityState(t)
 	beatRect := image.Rect(0, 0, 240, 28)

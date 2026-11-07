@@ -9,8 +9,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestRowsLayerCacheRebuild verifies the rows composite layer is reused across
-// unchanged frames and rebuilt when offset or row content changes.
+// Reused across unchanged frames, rebuilt on an offset or content change.
 func TestRowsLayerCacheRebuild(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
@@ -18,11 +17,7 @@ func TestRowsLayerCacheRebuild(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 
-	// This test validates the LEGACY shift-path's partial-repaint byte
-	// efficiency. The windowed scroll cache (drumview_cache_rows_window.go)
-	// deliberately replaces that path during scroll, so disable it here to
-	// exercise the legacy shift accounting under test. The windowed path has
-	// its own guard: rows_layer_scroll_recompose_test.go.
+	// The legacy shift path's accounting; windowing replaces it during scroll and has its own guard.
 	defer SetRowsLayerWindowingForTest(false)()
 
 	// Minimal setup: one row, small length

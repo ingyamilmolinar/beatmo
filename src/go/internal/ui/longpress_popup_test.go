@@ -9,11 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestLongPressPopup_OutsidePressDismisses verifies the click-outside
-// pop-up contract: a fresh press (down-edge) landing outside the panel
-// dismisses the popup, matching every other pop-up in the app. The
-// slide-release gesture (hold-then-release on/off a button) is a distinct
-// path exercised by the other tests in this file and must remain unaffected.
+// A fresh press outside dismisses, like every pop-up; the slide-release gesture is a separate path.
 func TestLongPressPopup_OutsidePressDismisses(t *testing.T) {
 	g := newTestGameForUndo(t)
 	n := g.tryAddNode(3, 1, model.NodeTypeRegular)
@@ -40,8 +36,6 @@ func TestLongPressPopup_OutsidePressDismisses(t *testing.T) {
 	}
 }
 
-// TestLongPressPopupShowsOnNode verifies that a long-press on a node on a
-// small screen opens the quick-action popup with non-empty button rects.
 func TestLongPressPopupShowsOnNode(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -77,8 +71,6 @@ func TestLongPressPopupShowsOnNode(t *testing.T) {
 	}
 }
 
-// TestLongPressPopupDismissOnRelease verifies that releasing outside both
-// buttons dismisses the popup without activating any mode.
 func TestLongPressPopupDismissOnRelease(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -97,8 +89,7 @@ func TestLongPressPopupDismissOnRelease(t *testing.T) {
 		t.Fatal("popup should be open")
 	}
 
-	// Simulate: leftPrev=true, then release (left=false) at an off-popup position.
-	// First frame with finger down off-buttons to set lastHover="".
+	// The first frame, finger down off the buttons, sets lastHover to "".
 	g.leftPrev = true
 	g.updateLongPressPopup(0, 0, true)
 	// Release.
@@ -115,8 +106,6 @@ func TestLongPressPopupDismissOnRelease(t *testing.T) {
 	}
 }
 
-// TestLongPressPopupMoveAction verifies that sliding to the Move button and
-// releasing enters move mode with the correct node.
 func TestLongPressPopupMoveAction(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -156,8 +145,6 @@ func TestLongPressPopupMoveAction(t *testing.T) {
 	}
 }
 
-// TestLongPressPopupConnectAction verifies that sliding to the Connect button
-// and releasing enters connect mode with the correct node.
 func TestLongPressPopupConnectAction(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -195,8 +182,6 @@ func TestLongPressPopupConnectAction(t *testing.T) {
 	}
 }
 
-// TestLongPressPopupPositioning verifies that the popup rects are clamped
-// within grid bounds even when the node is near an edge.
 func TestLongPressPopupPositioning(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -227,8 +212,6 @@ func TestLongPressPopupPositioning(t *testing.T) {
 	}
 }
 
-// TestLongPressPopupNotOnEmptyGrid verifies that a long-press on empty
-// grid space does not open the popup.
 func TestLongPressPopupNotOnEmptyGrid(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -245,8 +228,6 @@ func TestLongPressPopupNotOnEmptyGrid(t *testing.T) {
 	}
 }
 
-// TestLongPressPopupShowsOnDesktop verifies that on a non-small screen,
-// long-press now shows the popup (not deletion).
 func TestLongPressPopupShowsOnDesktop(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -283,8 +264,6 @@ func TestLongPressPopupShowsOnDesktop(t *testing.T) {
 	}
 }
 
-// TestLongPressPopupDrumPaneUnchanged verifies that a long-press on a drum
-// row label on mobile still opens the context menu (not the popup).
 func TestLongPressPopupDrumPaneUnchanged(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -314,8 +293,6 @@ func TestLongPressPopupDrumPaneUnchanged(t *testing.T) {
 	}
 }
 
-// TestLongPressPopupDeleteAction verifies that sliding to the Delete button
-// and releasing deletes the node and dismisses the popup.
 func TestLongPressPopupDeleteAction(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -356,8 +333,6 @@ func TestLongPressPopupDeleteAction(t *testing.T) {
 	}
 }
 
-// TestLongPressPopupNoCameraPan verifies that while the popup is visible,
-// single-finger drag does not pan the camera.
 func TestLongPressPopupNoCameraPan(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -375,13 +350,8 @@ func TestLongPressPopupNoCameraPan(t *testing.T) {
 	if !g.longPressPopup {
 		t.Fatal("popup should be open")
 	}
-	// In real usage the popup opens while the finger/button that triggered the
-	// long-press is still held down, so g.leftPrev is already true by the time
-	// the drag loop below starts. handleTouchLongPress is called directly here
-	// (bypassing Update()), so mirror that held-gesture invariant explicitly —
-	// otherwise the drag loop's first frame would look like a brand-new press
-	// (down-edge) and the outside-press dismiss (see updateLongPressPopup)
-	// would close the popup before the drag-vs-camera-pan assertion runs.
+	// The popup opens while the triggering press is still held. Calling handleTouchLongPress directly skips Update,
+	// so the held state is set by hand; otherwise the drag's first frame reads as a new press and dismisses it.
 	g.leftPrev = true
 
 	origOffX := g.cam.OffsetX
@@ -410,9 +380,7 @@ func TestLongPressPopupNoCameraPan(t *testing.T) {
 	}
 }
 
-// TestLongPressPopupReleaseActivatesButton verifies that button activation
-// works even when release coordinates are stale (e.g. touch ended, returning
-// (0,0) on WASM). The last-known hover from the previous frame is used.
+// A lifted touch reports stale (0,0) on WASM, so the last hover from the previous frame decides.
 func TestLongPressPopupReleaseActivatesButton(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -437,8 +405,6 @@ func TestLongPressPopupReleaseActivatesButton(t *testing.T) {
 		t.Fatalf("expected lastHover='move', got %q", g.longPressPopupLastHover)
 	}
 
-	// Frame 2: finger lifted — coordinates become stale (0,0).
-	// Current hover will be "" but lastHover should still be "move".
 	g.updateLongPressPopup(0, 0, false)
 
 	if g.longPressPopup {

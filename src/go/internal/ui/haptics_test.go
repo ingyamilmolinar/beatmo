@@ -6,9 +6,6 @@ import (
 	"testing"
 )
 
-// withCapturedHaptics swaps the package-level hapticEmit seam for a slice
-// recorder during the test, restoring it on cleanup. Returns a pointer to
-// the captured durations so tests can read them after the action.
 func withCapturedHaptics(t *testing.T) *[]int {
 	t.Helper()
 	captured := []int{}
@@ -18,10 +15,7 @@ func withCapturedHaptics(t *testing.T) *[]int {
 	return &captured
 }
 
-// TestHaptics_PlayClickEmits8ms verifies tapping play on mobile fires an
-// 8 ms vibration. B9 in the screenshot critique: distinguishing transport
-// actions by haptic intensity helps the user feel "play vs. record"
-// without looking.
+// Transport actions differ in haptic length so the user feels play vs. record without looking.
 func TestHaptics_PlayClickEmits8ms(t *testing.T) {
 	withSmallScreen(t, true)
 	captured := withCapturedHaptics(t)
@@ -34,8 +28,6 @@ func TestHaptics_PlayClickEmits8ms(t *testing.T) {
 	}
 }
 
-// TestHaptics_StopClickEmits8ms verifies tapping stop on mobile fires an
-// 8 ms vibration.
 func TestHaptics_StopClickEmits8ms(t *testing.T) {
 	withSmallScreen(t, true)
 	captured := withCapturedHaptics(t)
@@ -48,8 +40,6 @@ func TestHaptics_StopClickEmits8ms(t *testing.T) {
 	}
 }
 
-// TestHaptics_RecordClickEmits16ms verifies tapping record on mobile fires
-// a longer 16 ms vibration so the user feels record-arm distinctly.
 func TestHaptics_RecordClickEmits16ms(t *testing.T) {
 	withSmallScreen(t, true)
 	captured := withCapturedHaptics(t)
@@ -62,18 +52,11 @@ func TestHaptics_RecordClickEmits16ms(t *testing.T) {
 	}
 }
 
-// TestHaptics_DesktopSilent verifies haptics never fire on desktop. The
-// production hapticEmit short-circuits on !mobile so we don't ship
-// vibration to keyboard-and-mouse desktop browsers (would no-op anyway,
-// but being explicit prevents accidental side effects).
 func TestHaptics_DesktopSilent(t *testing.T) {
-	// Desktop: no withSmallScreen. Use the production hapticEmit (not the
-	// captured seam) so the !Profile().IsMobile() short-circuit applies.
+	// Desktop: the production mobile gate must stop every call.
 	calls := 0
 	origPlatform := hapticEmit
 	hapticEmit = func(ms int) {
-		// Run the real production path — re-implement its mobile gate so
-		// we can record calls that pass it.
 		if !Profile().IsMobile() {
 			return
 		}

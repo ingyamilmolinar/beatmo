@@ -13,8 +13,7 @@ func TestSequencerSnapshotHonorsLoopStartSegment(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
-	// Build a loop with a non-zero loop start:
-	// A -> B -> C -> B (loop starts at B)
+	// A -> B -> C -> B: the loop starts at B.
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	b := g.tryAddNode(1, 0, model.NodeTypeRegular)
 	c := g.tryAddNode(2, 0, model.NodeTypeRegular)

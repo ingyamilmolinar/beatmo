@@ -8,12 +8,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestTabSwitchReleasesTraceSprites pins the eviction rule: hiding a tab
-// releases its trace-sprite textures immediately (ebiten Deallocate via
-// releaseHiddenTabSprites at the tab-switch chokepoints), and returning to
-// the tab lazily re-allocates and re-renders. Without this, each hidden tab
-// parks ~2 MB of GPU texture until a Go GC finalizer cycle — measured 20+ s
-// apart in real sessions, and the WASM atlas is the long-session OOM driver.
+// Hiding a tab releases its textures at once and returning re-renders lazily; otherwise each hidden tab parks GPU
+// texture until a GC finalizer runs, and the WASM atlas drives long-session OOM.
 func TestTabSwitchReleasesTraceSprites(t *testing.T) {
 	g := driveScene(t, "crop_eq_tab_eq")
 	expandEQPanelForTest(t, g)

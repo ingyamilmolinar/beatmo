@@ -7,8 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
-// An unknown node type rejects the file (one spelling per type); a negative
-// BPM in an otherwise valid file is ignored.
+// A node type has one spelling; a negative BPM in an otherwise valid file is ignored.
 func TestImportUnknownNodeTypeAndNegativeBPM(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

@@ -4,12 +4,7 @@ package ui
 
 import "testing"
 
-// TestRowColorsAreSequentialByIndex asserts that newly added rows take their
-// color from the canonical instrument series strictly by ROW INDEX — row N gets
-// seriesColorAt(N) == genInstrumentSequence[N % len] — independent of which
-// instrument the row carries. This is the "pure sequential by row index"
-// derivation the demo circuit and new rows must follow. Wrap is exercised by
-// adding more rows than the series has colors.
+// Row N takes seriesColorAt(N) whatever instrument it carries; adding more rows than colours exercises the wrap.
 func TestRowColorsAreSequentialByIndex(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -28,9 +23,7 @@ func TestRowColorsAreSequentialByIndex(t *testing.T) {
 	}
 }
 
-// TestSetInstrumentKeepsIndexColor asserts that changing a row's instrument does
-// NOT change its color: under pure-sequential derivation the color is bound to
-// the row index, not the instrument identity.
+// The colour is bound to the row index, not the instrument.
 func TestSetInstrumentKeepsIndexColor(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

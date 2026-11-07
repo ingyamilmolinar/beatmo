@@ -10,10 +10,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// TestMobileSettingsGearReplacesOverflowEntry asserts that on mobile the
-// settings gear lives in the grid pane's top-right corner (like desktop) and is
-// NOT duplicated in the overflow/ellipsis menu. Tapping the gear opens the
-// settings overlay through the touch path.
 func TestMobileSettingsGearReplacesOverflowEntry(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -38,9 +34,7 @@ func TestMobileSettingsGearReplacesOverflowEntry(t *testing.T) {
 		}
 	}
 
-	// Pressing the gear opens the settings overlay. The gear is wired into the
-	// grid pane's z-ordered inputDispatcher (gridCornerButtonsHandler), so a press at
-	// its rect dispatches there — the same path on every platform.
+	// The gear sits in the grid pane's z-ordered inputDispatcher, the same path on every platform.
 	cx, cy := (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2
 	if !g.inputDispatcher.Dispatch(cx, cy, true) {
 		t.Fatal("inputDispatcher did not consume the press at the mobile gear rect")
@@ -50,9 +44,6 @@ func TestMobileSettingsGearReplacesOverflowEntry(t *testing.T) {
 	}
 }
 
-// TestSettingsOverlayHidesShortcutsOnMobile asserts the keyboard-shortcuts
-// section is gone entirely on mobile (no header, no rows, no desktop-only note)
-// while it remains on desktop. The panel is correspondingly shorter on mobile.
 func TestSettingsOverlayHidesShortcutsOnMobile(t *testing.T) {
 	o := NewSettingsOverlay(func(i18n.Locale) {})
 	screen := image.Rect(0, 0, 1200, 800)
@@ -82,10 +73,7 @@ func TestSettingsOverlayHidesShortcutsOnMobile(t *testing.T) {
 	}
 }
 
-// TestSettingsOverlayPanelFitsMobileWidth asserts the settings panel (and its
-// language pills) stay fully on-screen on a narrow mobile viewport. Before the
-// fix the fixed 480px panel was centered on a 390px pane, pushing the title and
-// the English pill off the left edge.
+// A fixed-width panel centred on a narrower pane pushes the title and the English pill off the left edge.
 func TestSettingsOverlayPanelFitsMobileWidth(t *testing.T) {
 	forceSmallScreenForTest = true
 	t.Cleanup(func() {
@@ -108,11 +96,7 @@ func TestSettingsOverlayPanelFitsMobileWidth(t *testing.T) {
 	}
 }
 
-// TestMobileSettingsGearTapOpensOverlayViaUpdate drives the REAL Game.Update()
-// input loop with a synthesized TOUCH tap at the gear's center (not a direct
-// handleTapInGrid call — see [[feedback_functional_tests_over_isolation]]). The
-// touch path works; this is the passing companion that localizes the bug to the
-// mouse/non-touch path (see TestMobileSettingsGearMouseClickOpensOverlayViaUpdate).
+// Through the real Game.Update loop with a synthesised TOUCH tap.
 func TestMobileSettingsGearTapOpensOverlayViaUpdate(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -122,11 +106,8 @@ func TestMobileSettingsGearTapOpensOverlayViaUpdate(t *testing.T) {
 
 	globalTouchState.Reset()
 	resetTouchOverride()
-	// Re-install the package-default input vars before this test installs its own
-	// _ebCursorPosition/touch mocks: a prior test that replaced cursorPosition (or
-	// left inputForTestActive set) via a stub whose restore never ran would
-	// otherwise suppress the touch override so the synthesized tap never reaches
-	// the touch dispatch path and the gear overlay never opens.
+	// A previous test whose input stub never restored would suppress the touch override, and the tap would never
+	// reach the touch path.
 	resetInputForTest()
 	t.Cleanup(func() { globalTouchState.Reset(); resetTouchOverride() })
 
@@ -165,16 +146,8 @@ func TestMobileSettingsGearTapOpensOverlayViaUpdate(t *testing.T) {
 	}
 }
 
-// TestMobileSettingsGearMouseClickOpensOverlayViaUpdate reproduces the reported
-// bug for the MOUSE input path under the mobile profile (a mobile-viewport
-// desktop browser, or mobile browsers that deliver a tap as a synthesized
-// click/pointer event rather than touch). The button-widget handler that
-// processes the gear (game_update.go) is gated `!Profile().IsMobile()`, and a
-// mouse click produces no GestureTap — so the only mobile gear path
-// (handleTapInGrid via GestureTap) never fires and the click is dropped.
-// Mirrors the desktop TestGridHelpButtonClickThroughUpdate, but under mobile.
-//
-// EXPECTED TO FAIL until the gear gets a mobile mouse/pointer handler.
+// A mobile-viewport desktop browser, or a phone delivering a tap as a click, produces no GestureTap: the gear
+// needs a mouse path under the mobile profile too.
 func TestMobileSettingsGearMouseClickOpensOverlayViaUpdate(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -212,12 +185,7 @@ func TestMobileSettingsGearMouseClickOpensOverlayViaUpdate(t *testing.T) {
 	}
 }
 
-// TestSettingsGearIsPartOfInputDispatcher asserts the gear is wired into the
-// z-axis input infra (the grid pane's inputDispatcher) rather than special-cased
-// in Game.Update. A press at the gear's rect, routed through the dispatcher the
-// same way every other grid-pane control is, must be consumed AND open the
-// overlay — on BOTH desktop and mobile profiles. This is the structural
-// requirement: the gear participates in z-ordered dispatch, not a bespoke path.
+// Through the dispatcher like every grid-pane control, never a bespoke path in Game.Update, on both profiles.
 func TestSettingsGearIsPartOfInputDispatcher(t *testing.T) {
 	for _, tc := range []struct {
 		name   string

@@ -8,9 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// stubAllInput overrides cursor, mouse, key-pressed and key-just-pressed for the
-// duration of the test and returns a restore func. Unlike SetInputForTest it
-// also covers isKeyJustPressed (needed for edge-triggered shortcuts).
+// Unlike SetInputForTest it also covers isKeyJustPressed, which edge-triggered shortcuts read.
 func stubAllInput(mx, my int, pressed map[ebiten.Key]bool, justPressed map[ebiten.Key]bool, mouseLeft bool) func() {
 	oc, om, okp, okj := cursorPosition, isMouseButtonPressed, isKeyPressed, isKeyJustPressed
 	cursorPosition = func() (int, int) { return mx, my }
@@ -22,11 +20,8 @@ func stubAllInput(mx, my int, pressed map[ebiten.Key]bool, justPressed map[ebite
 	}
 }
 
-// TestUndoKeyboardFiresWhilePopupOpen is the regression guard for the keyboard
-// gating bug: when a long-press popup (or any modal that routes input away from
-// the editor) is open, Update short-circuits before handleEditor — so Ctrl+Z
-// used to do nothing. The shortcut must be dispatched unconditionally at the top
-// of Update, independent of the editor/dispatcher gating.
+// A modal popup makes Update skip the editor path, so the shortcut is dispatched at the top of Update,
+// independently of that gating.
 func TestUndoKeyboardFiresWhilePopupOpen(t *testing.T) {
 	g := newTestGameForUndo(t)
 	g.drum.SetBPM(140)
@@ -35,8 +30,6 @@ func TestUndoKeyboardFiresWhilePopupOpen(t *testing.T) {
 		t.Fatal("precondition: expected an undo step")
 	}
 
-	// Open the long-press popup: Update takes the popup branch and skips the
-	// entire editor path (where the shortcut used to live).
 	g.longPressPopup = true
 
 	restore := stubAllInput(400, 300,
@@ -53,9 +46,7 @@ func TestUndoKeyboardFiresWhilePopupOpen(t *testing.T) {
 	}
 }
 
-// TestUndoKeyboardFiresOnceOverGrid guards against double-dispatch: with the
-// shortcut handled in Update, it must NOT also fire from handleEditor when the
-// cursor is over the grid. A single Ctrl+Z must consume exactly one undo step.
+// It must not also fire from handleEditor: one Ctrl+Z, one step.
 func TestUndoKeyboardFiresOnceOverGrid(t *testing.T) {
 	g := newTestGameForUndo(t)
 	g.drum.SetBPM(140)

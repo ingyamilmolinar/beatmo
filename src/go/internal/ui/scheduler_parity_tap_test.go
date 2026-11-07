@@ -36,14 +36,8 @@ func TestSchedulerParityTime_NoMismatch(t *testing.T) {
 	}
 }
 
-// Detect stale DrumView slate when predictor/audio would fire.
-//
-// NOTE: parity must catch a *persistently* stale slate, but NOT the one-frame
-// just-scheduled-beat lag (Fix D: that beat's slate is rendered on the next
-// refresh, so a disagreement there is pipeline latency, graced in every mode).
-// So the stale beat here is the recent/current beat that the sequencer has
-// already advanced PAST (seqNextIdxs ahead of it) — a genuine desync that must
-// be reported even under fatal parity.
+// A PERSISTENTLY stale slate is reported even under fatal parity; the one-frame lag of the just-scheduled beat is
+// graced, so the stale beat here is one the sequencer has already moved past.
 func TestSchedulerParityTime_DetectsMismatch(t *testing.T) {
 	assertDefaultParityState(t)
 	prevFatal := parityFatalEnabled.Load()
@@ -71,10 +65,7 @@ func TestSchedulerParityTime_DetectsMismatch(t *testing.T) {
 	g.ClearParityMismatches()
 
 	g.SetPlaying(true)
-	// abs=0 is the current beat (nextBeatIdxs=[1] => playhead floor 1) but the
-	// sequencer has already scheduled beat 1 (seqNextIdxs=[2]), so abs=0 is NOT
-	// the just-scheduled beat — the grace does not apply and the persistent
-	// stale slate must be reported.
+	// abs=0 is current but the sequencer already scheduled beat 1, so the grace does not apply.
 	g.nextBeatIdxs = []int{1}
 	g.seqNextIdxs = []int{2}
 

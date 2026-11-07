@@ -9,23 +9,14 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// colorMatchesRow reports whether c shares the *un-premultiplied* RGB channels
-// of the row color — the bloom rings reuse the node's own instrument color via
-// WithAlphaFromColor, which returns an NRGBA whose R/G/B are the row's straight
-// channels with a per-ring alpha (AlphaStrong / AlphaMedium / AlphaFaint).
-// Comparing via NRGBA avoids the alpha-premultiplication that color.Color.RGBA
-// applies.
+// Straight RGB: the rings are the row colour at per-ring alphas, and RGBA() would premultiply.
 func colorMatchesRow(c, row color.Color) bool {
 	cn := color.NRGBAModel.Convert(c).(color.NRGBA)
 	rn := color.NRGBAModel.Convert(row).(color.NRGBA)
 	return cn.R == rn.R && cn.G == rn.G && cn.B == rn.B
 }
 
-// TestDesktopFiringNodeBloomRings verifies that a firing node renders a soft
-// multi-ring neon bloom: at least two concentric rounded rects in the node's
-// own instrument-color family, centered near the node. This pins the
-// "make it bloom" treatment and guards against a regression back to the single
-// hard-edged glow blob.
+// At least two concentric rings in the node's own colour family, never one hard-edged blob.
 func TestDesktopFiringNodeBloomRings(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -53,8 +44,7 @@ func TestDesktopFiringNodeBloomRings(t *testing.T) {
 		x1, _, x2, _ := g.nodeScreenRect(n)
 		return int((x2 - x1) * 0.5)
 	}
-	// Zoom in so the node is comfortably large on screen (rPx >= 8) so the
-	// outer bloom rings are gated on (the bloom skips tiny zoomed-out nodes).
+	// The bloom skips tiny nodes, so zoom until rPx ≥ 8.
 	for i := 0; i < 6 && rPxOf() < 9; i++ {
 		g.cam.Scale *= 1.4
 	}

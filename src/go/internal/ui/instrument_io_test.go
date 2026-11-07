@@ -41,9 +41,7 @@ func TestInstrumentFileNameSanitizes(t *testing.T) {
 	}
 }
 
-// TestInstrumentExportNameNeverCollides: re-exporting the same instrument must
-// ask for a fresh name, or the browser renames the second file and spells the
-// uniquifier differently per engine (see download_name.go).
+// Otherwise the browser renames the second file, spelling the uniquifier differently per engine.
 func TestInstrumentExportNameNeverCollides(t *testing.T) {
 	now := time.Date(2026, 9, 13, 14, 15, 30, 0, time.UTC)
 	restore := SetDownloadClockForTest(func() time.Time { return now })

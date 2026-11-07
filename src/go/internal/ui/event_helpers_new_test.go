@@ -6,10 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
-// TestNewEmitHelpersPublish verifies that emitRowVolume publishes to the
-// global bus and deliver typed payloads to subscribers.
-// Uses the awaitEmit helper (defined in event_helpers_test.go) which
-// subscribes, triggers, and waits up to 2s for async delivery.
+// Typed payloads reach subscribers, waited for up to 2 s.
 func TestNewEmitHelpersPublish(t *testing.T) {
 	e1 := awaitEmit(t, hooks.EventRowVolume, func() {
 		emitRowVolume(2, 0.7)

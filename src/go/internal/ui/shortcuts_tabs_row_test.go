@@ -5,9 +5,7 @@ import (
 	"testing"
 )
 
-// The shortcut help names the tabs the number keys actually reach: no Chain
-// and "1 - 6" in the production UI (review finding 2026-10-25), all seven in
-// a developer build.
+// No Chain and "1 - 6" in production, all seven in a developer build.
 func TestShortcutHelpListsTheReachableTabs(t *testing.T) {
 	row := func() shortcutRow {
 		for _, r := range localizedShortcutRows() {

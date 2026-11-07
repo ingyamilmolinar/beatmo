@@ -2,11 +2,8 @@ package ui
 
 import "testing"
 
-// TestUndoManager_CaptureFailureSkips proves the manager never records a bogus
-// step or corrupts its baseline when capture() returns nil — which undoCapture
-// does whenever exportBytes errors or panics (e.g. a transient/partially-built
-// document reached through a tapped emit helper). Regression for the
-// SetLength → emitLengthChange → recordUndo → undoCapture → exportBytes panic.
+// undoCapture returns nil when exportBytes errors or panics on a half-built document; the manager then records no
+// bogus step and keeps its baseline.
 func TestUndoManager_CaptureFailureSkips(t *testing.T) {
 	state := "A"
 	failing := true
@@ -27,8 +24,7 @@ func TestUndoManager_CaptureFailureSkips(t *testing.T) {
 		t.Fatal("must not record a step while capture fails")
 	}
 
-	// Capture starts working → adopt the first valid snapshot as baseline,
-	// without recording a step to undo "to nothing".
+	// The first valid snapshot becomes the baseline without a step to undo "to nothing".
 	failing = false
 	m.record("adopt-baseline")
 	if m.CanUndo() {

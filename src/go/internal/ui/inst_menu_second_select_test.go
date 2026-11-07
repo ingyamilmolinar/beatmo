@@ -10,13 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestInstrumentMenuSecondSelectionUpdatesLabel verifies that selecting an
-// instrument from the dropdown menu updates the row label button on both the
-// first and subsequent selections.
-//
-// This tests a specific bug where the first selection worked correctly but the
-// second selection would leave the row label showing the previous instrument
-// name even though dv.Rows[idx].Instrument was updated correctly.
+// The row label must update on every selection, not only the first.
 func TestInstrumentMenuSecondSelectionUpdatesLabel(t *testing.T) {
 	prev := suppressClicksUntilRelease
 	suppressClicksUntilRelease = false
@@ -60,8 +54,6 @@ func TestInstrumentMenuSecondSelectionUpdatesLabel(t *testing.T) {
 	// === FIRST SELECTION: Change from kick to snare ===
 	t.Log("=== FIRST SELECTION: kick -> snare ===")
 
-	// Simulate clicking the row label to open the menu
-	// This triggers lbl.OnClick which sets selRow and opens the menu
 	dv.selRow = 0
 	dv.instMenuRow = 0
 
@@ -135,8 +127,7 @@ func TestInstrumentMenuSecondSelectionUpdatesLabel(t *testing.T) {
 	// === SECOND SELECTION: Change from snare to hihat ===
 	t.Log("=== SECOND SELECTION: snare -> hihat ===")
 
-	// Close the old portal entry before reopening to avoid the OnClose
-	// callback (which fires during closeByID) from closing the newly-opened comp.
+	// Closed first: closeByID fires the old entry's OnClose, which would close the newly opened comp.
 	dv.closeInstMenuPortal()
 
 	// Simulate clicking the row label again to open the menu
@@ -209,8 +200,6 @@ func TestInstrumentMenuSecondSelectionUpdatesLabel(t *testing.T) {
 		dv.Rows[0].Instrument, dv.Rows[0].Name, dv.rowLabels()[0].Text)
 }
 
-// TestInstrumentMenuThirdSelectionUpdatesLabel extends the test to a third
-// selection to ensure the pattern holds for multiple subsequent selections.
 func TestInstrumentMenuThirdSelectionUpdatesLabel(t *testing.T) {
 	prev := suppressClicksUntilRelease
 	suppressClicksUntilRelease = false
@@ -249,8 +238,7 @@ func TestInstrumentMenuThirdSelectionUpdatesLabel(t *testing.T) {
 
 	// Helper to select an instrument
 	selectInstrument := func(instID instrument.ID) {
-		// Close old portal entry before reopening to avoid OnClose callback
-		// from closing the newly-opened comp (closeByID fires old OnClose).
+		// Closed first: closeByID fires the old entry's OnClose, which would close the newly opened comp.
 		dv.closeInstMenuPortal()
 
 		dv.selRow = 0
@@ -322,10 +310,6 @@ func TestInstrumentMenuThirdSelectionUpdatesLabel(t *testing.T) {
 	t.Log("All selections successful")
 }
 
-// TestInstrumentMenuSecondSelectionViaRowLabelClick tests the bug using the
-// actual click flow through the row label buttons rather than directly
-// manipulating the component state. This more closely matches the real user
-// interaction path.
 func TestInstrumentMenuSecondSelectionViaRowLabelClick(t *testing.T) {
 	prev := suppressClicksUntilRelease
 	suppressClicksUntilRelease = false
@@ -355,23 +339,14 @@ func TestInstrumentMenuSecondSelectionViaRowLabelClick(t *testing.T) {
 	// Create the instrument menu component
 	dv.instMenuComp = NewInstrumentMenuComponent()
 
-	// Helper to simulate clicking a row label and selecting an instrument
-	// This follows the actual code path from drumview_layout.go
-	// buttonLabel is the display label on the button (e.g., "Snare")
-	// expectedID is the instrument ID (e.g., "snare")
-	// expectedLabel is what the row label should show after selection
 	selectInstrumentViaUI := func(buttonLabel, expectedID, expectedLabel string) {
 		t.Helper()
 
-		// Audition behavior: the menu now stays open after a selection. This
-		// test exercises the discrete "click row label → fresh open → pick"
-		// flow, so close any prior session first to mirror that intent.
+		// The menu stays open after a pick; this flow is a fresh open each time.
 		if dv.IsInstMenuOpen() {
 			dv.closeInstMenuPortal()
 		}
 
-		// Get the row label button and simulate clicking it
-		// This triggers lbl.OnClick (from drumview_layout.go:387)
 		labelBtn := dv.rowLabels()[0]
 		if labelBtn.OnClick == nil {
 			t.Fatal("row label button has no OnClick handler")
@@ -433,8 +408,6 @@ func TestInstrumentMenuSecondSelectionViaRowLabelClick(t *testing.T) {
 		}
 	}
 
-	// First selection: kick -> snare
-	// Button label is "Snare", ID is "snare", row label should show "Snare"
 	t.Log("=== Selection 1: kick -> snare ===")
 	selectInstrumentViaUI("Snare", "snare", "Snare")
 	t.Logf("After selection 1: label=%q, instrument=%q", dv.rowLabels()[0].Text, dv.Rows[0].Instrument)
@@ -452,8 +425,6 @@ func TestInstrumentMenuSecondSelectionViaRowLabelClick(t *testing.T) {
 	t.Log("All selections via UI successful")
 }
 
-// TestInstrumentMenuSelectionWithMultipleUpdateCycles tests the selection flow
-// with explicit Update() calls to more closely simulate the real runtime behavior.
 func TestInstrumentMenuSelectionWithMultipleUpdateCycles(t *testing.T) {
 	prev := suppressClicksUntilRelease
 	suppressClicksUntilRelease = false
@@ -492,9 +463,7 @@ func TestInstrumentMenuSelectionWithMultipleUpdateCycles(t *testing.T) {
 	selectInstrument := func(buttonLabel, expectedID, expectedLabel string) {
 		t.Helper()
 
-		// Audition behavior: the menu now stays open after a selection. This
-		// test exercises the "click row label to open fresh" flow, so close
-		// any prior session first to mirror that intent.
+		// The menu stays open after a pick; this flow is a fresh open each time.
 		if dv.IsInstMenuOpen() {
 			dv.closeInstMenuPortal()
 		}
@@ -562,8 +531,6 @@ func TestInstrumentMenuSelectionWithMultipleUpdateCycles(t *testing.T) {
 	t.Log("All selections with update cycles successful")
 }
 
-// TestSetInstrumentInvalidatesRowControlsCache verifies that SetInstrument
-// marks the row controls cache as dirty so the label is redrawn.
 func TestSetInstrumentInvalidatesRowControlsCache(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 800, 600), nil, testLogger)
 	dv.instOptions = []instrument.ID{roster.Kick, roster.Snare, roster.Hihat}
@@ -582,8 +549,7 @@ func TestSetInstrumentInvalidatesRowControlsCache(t *testing.T) {
 	dv.calcLayout()
 	dv.bgDirty = false
 
-	// Clear the row controls cache dirty flag to simulate a "clean" state
-	// after the initial draw has occurred
+	// As after the initial draw.
 	dv.rowControlsCacheDirty = false
 
 	// Now call SetInstrument

@@ -8,11 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestUndoCreateNodeClearsCoordBadge reproduces the bug: creating a node arms
-// the (i,j) coordinate badge for it; undoing the creation deletes the node, but
-// the badge used to linger (Import rebuilds the graph wholesale and never
-// cleared g.coordBadgeNode). The coordinate display must be tied to the node's
-// lifecycle — gone when the node is gone.
+// Import rebuilds the graph wholesale, so the coordinate badge must follow the node's lifecycle and go with it.
 func TestUndoCreateNodeClearsCoordBadge(t *testing.T) {
 	g := newTestGameForUndo(t)
 	g.undoManager.OnExternalLoad()
@@ -33,9 +29,7 @@ func TestUndoCreateNodeClearsCoordBadge(t *testing.T) {
 	}
 }
 
-// TestUndoCreateNodeClosesNodeMenu reproduces the same bug for the node menu:
-// opening the node sidebar/menu then undoing the node's creation must close the
-// menu — it can't keep pointing at a node that no longer exists.
+// It cannot keep pointing at a node that no longer exists.
 func TestUndoCreateNodeClosesNodeMenu(t *testing.T) {
 	g := newTestGameForUndo(t)
 	g.undoManager.OnExternalLoad()
@@ -61,8 +55,7 @@ func TestUndoCreateNodeClosesNodeMenu(t *testing.T) {
 	}
 }
 
-// TestDeleteNodeClosesMenuAndBadge proves the lifecycle tie is not undo-specific:
-// directly deleting a node drops its coordinate badge and closes its open menu.
+// The tie is not undo-specific.
 func TestDeleteNodeClosesMenuAndBadge(t *testing.T) {
 	g := newTestGameForUndo(t)
 	g.tryAddNode(9, 9, model.NodeTypeRegular)
@@ -83,9 +76,7 @@ func TestDeleteNodeClosesMenuAndBadge(t *testing.T) {
 	}
 }
 
-// TestPruneRepointsCoordBadgeForSurvivingNode guards that the lifecycle prune
-// does not over-clear: a node that survives a graph rebuild (same id, new
-// pointer) keeps its coordinate badge, repointed to the live node.
+// A node that survives a rebuild (same id, new pointer) keeps its badge, repointed to the live node.
 func TestPruneRepointsCoordBadgeForSurvivingNode(t *testing.T) {
 	g := newTestGameForUndo(t)
 	g.tryAddNode(10, 10, model.NodeTypeRegular)
@@ -96,8 +87,7 @@ func TestPruneRepointsCoordBadgeForSurvivingNode(t *testing.T) {
 	g.coordBadgeNode = node
 	id := node.ID
 
-	// Round-trip the document: export then import rebuilds every node with a
-	// fresh *uiNode while preserving ids.
+	// Export then import rebuilds every node with a fresh *uiNode, ids preserved.
 	snap := g.undoCapture()
 	if err := g.Import(snap); err != nil {
 		t.Fatalf("import: %v", err)

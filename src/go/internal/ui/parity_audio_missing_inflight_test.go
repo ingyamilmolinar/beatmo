@@ -7,20 +7,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Regression: parityScan's audio_missing check must NOT fire when the
-// scheduler already enqueued the beat's audio into the pipeline and it is
-// merely still in-flight (queued in audioCh, not yet dispatched/recorded by
-// the audioLoop). This is the production false-positive that panicked the app
-// on plain startup playback: decision-record and audio-enqueue are coupled in
-// the same seqMu critical section, so an "Audible" decision always enqueued
-// its audio; when the audioLoop briefly falls behind (slow PlayBatch / CPU
-// contention) the audio sits in the channel longer than the 120ms decision-
-// anchored grace, and the old check reported audio_missing even though nothing
-// was lost.
-//
-// Counterpart to TestParityDetectsMissingAudioJustBehindPlayhead, which covers
-// the genuine bug (Enqueued=false: scheduler decided audible but never queued
-// audio) and must STILL fire.
+// A decision and its audio enqueue happen under the same seqMu, so audio still queued in audioCh past the grace
+// window is late, not lost; only an Audible decision that never enqueued is missing audio.
 func TestParityIgnoresInFlightAudioForEnqueuedDecision(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -41,8 +29,7 @@ func TestParityIgnoresInFlightAudioForEnqueuedDecision(t *testing.T) {
 	g.drum.Offset = 0
 	g.refreshDrumRow()
 
-	// UI playhead two steps ahead so abs=0 sits at the missing-audio floor
-	// (current beat - 1) — exactly where the production panic landed.
+	// abs=0 sits at the missing-audio floor (current beat - 1).
 	g.nextBeatIdxs = []int{2} // pastExclusive=2 => current beat abs=1
 	g.seqNextIdxs = []int{2}
 
@@ -56,9 +43,7 @@ func TestParityIgnoresInFlightAudioForEnqueuedDecision(t *testing.T) {
 			Audible:  true,
 			NodeType: model.NodeTypeRegular,
 			Missing:  false,
-			// The scheduler DID enqueue this beat's audio; it just hasn't been
-			// dispatched yet (still in audioCh). That is not a missing-audio
-			// violation.
+			// Enqueued but not yet dispatched: not a missing-audio violation.
 			Enqueued:   true,
 			ParityGen:  g.parityGen.Load(),
 			RecordedAt: time.Unix(0, 0).Add(-250 * time.Millisecond), // past the grace window

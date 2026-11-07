@@ -8,11 +8,6 @@ import (
 	"testing"
 )
 
-// TestIconStrokeWeightWithinSpec asserts the proportional stroke calc
-// returns the spec-defined logical-unit weight scaled by render size for
-// every standard icon dimension. This replaces the pre-vector tests that
-// intercepted drawRect — the new renderer uses ebiten/v2/vector and
-// drawRect is no longer in the icon path.
 func TestIconStrokeWeightWithinSpec(t *testing.T) {
 	for _, dim := range []int{16, 20, 24, 32, 44} {
 		got := iconStrokeWidth(image.Rect(0, 0, dim, dim))
@@ -26,9 +21,7 @@ func TestIconStrokeWeightWithinSpec(t *testing.T) {
 	}
 }
 
-// TestIconStrokeMinimumFloor pins the floor: at 8px (well below the
-// 16-px minimum) the proportional weight is 0.583, but the floor must
-// keep stroke ≥ 1 px so sub-pixel renders don't vanish.
+// The floor keeps sub-pixel renders from vanishing.
 func TestIconStrokeMinimumFloor(t *testing.T) {
 	for _, dim := range []int{4, 8, 12} {
 		got := iconStrokeWidth(image.Rect(0, 0, dim, dim))

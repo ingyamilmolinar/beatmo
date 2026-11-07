@@ -11,11 +11,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// TestUndoRedoShowNotification proves that undoing/redoing surfaces a short,
-// clear notification naming the action — so the user sees what changed even when
-// the affected control lives in a now-hidden menu/tab. Both the transport buttons
-// and the keyboard shortcuts route through performUndo/performRedo, so testing
-// that chokepoint covers every trigger.
+// The affected control may sit in a hidden menu or tab. Buttons and shortcuts both route through performUndo /
+// performRedo, so the chokepoint covers every trigger.
 func TestUndoRedoShowNotification(t *testing.T) {
 	g := newTestGameForUndo(t)
 	g.tryAddNode(7, 7, model.NodeTypeRegular) // records the "add node" action
@@ -30,8 +27,6 @@ func TestUndoRedoShowNotification(t *testing.T) {
 	requireNotified(t, g, "Redo: add node")
 }
 
-// TestUndoRedoNoNotificationWhenStackEmpty proves a no-op undo/redo (empty stack)
-// does not raise a spurious notification.
 func TestUndoRedoNoNotificationWhenStackEmpty(t *testing.T) {
 	g := newTestGameForUndo(t)
 	before := g.drum.notifStore.Len()
@@ -42,9 +37,7 @@ func TestUndoRedoNoNotificationWhenStackEmpty(t *testing.T) {
 	}
 }
 
-// TestUndoKeyboardShowsNotification drives a real Ctrl+Z through the production
-// input path (g.Update → undoShortcut → performUndo) and asserts the notification
-// fires — proving the keyboard trigger (not just the chokepoint) surfaces it.
+// Through the production input path, not only the chokepoint.
 func TestUndoKeyboardShowsNotification(t *testing.T) {
 	g := newTestGameForUndo(t)
 	warmCircuitForTest(t, g)
@@ -63,14 +56,11 @@ func TestUndoKeyboardShowsNotification(t *testing.T) {
 	if err := g.Update(); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-	// The keyboard path surfaces the concrete from → to detail (the snapshot diff
-	// resolves the single BPM scalar), not the generic "change BPM" label.
+	// The snapshot diff resolves the single BPM scalar.
 	requireNotified(t, g, "Undo: BPM 120 → 140")
 }
 
-// TestUndoRedoNotificationLocalized proves undo/redo notifications are fully
-// localized (prefix + action label) — not just the undo/redo word but the
-// action name too. Spanish locale must yield "Deshacer: añadir nodo".
+// The action name too, not only the prefix.
 func TestUndoRedoNotificationLocalized(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	g := newTestGameForUndo(t)
@@ -90,10 +80,7 @@ func notifTextOf(n *notification) string {
 	return n.display()
 }
 
-// TestEveryUndoableActionHasLocalizedLabel guards that every undoable
-// hooks.Kind has a localized-label mapping, so a newly-added undoable action
-// gets a real translation (catalog_test enforces es completeness for the key)
-// rather than silently falling back to English in the notification.
+// A new undoable action must get a real translation rather than fall back to English.
 func TestEveryUndoableActionHasLocalizedLabel(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	i18n.SetLocale(i18n.LocaleEN)
@@ -112,14 +99,8 @@ func TestEveryUndoableActionHasLocalizedLabel(t *testing.T) {
 	}
 }
 
-// requireNotified fails unless want was pushed to the notification history.
-//
-// Searched in the HISTORY, not read off Latest(): an undo/redo re-imports the
-// document, which trips the playback warm-up gate, and its "Circuit ready" toast
-// is posted when the shared audio.prewarm pool drains. Alone it drains before
-// the undo toast; after the rest of the suite has queued work it drains a moment
-// later and lands on top. Both orders are correct, so a Latest() assertion
-// failed purely on suite order.
+// In the HISTORY, not Latest(): an undo re-imports, and the warm-up's "Circuit ready" toast may land on top of it,
+// depending on suite load. Both orders are correct.
 func requireNotified(t *testing.T, g *Game, want string) {
 	t.Helper()
 	var got []string

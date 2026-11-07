@@ -7,9 +7,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Ensure the UI stays in sync with playback while increasing drum length
-// aggressively. Uses the engine timeline (currentBeat) and forces the
-// time-based sync logic on for test.
 func TestUISyncKeepsUpDuringLengthIncrease(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -68,6 +65,5 @@ func TestUISyncKeepsUpDuringLengthIncrease(t *testing.T) {
 	if diff > 1 {
 		t.Fatalf("UI drifted from playback: elapsed=%d target=%d", g.elapsedBeats, target)
 	}
-	// UI highlight is driven by pulse advancement and may lag by < 1 subdiv;
-	// we rely on the counter check above to assert timeline sync.
+	// The highlight follows pulse advancement and may lag by under a subdivision, so the counter check is the assertion.
 }

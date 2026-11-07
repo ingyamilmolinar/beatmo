@@ -8,8 +8,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// For large length (steps per pixel ~1), a shift of 1 step is a 1px shift and
-// should use incremental update (no generation bump) within pad.
+// A 1 px shift within the pad updates incrementally, with no generation bump.
 func TestRowCacheOffsetSmallShiftReuse(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
@@ -33,8 +32,7 @@ func TestRowCacheOffsetSmallShiftReuse(t *testing.T) {
 	}
 }
 
-// With a small pad, a 1-step shift at default length should exceed pad and
-// trigger a rebuild (generation bump).
+// Past the pad, a rebuild.
 func TestRowCacheOffsetLargeShiftRebuild(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)

@@ -9,9 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// recordingStore captures Save/Load calls for adapter testing without
-// touching disk. It implements userprefs.Store via duck typing — we
-// only need the four methods the adapter actually uses.
+// No disk: only the four methods the adapter uses.
 type recordingStore struct {
 	mu          sync.Mutex
 	loadResult  map[instrument.ID]bool
@@ -105,9 +103,7 @@ func TestPersistedFavoritesKeysSorted(t *testing.T) {
 }
 
 func TestPersistedFavoritesNilBackend(t *testing.T) {
-	// Adapter must work even when backend is nil — useful for embedded
-	// scenarios where persistence is not wired (e.g., -demo mode that
-	// shouldn't write to user config dirs).
+	// A nil backend works, for modes that must not write user config.
 	s := NewPersistedFavoritesStore(nil)
 	if s == nil {
 		t.Fatalf("constructor returned nil for nil backend")

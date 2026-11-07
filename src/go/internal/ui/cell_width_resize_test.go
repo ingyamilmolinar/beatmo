@@ -10,8 +10,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestCellWidthFillsTimeline verifies that cell * len(Steps) fills timelineRect.Dx()
-// to within len(Steps) pixels (integer division remainder only).
+// Within the integer-division remainder.
 func TestCellWidthFillsTimeline(t *testing.T) {
 	dv := newTestDrumViewWithBounds(image.Rect(0, 300, 1200, 600))
 	// Ensure rows have steps

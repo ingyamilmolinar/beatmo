@@ -9,20 +9,8 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestBPMIncrement_RealClickDispatch guards the full real-click dispatch path
-// for the BPM+ button — a real press/release at the button's reported rect
-// flows through the tree's HitIndex → repeatButtonHitAdapter → Button.OnClick
-// (which accumulates z.bpmDelta) → TransportZone.Update() (which applies
-// SetBPM on the next frame) → DrumView.BPM(). Existing button tests call
-// OnClick() directly and so never exercise this dispatch + deferred-apply
-// chain; this asserts a tapped BPM+ button actually raises the BPM on both
-// desktop and mobile layouts.
-//
-// Context: the e2e_transport.browser "Test 3" flaked under 4-job parallel CI
-// load. That was a separate timing issue — the JS scenario read getBPM()
-// synchronously before the deferred-apply frame ran — fixed by polling in
-// src/js/scenarios/e2e_transport.js. This Go test confirms the underlying
-// dispatch is correct.
+// A real press at the button's rect goes HitIndex → adapter → OnClick (accumulating bpmDelta) → the next frame's
+// SetBPM, a deferred chain direct OnClick tests never exercise; on desktop and mobile.
 func TestBPMIncrement_RealClickDispatch(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -55,8 +43,7 @@ func TestBPMIncrement_RealClickDispatch(t *testing.T) {
 			before := dv.BPM()
 			cx := (incRect.Min.X + incRect.Max.X) / 2
 			cy := (incRect.Min.Y + incRect.Max.Y) / 2
-			// Faithful to the browser: each click holds the press across several
-			// frames (50ms ≈ multiple frames) before releasing.
+			// Held across frames, as a browser click is.
 			holdTap := makeHoldTap(g, tc.w, tc.h)
 			for i := 0; i < 3; i++ {
 				holdTap(cx, cy, 4)
@@ -70,8 +57,7 @@ func TestBPMIncrement_RealClickDispatch(t *testing.T) {
 	}
 }
 
-// makeHoldTap presses at a point, holds for holdFrames frames, then releases —
-// mirroring the browser's 50ms click-and-hold.
+// As a 50 ms browser click and hold.
 func makeHoldTap(g *Game, w, h int) func(mx, my, holdFrames int) {
 	return func(mx, my, holdFrames int) {
 		var px, py int

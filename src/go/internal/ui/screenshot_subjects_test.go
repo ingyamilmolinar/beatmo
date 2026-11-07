@@ -5,8 +5,7 @@ import (
 	"testing"
 )
 
-// TestSubjectByName covers the symmetric parse of the Subject string form,
-// including the empty-string case that maps to SubjectFullScreen.
+// The empty string maps to SubjectFullScreen.
 func TestSubjectByName(t *testing.T) {
 	if s, ok := SubjectByName(""); !ok || s != SubjectFullScreen {
 		t.Fatalf(`SubjectByName("") = %q, %v; want SubjectFullScreen, true`, s, ok)
@@ -22,8 +21,6 @@ func TestSubjectByName(t *testing.T) {
 	}
 }
 
-// TestSubjectRectFullScreen — SubjectFullScreen always returns the entire
-// framebuffer rect and ok=true.
 func TestSubjectRectFullScreen(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -39,9 +36,6 @@ func TestSubjectRectFullScreen(t *testing.T) {
 	}
 }
 
-// TestSubjectRectAlwaysVisible — surfaces that exist on every frame
-// (MainGrid, DrumView, EQ panel/tabs, Toolbar) must return non-empty rects
-// inside the framebuffer after one Layout+Update cycle.
 func TestSubjectRectAlwaysVisible(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -74,9 +68,6 @@ func TestSubjectRectAlwaysVisible(t *testing.T) {
 	}
 }
 
-// TestSubjectRectGatedByVisibility — surfaces tied to popup state report
-// ok=false when closed and ok=true with a non-empty rect once their scene
-// is applied.
 func TestSubjectRectGatedByVisibility(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -131,9 +122,7 @@ func TestSubjectRectGatedByVisibility(t *testing.T) {
 	}
 }
 
-// TestSubjectRectScopeWhenTabActive — scope rect is only meaningful once
-// the EQ panel's Scope tab is selected; before that the scope zone has no
-// laid-out rect and should report ok=false.
+// The scope zone has no laid-out rect until the Scope tab is selected.
 func TestSubjectRectScopeWhenTabActive(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -141,8 +130,7 @@ func TestSubjectRectScopeWhenTabActive(t *testing.T) {
 	g.Layout(1280, 720)
 	_ = g.Update()
 
-	// Activate scope tab — this is the same path the eq_tab_scope catalog
-	// scene takes.
+	// The same path the eq_tab_scope scene takes.
 	if err := g.SetActiveEQTab("scope"); err != nil {
 		t.Fatalf("SetActiveEQTab(scope): %v", err)
 	}
@@ -164,10 +152,7 @@ func TestSubjectRectScopeWhenTabActive(t *testing.T) {
 	}
 }
 
-// TestSubjectRectClampsToFramebuffer — even if a subject's underlying rect
-// is somehow larger than the screen, SubjectRect must clip to the
-// framebuffer (the screenshot encoder relies on this invariant to never
-// receive an out-of-bounds sub-image rectangle).
+// The screenshot encoder must never receive an out-of-bounds sub-image rectangle.
 func TestSubjectRectClampsToFramebuffer(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -187,9 +172,7 @@ func TestSubjectRectClampsToFramebuffer(t *testing.T) {
 	}
 }
 
-// TestSubjectRectEmptyGameSafe — calling SubjectRect on a Game whose
-// Layout has not been driven yet must not panic; every subject either
-// returns ok=false or a degenerate rect, never a half-initialized rect.
+// Before Layout every subject returns ok=false or a degenerate rect, never a half-initialised one.
 func TestSubjectRectEmptyGameSafe(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

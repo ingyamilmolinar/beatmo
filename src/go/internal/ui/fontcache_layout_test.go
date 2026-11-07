@@ -11,16 +11,8 @@ import (
 	"golang.org/x/image/math/fixed"
 )
 
-// Real-font layout invariants for the SHARED text-sprite renderer (used by every
-// TextInput, label and button via TextSprite/DrawTextAt/TextWidth). Run via
-// `make test-real` / `xvfb-run go test ./internal/ui/` (fontcache.go is !test).
-//
-// The caret and absolute text positioning depend on textSpriteLayout:
-//   - HEIGHT and BASELINE must be content-INDEPENDENT, so deleting a leading
-//     uppercase letter can't move the text up/down;
-//   - pen origin X must be 0, so the caret drawn at x+TextWidth(prefix) lands
-//     exactly on the glyph boundary (not 1px off);
-//   - WIDTH must cover the layout ADVANCE, so a trailing space / end caret fit.
+// Real fonts only (fontcache.go is !test): height and baseline are content-independent, the pen starts at x 0 so the
+// caret lands on glyph boundaries, and the width covers the advance so a trailing space fits.
 
 func TestSpriteLayoutHeightContentIndependent(t *testing.T) {
 	face := fontFaceBold(FontSizeBody)
@@ -74,9 +66,8 @@ func TestSpriteLayoutWidthCoversAdvance(t *testing.T) {
 	}
 }
 
-// End-to-end baseline check: draw actual glyphs to a plain image.RGBA (no ebiten,
-// so At() is safe) using the computed layout, and assert a baseline-resting glyph
-// lands on the SAME bottom row whether or not the string has a leading uppercase.
+// Drawn to a plain image.RGBA (At() is safe there): a baseline glyph lands on the same row with or without a leading
+// capital.
 func TestRenderedBaselineIsAbsolute(t *testing.T) {
 	face := fontFaceBold(FontSizeBody)
 	if face == nil {

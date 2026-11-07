@@ -7,8 +7,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Verifies that pressing pause does not advance the highlighted subdivision
-// even by a single step; the marker remains fixed for the pause frame.
 func TestPauseDoesNotAdvanceHighlight(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

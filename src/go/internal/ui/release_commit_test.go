@@ -10,8 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
-// waitForRelease polls cond up to ~500ms (the hooks bus delivers off the
-// publisher goroutine). Fails the test if cond never holds.
+// The hooks bus delivers off the publisher goroutine.
 func waitForRelease(t *testing.T, cond func() bool) {
 	t.Helper()
 	for i := 0; i < 100; i++ {
@@ -93,9 +92,7 @@ func TestReleaseCommit_FXSliderFiresOnceOnRelease(t *testing.T) {
 	audio.AddInsertEffect(instID, order[0], nil)
 	t.Cleanup(func() { audio.RemoveInsertEffect(instID, 0) })
 
-	// Open the FX panel and build bindings (mobile-agnostic: enabled effect
-	// always shows params on desktop; force the expanded slot so the param
-	// sliders are built regardless of profile).
+	// The expanded slot builds the param sliders on any profile.
 	g.drum.OpenFXPanel(0)
 	g.drum.fxExpandedSlots = map[int]bool{0: true}
 	g.drum.buildFXPanel()

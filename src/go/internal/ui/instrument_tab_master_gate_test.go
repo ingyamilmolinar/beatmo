@@ -10,20 +10,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// The Synth and Sampler tabs edit a single instrument's recipe / sample and
-// are meaningless on the master bus. These tests pin the user-facing rule
-// "when the audio panel's active channel is Master, the Synth and Sampler
-// tabs are blocked":
-//   - both desktop tab pills are Disabled (the shared hit-adapter swallows
-//     clicks, and the pill renders greyed),
-//   - the onTab pill-click callback refuses to switch into them,
-//   - the mobile bottom-nav Synth/Sampler segments report disabled.
-//
-// The complementary direction (Master hidden from the channel dropdown while
-// on Synth/Sampler) already lives in buildChannelDropdown, so the real UI can
-// never reach "Master + Synth"; that is why no programmatic redirect is
-// needed here — these guards are purely about not letting the user enter the
-// tabs from a Master context.
+// Synth and Sampler edit one instrument and mean nothing on the master bus, so with Master active their desktop
+// pills are disabled, onTab refuses them and the mobile segments report disabled. buildChannelDropdown hides
+// Master while on those tabs, so no redirect is needed.
 
 // tabPillForTest returns the sticky-bar tab pill for a given PanelTab, or nil.
 func tabPillForTest(b *AudioStickyBar, tab PanelTab) *Button {
@@ -35,8 +24,6 @@ func tabPillForTest(b *AudioStickyBar, tab PanelTab) *Button {
 	return nil
 }
 
-// instrumentRowsForTest returns two rows whose instruments can be selected as
-// the active channel.
 func instrumentRowsForTest() []*DrumRow {
 	return []*DrumRow{
 		{Instrument: roster.Kick, Name: "Kick"},
@@ -84,9 +71,7 @@ func TestOnTabClickRefusesInstrumentTabsUnderMaster(t *testing.T) {
 	z, _ := newTestEQPanelZone(instrumentRowsForTest())
 	z.SetActiveChannel(channel.Master)
 
-	// Invoking the pill's click callback directly exercises the onTab closure
-	// (bypassing the Disabled-pill hit adapter) — the closure itself must gate
-	// so no code path can switch into an instrument tab under Master.
+	// Bypassing the disabled pill's hit adapter: the onTab closure itself must refuse, so no path reaches the tab.
 	if pill := tabPillForTest(z.stickyBar, TabSynth); pill != nil && pill.OnClick != nil {
 		pill.OnClick()
 	}
@@ -110,9 +95,6 @@ func TestOnTabClickRefusesInstrumentTabsUnderMaster(t *testing.T) {
 	}
 }
 
-// TestMobileInstrumentViewsDisabledWhenMasterSelected covers the mobile
-// bottom-nav parity: the Synth/Sampler segment-disable predicates track the
-// active channel the same way the desktop pills do.
 func TestMobileInstrumentViewsDisabledWhenMasterSelected(t *testing.T) {
 	g := newSynthTabGame(t) // Rows[0].Instrument == "snare"
 	dv := g.drum
@@ -129,8 +111,7 @@ func TestMobileInstrumentViewsDisabledWhenMasterSelected(t *testing.T) {
 	if dv.samplerViewDisabled() {
 		t.Error("Sampler view should be enabled once an instrument is selected")
 	}
-	// Synth view additionally requires the instrument to have synth controls;
-	// "snare" (bound to drum-snare) does, so it should be enabled here.
+	// Synth also needs synth controls, which snare has.
 	if dv.synthViewDisabled() {
 		t.Error("Synth view should be enabled for a synth-capable instrument")
 	}

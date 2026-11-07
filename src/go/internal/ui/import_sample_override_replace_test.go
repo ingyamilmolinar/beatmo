@@ -11,12 +11,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Import is replace-not-merge, and that includes a BUILT-IN instrument that a
-// previous project turned into a sample. Importing project A (snare carries
-// embedded PCM) and then project B (snare is the synth) used to leave A's
-// sample registered: B's snare played A's chop, and exporting B wrote
-// "kind": "sample" with A's PCM. Undo/redo rides the same Import, so undoing
-// past a sample conversion hit it too.
+// Replace-not-merge covers a BUILT-IN a previous project turned into a sample: otherwise B's snare plays A's
+// chop and B exports A's PCM. Undo/redo rides the same Import.
 func TestImportDropsASamplePreviousProjectPutOnABuiltin(t *testing.T) {
 	withDefaultAudio(t)
 	g := New(testLogger)
@@ -34,9 +30,7 @@ func TestImportDropsASamplePreviousProjectPutOnABuiltin(t *testing.T) {
 		t.Fatalf("precondition: project A must register snare as a sample")
 	}
 
-	// Project B is A with snare back on the synth (no PCM). Built from A rather
-	// than borrowed from the startup demo, whose roster is free to change (the
-	// 2026-10-02 demo has no "snare" at all, which made this test vacuous-red).
+	// Built from A, not the startup demo, whose roster is free to change.
 	if err := g.Import(withSnareAsSynth(t, withPCM)); err != nil {
 		t.Fatalf("import B: %v", err)
 	}
@@ -58,8 +52,6 @@ func TestImportDropsASamplePreviousProjectPutOnABuiltin(t *testing.T) {
 	}
 }
 
-// withSnareAsSynth returns project doc with its "snare" instrument rewritten as
-// the builtin synth: kind "builtin", no embedded PCM.
 func withSnareAsSynth(t *testing.T, doc []byte) []byte {
 	t.Helper()
 	var f map[string]any

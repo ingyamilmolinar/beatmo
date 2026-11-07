@@ -7,9 +7,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
-// A past cell that has a played snapshot renders the snapshot and nothing
-// else: not the live predictor, not the live path's node type, not a mutable
-// commit, not the previous window. Future cells still follow the predictor.
+// Not the live predictor, the live node type, a mutable commit or the previous window; future cells still follow
+// the predictor.
 func TestBuildRowWindow_PastRendersOnlyFromPlayedSnapshot(t *testing.T) {
 	cfg := Config{
 		Offset:            0,
@@ -49,8 +48,7 @@ func TestBuildRowWindow_PastRendersOnlyFromPlayedSnapshot(t *testing.T) {
 	}
 }
 
-// Even an immutable Playback commit does not override what was shown: the
-// snapshot is what the user saw as the cell played.
+// The snapshot is what the user saw as the cell played.
 func TestBuildRowWindow_PlayedSnapshotOutranksCommits(t *testing.T) {
 	cfg := Config{Offset: 0, Length: 2, NextIdx: 2, ElapsedBeats: 1, FreezeLimit: -1}
 	beatInfoAt := func(abs int) model.BeatInfo { return model.BeatInfo{NodeType: model.NodeTypeRegular} }

@@ -10,8 +10,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// hoverGlowTestTreeH builds a DrumViewTree with one zone exposing a single hit
-// area (rect + handler) at hitRect, lays it out, and returns the tree.
 func hoverGlowTestTreeH(t *testing.T, hitRect image.Rectangle, handler HitHandler) *DrumViewTree {
 	t.Helper()
 	tree := NewDrumViewTree()
@@ -37,10 +35,8 @@ type fillDraw struct {
 	col  color.NRGBA
 }
 
-// captureFills intercepts drawRoundedRect and records every FILLED rect
-// (filled=true). Returns a snapshot getter + restore. The matte hover
-// affordance (retro-analogue restyle 2026-06-17) is a flat FILLED lift of the
-// control rect — no stroked rim — so the tests record fills, not rings.
+// The matte hover affordance is a flat FILLED lift of the control rect with no stroked rim, so fills are recorded,
+// not rings.
 func captureFills() (fills func() []fillDraw, restore func()) {
 	var got []fillDraw
 	orig := drawRoundedRect
@@ -55,10 +51,7 @@ func captureFills() (fills func() []fillDraw, restore func()) {
 	return func() []fillDraw { return got }, func() { drawRoundedRect = orig }
 }
 
-// liftAlphaOver reports the max-alpha neutral-white FILLED lift whose rect
-// matches `around` within `slack` px on all four edges. The matte hover lift is
-// a flat fill of the on-surface neutral (TokenTextPrimary) over the control
-// rect — no rim, no specular. Returns alpha 0 when none.
+// Returns 0 when no neutral lift matches `around` within `slack` px on every edge.
 func liftAlphaOver(fills []fillDraw, around image.Rectangle, slack int) uint8 {
 	want := TokenTextPrimary()
 	var best uint8
@@ -76,13 +69,8 @@ func liftAlphaOver(fills []fillDraw, around image.Rectangle, slack int) uint8 {
 	return best
 }
 
-// TestHoverGlowOverlayDrawsRingOnButtonHover is the functional regression test:
-// with the cursor parked over a button registered in the tree's HitIndex, the
-// tree's own Draw path must paint a restrained neutral FILL lift over that
-// button — proving the hover affordance works through the REAL input/draw loop
-// (not just helper unit tests). The matte lift is a flat ~8% white brighten
-// (keycapHoverLiftAlpha), NOT a rim or bloom. This is the bug the user
-// reported: no hover on any button.
+// Through the tree's real input/draw loop, not helper calls: a cursor parked over a registered button must
+// get the restrained neutral lift.
 func TestHoverGlowOverlayDrawsRingOnButtonHover(t *testing.T) {
 	forceSmallScreenForTest = false
 	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })
@@ -109,10 +97,7 @@ func TestHoverGlowOverlayDrawsRingOnButtonHover(t *testing.T) {
 		tree.Draw(screen)
 	}
 
-	// A neutral matte lift must be painted over the button. It is a flat,
-	// subtle brighten (keycapHoverLiftAlpha ≈ 22) — it must be present but must
-	// NOT be a bold bloom (the old implementation reached >=120 via a strong
-	// inner ring).
+	// Present but subtle: a flat brighten, never a bold bloom.
 	a := liftAlphaOver(fills(), btnRect, genGeomButtonHoverGlowSpread+1)
 	if a == 0 {
 		t.Fatal("no matte hover lift painted over the hovered button (affordance dead)")
@@ -122,8 +107,6 @@ func TestHoverGlowOverlayDrawsRingOnButtonHover(t *testing.T) {
 	}
 }
 
-// hoverGlowExpectRing drives the tree with the cursor at (cx,cy) for 30 frames
-// and returns the max-alpha neutral matte lift near `area`.
 func hoverGlowExpectRing(t *testing.T, tree *DrumViewTree, cx, cy int, area image.Rectangle) uint8 {
 	t.Helper()
 	restore := SetInputForTest(
@@ -144,8 +127,6 @@ func hoverGlowExpectRing(t *testing.T, tree *DrumViewTree, cx, cy int, area imag
 	return liftAlphaOver(fills(), area, genGeomButtonHoverGlowSpread+1)
 }
 
-// TestHoverGlowOverlayCoversTextInput proves a clickable text input (the BPM
-// box and similar) gets the same restrained matte hover lift as a button.
 func TestHoverGlowOverlayCoversTextInput(t *testing.T) {
 	forceSmallScreenForTest = false
 	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })
@@ -164,8 +145,7 @@ func TestHoverGlowOverlayCoversTextInput(t *testing.T) {
 	}
 }
 
-// TestHoverGlowOverlaySuppressedWhenInputFocused proves a focused (being-edited)
-// text input shows no hover cushion — its own focus ring is the signal there.
+// A focused text input's own focus ring is the signal, so it shows no hover cushion.
 func TestHoverGlowOverlaySuppressedWhenInputFocused(t *testing.T) {
 	forceSmallScreenForTest = false
 	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })
@@ -181,8 +161,6 @@ func TestHoverGlowOverlaySuppressedWhenInputFocused(t *testing.T) {
 	}
 }
 
-// TestHoverGlowOverlayCoversSlider proves the master volume slider (and similar
-// slider inputs) get the hover cushion, resolved to the individual slider rect.
 func TestHoverGlowOverlayCoversSlider(t *testing.T) {
 	forceSmallScreenForTest = false
 	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })
@@ -203,17 +181,14 @@ func TestHoverGlowOverlayCoversSlider(t *testing.T) {
 	}
 }
 
-// TestHoverGlowOverlayRowVolumesAreIndividual is the regression for the
-// reported bug: the per-row volume column is registered as ONE slider-group hit
-// area spanning every row, but hovering a single row's volume must lift only
-// THAT row's slider — not the whole grouped column.
+// The row-volume column is ONE slider-group hit area spanning every row, but hovering one row must lift only
+// that row's slider.
 func TestHoverGlowOverlayRowVolumesAreIndividual(t *testing.T) {
 	forceSmallScreenForTest = false
 	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })
 	UpdateProfile()
 
-	// Two stacked row-volume sliders sharing one group hit area (its rect is
-	// the union — what the old code lifted).
+	// Two stacked sliders sharing one group hit area whose rect is their union.
 	row0 := image.Rect(60, 20, 120, 44)
 	row1 := image.Rect(60, 50, 120, 74)
 	s0, s1 := NewSlider(0.5), NewSlider(0.5)
@@ -250,8 +225,6 @@ func TestHoverGlowOverlayRowVolumesAreIndividual(t *testing.T) {
 	}
 }
 
-// TestHoverGlowOverlayNoRingWhenCursorAway proves the lift fades out / is
-// absent when the cursor is not over any button.
 func TestHoverGlowOverlayNoRingWhenCursorAway(t *testing.T) {
 	forceSmallScreenForTest = false
 	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })
@@ -282,9 +255,7 @@ func TestHoverGlowOverlayNoRingWhenCursorAway(t *testing.T) {
 	}
 }
 
-// TestHoverGlowOverlayMobileNoGlowWithoutPress pins that on mobile (no hover
-// concept) a button NOT being pressed shows no lift even with the cursor
-// parked over it — the glow is press-driven there, not hover-driven.
+// Touch has no hover, so on mobile the lift is press-driven, never cursor-driven.
 func TestHoverGlowOverlayMobileNoGlowWithoutPress(t *testing.T) {
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })
@@ -318,10 +289,7 @@ func TestHoverGlowOverlayMobileNoGlowWithoutPress(t *testing.T) {
 	}
 }
 
-// TestHoverGlowOverlayMobileTapLift pins cross-platform animation parity: since
-// touch has no hover, PRESSING a button on mobile lifts it with the same matte
-// affordance desktop shows on hover. Without this the mobile chrome was flat
-// (the retired "mobile stays flat" rule), diverging from desktop.
+// Touch has no hover, so PRESSING a mobile button shows the lift desktop shows on hover: both platforms animate alike.
 func TestHoverGlowOverlayMobileTapLift(t *testing.T) {
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })

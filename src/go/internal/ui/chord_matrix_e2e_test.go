@@ -11,8 +11,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// End-to-end coverage for the chord matrix: real clicks and keys through
-// Game.Update (nmClick / nmKey), like the note matrix's e2e suite.
+// Real clicks and keys through Game.Update.
 
 func openChordMatrix(t *testing.T) (*Game, *uiNode) {
 	t.Helper()
@@ -108,8 +107,7 @@ func TestChordMatrixE2E_PageBarSwitchesPages(t *testing.T) {
 	}
 }
 
-// While open the picker owns the keyboard: arrows move its cursor and never
-// pan the camera; Enter applies the cursor's chord.
+// Arrows move its cursor, never the camera; Enter applies the cursor's chord.
 func TestChordMatrixE2E_KeyboardOwnsArrowsAndEnterPicks(t *testing.T) {
 	g, node := openChordMatrix(t)
 	if !g.KeyboardClaimed() {
@@ -141,9 +139,7 @@ func TestChordMatrixE2E_OutsideTapCloses(t *testing.T) {
 	}
 }
 
-// The page bar is how three of the four pages are reached: on a short grid
-// pane (the shared solver drops its band there) it must still get real
-// height, inside the panel, with no cell drawn over it.
+// The page bar reaches three of the four pages, so even on a short pane it keeps real height, uncovered.
 func TestChordMatrixPageBarIsNeverCoveredByCells(t *testing.T) {
 	g, _ := chordSidebarGame(t, roster.OrganChurch)
 	g.split.Y = 287 // the app's default grid pane height at 1280x720
@@ -165,12 +161,8 @@ func TestChordMatrixPageBarIsNeverCoveredByCells(t *testing.T) {
 	}
 }
 
-// The keyboard cursor never stands in for the current chord on a page that
-// does not hold it. It used to keep its (col, row) across a page switch, so a
-// Gmaj7 node opened on 7ths and flipped to Triads showed "Gm" wearing the
-// focus tint — read as the node's chord. Now a page switch (tap or Tab) puts
-// the cursor on the current chord when that page holds it, and clears it
-// otherwise.
+// A page switch puts the cursor on the current chord when the page holds it and clears it otherwise, so a
+// neighbour never wears the focus tint as if it were the node's chord.
 func TestChordMatrixE2E_PageSwitchReseatsTheKeyCursor(t *testing.T) {
 	g, node := openChordMatrix(t) // a fresh chord node: maj, on Triads
 	cur := chordOf(t, g, node.ID)

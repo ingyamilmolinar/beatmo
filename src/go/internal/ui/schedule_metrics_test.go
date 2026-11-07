@@ -14,19 +14,14 @@ func approxEq(a, b, tol float64) bool {
 	return d <= tol || d <= tol*math.Max(math.Abs(a), math.Abs(b))
 }
 
-// TestScheduleMetricsThreeStages verifies that Observe / ObserveBridge /
-// ObserveSeqFireLate each populate their own stage independently and
-// expose count, percentiles, and stddev in the snapshot.
 func TestScheduleMetricsThreeStages(t *testing.T) {
 	var m scheduleMetrics
 
-	// Drive past the 0.5s warmup window with a fake startAt of 0.
-	// Observe with audioNow > schedWarmupSec.
+	// Past the warm-up window, with startAt 0.
 	const baseNow = 1.0
 	const baseWhen = 1.05 // lead = 50ms
 
-	// 100 events with lead values jittering around 50ms ± 10ms in a
-	// triangle wave so percentiles and stddev are well-defined.
+	// A triangle wave around 50 ± 10 ms gives well-defined percentiles and stddev.
 	for i := 0; i < 100; i++ {
 		offset := (float64(i%20) - 10) * 0.001 // -10ms..+10ms
 		m.Observe(baseNow+float64(i)*0.01, baseWhen+float64(i)*0.01+offset)
@@ -91,8 +86,7 @@ func TestScheduleMetricsThreeStages(t *testing.T) {
 	}
 }
 
-// TestScheduleMetricsOverdueAccumulatesLag confirms negative lead values
-// flow into lagP90/lagP99 and not into lead stddev as positive jitter.
+// Negative leads go to the lag percentiles, never into lead stddev as positive jitter.
 func TestScheduleMetricsOverdueAccumulatesLag(t *testing.T) {
 	var m scheduleMetrics
 
@@ -120,8 +114,6 @@ func TestScheduleMetricsOverdueAccumulatesLag(t *testing.T) {
 	}
 }
 
-// TestScheduleMetricsResetClearsAllStages ensures Reset wipes all three
-// stages so the next playback session starts fresh.
 func TestScheduleMetricsResetClearsAllStages(t *testing.T) {
 	var m scheduleMetrics
 	m.Observe(1.0, 1.05)
@@ -137,8 +129,7 @@ func TestScheduleMetricsResetClearsAllStages(t *testing.T) {
 	}
 }
 
-// TestStdDevNumericalStability guards against negative variance from
-// floating-point cancellation on near-constant samples.
+// Floating-point cancellation on near-constant samples must not give a negative variance.
 func TestStdDevNumericalStability(t *testing.T) {
 	if v := stddev(100*0.05, 100*0.05*0.05, 100); v != 0 {
 		t.Errorf("constant-sample stddev want 0, got %v", v)

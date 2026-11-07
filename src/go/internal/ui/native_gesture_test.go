@@ -37,24 +37,15 @@ func TestSyncNativeGestures_NoCandidates_ClearsAndNoChurn(t *testing.T) {
 	testCapturedNativeRects = &captured
 	t.Cleanup(func() { testCapturedNativeRects = prev })
 
-	// With no menus/inputs open there are no candidates at all: nothing
-	// (rename, inst-search, wav-name, file-picker) may be armed with nothing
-	// open. (BPM no longer has a native input — its readout opens the wheel.)
+	// With nothing open, nothing may be armed.
 	g.Update()
 	if len(g.drum.lastNativeRects) != 0 {
 		t.Fatalf("expected no armed native rects with nothing open, got %+v", g.drum.lastNativeRects)
 	}
 }
 
-// TestNativeGesture_OccludedWidgetNotArmed proves the occlusion invariant: a
-// native rect whose owner is no longer topmost at its center must not be
-// armed. The BPM box is a nativeInputCandidate under owner "transport"; once
-// the overflow menu (a blocking scrim portal) is open on top of it,
-// TopmostOwnerAt(bpmCenter) resolves to "overflow-menu", not "transport", so
-// syncNativeGestures must drop it. Non-vacuous companion:
-// TestNativeInputCandidate_BPMArmedOnMobile proves "bpm" IS armed on a plain
-// mobile frame with nothing open, so this test is exercising real suppression,
-// not an always-absent id.
+// A native rect whose owner is not topmost at its centre must not be armed: under the open overflow menu the
+// logs search resolves to "overflow-menu".
 func TestNativeGesture_OccludedWidgetNotArmed(t *testing.T) {
 	assertDefaultParityState(t)
 	restore := SetRuntimeProfileForTest(browserRuntimeProfile())
@@ -70,8 +61,6 @@ func TestNativeGesture_OccludedWidgetNotArmed(t *testing.T) {
 	testCapturedNativeRects = &captured
 	t.Cleanup(func() { testCapturedNativeRects = prev })
 
-	// A live text field (the logs search) is armed while its panel is the top
-	// surface …
 	g.toggleLogsPanel()
 	for i := 0; i < 3; i++ {
 		g.Update()
@@ -87,8 +76,6 @@ func TestNativeGesture_OccludedWidgetNotArmed(t *testing.T) {
 	if !armed() {
 		t.Skip("logs search not armed in this environment (precondition)")
 	}
-	// … and suppressed once a blocking scrim portal (the overflow menu) opens on
-	// top: TopmostOwnerAt returns "overflow-menu", not "logs".
 	dv.OpenOverflowMenu()
 	dv.overflowPage = 0
 	g.Update()

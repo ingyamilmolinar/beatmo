@@ -14,22 +14,9 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// Characterization tape for the shared value wheel (MobileWheelPopup).
-//
-// It was captured against the wheel BEFORE the WheelModel / ValueWheel
-// extraction (docs/superpowers/plans/2026-10-03-value-wheel-and-text-field.md,
-// Task 1.1) and must replay IDENTICALLY afterwards: the extraction is a pure
-// refactor, so every drag notch, scroll event, row click, rung tap, arrow key,
-// Esc restore and Enter commit has to leave the knob, its step resolution, the
-// popup state and the commit count exactly where the old code left them.
-//
-// Inputs go through the production entry points: the real open paths
-// (openSamplerKnobWheelPopup / openEQKnobWheelPopup), the portal hit handler
-// (mobileWheelHitHandler), and Game.handleGlobalShortcuts for keys.
-//
-// Regenerate (only when a behaviour change is INTENDED):
-//
-//	WHEEL_TAPE_UPDATE=1 go test -tags test -run TestWheelCharacterizationTape ./internal/ui/
+// Captured before the WheelModel / ValueWheel extraction and replayed identically after it: every drag notch,
+// scroll, row click, rung tap, key, Esc restore and Enter commit leaves the knob, its resolution, the popup and the
+// commit count where the old code did. Regenerate only for an INTENDED change: WHEEL_TAPE_UPDATE=1.
 
 type wheelTapeFrame struct {
 	Op      string `json:"op"`
@@ -119,8 +106,6 @@ func TestWheelCharacterizationTape(t *testing.T) {
 	}
 }
 
-// runWheelTape drives one popup through the scripted gesture tape and records a
-// frame after every op.
 func runWheelTape(t *testing.T, g *Game, w *MobileWheelPopup, open func(),
 	value, stepMul func() float64, rung func() int) []wheelTapeFrame {
 	t.Helper()
@@ -146,8 +131,7 @@ func runWheelTape(t *testing.T, g *Game, w *MobileWheelPopup, open func(),
 		})
 	}
 	h := &mobileWheelHitHandler{popup: w}
-	// Barrel press point: left part of the barrel, below the centre box, so the
-	// press never lands on the centre grip (which hands off to typed entry).
+	// Left of the barrel, below the centre box, so a press never lands on the centre grip.
 	bx := func() int { return w.valRect.Min.X + 4 }
 	by := func() int { return w.valRect.Max.Y - 6 }
 	gap := w.tickGap()

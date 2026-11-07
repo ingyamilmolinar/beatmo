@@ -8,8 +8,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestAdaptiveCellCountNarrowScreen verifies that on a narrow screen, the drum
-// view clamps Length so cells are at least MinCellWidth() pixels wide.
+// Length clamps so cells stay at least MinCellWidth() wide.
 func TestAdaptiveCellCountNarrowScreen(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -60,8 +59,7 @@ func TestAdaptiveCellCountNarrowScreen(t *testing.T) {
 	}
 }
 
-// TestAdaptiveCellCountWideScreen verifies that on a wide screen, Length is
-// allowed to be larger (more cells visible) while still respecting the minimum.
+// More cells, still at the minimum width.
 func TestAdaptiveCellCountWideScreen(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -100,8 +98,7 @@ func TestAdaptiveCellCountWideScreen(t *testing.T) {
 	}
 }
 
-// TestAdaptiveCellCountResizeReclamp verifies that resizing the window
-// re-clamps Length so cells stay readable.
+// So cells stay readable.
 func TestAdaptiveCellCountResizeReclamp(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
@@ -135,8 +132,7 @@ func TestAdaptiveCellCountResizeReclamp(t *testing.T) {
 	}
 }
 
-// TestAdaptiveCellCountSmallScreen verifies that the touch minimum cell width
-// is used on small screens.
+// The touch minimum width.
 func TestAdaptiveCellCountSmallScreen(t *testing.T) {
 	assertDefaultParityState(t)
 

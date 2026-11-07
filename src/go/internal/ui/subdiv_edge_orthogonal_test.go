@@ -19,8 +19,6 @@ func (e edgeInfo) isOrthogonal() bool {
 	return e.FromI == e.ToI || e.FromJ == e.ToJ
 }
 
-// timingDistance returns the distance along the primary axis (the one that differs).
-// For horizontal edges, this is abs(ToI - FromI); for vertical, abs(ToJ - FromJ).
 func (e edgeInfo) timingDistance() int {
 	di := e.ToI - e.FromI
 	if di < 0 {
@@ -72,17 +70,13 @@ func formatEdges(edges []edgeInfo) string {
 	return s
 }
 
-// TestSubdivisionResizePreservesOrthogonalEdges verifies that changing
-// subdivision from 8 to 16 keeps all edges orthogonal.
-// This test is expected to FAIL until the bug in SetSubdivisions is fixed.
 func TestSubdivisionResizePreservesOrthogonalEdges(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 
-	// A subdiv-8 circuit with horizontal AND vertical edges, negative
-	// coordinates, and grooved nodes (the shape that went diagonal).
+	// Horizontal and vertical edges, negative coordinates and grooved nodes: the shape that went diagonal.
 	if err := g.SetSubdivisions(8); err != nil {
 		t.Fatalf("SetSubdivisions(8): %v", err)
 	}
@@ -192,11 +186,7 @@ func TestSubdivisionResizePreservesOrthogonalEdges(t *testing.T) {
 	}
 }
 
-// TestSubdivisionResizeGrooveNodesSpecific creates an isolated test case
-// matching the two nodes that first showed the bug (they came from an early
-// startup demo).
-// These nodes have different groove settings that cause diagonal edges
-// after subdivision change.
+// Two nodes on one row with different grooves, the pair whose edge went diagonal.
 func TestSubdivisionResizeGrooveNodesSpecific(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -208,10 +198,6 @@ func TestSubdivisionResizeGrooveNodesSpecific(t *testing.T) {
 		t.Fatalf("SetSubdivisions(8) failed: %v", err)
 	}
 
-	// Create the two nodes:
-	// - Node 25: i=-33, j=-1, groove_kind="rush", groove_pct=0 (default)
-	// - Node 26: i=-31, j=-1, groove_kind="delay", groove_pct=0.3
-	// Both share j=-1 (horizontal edge)
 	g.pendingStartRow = 0
 
 	nodeA := g.tryAddNode(-33, -1, model.NodeTypeRegular)

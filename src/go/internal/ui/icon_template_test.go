@@ -12,10 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// Every IconID has exactly one semantic role (DESIGN.md Icon Map). "Load
-// template" and the template rows reused IconRows — the "switch to row
-// view" glyph — so the same three-lines icon meant two unrelated things.
-// They carry the dedicated template-card glyph now.
+// Every IconID has one meaning: "Load template" reusing IconRows made the row-view glyph mean two unrelated things.
 func TestIconTemplateHasBody(t *testing.T) {
 	dst := ebiten.NewImage(24, 24)
 	if !drawIconByID(dst, IconTemplate, image.Rect(0, 0, 24, 24), color.White) {

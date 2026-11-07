@@ -10,12 +10,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// Every pressable control shares ONE body: the spec keycap fill (surface-2)
-// drawn by Render/ButtonStyle.Draw. Two families used to deviate — the
-// volume buttons painted no body at all (the bed showed through), and text
-// inputs painted a darker "recessed" surface-1 slot — so the master volume
-// button, the BPM box and the EQ dB boxes read as different components from
-// the keycaps beside them. Guard: both now paint the same body as a button.
+// Every pressable control paints one body, the spec keycap fill; volume buttons and text inputs once painted none or
+// a darker slot and read as different components.
 func TestVolumeButtonsAndInputsShareKeycapBody(t *testing.T) {
 	want := Spec(ComponentButtonSecondary).Fill
 	r := image.Rect(10, 10, 42, 42)

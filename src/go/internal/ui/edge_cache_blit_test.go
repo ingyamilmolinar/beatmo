@@ -7,8 +7,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// Test that the cache blit applies (-pad+dx, -pad+dy) so cached content aligns
-// with the intended top-pane coordinates across reuse and small pans.
+// Offset by (-pad+dx, -pad+dy), so reused content aligns after small pans.
 func TestEdgeCacheBlitOffsets(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(testLogOutput(), game_log.LevelError)

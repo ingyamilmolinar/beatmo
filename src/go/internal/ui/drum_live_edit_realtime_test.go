@@ -6,8 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Graph edits must reflect immediately in the highlighted cell (current beat)
-// without waiting extra frames.
+// In the highlighted cell without waiting extra frames.
 func TestDrumView_ImmediateHighlightReflectsNodeChange(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -64,8 +63,7 @@ func TestDrumView_ImmediateHighlightReflectsNodeChange(t *testing.T) {
 	}
 }
 
-// Repeated remove/re-add should flip the highlighted cell in the same update
-// while keeping TrackBeat centered between past and future.
+// Each flip lands in the same update, with TrackBeat still centred.
 func TestDrumView_RemoveReaddImmediate(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)

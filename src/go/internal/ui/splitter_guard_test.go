@@ -7,10 +7,6 @@ import (
 	"testing"
 )
 
-// TestSplitter_GuardFrameBlocksDrag verifies that when guardFrames > 0,
-// HandleInput returns InputIgnored for new press attempts. After counting
-// down guardFrames to 0, a press on the handle initiates drag and returns
-// InputCaptured.
 func TestSplitter_GuardFrameBlocksDrag(t *testing.T) {
 	s := NewSplitter(600)
 	s.winW = 800
@@ -71,9 +67,6 @@ func TestSplitter_GuardFrameBlocksDrag(t *testing.T) {
 	s.HandleInput(hx, hy, false)
 }
 
-// TestSplitter_SideBySideModeDrag verifies that in side-by-side mode
-// (horizontal=false), pressing on the vertical handle initiates drag,
-// and dragging changes s.X, clamped to [120, winW-120].
 func TestSplitter_SideBySideModeDrag(t *testing.T) {
 	winW := 800
 	totalH := 600

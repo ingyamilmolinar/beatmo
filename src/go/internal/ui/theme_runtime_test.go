@@ -58,8 +58,6 @@ func TestApplyThemeNotifiesListenersAndBumpsGeneration(t *testing.T) {
 	}
 }
 
-// A spec button whose icon color came from its spec must follow the theme;
-// one whose call site overrode IconColor must keep the override.
 func TestSpecButtonIconColorFollowsTheme(t *testing.T) {
 	b := NewSpecButton("", ComponentButtonSecondary, nil) // iconColor: on-surface-muted
 	b.Icon = string(IconSettings)

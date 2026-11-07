@@ -8,8 +8,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// openMenuInstrumentsRealTouch opens the instrument menu for a row and reaches
-// instruments mode (entering the first category if it opened on categories).
 func openMenuInstrumentsRealTouch(t *testing.T, g *Game, row int) *InstrumentMenuComponent {
 	t.Helper()
 	dv := g.drum
@@ -45,8 +43,6 @@ func newMobileGame(t *testing.T) *Game {
 	return g
 }
 
-// TestInstMenuMobileCategoryForwardRealTouch: in categories mode, a REAL touch
-// tap on a category button must navigate into that category (instruments mode).
 func TestInstMenuMobileCategoryForwardRealTouch(t *testing.T) {
 	g := newMobileGame(t)
 	comp := openMenuInstrumentsRealTouch(t, g, 0)
@@ -88,8 +84,6 @@ func TestInstMenuMobileCloseRealTouch(t *testing.T) {
 	}
 }
 
-// TestInstMenuMobileCrossRowSelectRealTouch: opening the menu for row N and
-// selecting must change row N (not row 0).
 func TestInstMenuMobileCrossRowSelectRealTouch(t *testing.T) {
 	g := newMobileGame(t)
 	dv := g.drum
@@ -117,8 +111,6 @@ func TestInstMenuMobileCrossRowSelectRealTouch(t *testing.T) {
 	}
 }
 
-// TestInstMenuMobileFavoriteStarRealTouch: a REAL touch tap on a ★ star hit area
-// must toggle that instrument's favorite flag.
 func TestInstMenuMobileFavoriteStarRealTouch(t *testing.T) {
 	g := newMobileGame(t)
 	comp := openMenuInstrumentsRealTouch(t, g, 0)
@@ -134,10 +126,7 @@ func TestInstMenuMobileFavoriteStarRealTouch(t *testing.T) {
 	}
 }
 
-// realTouchDragGame drives a single-finger DRAG through the full Game.Update
-// loop using the mock touch state (NOT SetInputForTest), so the touch override
-// + gesture/scroll path are exercised for real. Finger goes down at p0, moves
-// through pts over one frame each, then lifts.
+// Mock touch state, not SetInputForTest, so the touch override and the gesture/scroll path run for real.
 func realTouchDragGame(t *testing.T, g *Game, pts [][2]int) {
 	t.Helper()
 	mock := newMockTouchState()
@@ -156,10 +145,7 @@ func realTouchDragGame(t *testing.T, g *Game, pts [][2]int) {
 	}
 }
 
-// TestInstMenuMobileScrolledSelectRealTouch is the scroll-then-select repro:
-// scroll a long instrument list via REAL touch, then tap a visible row, and
-// assert the instrument that is VISUALLY at that row (filteredInsts[first+row])
-// gets selected — not the pre-scroll item, and not nothing.
+// The instrument VISUALLY at the tapped row (filteredInsts[first+row]) must be selected after a real-touch scroll.
 func TestInstMenuMobileScrolledSelectRealTouch(t *testing.T) {
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false })
@@ -168,8 +154,7 @@ func TestInstMenuMobileScrolledSelectRealTouch(t *testing.T) {
 
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
-	// Short height so even a modest category overflows the bottom-sheet and the
-	// list must scroll (mirrors a small phone / landscape).
+	// Short enough that a modest category overflows the bottom sheet and must scroll.
 	const W, H = 390, 430
 	g.Layout(W, H)
 	dv := g.drum

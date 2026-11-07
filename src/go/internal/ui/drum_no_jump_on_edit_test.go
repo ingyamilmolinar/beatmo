@@ -9,9 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Ensure that editing a circuit during active playback does not change the
-// drum view offset or the yellow timeline cursor position; only the future
-// portion of the affected row may change.
+// An edit during playback moves neither the offset nor the cursor; only the affected row's future changes.
 func TestNoJumpOnEditDuringPlayback(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -65,8 +63,7 @@ func TestNoJumpOnEditDuringPlayback(t *testing.T) {
 	g.updateBeatInfos()
 	g.refreshDrumRow()
 
-	// Draw again with the same elapsed value; cursor should be identical and
-	// offset must not change.
+	// The same elapsed value draws the same cursor.
 	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
 		if filled {
 			if color.RGBAModel.Convert(c).(color.RGBA) == colTimelineCursor {

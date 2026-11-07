@@ -6,10 +6,8 @@ import (
 	"testing"
 )
 
-// TestControlGridScrollbarIsWideEnoughToTarget: the Synth/Sampler control-grid
-// scrollbar must be a wide, grabbable gutter (not the 6px app default) so the
-// user can scroll rows from the scrollbar itself — the desktop path, where a
-// wheel over a control nudges its value rather than scrolling.
+// A wide, grabbable gutter, not the 6 px default: on desktop the wheel over a control edits it, so the scrollbar is
+// how rows scroll.
 func TestControlGridScrollbarIsWideEnoughToTarget(t *testing.T) {
 	g := modularSynthGameRealistic(t)
 	grid := g.drum.SynthSectionGrid(synthSectionFM)
@@ -24,10 +22,7 @@ func TestControlGridScrollbarIsWideEnoughToTarget(t *testing.T) {
 	}
 }
 
-// TestControlGridWheelOverScrollbarAdvancesOneTick: a wheel notch on top of the
-// control-grid scrollbar advances the list by exactly one row — "scrolling on
-// top of the scrollbar advances it one tick". Guards the behavior on the Synth
-// section grid.
+// Exactly one row per notch over the scrollbar.
 func TestControlGridWheelOverScrollbarAdvancesOneTick(t *testing.T) {
 	g := modularSynthGameRealistic(t)
 	grid := g.drum.SynthSectionGrid(synthSectionFM)

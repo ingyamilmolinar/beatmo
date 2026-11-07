@@ -13,12 +13,8 @@ import (
 	"testing"
 )
 
-// themeSafeSpriteCaches classifies every package-level sprite cache
-// (map[...]*ebiten.Image) by WHY it cannot serve a previous theme's pixels.
-// A package-level cache outlives every Game, so Game.OnThemeChanged reaches it
-// only if someone remembered to wire it — the wheel sprites were not, and kept
-// the boot theme's surfaces forever. Adding a new one fails this test until it
-// is classified here with a reason (and actually made theme-safe).
+// A package-level sprite cache outlives every Game, so OnThemeChanged reaches it only if wired; each must be
+// classified with WHY it cannot serve a previous theme's pixels, and actually be theme-safe.
 var themeSafeSpriteCaches = map[string]string{
 	"pixelCache":         "keyed by the fill COLOR — a new theme color is a new key",
 	"cornerSpriteCache":  "keyed by the corner COLOR",
@@ -31,8 +27,6 @@ var themeSafeSpriteCaches = map[string]string{
 	"wheelGripCache":     "theme-scoped: syncWheelSpriteTheme drops it on a ThemeGeneration change",
 }
 
-// TestPackageLevelSpriteCachesAreThemeSafe — AST scan of internal/ui for
-// package-level vars whose type is map[...]*ebiten.Image.
 func TestPackageLevelSpriteCachesAreThemeSafe(t *testing.T) {
 	files, err := filepath.Glob("*.go")
 	if err != nil {

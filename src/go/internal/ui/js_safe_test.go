@@ -10,9 +10,7 @@ import (
 
 type jsSafeTestEnum int
 
-// TestJSSafeConvertsNamedTypes: syscall/js.ValueOf panics on a named type, so
-// every one that can reach it through an export's result — on its own or
-// nested in []any / map[string]any — must arrive as the plain type.
+// syscall/js.ValueOf panics on a named type, alone or nested in []any / map[string]any.
 func TestJSSafeConvertsNamedTypes(t *testing.T) {
 	in := map[string]any{
 		"id":    roster.Oboe,
@@ -39,8 +37,7 @@ func TestJSSafeConvertsNamedTypes(t *testing.T) {
 	}
 }
 
-// TestJSSafeLeavesPlainValuesAlone: nothing named → the very same value back
-// (no copy on the bridge's hot path).
+// The same value back: no copy on the bridge's hot path.
 func TestJSSafeLeavesPlainValuesAlone(t *testing.T) {
 	arr := []any{"a", 1, 2.5, true, nil, int8(3)}
 	m := map[string]any{"arr": arr, "s": "x"}

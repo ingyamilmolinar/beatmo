@@ -15,19 +15,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/assets"
 )
 
-// The landing page's committed media (src/js/landing/<cut>.{mp4,webp,vtt},
-// produced by `make showcase-video`) must be what landing.js and index.html
-// assume, and must still match the tour script that recorded it:
-//   - the cue file describes the CURRENT script (captions, chapters, order,
-//     the theme sequence, the template's tempo) — a caption edited in
-//     tour_steps.go without re-recording fails here, not on beatmo.io;
-//   - the MP4 streams: moov before mdat (faststart — the browser can start
-//     playing before the whole file arrives), H.264 + AAC (what
-//     landing.js's canPlayType guard asks for), 25 fps, and as long as its
-//     cue file;
-//   - the poster is the video's own size, and both have the aspect ratio
-//     index.html's CSS reserves for them (16:9 desktop, 390:844 phone), so
-//     nothing jumps when the video replaces the poster.
+// The committed landing media must match the CURRENT tour script and what landing.js / index.html assume:
+// faststart H.264 + AAC at 25 fps as long as its cues, and a poster of the video's size and the aspect the CSS
+// reserves, so nothing jumps when the video replaces it.
 
 var landingCuts = map[string]struct{ aspect float64 }{
 	"desktop": {16.0 / 9},

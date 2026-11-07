@@ -11,9 +11,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
-// Build a minimal export with two instruments and two nodes and verify that
-// after import there is no pending origin selection and clicking a node does
-// not reassign origins implicitly.
 func TestImportClearsPendingOriginAndPopupClickDoesNotReassign(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

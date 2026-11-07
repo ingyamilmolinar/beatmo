@@ -11,20 +11,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// export_import_playback_fidelity_test.go — thorough verification that every
-// synth, sampler, and effects config survives a project export → import AND that
-// the IMPORTED project plays identically to the exported one.
-//
-// The model round-trip (field values) is covered by export_import_audio_test.go,
-// eq_export_import_test.go, sampler_export_test.go, repro_synth_config_roundtrip_test.go,
-// and insert_effects_roundtrip_test.go. These tests add the gaps those miss:
-//   - send-effect (delay/reverb) config value round-trip — the Configure* are
-//     GLOBAL, so the test clobbers them to prove the value comes from the file;
-//   - EQ band-mute round-trip (per-instrument + master);
-//   - SAMPLE PLAYBACK fidelity: the re-baked playable buffer (what actually
-//     plays) is bit-identical after import — including reverse + asymmetric trim;
-//   - a kitchen-sink project that sets every subsystem at once, resets ALL global
-//     audio state, imports, and asserts every audible-determinant seam.
+// Beyond field values: band mutes, the re-baked playable sample buffer bit-identical after import (reverse and
+// asymmetric trim included), and a project touching every subsystem with all global state reset.
 
 // pcmEqual reports whether two float32 buffers are bit-identical.
 func pcm32Equal(a, b []float32) bool {
@@ -76,9 +64,7 @@ func newProjectGame(t *testing.T) (*Game, *uiNode) {
 	return g, ui
 }
 
-// TestEQBandMuteRoundTripsThroughProject closes the band-mute gap: a muted EQ
-// band (per-instrument and master) must survive export→import and reach the
-// audio chain.
+// Per-instrument and master, reaching the audio chain.
 func TestEQBandMuteRoundTripsThroughProject(t *testing.T) {
 	assertDefaultParityState(t)
 	g, _ := newProjectGame(t)
@@ -123,12 +109,8 @@ func TestEQBandMuteRoundTripsThroughProject(t *testing.T) {
 	}
 }
 
-// TestEditedWAVPlaybackFidelityRoundTrips is the headline playback test: a WAV /
-// user-sample instrument edited with reverse + ASYMMETRIC trim + gain must, after
-// export→import into a fresh instance, produce a BIT-IDENTICAL playable buffer —
-// i.e. it sounds exactly like the exported version. Exercises the new
-// non-destructive descriptor flow (pristine PCM embedded + descriptor +
-// reapplyUserSampleEdit re-baking on import).
+// A sample edited with reverse, asymmetric trim and gain gives a bit-identical playable buffer in a fresh instance:
+// pristine PCM embedded, descriptor re-baked on import.
 func TestEditedWAVPlaybackFidelityRoundTrips(t *testing.T) {
 	assertDefaultParityState(t)
 	g, _ := newProjectGame(t)
@@ -139,9 +121,7 @@ func TestEditedWAVPlaybackFidelityRoundTrips(t *testing.T) {
 	audio.PutUserSample(id, pristine, 48000) // seeded like ensureSamplerLoaded does
 	g.drum.Rows[0].Instrument = id
 
-	// Exercise EVERY sample-edit field at once so the playback round-trip
-	// validates all sampler configs (trim, pitch transpose + detune, gain,
-	// normalize, fades, reverse) — not just a subset. Source-frame fractions.
+	// Every sample-edit field at once, in source-frame fractions.
 	desc := audio.SampleEdit{
 		StartFrac: 0.2, EndFrac: 0.85,
 		TransposeSemis: 3, DetuneCents: -15,
@@ -165,8 +145,7 @@ func TestEditedWAVPlaybackFidelityRoundTrips(t *testing.T) {
 		t.Fatalf("export: %v", err)
 	}
 
-	// Fresh instance: clobber the canonical PCM with garbage and clear the edit, so
-	// a passing assertion can only come from the embedded project bytes.
+	// Garbage PCM and a cleared edit, so only the embedded bytes can pass.
 	audio.PutUserSample(id, []float32{0, 0, 0, 0}, 48000)
 	audio.ClearSampleEdit(id)
 
@@ -267,13 +246,8 @@ func (d instDeterminants) equal(o instDeterminants, t *testing.T, label string) 
 	}
 }
 
-// TestProjectAllConfigPlaybackDeterminantsRoundTrip is the kitchen-sink test:
-// one project that sets a synth instrument AND a user-sample instrument with
-// every per-instrument knob (params/edit/FX/EQ+mute) plus master volume/EQ.
-// It exports, RESETS every global audio store, then
-// imports and asserts each instrument's full audible-determinant set is
-// unchanged — catching cross-subsystem and ordering regressions a per-feature
-// test would miss.
+// A synth and a user sample with every per-instrument setting plus the master: export, reset every global, import,
+// and each instrument's audible state is unchanged.
 func TestProjectAllConfigPlaybackDeterminantsRoundTrip(t *testing.T) {
 	assertDefaultParityState(t)
 	mv0 := audio.MainVolume()

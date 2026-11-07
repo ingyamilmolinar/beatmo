@@ -7,12 +7,8 @@ import (
 	"testing"
 )
 
-// TestUndoRedoButtonsDimViaRealFrame drives the PRODUCTION frame loop (g.Update
-// then g.Draw) — not syncUndoRedoVisual directly — and asserts the transport
-// undo/redo icons are greyed when their stack is empty and lit when it is not.
-// The pre-existing TestTransportUndoRedoDim calls syncUndoRedoVisual() by hand,
-// so it can't catch the real-app case where the dim never gets applied/refreshed
-// through the actual update+draw path.
+// Through the production Update then Draw, not syncUndoRedoVisual by hand, which cannot show a dim that is never
+// applied in the real loop.
 func TestUndoRedoButtonsDimViaRealFrame(t *testing.T) {
 	g := newTestGameForUndo(t)
 	tz := g.drum.transportZone
@@ -62,18 +58,13 @@ func TestUndoRedoButtonsDimViaRealFrame(t *testing.T) {
 	}
 }
 
-// TestStartupUndoRedoButtonsGreyed reproduces the real-app bug: at launch the
-// undo button appeared enabled (whiter) even though the user had done nothing.
-// Building the initial demo recorded an undo step (the demo-vs-empty diff), so
-// CanUndo was true at startup. The initial demo is not a user action — the undo
-// stack must be empty and both buttons greyed until the user edits something.
+// Building the startup demo is not a user action, so the stack starts empty and both buttons greyed.
 func TestStartupUndoRedoButtonsGreyed(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 
-	// Build the demo exactly as startup does — inside the per-frame undo bracket
-	// that game_update.go wraps every Update() in.
+	// Inside the per-frame undo bracket, as startup does.
 	g.undoManager.beginGroup("")
 	g.buildDemo()
 	g.undoManager.endGroup()
@@ -100,8 +91,7 @@ func TestStartupUndoRedoButtonsGreyed(t *testing.T) {
 	}
 }
 
-// iconColorOf returns a button's effective icon color (nil falls back to the
-// same default the Draw path uses).
+// nil falls back to the default the Draw path uses.
 func iconColorOf(b *Button) color.Color {
 	if b.IconColor == nil {
 		return color.Color(colButtonBorder)

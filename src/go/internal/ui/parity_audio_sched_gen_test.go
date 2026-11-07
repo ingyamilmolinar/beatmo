@@ -7,19 +7,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Regression for TestBPMChangeDuringLoopKeepsForwardProgress flaking under
-// full-suite (make test-real) load.
-//
-// A sound is scheduled (seq decision recorded + soundReq enqueued) at parity
-// generation N. Under load the audioLoop goroutine lags, so it only records the
-// matching parity audio event AFTER a structural mutation (a BPM change bumps
-// parityGen to N+1). The parity gen-filter keeps entries at the CURRENT
-// generation and drops older ones — symmetrically on both the seq-decision and
-// audio side (game_parity_diff_scan.go). If the audio event is stamped with the
-// record-time generation (N+1) instead of the scheduling generation (N), the
-// filter keeps the audio but drops its decision, leaving a phantom
-// audio_vs_seq mismatch. Post-mutation grace is bypassed under `go test`
-// (parityInGrace), so the gen-filter is the only defense and must hold.
+// A lagging audioLoop records a sound scheduled at generation N after a mutation bumped parityGen to N+1. Both
+// sides are filtered by the current generation, so the audio event must carry its SCHEDULING generation, or the
+// filter keeps the audio, drops its decision and reports a phantom audio_vs_seq; grace is off under go test.
 func TestParityAudioCarriesSchedulingGenAcrossMutation(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -50,13 +40,11 @@ func TestParityAudioCarriesSchedulingGenAcrossMutation(t *testing.T) {
 	schedGen := g.parityGen.Load()
 	g.recordSeqDecision(0, abs, true, model.NodeTypeRegular, false)
 
-	// A structural mutation (e.g. BPM change) bumps parityGen before the
-	// lagging audioLoop records the already-scheduled sound.
+	// The mutation bumps parityGen before the lagging audioLoop records the sound.
 	g.parityGen.Add(1)
 
 	g.ClearParityMismatches()
-	// audioLoop records the lagged sound now. It must inherit the scheduling
-	// generation (schedGen), not the current one.
+	// It must inherit schedGen, not the current generation.
 	g.recordParityAudio(0, abs, 1.0, roster.Kick, 1, 0, 1, g.audioGen.Load(), schedGen)
 
 	g.parityScan("test-audio-sched-gen")

@@ -4,12 +4,8 @@ package ui
 
 import "testing"
 
-// TestMuteSoloNotUndoableByDesign documents and pins the deliberate decision
-// that row mute/solo are NOT on the undo stack: they are session state, absent
-// from the exported document, so a snapshot-based undo cannot restore them.
-// Toggling them must (a) leave exportBytes unchanged and (b) produce no undo
-// step. If mute/solo are ever added to the export schema, this test should be
-// updated alongside re-adding them to the recorded-set.
+// Mute/solo are session state, absent from the exported document, so snapshot undo cannot restore them: they
+// change no bytes and record no step. Revisit together if they ever join the export schema.
 func TestMuteSoloNotUndoableByDesign(t *testing.T) {
 	g := newTestGameForUndo(t)
 	if len(g.drum.Rows) < 1 {

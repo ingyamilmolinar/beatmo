@@ -6,10 +6,7 @@ import (
 	"testing"
 )
 
-// TestButtonPressSpring asserts the springy press/release depth lifecycle:
-// rest = 0, press targets full depth (1) and eases toward it, release targets
-// rest (0), kicks the cap UP (negative overshoot) then springs monotonically
-// back and finally settles exactly at 0.
+// 0 at rest; a press eases toward 1; a release overshoots below 0, springs back monotonically and settles at exactly 0.
 func TestButtonPressSpring(t *testing.T) {
 	b := NewButton("Hit", InstButtonStyle, func() {})
 	b.SetRect(image.Rect(100, 100, 160, 130))
@@ -67,8 +64,7 @@ func TestButtonPressSpring(t *testing.T) {
 	}
 }
 
-// TestButtonToggleState covers the latched/active flag that drives the
-// pulsing accent glow.
+// The latched flag that drives the pulsing glow.
 func TestButtonToggleState(t *testing.T) {
 	b := NewButton("Tab", InstButtonStyle, nil)
 	if b.Toggled() {
@@ -84,9 +80,7 @@ func TestButtonToggleState(t *testing.T) {
 	}
 }
 
-// TestButtonGlowAlpha asserts the single-chrome-accent discipline: the cyan
-// glow ring is invisible at rest (accent reserved for interaction), present on
-// hover, and present (pulsing) when toggled.
+// Invisible at rest (the accent is reserved for interaction), present on hover and pulsing when toggled.
 func TestButtonGlowAlpha(t *testing.T) {
 	if a := buttonGlowAlpha(false, false, 0); a != 0 {
 		t.Fatalf("resting glow alpha must be 0 (no accent at rest), got %d", a)
@@ -94,8 +88,7 @@ func TestButtonGlowAlpha(t *testing.T) {
 	if a := buttonGlowAlpha(true, false, 0); a == 0 {
 		t.Fatal("hovered glow alpha must be > 0")
 	}
-	// Toggled glow is frame-driven; sample a few frames and require at least
-	// one visibly non-zero (the |sin| pulse passes through 0 once per cycle).
+	// |sin| passes through 0 once per cycle, so sample several frames.
 	anyVisible := false
 	for f := int64(0); f < 80; f++ {
 		if buttonGlowAlpha(false, true, f) > 0 {
@@ -108,17 +101,13 @@ func TestButtonGlowAlpha(t *testing.T) {
 	}
 }
 
-// TestButtonGlowAlphaAnimated covers the smooth fade-in/out hover glow: the
-// alpha scales linearly with a 0..1 hover progress so the cursor-enter ramp
-// glides from 0 to the same token-driven ceiling the static hover used, while
-// the toggled (latched) pulse ignores progress entirely.
+// Linear in the 0..1 hover progress up to the static hover ceiling; the toggled pulse ignores progress.
 func TestButtonGlowAlphaAnimated(t *testing.T) {
 	// Progress 0 → no glow (rest / fully faded out).
 	if a := buttonGlowAlphaAnimated(0, false, 0); a != 0 {
 		t.Fatalf("hover progress 0 glow = %d, want 0", a)
 	}
-	// Progress 1, untoggled → the exact token-driven ceiling (== old static
-	// hover level) so the fade settles where the static glow used to sit.
+	// The exact token-driven ceiling.
 	want := uint8(float64(genAnimButtonTogglePulse.AlphaScale) * float64(genAnimButtonGlowRest))
 	if a := buttonGlowAlphaAnimated(1, false, 0); a != want {
 		t.Fatalf("hover progress 1 glow = %d, want token-driven %d", a, want)
@@ -133,8 +122,7 @@ func TestButtonGlowAlphaAnimated(t *testing.T) {
 		}
 		prev = got
 	}
-	// Toggled ignores hover progress: even at progress 0 the latched pulse is
-	// visible across a cycle (precedence: toggled over hover, unchanged).
+	// Toggled wins over hover.
 	anyVisible := false
 	for f := int64(0); f < 80; f++ {
 		if buttonGlowAlphaAnimated(0, true, f) > 0 {
@@ -147,16 +135,7 @@ func TestButtonGlowAlphaAnimated(t *testing.T) {
 	}
 }
 
-// Hover-fade ramp behavior + the desktop-only / mobile-flat rules now live in
-// the per-frame overlay (hover_glow_overlay.go) rather than on Button — see
-// TestHoverGlowOverlay* in hover_glow_overlay_test.go (functional, through the
-// real tree Draw path).
-
-// TestButtonGlowRingColor pins the neutral-lift hover/active ring color after
-// the chrome de-accent pass (2026-06-15). Both hover and toggle states use
-// TokenTextPrimary (near-white) so interaction feedback is brightness-based,
-// not cyan. The previous two-shade cyan split (primary-bright/primary) was
-// removed to de-accent the chrome.
+// Hover and toggle both use TokenTextPrimary: feedback is brightness, not a coloured accent.
 func TestButtonGlowRingColor(t *testing.T) {
 	hover := buttonGlowRingColor(false)
 	tog := buttonGlowRingColor(true)
@@ -171,9 +150,7 @@ func TestButtonGlowRingColor(t *testing.T) {
 	}
 }
 
-// TestButtonGlowRingColorIsNeutral is the explicit post-de-accent guard: the
-// hover/toggle glow ring must be neutral (no cyan accent) — chrome
-// de-accent pass 2026-06-15.
+// Neutral, no accent hue.
 func TestButtonGlowRingColorIsNeutral(t *testing.T) {
 	hover := buttonGlowRingColor(false)
 	tog := buttonGlowRingColor(true)
@@ -185,10 +162,7 @@ func TestButtonGlowRingColorIsNeutral(t *testing.T) {
 	}
 }
 
-// TestButtonGlowAlphaHoverIsTokenDriven pins the hover-rest glow level to the
-// button-glow-rest design token (a fraction of the toggle pulse's own alpha
-// scale) instead of a hand-derived SinPulse sample, so the resting glow is
-// governed by DESIGN.md, not a magic constant.
+// The button-glow-rest token, so DESIGN.md governs the resting glow, not a magic constant.
 func TestButtonGlowAlphaHoverIsTokenDriven(t *testing.T) {
 	want := uint8(float64(genAnimButtonTogglePulse.AlphaScale) * float64(genAnimButtonGlowRest))
 	if got := buttonGlowAlpha(true, false, 0); got != want {

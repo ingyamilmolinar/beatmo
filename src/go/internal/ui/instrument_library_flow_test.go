@@ -10,9 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/objects"
 )
 
-// memInstrumentLibrary is an in-memory instrument store. docs is, before any
-// save, the pre-versioning documents the library reads in; after a save, each
-// instrument's CURRENT saved document as file bytes (what a test inspects).
+// Before any save, docs is what the library reads in; after one, each instrument's CURRENT saved document.
 type memInstrumentLibrary struct {
 	docs map[instrument.ID][]byte
 	blob []byte
@@ -32,8 +30,6 @@ func (m *memInstrumentLibrary) SaveLibrary(b []byte) error {
 	return nil
 }
 
-// currentLibraryDocs decodes a persisted library into each identity's current
-// document, as file bytes.
 func currentLibraryDocs(blob []byte) map[instrument.ID][]byte {
 	var s objects.Store
 	if json.Unmarshal(blob, &s) != nil {
@@ -58,9 +54,7 @@ func currentLibraryDocs(blob []byte) map[instrument.ID][]byte {
 	return out
 }
 
-// withPrivateInstrumentLibrary gives the test an empty, private user instrument
-// library (so a Save never reaches the developer's real instruments.json) and
-// restores an empty one afterwards.
+// Private, so a Save never reaches the developer's real instruments.json.
 func withPrivateInstrumentLibrary(t *testing.T) *memInstrumentLibrary {
 	t.Helper()
 	lib := &memInstrumentLibrary{}
@@ -86,9 +80,7 @@ func docField(t *testing.T, instID, field string) float64 {
 	return instrument.FieldValues(d, audio.BuiltinModuleRegistry())[field]
 }
 
-// wipeToCleanLibrary empties the user library and re-initialises every
-// project copy from the shipped library — a brand-new install, where only the
-// project file can bring a tone back.
+// A brand-new install, where only the project file can bring a tone back.
 func wipeToCleanLibrary(t *testing.T) {
 	t.Helper()
 	if err := audio.LoadUserInstrumentLibrary(&memInstrumentLibrary{}, nil); err != nil {
@@ -97,9 +89,7 @@ func wipeToCleanLibrary(t *testing.T) {
 	audio.ResetInstrumentDocs()
 }
 
-// newDocsGame is a Game with a private, empty user instrument library and the
-// given instruments on rows 0..n-1, picked through SetInstrument (the real
-// pick path). Shared by the library / project-document / template tests.
+// Rows are picked through SetInstrument, the real pick path.
 func newDocsGame(t *testing.T, instruments ...instrument.ID) *Game {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -154,9 +144,7 @@ func TestSaveAsRepointsOriginAndRegisters(t *testing.T) {
 	}
 }
 
-// TestRepickingAnUnusedInstrumentGetsTheLibraryVersion: edits made to an
-// instrument stay with the rows using it; once no row uses it, picking it again
-// starts from the library entry (spec §6: a pick = a copy of the library).
+// Edits stay with the rows using an instrument; once none does, a pick is a fresh copy of the library entry.
 func TestRepickingAnUnusedInstrumentGetsTheLibraryVersion(t *testing.T) {
 	g := newDocsGame(t, roster.KickSnap, roster.Snare)
 	audio.SetInstrumentParam(roster.KickSnap, "gen1_kick_click", 0.9)
@@ -179,8 +167,6 @@ func TestRepickingAnUnusedInstrumentGetsTheLibraryVersion(t *testing.T) {
 	}
 }
 
-// instSchemaForTest is what the Synth tab feeds buildMacroGroups for a library
-// instrument id: its ParamDefs and a private copy of its flat values.
 func instSchemaForTest(t testing.TB, id instrument.ID) ([]audio.ParamDef, audio.RecipeParams) {
 	t.Helper()
 	defs := audio.InstrumentParamDefs(id)
@@ -194,8 +180,6 @@ func instSchemaForTest(t testing.TB, id instrument.ID) ([]audio.ParamDef, audio.
 	return defs, merged
 }
 
-// keepInstrumentDoc snapshots id's project document and restores it (or its
-// absence) on cleanup.
 func keepInstrumentDoc(t testing.TB, id instrument.ID) {
 	t.Helper()
 	d, had := audio.InstrumentDoc(id)
@@ -208,8 +192,7 @@ func keepInstrumentDoc(t testing.TB, id instrument.ID) {
 	})
 }
 
-// assertSynthDocKept fails unless id still plays a synth document copied from
-// library entry origin — the synth stays the instrument's source of truth.
+// The synth stays the instrument's source of truth.
 func assertSynthDocKept(t testing.TB, id, origin, when string) {
 	t.Helper()
 	d, ok := audio.InstrumentDoc(instrument.ID(id))

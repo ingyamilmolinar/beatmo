@@ -8,16 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestParityIgnoresExpiredHighlightInPast reproduces the second-form crash:
-// no instrument change at all, just normal demo playback. After ~17 beats,
-// parityScan finds an audio event for a past beat whose highlight has aged
-// out (highlightedBeats[key].until < g.frame) and panics with
-// highlight_vs_audio.
-//
-// The fix: highlight_vs_audio must only fire at the current beat or in the
-// future window. Past beats whose highlight expired naturally are not
-// violations — the audio fired correctly while the beat was current, the
-// highlight ran for its window, then expired by design.
+// highlight_vs_audio fires only at the current beat or ahead: a past beat's highlight ran its window and
+// expired by design after the audio fired correctly.
 func TestParityIgnoresExpiredHighlightInPast(t *testing.T) {
 	assertDefaultParityState(t)
 	g := buildTestGame(t)
@@ -38,29 +30,19 @@ func TestParityIgnoresExpiredHighlightInPast(t *testing.T) {
 	g.refreshDrumRow()
 	g.ClearParityMismatches()
 
-	// Simulate the failure mode from the field log:
-	//   abs=139 already played (sequencer advanced past it), audio event sits
-	//   in parityAudio with When>0, highlight has aged out.
+	// abs=139 already played, its audio event is logged, its highlight aged out.
 	g.SetPlaying(true)
 	g.elapsedBeats = 139
 	g.nextBeatIdxs = []int{140}
 	g.seqNextIdxs = []int{141}
 
-	// Pin the audio clock just past the injected event's When so the
-	// scheduled-in-the-future and clock-uninitialized skips in parityScan
-	// cannot mask the highlight check. Without this the test races
-	// time-since-binary-start under the real (non-test-tag) build: it
-	// passed in isolation (Now()≈0 → event looks 12s in the future) and
-	// panicked in a full `make test-real` run (Now()>12.5s).
+	// Pinned just past the event's When, so neither the future-lead skip nor the uninitialised-clock skip can mask
+	// the check; otherwise the result depends on how long the binary has been running.
 	const eventWhen = 12.578088
 	restoreNow := audio.SetNowForTest(func() float64 { return eventWhen + 0.1 })
 	t.Cleanup(restoreNow)
 
-	// Inject a recorded audio event AND matching seq decision for the past
-	// beat — exactly the state the field crash captured: scheduler scheduled
-	// the beat correctly, audio fired correctly, the highlight ran while the
-	// beat was current and then expired naturally. The only "anomaly" is the
-	// expired highlight, which is not actually a bug.
+	// Scheduled, played and highlighted correctly; only the expiry remains.
 	g.parityMu.Lock()
 	g.parityAudio = append(g.parityAudio, parityAudioEvent{
 		Row:       0,
@@ -85,9 +67,7 @@ func TestParityIgnoresExpiredHighlightInPast(t *testing.T) {
 	}
 	g.parityMu.Unlock()
 
-	// highlightedBeats is empty for abs=139 (highlight already expired).
-	// Without the fix, parityScan panics with highlight_vs_audio. With the
-	// fix, the past-beat skip rule short-circuits before the highlight check.
+	// The past-beat rule must short-circuit before the highlight check.
 	g.parityScan("test-expired-highlight-past")
 
 	for _, m := range g.ParityMismatchSnapshot() {

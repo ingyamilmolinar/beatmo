@@ -7,8 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
-// Long-run regression: an invisible playback commit far behind the live head
-// must remain immutable even after later graph edits.
+// A commit far behind the head stays immutable after later edits.
 func TestDrumView_InvisiblePlaybackCommitStaysFrozenAfterLongRun(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)

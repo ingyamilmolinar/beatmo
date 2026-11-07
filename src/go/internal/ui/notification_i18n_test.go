@@ -13,11 +13,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// TestNotificationRetranslatesOnLocaleSwitch is the core requirement: a stored
-// notification (and thus the history popup) must display in the CURRENT locale,
-// not the locale it was created in. Notifications are stored as a translatable
-// reference (i18n key + args) and rendered at display time, so switching to
-// Spanish re-renders the whole history in Spanish.
+// Stored as a key + args and rendered at display time, so the history shows in the CURRENT locale.
 func TestNotificationRetranslatesOnLocaleSwitch(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	g := newTestGameForUndo(t)
@@ -35,8 +31,6 @@ func TestNotificationRetranslatesOnLocaleSwitch(t *testing.T) {
 	}
 }
 
-// TestUndoNotificationRetranslatesOnLocaleSwitch proves undo/redo notifications
-// retranslate BOTH the "Undo:" prefix AND the action name when the locale flips.
 func TestUndoNotificationRetranslatesOnLocaleSwitch(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	g := newTestGameForUndo(t)
@@ -55,8 +49,7 @@ func TestUndoNotificationRetranslatesOnLocaleSwitch(t *testing.T) {
 	}
 }
 
-// TestNotificationRecordRoundTripsKeyArgs proves the persisted history carries
-// the key + args (not just frozen text), so a reloaded history retranslates.
+// Key + args, not frozen text, so a reloaded history retranslates.
 func TestNotificationRecordRoundTripsKeyArgs(t *testing.T) {
 	in := []notification{{key: i18n.KeyNotifRenamedInstrument, args: []string{"Kick-1"}, unixMs: 5}}
 	out := recordsToNotifs(notifsToRecords(in))
@@ -71,12 +64,8 @@ func TestNotificationRecordRoundTripsKeyArgs(t *testing.T) {
 	}
 }
 
-// TestNoUnlocalizedNotificationProducers is the exhaustiveness guard: no
-// production code may push a PRE-RENDERED i18n string into a notification
-// (notifyInfo/notifyError(i18n.T/Tf(...))). Such a string freezes in the
-// creation-time locale and won't retranslate in the history. Every producer
-// must use the keyed API (notifyInfoKey/notifyErrorKey) so the notification
-// carries its key + args and renders in the current locale.
+// A pre-rendered i18n string freezes in the creation-time locale; every producer uses notifyInfoKey /
+// notifyErrorKey.
 func TestNoUnlocalizedNotificationProducers(t *testing.T) {
 	files, err := filepath.Glob("*.go")
 	if err != nil {
@@ -98,10 +87,8 @@ func TestNoUnlocalizedNotificationProducers(t *testing.T) {
 	}
 }
 
-// TestLegacyTextNotificationRetranslates is the bug the user hit: a notification
-// persisted as a frozen ENGLISH string (no key — created before keyed storage or
-// in a prior English session) must STILL render in the current locale when the
-// history is drawn. display() reverse-maps the rendered text back to its key.
+// A history line persisted as frozen English text still renders in the current locale: display() maps the text
+// back to its key.
 func TestLegacyTextNotificationRetranslates(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	n := notification{text: "Renamed instrument to: Kick-1"} // legacy: text only, no key
@@ -111,8 +98,6 @@ func TestLegacyTextNotificationRetranslates(t *testing.T) {
 	}
 }
 
-// TestLegacyUndoTextNotificationRetranslates proves a frozen "Undo: <action>"
-// history line retranslates BOTH the prefix and the action name.
 func TestLegacyUndoTextNotificationRetranslates(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	n := notification{text: "Undo: edit sample"}
@@ -122,9 +107,7 @@ func TestLegacyUndoTextNotificationRetranslates(t *testing.T) {
 	}
 }
 
-// TestLegacyRecordingSavedRetranslates proves an old entry rendered with the
-// former %d format ("drops=0") still matches the current %s template and
-// retranslates.
+// Text rendered with the former %d format ("drops=0") still matches the %s template.
 func TestLegacyRecordingSavedRetranslates(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	n := notification{text: "Recording saved (drops=0): beatmo-rec.zip"}
@@ -134,8 +117,7 @@ func TestLegacyRecordingSavedRetranslates(t *testing.T) {
 	}
 }
 
-// TestUnknownTextNotificationStaysVerbatim proves a non-notification plain string
-// (no template match) is shown verbatim, never garbled.
+// No template match: shown verbatim, never garbled.
 func TestUnknownTextNotificationStaysVerbatim(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	n := notification{text: "a totally custom message"}

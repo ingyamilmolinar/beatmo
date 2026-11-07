@@ -8,8 +8,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestEqualRowPulseSpeeds ensures that for equal-length segments on different
-// rows, per-frame progress uses the same dt and therefore produces similar t.
 func TestEqualRowPulseSpeeds(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

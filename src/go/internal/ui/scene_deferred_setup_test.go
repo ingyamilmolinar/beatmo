@@ -4,14 +4,8 @@ package ui
 
 import "testing"
 
-// The native -scene path used to run Setup synchronously BEFORE Ebiten's
-// first Layout/Update, so popup-opening setups anchored against zero rects:
-// the context menu rendered clipped in the bottom-left corner, the
-// instrument menu landed fully offscreen, and the volume/long-press popups
-// captured nothing (A10 in the 2026-07-04 critique — the browser pass was
-// always correct because its runScene export defers via QueueAction).
-// RunScene on a not-yet-laid-out game must defer Setup into the update
-// loop and only then apply it against real geometry.
+// Setup run before the first Layout anchors popups against zero rects (menus clipped or offscreen), so RunScene on
+// a game not yet laid out defers it into the update loop, as the browser's runScene export does.
 func TestRunSceneDefersSetupUntilLaidOut(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -31,8 +25,7 @@ func TestRunSceneDefersSetupUntilLaidOut(t *testing.T) {
 	if !g.drum.IsContextMenuOpen() {
 		t.Fatal("deferred scene Setup never ran after layout")
 	}
-	// The menu must be anchored fully on-screen — the pre-fix failure mode
-	// was a rect clamped/clipped at the viewport's bottom-left.
+	// Fully on-screen, not clamped at the viewport's bottom-left.
 	r := g.drum.contextMenuRect
 	if r.Empty() {
 		t.Fatal("context menu rect empty after deferred setup")
@@ -42,8 +35,6 @@ func TestRunSceneDefersSetupUntilLaidOut(t *testing.T) {
 	}
 }
 
-// A scene applied to an already-laid-out game (tests, JS export after boot)
-// keeps the synchronous behavior.
 func TestRunSceneImmediateWhenLaidOut(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

@@ -6,8 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Shortening a loop by inserting a node in the middle (auto-stitch) should
-// immediately update the drum row to show hits on every subdivision.
+// Inserting a node mid-loop (auto-stitch) shows hits on every subdivision at once.
 func TestDrumRowLoopShorteningFillsSteps(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -48,8 +47,7 @@ func TestDrumRowLoopShorteningFillsSteps(t *testing.T) {
 	_ = g.Update()
 	advancePlaybackByAbs(g, g.grid.MaxDiv()*2)
 
-	// Live edit: insert a node at (1,0). Auto-stitch splits the edge so every
-	// subdivision now lands on a regular node.
+	// Auto-stitch splits the edge, so every subdivision lands on a regular node.
 	_ = g.tryAddNode(1, 0, model.NodeTypeRegular)
 
 	// Allow the UI/game loop to process predictor rebuilds and refresh rows.
@@ -76,8 +74,7 @@ func TestDrumRowLoopShorteningFillsSteps(t *testing.T) {
 	}
 }
 
-// Past cells must stay immutable when a loop is shortened; only future
-// predictions may change.
+// Only future cells may change.
 func TestDrumRowLoopShorteningPreservesHistory(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)

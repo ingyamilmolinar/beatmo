@@ -10,13 +10,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// The channel pill is a SELECTOR (identity), not a latched tab (state) —
-// it must not render in the same lit-amber active treatment as the tab
-// pills, or every screen reads as having two active tabs and the amber
-// "this is on" signal dilutes (D2 in the 2026-07-04 critique: mobile
-// Chain showed five gold actives at once). The pill renders as a neutral
-// dropdown control; the accent chevron + tinted border carry the
-// "opens a list" affordance (button-dropdown recipe).
+// A selector, not a latched tab: lit amber would make every screen read as having two active tabs. Neutral, with the
+// accent chevron and border saying "opens a list".
 func TestChannelPillIsNotLatchedAmber(t *testing.T) {
 	bar := NewAudioStickyBar(130, func() {}, func(PanelTab) {})
 	bar.Layout(image.Rect(0, 0, 800, 30))

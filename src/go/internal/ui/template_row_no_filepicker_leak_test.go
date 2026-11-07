@@ -6,11 +6,8 @@ import (
 	"testing"
 )
 
-// Reproduces the reported WASM-mobile bug: on the overflow menu's Templates
-// page, a stale File-page file-picker rect used to sit under a template row, so
-// tapping a template row opened the OS file picker. With the tree-owned
-// projection, no file-picker rect may be armed while the Templates page is
-// showing; the File page still arms Upload/Import.
+// A stale File-page picker rect under a template row would open the OS file picker on a tap; no picker rect is
+// armed on the Templates page, while the File page still arms Upload / Import.
 func TestOverflowTemplatePage_NoFilePickerRectArmed(t *testing.T) {
 	assertDefaultParityState(t)
 	restore := SetRuntimeProfileForTest(browserRuntimeProfile())
@@ -50,8 +47,7 @@ func TestOverflowTemplatePage_NoFilePickerRectArmed(t *testing.T) {
 		}
 	}
 
-	// Switch back to the File page. Upload+Import file-picker rects must
-	// return — the Templates-page clear must not be sticky.
+	// The Templates-page clear must not be sticky.
 	dv.overflowPage = 0
 	g.Update()
 	fileArmed = 0

@@ -6,8 +6,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
-// TestUndoableSetMatchesRegistry asserts the derived undo recorded-set is
-// exactly the registry's undoable subset — the single-source-of-truth invariant.
 func TestUndoableSetMatchesRegistry(t *testing.T) {
 	want := map[hooks.Kind]string{}
 	for _, a := range hooks.AllActions() {

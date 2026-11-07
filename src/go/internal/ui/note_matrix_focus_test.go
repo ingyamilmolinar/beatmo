@@ -10,12 +10,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// ─── 1. Input ownership ────────────────────────────────────────────────────
-//
-// While the picker is open it OWNS the arrow keys. The grid's arrow-pan must
-// not also run, or one keypress both moves the note cursor and pans the
-// camera. keyboard_focus.go already defines the contract for this
-// (KeyboardClaimant / KeyboardClaimed); the picker has to declare itself.
+// The open picker OWNS the arrow keys: if the grid's pan also ran, one press would move the cursor and pan the
+// camera. It declares itself through KeyboardClaimant.
 
 func TestNoteMatrix_ArrowKeysDoNotPanTheGrid(t *testing.T) {
 	g, _ := openMatrixForKeys(t)
@@ -33,8 +29,7 @@ func TestNoteMatrix_ArrowKeysDoNotPanTheGrid(t *testing.T) {
 	}
 }
 
-// The counterpart: with the picker CLOSED the grid must still pan, so the guard
-// above cannot be satisfied by breaking arrow-pan outright.
+// So the guard above cannot pass by breaking arrow-pan outright.
 func TestNoteMatrix_ArrowKeysStillPanWhenPickerClosed(t *testing.T) {
 	g, _ := matrixTestGame(t)
 	g.sidebar.Close()
@@ -46,8 +41,7 @@ func TestNoteMatrix_ArrowKeysStillPanWhenPickerClosed(t *testing.T) {
 	}
 }
 
-// The general contract, stated once: an open picker claims the keyboard, so
-// every gated grid shortcut yields. This is the predicate the grid consults.
+// The predicate the grid consults: every gated grid shortcut yields while the picker is open.
 func TestNoteMatrix_ClaimsKeyboardWhileOpen(t *testing.T) {
 	g, _ := matrixTestGame(t)
 	if g.KeyboardClaimed() {
@@ -71,9 +65,7 @@ func TestNoteMatrix_ClaimsKeyboardWhileOpen(t *testing.T) {
 
 // ─── 2. Cursor starts on the current note ──────────────────────────────────
 
-// Opening the picker must place the cursor on the note the node currently
-// sounds, so the first arrow press moves RELATIVE to where the user is, not
-// from a corner.
+// The first arrow then moves RELATIVE to the current note, not from a corner.
 func TestNoteMatrix_CursorStartsOnCurrentNote(t *testing.T) {
 	for _, start := range []float64{0, -12, 7} {
 		g, node := matrixTestGame(t)
@@ -108,8 +100,6 @@ func TestNoteMatrix_CursorStartsOnCurrentNote(t *testing.T) {
 	}
 }
 
-// Enter immediately after opening must therefore be a no-op on the value: the
-// cursor is already on the current note.
 func TestNoteMatrix_EnterOnOpenKeepsThePitch(t *testing.T) {
 	g, node := matrixTestGame(t)
 	mn, _ := g.graph.GetNodeByID(node.ID)
@@ -130,12 +120,8 @@ func TestNoteMatrix_EnterOnOpenKeepsThePitch(t *testing.T) {
 
 // ─── 3. Highlight fills the cell ───────────────────────────────────────────
 
-// cellCenterPixel renders the sidebar and reads the colour at a cell's centre.
-//
-// A PIXEL read, not a draw-call count. The first version of these tests counted
-// drawRoundedRect calls and PASSED while the highlight was completely
-// invisible — it was painted UNDER the opaque keycap, so the call happened and
-// the pixels never changed. Only the pixels prove a highlight is seen.
+// A PIXEL read, not a draw-call count: a highlight painted under the opaque keycap makes the call and changes
+// no pixel.
 func cellCenterPixel(t *testing.T, g *Game, r image.Rectangle) color.RGBA {
 	t.Helper()
 	img := ebiten.NewImage(g.winW, g.winH)
@@ -156,9 +142,7 @@ func nmSameColor(a, b color.RGBA) bool {
 	return d(a.R, b.R)+d(a.G, b.G)+d(a.B, b.B) < 12
 }
 
-// The current note must be highlighted with a visible FILL, not merely
-// outlined — compared against a plain neighbouring cell, so the assertion is
-// about what the user can actually see.
+// Compared against a plain neighbour, so the assertion is about what the user sees.
 func TestNoteMatrix_SelectedCellIsFilledNotJustOutlined(t *testing.T) {
 	g, _ := openMatrixForKeys(t)
 
@@ -188,8 +172,6 @@ func TestNoteMatrix_SelectedCellIsFilledNotJustOutlined(t *testing.T) {
 	}
 }
 
-// The keyboard cursor must also be a visible fill, and tellable apart from
-// both a plain cell and the selected note.
 func TestNoteMatrix_KeyboardCursorCellIsFilled(t *testing.T) {
 	g, _ := openMatrixForKeys(t)
 

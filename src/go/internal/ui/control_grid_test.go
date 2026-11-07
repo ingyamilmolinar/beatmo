@@ -7,10 +7,7 @@ import (
 	"testing"
 )
 
-// ControlGrid is a reusable geometry helper that lays controls out in an
-// adaptive grid (>= 2 columns, more when wide), wraps to multiple rows, and
-// scrolls vertically when the rows overflow the content rect. These tests pin
-// the contract independently of the synth panel that consumes it.
+// Adaptive columns (≥ 2, more when wide), wrapping, and vertical scrolling on overflow, independent of its callers.
 
 const (
 	tgCellIdealW = 72
@@ -232,8 +229,7 @@ func TestControlGrid_WheelStepsOneRowThenWaitsCooldown(t *testing.T) {
 	if got := g.Scroll().VS.First; got != 1 {
 		t.Fatalf("after first notch: First=%d, want 1", got)
 	}
-	// Immediately spinning again (same/next frames) is gated by the cooldown —
-	// this is what stops the wheel from flying through the whole list.
+	// The cooldown stops the wheel from flying through the list.
 	for i := 0; i < controlGridScrollCooldownFrames-1; i++ {
 		if g.WheelStep(-1) {
 			t.Fatalf("wheel moved during cooldown (frame %d)", i)

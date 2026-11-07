@@ -2,27 +2,9 @@
 
 package ui
 
-// Deterministic master-mix harness for the export → import audio-identity
-// tests (export_import_master_audio_identity_test.go).
-//
-// WHY A REAL-BUILD FILE. Under `-tags test` the synth renders through a stub
-// and NewEQProcessor returns a pass-through gain (see internal/audio/stub.go),
-// so a "byte-identical audio" assertion there proves nothing about the shipped
-// sound. These tests therefore run only in the real build — `make test-real`.
-//
-// WHAT IT RENDERS. renderLiveMasterMix drives the SAME offline mixer the
-// songrender path uses (audio.RenderMasterMixOffline), but against whatever the
-// engine currently holds: channel volume/pan, insert-effect chains, per-channel
-// EQ, delay/reverb sends, master EQ, compressor and limiter. Nothing is
-// re-applied from a spec first, so the render is a faithful readout of live
-// engine state — which is exactly the thing an export must be able to
-// reconstruct.
-//
-// WHERE THE NOTES COME FROM. liveArrangement walks the LIVE engine predictor
-// (g.engine.Predictor, the same buffers the sequencer schedules from), not the
-// project file. Both halves of a round-trip therefore derive their schedule
-// independently of the JSON, so a note-schedule regression cannot hide behind a
-// file that round-trips its own bytes.
+// Real build only. Renders the live engine state through the offline mixer with nothing re-applied, and reads the
+// notes from the live predictor, not the file, so a schedule regression cannot hide behind a file that round-trips
+// its own bytes.
 
 import (
 	"math"
@@ -34,15 +16,10 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// masterRenderSeconds is the default audio window compared by the identity
-// tests. Long enough to cover several bars at 120 BPM plus the reverb/delay
-// tail of the earliest hits, short enough to keep the suite quick.
+// Several bars at 120 BPM plus the earliest hits' tails.
 const masterRenderSeconds = 4.0
 
-// restoreLibraryCopies returns each instrument's project document to its
-// library copy. The documents are PROCESS-GLOBAL, so a test that edits or
-// Saves-As an instrument silently changes the starting state of every later
-// test in the package. Call it when setting up.
+// The documents are process-global, so an edit or Save As changes every later test's start.
 func restoreLibraryCopies(t *testing.T, ids ...instrument.ID) {
 	t.Helper()
 	for _, id := range ids {
@@ -50,14 +27,8 @@ func restoreLibraryCopies(t *testing.T, ids ...instrument.ID) {
 	}
 }
 
-// liveArrangement returns the note schedule the sequencer would emit for the
-// first `seconds` of playback, read from the live engine predictor.
-//
-// It mirrors songrender.BuildArrangement's semantics deliberately — same
-// AudibleAt gate, same loop folding, same duration/volume composition — so the
-// offline render lines up with what songrender produces for the same circuit.
-// It is a separate implementation only because BuildArrangement consumes a
-// parsed template while this must read the live Game.
+// From the live predictor, mirroring songrender.BuildArrangement's semantics (AudibleAt gate, loop folding,
+// duration/volume), which reads a parsed template instead of a Game.
 func liveArrangement(t *testing.T, g *Game, seconds float64) ([]audio.SongRenderNote, int) {
 	t.Helper()
 	sr := audio.SampleRate()
@@ -69,10 +40,7 @@ func liveArrangement(t *testing.T, g *Game, seconds float64) ([]audio.SongRender
 	if subdiv <= 0 {
 		subdiv = 32
 	}
-	// One step is one grid unit: 60/(BPM*MaxDiv) seconds — the same clock as
-	// songrender.StepSeconds and the sequencer. (This read the subdivision as
-	// units per BAR until 2026-10-02, so "the first N seconds" covered a
-	// quarter of the music it claimed to.)
+	// One grid unit: 60/(BPM·MaxDiv) s, the sequencer's clock.
 	secPerStep := 60.0 / float64(bpm) / float64(subdiv)
 	samplesPerStep := secPerStep * float64(sr)
 	totalSamples := int(math.Round(seconds * float64(sr)))
@@ -130,8 +98,7 @@ func liveArrangement(t *testing.T, g *Game, seconds float64) ([]audio.SongRender
 				Gain:     vol,
 				DurSec:   dur,
 			}
-			// A chord node sounds its whole voice stack (model.NodeLayers), as
-			// the lane / legacy dispatch and songrender do.
+			// A chord sounds its whole voice stack, as dispatch and songrender do.
 			layers := model.NodeLayers(node.Type, node.Params)
 			if layers == nil {
 				notes = append(notes, note)
@@ -147,8 +114,7 @@ func liveArrangement(t *testing.T, g *Game, seconds float64) ([]audio.SongRender
 	return notes, totalSamples
 }
 
-// liveBeatInfoAt folds an absolute step into a row's path, honoring the row's
-// loop — the predictor's own index folding, mirrored so the schedule matches.
+// The predictor's own index folding.
 func liveBeatInfoAt(path []model.BeatInfo, isLoop bool, loopStart, abs int) (model.BeatInfo, bool) {
 	if len(path) == 0 {
 		return model.BeatInfo{}, false
@@ -166,8 +132,7 @@ func liveBeatInfoAt(path []model.BeatInfo, isLoop bool, loopStart, abs int) (mod
 	return path[loopStart+((abs-loopStart)%loopLen)], true
 }
 
-// renderLiveMasterMix renders `seconds` of the game's circuit through the real
-// offline mixer and master chain, returning the captured master PCM.
+// Through the real offline mixer and master chain.
 func renderLiveMasterMix(t *testing.T, g *Game, seconds float64) []float64 {
 	t.Helper()
 	game_log.TailOnFailure(t) // the capture lines, only if this test fails
@@ -175,8 +140,7 @@ func renderLiveMasterMix(t *testing.T, g *Game, seconds float64) []float64 {
 	return audio.RenderMasterMixOffline(notes, audio.SampleRate(), totalSamples)
 }
 
-// pcmIdentical reports the index and magnitude of the first mismatch, plus the
-// total number of differing samples. n == 0 means byte-identical.
+// n == 0 means byte-identical.
 func pcmIdentical(a, b []float64) (firstIdx int, firstDelta float64, n int) {
 	firstIdx = -1
 	if len(a) != len(b) {
@@ -193,9 +157,7 @@ func pcmIdentical(a, b []float64) (firstIdx int, firstDelta float64, n int) {
 	return firstIdx, firstDelta, n
 }
 
-// assertMasterPCMIdentical fails with a diagnostic that names where the two
-// renders diverge and how loud the divergence is — "differs" alone gives a
-// reader nothing to work with.
+// Names where and how loudly they diverge.
 func assertMasterPCMIdentical(t *testing.T, want, got []float64, what string) {
 	t.Helper()
 	if len(want) != len(got) {

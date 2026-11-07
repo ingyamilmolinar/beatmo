@@ -9,16 +9,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// testMelodicInst is a shipped melodic instrument (render.melodic: rendered AT
-// each node's pitch). The tests that use it are about a melodic row's role —
-// the longest-sustaining channel, one voice per pitch — not about this id.
+// These tests are about a melodic row's role (longest sustain, one voice per pitch), not this id.
 const testMelodicInst = roster.PianoFelt
 
-// newMelodicCircuitGame builds a circuit for melodic-row regressions,
-// independent of the shipped startup demo:
-//
-//	row 0: testMelodicInst, a loop whose nodes play pitches in order
-//	row 1: kick, a two-node loop (so solo has a row to silence)
+// Independent of the shipped startup demo. Row 1, a kick loop, gives solo a row to silence.
 func newMelodicCircuitGame(t *testing.T, pitches ...float64) *Game {
 	t.Helper()
 	if !audio.IsMelodicInstrument(testMelodicInst) {

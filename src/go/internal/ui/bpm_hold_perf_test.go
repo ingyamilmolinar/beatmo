@@ -8,10 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// TestBPMHoldUpdateLatency ensures that holding the BPM increment button
-// never blocks the game update loop even if the audio layer is slow to
-// acknowledge tempo changes. It exercises a large number of updates while
-// audio.SetBPM sleeps and asserts each call to Update returns promptly.
+// Holding BPM+ never blocks Update even when audio.SetBPM is slow.
 func TestBPMHoldUpdateLatency(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

@@ -12,12 +12,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// warmSetTestGameWithTemplate loads a real multi-row circuit (3 rows /
-// 117 nodes / ~16 distinct (instrument, pitch) pairs) instead of the bare
-// New() fixture, which is empirically 1 row / 1 node / 1 beat-info and cannot
-// exercise dedup, the cap, or multi-row coverage. Skips (does not fail) the
-// test if the asset is unreadable, so a missing fixture never masquerades as
-// a real failure.
+// A real multi-row template: the bare New() fixture has one row and one node, too little to exercise dedup, the cap
+// or multi-row coverage. Skips rather than fails if the asset is unreadable.
 func warmSetTestGameWithTemplate(t *testing.T) *Game {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -35,9 +31,7 @@ func warmSetTestGameWithTemplate(t *testing.T) *Game {
 	return g
 }
 
-// countRegularBeatInfos walks g.beatInfosByRow exactly like buildWarmSet does
-// and counts every NodeTypeRegular entry across every row, WITHOUT
-// deduplicating. This is the raw walk count the dedup test compares against.
+// The raw walk count, without deduplication.
 func countRegularBeatInfos(g *Game) int {
 	n := 0
 	rows := g.beatInfosByRow
@@ -57,13 +51,8 @@ func countRegularBeatInfos(g *Game) int {
 	return n
 }
 
-// TestBuildWarmSetCoversEveryRowPitch asserts the warm set enumerates every
-// distinct (instrument, rounded-pitch) pair the circuit can trigger — NOT just
-// the pairs inside the current predictor render window, and NOT just row 0.
-// The window horizon was the original bug: pitches outside it were only
-// discovered mid-playback. Uses the 3-row Ode to Joy template so a "only
-// processes the first row" or "breaks after the first regular node" bug is
-// actually reachable.
+// Every distinct (instrument, rounded pitch) the circuit can trigger, not only those in the render window or on row
+// 0: a pitch outside the window would be discovered mid-playback.
 func TestBuildWarmSetCoversEveryRowPitch(t *testing.T) {
 	g := warmSetTestGameWithTemplate(t)
 
@@ -88,9 +77,7 @@ func TestBuildWarmSetCoversEveryRowPitch(t *testing.T) {
 		distinctInst[string(it.inst)] = true
 	}
 
-	// A bug that only walks row 0 (or stops after the first regular node)
-	// would still pass a single-instrument check on the New() fixture, but
-	// must fail here: this template has 3 differently-instrumented rows.
+	// Three differently instrumented rows, so a walk of row 0 only fails here.
 	if len(distinctInst) < 2 {
 		t.Fatalf("warm set spans only %d distinct instrument(s) %v; expected coverage of multiple rows (cello/contrabass/bassoon)", len(distinctInst), distinctInst)
 	}
@@ -110,12 +97,8 @@ func TestBuildWarmSetCoversEveryRowPitch(t *testing.T) {
 	}
 }
 
-// TestBuildWarmSetDeduplicates pins that a looping melody producing the same
-// (instrument, pitch) on many beats yields ONE item, so a graph edit cannot
-// burst-flood the warm backend. Uses the Ode to Joy template (117 nodes
-// collapsing to ~16 pairs) so the assertion can actually observe collapsing —
-// against the bare 1-node New() fixture this test could pass even if dedup
-// were deleted entirely.
+// Many beats of the same pair yield ONE item, so a graph edit cannot flood the warm backend; the template collapses
+// enough that deleting dedup would show.
 func TestBuildWarmSetDeduplicates(t *testing.T) {
 	g := warmSetTestGameWithTemplate(t)
 
@@ -135,11 +118,8 @@ func TestBuildWarmSetDeduplicates(t *testing.T) {
 	}
 }
 
-// TestBuildWarmSetRespectsCap pins the bound so a pathological circuit cannot
-// make the readiness gate effectively infinite. maxWarmSetItems is lowered
-// below the template's natural size so truncation is actually exercised
-// (against the default 512 cap and a 16-item fixture, this test could pass
-// even if the cap check were deleted).
+// A pathological circuit must not make the gate effectively infinite; the cap is lowered below the template's size
+// so truncation really happens.
 func TestBuildWarmSetRespectsCap(t *testing.T) {
 	g := warmSetTestGameWithTemplate(t)
 
@@ -160,8 +140,7 @@ func TestBuildWarmSetRespectsCap(t *testing.T) {
 		t.Error("truncated flag not set when the cap was hit")
 	}
 
-	// Companion: with the cap above the fixture's natural size, truncated
-	// must be false and the set must match the untruncated size.
+	// With the cap above the natural size nothing is truncated.
 	maxWarmSetItems = orig
 	if full.truncated {
 		t.Error("truncated flag set when the cap was not hit")
@@ -171,14 +150,8 @@ func TestBuildWarmSetRespectsCap(t *testing.T) {
 	}
 }
 
-// TestWarmSetIgnoresTheVisibleWindow pins that the warm set covers the row's
-// whole graph path, not the slice of it currently on screen. beatInfosByRow is
-// the full path from graph.CalculateBeatRowFrom (NOT a render window), so
-// scrolling or shrinking the timeline must not shrink the set. Guards against a
-// future "optimization" that scopes warming to the viewport — which would put
-// every off-screen pitch back on the cold-render path during playback. Run
-// against the Ode to Joy template so "the set did not shrink" is a statement
-// about ~16 items, not the trivial 1-item New() fixture.
+// The warm set follows the whole graph path, not the slice on screen: warming only the viewport would put every
+// off-screen pitch back on the cold-render path during playback.
 func TestWarmSetIgnoresTheVisibleWindow(t *testing.T) {
 	g := warmSetTestGameWithTemplate(t)
 

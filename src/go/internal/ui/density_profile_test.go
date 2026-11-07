@@ -9,11 +9,7 @@ import (
 	"testing"
 )
 
-// TestDefaultDensityForScreenClass pins the canonical coupling: mobile
-// → Spacious, desktop → Comfortable. The default-coupling is mutable
-// at runtime (SetDensityForTest, future Settings UI) but the defaults
-// must stay stable to preserve pixel-perfect parity with pre-density
-// renders.
+// Mobile → Spacious, desktop → Comfortable; mutable at runtime, but the defaults keep parity with existing renders.
 func TestDefaultDensityForScreenClass(t *testing.T) {
 	if got := defaultDensityFor(ScreenDesktop); got != DensityComfortable {
 		t.Errorf("defaultDensityFor(ScreenDesktop) = %v, want DensityComfortable", got)
@@ -23,9 +19,7 @@ func TestDefaultDensityForScreenClass(t *testing.T) {
 	}
 }
 
-// TestSetDensityForTestRestores pins the restore-function contract.
-// Mirrors SetRuntimeProfileForTest so the test-override pattern stays
-// uniform across the three axes.
+// The same restore pattern as SetRuntimeProfileForTest.
 func TestSetDensityForTestRestores(t *testing.T) {
 	prev := activeDensity()
 	restore := SetDensityForTest(DensityCompact)
@@ -38,8 +32,7 @@ func TestSetDensityForTestRestores(t *testing.T) {
 	}
 }
 
-// TestDensityValuesFor pins the lookup table. Unknown densities fall
-// back to Comfortable so a bad enum can never panic a render path.
+// An unknown density falls back to Comfortable, so a bad enum never panics a render.
 func TestDensityValuesFor(t *testing.T) {
 	if densityValuesFor(DensityCompact) != genCompactDensity {
 		t.Errorf("densityValuesFor(Compact) != genCompactDensity")
@@ -56,10 +49,7 @@ func TestDensityValuesFor(t *testing.T) {
 	}
 }
 
-// TestSpaciousMeetsTouchMin: every density-tied hit-target at Spacious
-// must be ≥ 44 px (Apple HIG minimum). Catches anyone who edits the
-// `spacious:` block in DESIGN.md and accidentally drops a control
-// below the touch floor.
+// Every hit target at Spacious ≥ 44 px, so an edit to DESIGN.md cannot drop one below the touch floor.
 func TestSpaciousMeetsTouchMin(t *testing.T) {
 	const touchMin = 44
 	dv := genSpaciousDensity
@@ -75,9 +65,7 @@ func TestSpaciousMeetsTouchMin(t *testing.T) {
 		{"HeaderMinH", dv.HeaderMinH},
 		// EqHandleRadius is a radius — diameter (radius*2) must ≥ touchMin.
 		{"EqHandleDiameter", dv.EqHandleRadius * 2},
-		// NOTE: FxToggleTrackW (40 px on mobile) is a *track* dimension, not
-		// the toggle's hit-target. The full toggle hit area is enforced via
-		// ExpandHitArea at the call site, not the track width. Skip here.
+		// FxToggleTrackW is a track, not a hit target; the toggle's target is expanded at its call site.
 	}
 	for _, c := range cases {
 		if c.v < touchMin {
@@ -86,11 +74,7 @@ func TestSpaciousMeetsTouchMin(t *testing.T) {
 	}
 }
 
-// TestComfortablePreservesDesktopParity pins the parity contract: at
-// the default density (Comfortable for ScreenDesktop), every density-
-// tied field must match the pre-density profileOverrides.desktop
-// value, so existing pixel output is unchanged. Drift here means a
-// future DESIGN.md edit silently shifted desktop sizing.
+// Comfortable equals the desktop profile values, so desktop pixels are unchanged.
 func TestComfortablePreservesDesktopParity(t *testing.T) {
 	dv := genComfortableDensity
 	gd := genDesktopProfile
@@ -122,9 +106,7 @@ func TestComfortablePreservesDesktopParity(t *testing.T) {
 	}
 }
 
-// TestSpaciousMatchesMobileParity: Spacious mirrors today's mobile
-// values for every shared field so the default-coupling preserves
-// pixel parity for ScreenMobile.
+// Spacious equals the mobile values.
 func TestSpaciousMatchesMobileParity(t *testing.T) {
 	dv := genSpaciousDensity
 	gm := genMobileProfile
@@ -148,10 +130,7 @@ func TestSpaciousMatchesMobileParity(t *testing.T) {
 	}
 }
 
-// TestDesignMDDriftDensities pins the YAML `densities:` block to the
-// generated `genXxxDensity` structs. Adding a field to the YAML
-// without regenerating fails this test; dropping a YAML field while
-// keeping the Go field also fails.
+// The YAML block and the generated structs agree in both directions.
 func TestDesignMDDriftDensities(t *testing.T) {
 	path := findDesignMD(t)
 	body, err := os.ReadFile(path)
@@ -167,9 +146,7 @@ func TestDesignMDDriftDensities(t *testing.T) {
 			len(gotCompact), len(gotComfortable), len(gotSpacious))
 	}
 
-	// Field map: YAML key → resolver returning (compact, comfortable,
-	// spacious) Go values. Mirrors the wantSpacing shape in the
-	// existing color-drift map.
+	// YAML key → (compact, comfortable, spacious).
 	type triple [3]int
 	want := map[string]triple{
 		"rowHeight":             {genCompactDensity.RowHeight, genComfortableDensity.RowHeight, genSpaciousDensity.RowHeight},
@@ -226,9 +203,7 @@ func TestDesignMDDriftDensities(t *testing.T) {
 	}
 }
 
-// extractDensityBlock pulls a single `<density>:` sub-mapping out of
-// the `densities:` YAML block. Returns key→raw-value (string) for
-// every field declared under that density.
+// key → raw value for one density.
 func extractDensityBlock(front, density string) map[string]string {
 	out := map[string]string{}
 	// Find `densities:` block.
@@ -244,8 +219,7 @@ func extractDensityBlock(front, density string) map[string]string {
 		return out
 	}
 	body := rest[dstart+len(header):]
-	// Walk lines until indentation falls below 4 spaces (next density
-	// or next top-level key).
+	// Until the indentation falls below 4: the next density or top-level key.
 	for _, line := range strings.Split(body, "\n") {
 		if line == "" {
 			continue

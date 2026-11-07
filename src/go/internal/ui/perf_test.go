@@ -10,9 +10,6 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestDesktopPerfCountersCollect performs a short stress run under the test
-// Ebiten stubs and verifies that perf counters are populated while audio
-// scheduling is active. It prints a brief summary for humans to compare.
 func TestDesktopPerfCountersCollect(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
@@ -74,15 +71,8 @@ func TestDesktopPerfCountersCollect(t *testing.T) {
 	}
 }
 
-// TestPerfResetClearsDrawStats pins the resetPerfStats() contract: resetting
-// must zero the DRAW accumulators (drawSumNS/drawMaxNS), not only the
-// update/audio ones. The omission made DrawAvgMS report cumulative-since-page
-// draw time divided by per-reset frames, so it grew monotonically across every
-// resetPerfStats() call — corrupting drawAvg/drawMax in every perf test that
-// resets between phases (webaudio_perf_e2e, webaudio_fx_chain_stress). Found
-// while A/B profiling the choppy-audio FX-chain stress run, where baseline
-// (no audio chain) reported HIGHER drawAvg than the heavy circuit purely
-// because it ran later in the same page session.
+// Without zeroing the draw accumulators, DrawAvgMS divides cumulative draw time by per-reset frames and grows
+// across every reset, corrupting every perf test that resets between phases.
 func TestPerfResetClearsDrawStats(t *testing.T) {
 	var p perfCounters
 	// Get past the draw warmup so onDraw actually accumulates.

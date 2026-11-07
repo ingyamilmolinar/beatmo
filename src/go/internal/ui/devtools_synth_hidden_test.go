@@ -12,9 +12,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// The production Synth tab (spec 2026-10-24 §4.2) is category cards with dials
-// and the graph — nothing else. No pipeline strip, no "+ Add", no drill into
-// raw knobs (a card tap focuses instead), and no card without a dial to turn.
+// Category cards with dials and the graph only: no strip, no "+ Add", no drill (a card tap focuses), no dial-less
+// card.
 
 func TestProductionSynthHasNoLowLevelSurfaces(t *testing.T) {
 	forceProductionUIForTest(t)
@@ -71,8 +70,7 @@ func TestDevBuildSynthKeepsLowLevelSurfaces(t *testing.T) {
 	}
 }
 
-// Hiding dial-less cards and the dials the DSP finds inert must leave every
-// instrument something to shape: the floor is 4 dials on 2 cards.
+// A floor of 4 dials on 2 cards.
 func TestEveryInstrumentKeepsProductionDials(t *testing.T) {
 	for _, id := range roster.All {
 		schema := audio.InstrumentParamDefs(id)

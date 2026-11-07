@@ -35,8 +35,7 @@ func TestNavigationPanelWiresControls(t *testing.T) {
 	// Drawing must not panic and must render (pixel presence).
 	dst := ebiten.NewImage(320, h)
 	p.Draw(dst)
-	// The *Button controls (prev/amount/next/Go) fire their callbacks via
-	// OnClick; Go seeks to the wheel's pending position (seated at the playhead).
+	// Go seeks to the wheel's pending position, seated at the playhead.
 	fired := map[string]*int{"prev": &prev, "next": &next, "pick": &pick, "go": &gotoN}
 	for _, b := range p.Buttons() {
 		if b.OnClick != nil {
@@ -51,8 +50,6 @@ func TestNavigationPanelWiresControls(t *testing.T) {
 	if gotoAt != 96 {
 		t.Fatalf("Go seeked to %d, want the playhead step 96 (nothing scrolled)", gotoAt)
 	}
-	// The unit toggle is a SegmentedControl: with Beats (unit=true) active,
-	// tapping the Subdiv segment fires OnToggleUnit.
 	suppressClicksUntilRelease = false
 	seg1 := p.unitSeg.SegmentRect(1)
 	p.HandleInput((seg1.Min.X+seg1.Max.X)/2, (seg1.Min.Y+seg1.Max.Y)/2, true)
@@ -61,10 +58,7 @@ func TestNavigationPanelWiresControls(t *testing.T) {
 	}
 }
 
-// TestNavigationPanelHandleInputFiresOncePerPress guards the Task 3 fix:
-// HandleInput must delegate to Button.HandleInputResult so a held press fires
-// OnClick exactly once (on the held==1 edge), not once per pressed frame.
-// The pre-fix body fired b.OnClick on every frame where pressed==true.
+// Delegating to Button.HandleInputResult fires once on the held==1 edge, not on every pressed frame.
 func TestNavigationPanelHandleInputFiresOncePerPress(t *testing.T) {
 	suppressClicksUntilRelease = false
 	var prev int
@@ -79,8 +73,6 @@ func TestNavigationPanelHandleInputFiresOncePerPress(t *testing.T) {
 	pr := p.prevBtn.Rect()
 	cx, cy := (pr.Min.X+pr.Max.X)/2, (pr.Min.Y+pr.Max.Y)/2
 
-	// Three consecutive pressed frames without release = one held press.
-	// A correct edge-firing handler fires OnPrev exactly once.
 	p.HandleInput(cx, cy, true)
 	p.HandleInput(cx, cy, true)
 	p.HandleInput(cx, cy, true)

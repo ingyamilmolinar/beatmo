@@ -14,10 +14,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
-// TestImportRegistersSampleInstruments verifies that a project referencing
-// WAV-backed instruments by id resolves them through the audio catalog after
-// import. The catalog is staged with synthetic tiny WAVs in t.TempDir() — the
-// runtime never depends on embedded sample bytes or repo-tracked sample files.
+// The catalog is staged with tiny synthetic WAVs: the runtime never depends on embedded or repo-tracked samples.
 func TestImportRegistersSampleInstruments(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	entries := testwav.Stage(t, []testwav.Spec{
@@ -58,9 +55,6 @@ func TestImportRegistersSampleInstruments(t *testing.T) {
 	}
 }
 
-// TestImportRespectsExplicitPath verifies that an instrument carrying an
-// explicit Path field is registered against the audio engine even when no
-// catalog entry exists for the id — the documented "external reference" path.
 func TestImportRespectsExplicitPath(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	withAudioCatalog(t, nil)

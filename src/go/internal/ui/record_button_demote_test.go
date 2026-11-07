@@ -8,19 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestRecordButtonMobile_DemotedByToneNotGeometry pins the replacement for the
-// old "B12" geometric demote.
-//
-// Record used to be shrunk 8 px top and bottom on mobile so it would not sit at
-// equal visual weight with play/stop. That left two ~6 px bands of the
-// surrounding chip visible above and below it, which read on screen as a
-// horizontal line cutting across the top of its slot. The demotion is now
-// carried entirely by TONE — record's muted colRecordIdle against play's
-// saturated green — so the box can stay aligned with its siblings.
-//
-// This test asserts BOTH halves of that trade: the geometry matches, and the
-// tint still differs. Dropping either one would restore the bug or lose the
-// demotion. See DESIGN.md "Cluster alignment".
+// Record is demoted by TONE (muted colRecordIdle against play's green), not by shrinking it: a shrunk key leaves
+// bands of its chip that read as a stray line. Both halves are checked: geometry matches, tint differs.
 func TestRecordButtonMobile_DemotedByToneNotGeometry(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -52,9 +41,7 @@ func TestRecordButtonMobile_DemotedByToneNotGeometry(t *testing.T) {
 	}
 }
 
-// TestRecordButtonDesktop_Unchanged is a regression guard that desktop
-// keeps record at parity with play/stop. Demote is a mobile-only call
-// because mid-jam mis-tap risk is much higher on touchscreens.
+// Mid-jam mis-taps are a touchscreen risk, so only mobile demotes it.
 func TestRecordButtonDesktop_Unchanged(t *testing.T) {
 	setupMobileTest(t, false)
 	logger := log.New(testLogOutput(), log.LevelInfo)

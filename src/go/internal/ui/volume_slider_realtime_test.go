@@ -9,8 +9,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestRowVolumeClickInvalidatesCache verifies that clicking a row volume area
-// (which opens the popup) invalidates the row controls cache.
 func TestRowVolumeClickInvalidatesCache(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 600, 300), nil, testLogger)
 	dv.recalcButtons()
@@ -45,18 +43,12 @@ func TestRowVolumeClickInvalidatesCache(t *testing.T) {
 
 	dv.Update()
 
-	// The volume area click opens a popup and triggers recalcButtons,
-	// which rebuilds layout and invalidates the cache.
-	// The row controls cache should be dirty after layout changes.
+	// Opening the popup triggers recalcButtons, whose layout rebuild dirties the cache.
 	if !dv.rowControlsCacheDirty {
-		// Even if cache invalidation doesn't happen from the click itself,
-		// the layout recalc during Update sets it dirty.
 		t.Log("note: rowControlsCacheDirty may be set by layout recalc, not slider drag")
 	}
 }
 
-// TestRowVolumePopupChangesVolume verifies that adjusting volume through the
-// popup actually changes the row volume value.
 func TestRowVolumePopupChangesVolume(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 600, 300), nil, testLogger)
 	dv.recalcButtons()

@@ -9,11 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestInstMenuComp_StarToggleHitArea verifies that the star column lays
-// out one hit rectangle per visible instrument when a FavoritesStore is
-// wired in, and zero rectangles when no store is configured. This is
-// the load-bearing assertion for Phase 5: it pins the favorites
-// integration without coupling to legacy scroll state.
+// One star hit rect per visible instrument with a FavoritesStore, none without.
 func TestInstMenuComp_StarToggleHitArea(t *testing.T) {
 	store := NewInMemoryFavoritesStore()
 	comp := NewInstrumentMenuComponent()
@@ -29,8 +25,6 @@ func TestInstMenuComp_StarToggleHitArea(t *testing.T) {
 	})
 	comp.Open()
 	if comp.state.mode != InstMenuModeInstruments {
-		// The component opens in instruments mode unless ForceCategories
-		// is set; skip the precondition if categories are forced.
 		t.Logf("opened in mode=%v (instruments mode required for stars)", comp.state.mode)
 	}
 	if got := nonEmptyStars(comp); got < 2 {
@@ -54,10 +48,7 @@ func TestInstMenuComp_StarToggleHitArea(t *testing.T) {
 	}
 }
 
-// TestInstMenuComp_StarColumnDisabledWhenNoStore verifies the column is
-// not rendered (and no hit rects allocated) when Favorites is nil. This
-// keeps the legacy menu layout unchanged for callers that haven't opted
-// into favorites yet.
+// Callers with no FavoritesStore keep the layout without a star column.
 func TestInstMenuComp_StarColumnDisabledWhenNoStore(t *testing.T) {
 	comp := NewInstrumentMenuComponent()
 	comp.SetProps(InstrumentMenuProps{
@@ -70,8 +61,7 @@ func TestInstMenuComp_StarColumnDisabledWhenNoStore(t *testing.T) {
 		Favorites: nil,
 	})
 	comp.Open()
-	// favRects is row-indexed, so it has one (zero) slot per row; what must
-	// be absent is any drawable/hittable star.
+	// favRects is row-indexed, so it has one zero slot per row; no star may be drawable or hittable.
 	if got := nonEmptyStars(comp); got != 0 {
 		t.Fatalf("expected zero star hit rects when Favorites is nil, got %d", got)
 	}
@@ -80,10 +70,6 @@ func TestInstMenuComp_StarColumnDisabledWhenNoStore(t *testing.T) {
 	}
 }
 
-// TestInstMenuComp_BreadcrumbAccessor confirms the new BreadcrumbPath()
-// accessor returns sensible values across the open/categories/instruments
-// state transitions. Phase 6 migrates legacy mode-enum tests onto this
-// API.
 func TestInstMenuComp_BreadcrumbAccessor(t *testing.T) {
 	comp := NewInstrumentMenuComponent()
 	if got := comp.BreadcrumbPath(); len(got) != 0 {
@@ -103,12 +89,7 @@ func TestInstMenuComp_BreadcrumbAccessor(t *testing.T) {
 	}
 }
 
-// instMenuTestProps is a small helper for the tests below: returns a fully-
-// formed InstrumentMenuProps with `instruments` (each labeled by id) sorted
-// into one synthetic category. ShowFavoritesCategory defaults true here so
-// tests opt in by default; legacy tests in drumview_test.go that call
-// NewDrumView directly do not (the flag is wired by the production builder
-// and is opt-out for them).
+// ShowFavoritesCategory defaults true here; NewDrumView callers that skip the production builder do not get it.
 func instMenuTestProps(instruments []InstrumentOption, categories []audio.Category) InstrumentMenuProps {
 	return InstrumentMenuProps{
 		AnchorRect:            image.Rect(0, 0, 240, 24),
@@ -120,11 +101,7 @@ func instMenuTestProps(instruments []InstrumentOption, categories []audio.Catego
 	}
 }
 
-// TestInstMenu_FavoritesVirtualCategoryAppearsFirst pins that the menu
-// renders "Favorites" as the very first category row whenever a Favorites
-// store is wired, and that the row carries its ★ count as a trailing
-// caption (categoryMeta) so a glance tells the user how many ★s they've
-// collected — the count is display metadata, not part of the label.
+// The ★ count is a trailing caption (display metadata), never part of the label.
 func TestInstMenu_FavoritesVirtualCategoryAppearsFirst(t *testing.T) {
 	store := NewInMemoryFavoritesStore(roster.Kick, roster.Snare)
 	props := instMenuTestProps(
@@ -156,10 +133,7 @@ func TestInstMenu_FavoritesVirtualCategoryAppearsFirst(t *testing.T) {
 	}
 }
 
-// TestInstMenu_FavoritesEmptyState pins the onboarding hint shown when the ★
-// store is empty. Without this guard a fresh install would surface "No
-// matches" when the user clicked Favorites — confusing because it implies a
-// search ran.
+// An empty ★ store shows an onboarding hint: "No matches" would imply a search ran.
 func TestInstMenu_FavoritesEmptyState(t *testing.T) {
 	store := NewInMemoryFavoritesStore() // empty
 	props := instMenuTestProps(
@@ -175,8 +149,7 @@ func TestInstMenu_FavoritesEmptyState(t *testing.T) {
 	comp.SetProps(props)
 	comp.Open()
 
-	// Click the Favorites virtual category (always index 0 when the store is
-	// wired).
+	// Favorites is always index 0 when the store is wired.
 	btns := comp.CategoryBtns()
 	if len(btns) == 0 || btns[0].OnClick == nil {
 		t.Fatalf("Favorites button missing OnClick")
@@ -199,9 +172,6 @@ func TestInstMenu_FavoritesEmptyState(t *testing.T) {
 	}
 }
 
-// TestInstMenu_FavoritesPinnedInInstrumentsMode pins the empty-query order:
-// within a regular category, ★-favorited items sort before non-favorited
-// items, alphabetically within each tier.
 func TestInstMenu_FavoritesPinnedInInstrumentsMode(t *testing.T) {
 	store := NewInMemoryFavoritesStore("zeta-fav", "alpha-fav")
 	insts := []InstrumentOption{
@@ -220,10 +190,7 @@ func TestInstMenu_FavoritesPinnedInInstrumentsMode(t *testing.T) {
 	comp.state.activeCat = audio.CatPercussion
 	comp.Open()
 
-	// filteredInsts should be ordered: ★ alpha first, then non-★ in input
-	// order (tier 2 keeps the catalog's curated ordering — see
-	// PinSource.SortByTierAlpha for the contract). Input order for the
-	// non-★ items is mike before charlie.
+	// The non-★ tier keeps the catalogue's curated order (mike before charlie), not alphabetical.
 	got := comp.state.filteredInsts
 	want := []string{"alpha-fav", "zeta-fav", "mike", "charlie"}
 	if len(got) != len(want) {
@@ -236,11 +203,7 @@ func TestInstMenu_FavoritesPinnedInInstrumentsMode(t *testing.T) {
 	}
 }
 
-// TestInstMenu_FavoritesPinnedWithSearchQuery pins fuzzy-score primacy: a
-// clearly higher score wins over a ★, but within equal-score groups the ★
-// breaks the tie. Without this, a project pinned the user types "snare"
-// against would surface a weakly-matched ★ ahead of a strongly-matched
-// non-★.
+// A clearly higher score beats a ★; the ★ only breaks ties, or a weakly matched ★ would sit above a strong match.
 func TestInstMenu_FavoritesPinnedWithSearchQuery(t *testing.T) {
 	store := NewInMemoryFavoritesStore(roster.KickDeep) // kick-fav is ★ but a weak match for "snare"
 	insts := []InstrumentOption{
@@ -258,9 +221,7 @@ func TestInstMenu_FavoritesPinnedWithSearchQuery(t *testing.T) {
 	comp.SetSearchText("snare")
 
 	got := comp.state.filteredInsts
-	// "snare-tight" and "snare-loose" both hit; alphabetical breaks the tie.
-	// "kick-fav" doesn't contain s-n-a-r-e in order so it shouldn't match at
-	// all. (The fuzzy matcher requires query as a subsequence.)
+	// The query must be a subsequence, so "kick-fav" does not match; alphabetical breaks the tie.
 	if len(got) != 2 {
 		t.Fatalf("expected 2 results for 'snare', got %d (%v)", len(got), got)
 	}
@@ -271,9 +232,7 @@ func TestInstMenu_FavoritesPinnedWithSearchQuery(t *testing.T) {
 	}
 }
 
-// TestInstMenu_ProjectPinsBeatUserStars pins the tier ordering: project pins
-// (tier 0) sort above ★ items (tier 1) above the rest (tier 2). All three
-// alphabetically within their tier.
+// Project pins, then ★, then the rest; alphabetical within each tier.
 func TestInstMenu_ProjectPinsBeatUserStars(t *testing.T) {
 	store := NewInMemoryFavoritesStore("user-star")
 	insts := []InstrumentOption{
@@ -302,9 +261,7 @@ func TestInstMenu_ProjectPinsBeatUserStars(t *testing.T) {
 	}
 }
 
-// TestInstMenu_BackClearsFavoritesView pins that exiting Favorites via the
-// Back button drops favoritesView so the next category click renders that
-// category's instruments (not a leftover Favorites filter on top of it).
+// Otherwise a leftover Favorites filter sits on top of the next category.
 func TestInstMenu_BackClearsFavoritesView(t *testing.T) {
 	store := NewInMemoryFavoritesStore(roster.Kick)
 	props := instMenuTestProps(
@@ -338,9 +295,6 @@ func TestInstMenu_BackClearsFavoritesView(t *testing.T) {
 	}
 }
 
-// TestInstMenuComp_PageAccessors confirm the new Page/PageCount/PageSize
-// methods derive from the underlying scroll state and don't crash on
-// closed menus.
 func TestInstMenuComp_PageAccessors(t *testing.T) {
 	comp := NewInstrumentMenuComponent()
 	// Closed menu — accessors should still return sane defaults.

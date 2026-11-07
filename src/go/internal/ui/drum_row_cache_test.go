@@ -10,10 +10,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestRowCacheRebuildOnLengthAndColor verifies that the per-row sprite cache is
-// reused when stable and rebuilt on length or color changes. With image-pool
-// optimization, the image pointer may be reused across rebuilds, so we track
-// rebuilds via rowCacheGen (incremented on every full rebuild).
+// Rebuilds are tracked by rowCacheGen: the image pool may reuse the pointer.
 func TestRowCacheRebuildOnLengthAndColor(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)

@@ -10,16 +10,9 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// Vice City / outrun aesthetic regression tests for the three main drum-view
-// surfaces: drum cells (backlit micro-gradient + 808 group separators), the
-// timeline ribbon (faint amber track fill + brighter playhead core), and the
-// row rack (faint instrument-color label tint). All treatments are token-
-// driven and reuse existing alpha buckets; these tests pin that they actually
-// draw so the polish can't silently regress.
+// Each drum-pane treatment is token-driven and reuses existing alpha buckets; these pin that it actually draws.
 
-// rgbaEq compares two color.Color via their premultiplied RGBA model. The
-// drawCallRecorder stores captured colors as color.RGBA (premultiplied), so
-// `want` NRGBA tokens must be compared in the same space.
+// The recorder stores premultiplied color.RGBA, so NRGBA tokens are compared in that space.
 func rgbaEq(a, b color.Color) bool {
 	if a == nil || b == nil {
 		return a == nil && b == nil
@@ -29,10 +22,7 @@ func rgbaEq(a, b color.Color) bool {
 	return ar == br
 }
 
-// TestDrumCellIsFlat asserts drum cells are FLAT (DESIGN.md Rule 2 — nothing
-// is 3D): an ON cell fills its rect exactly once in the instrument color and
-// strokes the 1 px separating border — no gradient bands, no lit top strip.
-// The former 4-band "backlit" gradient read as banding stripes.
+// Nothing is 3D: one fill in the instrument colour and the 1 px border, no gradient bands or lit strip.
 func TestDrumCellIsFlat(t *testing.T) {
 	dst := ebiten.NewImage(40, 20)
 	rowCol := color.RGBA{200, 80, 120, 255}
@@ -66,8 +56,7 @@ func TestDrumCellIsFlat(t *testing.T) {
 	}
 }
 
-// TestBeatGroupSeparators asserts the faint per-beat group separators bake one
-// vertical line at each group boundary so the row reads as an 808 step row.
+// So the row reads as an 808 step row.
 func TestBeatGroupSeparators(t *testing.T) {
 	var rec drawCallRecorder
 	dst := ebiten.NewImage(64, 20)
@@ -97,11 +86,7 @@ func TestBeatGroupSeparators(t *testing.T) {
 	}
 }
 
-// TestRowLabelCarriesIdentitySwatch asserts a rack label with a LeadSwatch
-// paints a rounded swatch in the row's instrument color at its leading edge,
-// ON the label body (drawn after it) — the instrument menu's swatch + text
-// row. The former faint wash + accent stripe were drawn BEFORE the opaque
-// label body, which covered both: the rack showed no identity at all.
+// Drawn AFTER the opaque label body: anything painted before it is covered and the rack shows no identity.
 func TestRowLabelCarriesIdentitySwatch(t *testing.T) {
 	var rec drawCallRecorder
 	dst := ebiten.NewImage(160, 30)
@@ -131,11 +116,8 @@ func TestRowLabelCarriesIdentitySwatch(t *testing.T) {
 	}
 }
 
-// TestTimelineTrackFillDraws asserts the timeline ribbon bakes a faint amber
-// track fill behind the view-rect so the bright window reads as a window onto
-// a recessed warm "sunset" track instead of floating in the near-black bg.
-// The fill is baked into TlCache, so we intercept drawRect during a full
-// Game.Draw and look for the faint-amber full-bar fill.
+// The bright window reads as a window onto a recessed warm track. The fill is baked into TlCache, so it is caught
+// during a full Game.Draw.
 func TestTimelineTrackFillDraws(t *testing.T) {
 	w, h := 1000, 700
 	g, cleanup := newRibbonCursorGame(t, w, h)
@@ -161,8 +143,7 @@ func TestTimelineTrackFillDraws(t *testing.T) {
 	}
 }
 
-// TestTimelinePlayheadBrightCore asserts the playhead cursor draws a 1px
-// brighter core (colAccentBright) so it stays findable against the warm ticks.
+// It stays findable against the warm ticks.
 func TestTimelinePlayheadBrightCore(t *testing.T) {
 	w, h := 1000, 700
 	g, cleanup := newRibbonCursorGame(t, w, h)

@@ -11,17 +11,11 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// link_drag_preserved_test.go pins the pre-guide desktop mouse contract for
-// the grid pane: shift+press on a node arms the link-drag helper arrow,
-// the arrow tracks the cursor, release on a second node creates the directed
-// edge (source→destination), shift+right release deletes the edge, plain
-// right-click deletes a node, and shift+press on empty space still marquees.
-// It also pins the guide-suppression contract: the grid guide's chrome must
-// not render while a link drag or marquee owns the gesture.
+// Desktop mouse contract: shift+press a node arms the link arrow and release on another makes the edge,
+// shift+right release deletes an edge, right-click deletes a node, shift+press on empty space marquees, and
+// the grid guide never draws while a link drag or marquee owns the gesture.
 
-// buildLinkDragCircuit creates two UNCONNECTED nodes at (0,0) and (8,0) with
-// a deterministic camera, mirroring buildGuideCircuit but without the edge so
-// link-drag creation can be asserted from a clean slate.
+// Unconnected, so edge creation is asserted from a clean slate.
 func buildLinkDragCircuit(t *testing.T) (*Game, *uiNode, *uiNode) {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -88,8 +82,7 @@ func TestShiftPressOnNodeArmsHelperArrowAndTracksCursor(t *testing.T) {
 
 	pos = [2]int{bx, by}
 	advanceFrames(g, 2) // drag toward node b while held
-	// The helper arrow's tip is the grid-snapped world position of the cursor
-	// (handleEditor stores gx,gy from grid.Snap each held frame).
+	// The arrow tip is the grid-snapped cursor position.
 	wantX, wantY := b.X, b.Y
 	if g.linkDrag.toX != wantX || g.linkDrag.toY != wantY {
 		t.Fatalf("helper arrow tip = (%v,%v), want cursor-snapped world (%v,%v)",
@@ -179,16 +172,11 @@ func TestShiftPressOnEmptySpaceStillMarquees(t *testing.T) {
 	}
 }
 
-// TestGuideChromeHiddenDuringLinkDrag pins the visual contract behind the
-// helper arrow: while a shift link-drag is armed, the grid guide's chrome
-// (crosshair + ghost-node preview) must not render — a ghost "node will be
-// placed here" square riding the arrow tip visually buries the connect
-// feedback, and no node placement can result from this gesture anyway.
+// A ghost square riding the arrow tip buries the connect feedback, and this gesture can never place a node.
 func TestGuideChromeHiddenDuringLinkDrag(t *testing.T) {
 	g, a, b := buildLinkDragCircuit(t)
 	ax, ay := nodeScreenCenter(g, a)
-	// Midpoint between the two nodes: far enough from both to be a free-cell
-	// guide target (where the ghost would draw).
+	// Far enough from both nodes to be a free-cell guide target, where the ghost would draw.
 	mx, my := guideScreenAt(g, (a.X+b.X)/2, a.Y)
 
 	pos := [2]int{ax, ay}
@@ -213,14 +201,10 @@ func TestGuideChromeHiddenDuringLinkDrag(t *testing.T) {
 		t.Fatalf("guide layer must be hidden while a link drag is active (helper arrow owns the gesture)")
 	}
 
-	// Belt and suspenders: no ghost-sized glow rect may be drawn at the
-	// guide target while the arrow is being aimed.
 	gt := g.guideTargetAt(mx, my)
 	cx := int(g.cam.OffsetX + g.grid.Unit()*float64(gt.I)*g.cam.Scale)
 	cy := int(g.cam.OffsetY+g.grid.Unit()*float64(gt.J)*g.cam.Scale) + gridTopOffset()
-	// The ghost is identified by its exact glow colors (fill + outline pair
-	// from drawGridGuide) so unrelated small rects near the target — e.g. the
-	// selected node's coordinate-badge pill — can't trip the assertion.
+	// Matched by its exact glow colours, so nearby small rects (the coordinate badge) cannot trip it.
 	ghostFill := WithAlpha(genColorVizGlow, genAlphaAccentOverlay)
 	ghostLine := WithAlpha(genColorVizGlow, genAlphaStrong)
 	var ghost []image.Rectangle
@@ -239,9 +223,7 @@ func TestGuideChromeHiddenDuringLinkDrag(t *testing.T) {
 	}
 }
 
-// TestGuideChromeHiddenDuringMarquee: same contract for the marquee gesture —
-// a shift-drag from empty space selects, it never places, so the guide's
-// chrome must not render.
+// A shift-drag from empty space selects and never places.
 func TestGuideChromeHiddenDuringMarquee(t *testing.T) {
 	g, _, _ := buildLinkDragCircuit(t)
 	x1, y1 := guideScreenAt(g, 30*g.grid.Unit(), 20*g.grid.Unit())
@@ -267,20 +249,12 @@ func TestGuideChromeHiddenDuringMarquee(t *testing.T) {
 	}
 }
 
-// TestShiftDragConnectsWithGuideSnap reproduces the real-world connect flow
-// in a large/zoomed-out circuit: the crosshair visibly snaps to a node inside
-// the guide snap radius even when the cursor is OUTSIDE the node's small
-// sprite rect — and a plain click there selects the node. The shift gesture
-// must honor the same snap: shift+press inside the snap annulus arms the
-// link drag from the snapped node, and releasing inside the destination's
-// annulus creates the edge. Pre-fix, that press armed the MARQUEE instead
-// (nodeAtScreen misses), so no helper arrow and no connection.
+// The crosshair snaps to a node from outside its small sprite rect, and a plain click there selects it; the
+// shift gesture must honour the same snap from both the source and destination annulus.
 func TestShiftDragConnectsWithGuideSnap(t *testing.T) {
 	g, a, b := buildLinkDragCircuit(t)
 
-	// A press point diagonally off node a: outside the sprite hit rect,
-	// inside the guide snap radius. Both preconditions are asserted so the
-	// test cannot silently degrade into the dead-center variant.
+	// Both preconditions are asserted so this cannot degrade into the dead-centre case.
 	r := g.guideSnapRadiusWorld()
 	ax, ay := guideScreenAt(g, a.X+0.6*r, a.Y-0.6*r)
 	if n := g.nodeAtScreen(ax, ay); n != nil {
@@ -336,14 +310,8 @@ func TestShiftDragConnectsWithGuideSnap(t *testing.T) {
 	}
 }
 
-// TestShiftDragFromSelectedNodeUnderSidebar reproduces the user-reported
-// connect flow verbatim: click a node (which selects it and opens the node
-// sidebar — a full-height panel over the LEFT strip of the grid), then
-// shift+press the same node and drag to another node. When the source node
-// renders inside the sidebar's panel strip, the dispatcher routes the shift
-// press to the sidebar, which consumes it — the helper arrow never arms and
-// no edge is created. The connect gesture must win: shift+press over the
-// panel closes it and arms the link drag from the node beneath.
+// Selecting a node opens the sidebar over the grid's left strip; a shift press on a node beneath it must close
+// the panel and arm the link drag, not be consumed by the sidebar.
 func TestShiftDragFromSelectedNodeUnderSidebar(t *testing.T) {
 	g, a, b := buildLinkDragCircuit(t)
 	// Place node a inside the sidebar panel strip (x < sidebarMinW).
@@ -354,8 +322,6 @@ func TestShiftDragFromSelectedNodeUnderSidebar(t *testing.T) {
 		t.Fatalf("setup: node a must render inside the sidebar panel strip (x=%d >= %d)", ax, sidebarMinW)
 	}
 
-	// Step 1: plain click selects node a and opens the sidebar (the exact
-	// state the user is in before starting the connect gesture).
 	guideClickAt(g, ax, ay)
 	if !g.sidebar.IsOpen() || g.sel != a {
 		t.Fatalf("setup: clicking node a must select it and open the sidebar (open=%v sel=%v)",

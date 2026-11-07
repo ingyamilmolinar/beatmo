@@ -8,17 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestOverflowBottomSheet_AnchoredToBottomOnMobile verifies that on mobile
-// the overflow popup is rendered as a full-width bottom sheet anchored to
-// the drum-pane bottom (B6 in the screenshot critique). DESIGN.md
-// §"Mobile bottom sheets" mandates `rounded.xl` full-width modals for
-// this kind of menu rather than a small floating dropdown.
-// TestOverflowMenuStaysInGridPaneOnMobile: the file menu is triggered from the
-// grid folder button, so on mobile (as on desktop) it drops from that button and
-// stays within the GRID pane. It is NO LONGER a drum-pane bottom sheet — that
-// full-width, bottom-anchored form put a grid-pane menu into the drum-view panel
-// (the "menus appear in the drum view" bug on small screens). See the two-trees
-// invariant in grid_button_menus_small_screen_test.go.
+// The file menu drops from the grid folder button and stays in the GRID pane on mobile too; a drum-pane bottom
+// sheet would put a grid-pane menu into the drum view.
 func TestOverflowMenuStaysInGridPaneOnMobile(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -39,10 +30,7 @@ func TestOverflowMenuStaysInGridPaneOnMobile(t *testing.T) {
 	}
 }
 
-// TestOverflowBottomSheet_DropdownOnDesktop verifies the desktop layout
-// keeps the small floating dropdown anchored to the kebab (a full-width
-// bottom sheet would waste the available chrome surface on mouse-driven
-// desktop).
+// A full-width sheet would waste the chrome on a mouse-driven desktop.
 func TestOverflowBottomSheet_DropdownOnDesktop(t *testing.T) {
 	setupMobileTest(t, false)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -63,9 +51,7 @@ func TestOverflowBottomSheet_DropdownOnDesktop(t *testing.T) {
 	}
 }
 
-// TestOverflowBottomSheet_HasMinTouchHeight verifies the bottom sheet
-// allocates at least TouchMinTarget() — never collapses below the touch
-// floor even when the drum pane is short and items overflow.
+// Never below the touch floor, even when the pane is short and items overflow.
 func TestOverflowBottomSheet_HasMinTouchHeight(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)

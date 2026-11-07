@@ -8,10 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// clavFunkCircuitJSON mirrors internal/assets/templates/clav-funk.json: a single
-// cyclic row whose START node (id 0 at i=0) fires at abs=0 and loops back to
-// itself (node 15 -> node 0), with two silent nodes in the cycle. This is the
-// exact template the user loaded before the crash.
+// Mirrors the clav-funk template: one cyclic row whose START node fires at abs=0 and loops to itself, with two
+// silent nodes in the cycle.
 const clavFunkCircuitJSON = `{
   "schema_version": "0.0.1",
   "subdiv": 16,
@@ -39,13 +37,8 @@ const clavFunkCircuitJSON = `{
   ]
 }`
 
-// TestSwitchInstrumentAfterStopReplayParity reproduces the user's crash:
-// load a template, play it, stop, switch the row's instrument, then press
-// play again. The start node fires at abs=0 every loop, so the rendered slate
-// MUST agree with the scheduler/predictor there. The instrument switch marks
-// the row path-changed and dirties paths; on replay the start-node hit at
-// abs=0 was being masked as empty committed-past, tripping the
-// scheduler-vs-DrumView parity watchdog (panic on desktop).
+// The start node fires at abs=0 every loop, so after stop → instrument switch → play the slate there must agree
+// with the scheduler, not read as empty committed past.
 func TestSwitchInstrumentAfterStopReplayParity(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -62,9 +55,7 @@ func TestSwitchInstrumentAfterStopReplayParity(t *testing.T) {
 	g.refreshDrumRow()
 	g.ClearParityMismatches()
 
-	// Force a small predictor window so a brief playback evicts abs=0 from the
-	// predictor's sliding window (mirrors the real 4-minute session crossing the
-	// 4096-subdivision cap).
+	// A small window lets a brief playback evict abs=0, as a long session crosses the real cap.
 	g.engine.Predictor.SetWindowCap(64)
 
 	// Sanity: the start node is a real hit at abs=0.
@@ -79,8 +70,7 @@ func TestSwitchInstrumentAfterStopReplayParity(t *testing.T) {
 		t.Fatalf("update during first play: %v", err)
 	}
 	advancePlaybackByAbs(g, g.grid.MaxDiv()*40)
-	// Precondition: the long playback evicted abs=0 from the predictor's
-	// sliding window — the exact state that used to corrupt the replay.
+	// abs=0 must have left the window: the state that corrupted the replay.
 	if g.engine.Predictor.WindowStart() <= 0 {
 		t.Fatalf("precondition: expected predictor window to have advanced past abs=0, windowStart=%d",
 			g.engine.Predictor.WindowStart())
@@ -92,8 +82,7 @@ func TestSwitchInstrumentAfterStopReplayParity(t *testing.T) {
 		t.Fatalf("update on stop: %v", err)
 	}
 
-	// Switch row 0's instrument while stopped (guitar-electric -> flute), exactly as
-	// the user did. flute is a builtin synth instrument.
+	// While stopped, as the user did.
 	g.drum.selRow = 0
 	g.drum.SetInstrument(roster.Flute)
 	if !g.drum.IsInstrumentAvailable(roster.Flute) {
@@ -122,8 +111,6 @@ func TestSwitchInstrumentAfterStopReplayParity(t *testing.T) {
 		t.Fatalf("replay after instrument switch panicked (parity mismatch): %v", panicked)
 	}
 
-	// Root-cause assertion: the rendered slate at abs=0 must agree with the
-	// scheduler/predictor truth for the always-firing start node.
 	slate, inWindow, off, length, _ := g.parityViewState(0, 0)
 	info := g.beatInfoAtRow(0, 0)
 	expected := g.parityExpected(0, 0, info)

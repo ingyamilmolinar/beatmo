@@ -7,8 +7,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// TestSchedulerVsDrumRow_MultiRowMixedRules verifies both rows stay in lockstep
-// with the scheduler across a horizon for different circuits and mixed rules.
 func TestSchedulerVsDrumRow_MultiRowMixedRules(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)

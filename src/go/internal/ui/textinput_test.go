@@ -248,8 +248,7 @@ func TestTextInputCursorPosition(t *testing.T) {
 	defer func() { drawCursor = old }()
 	ti.focused = true
 	ti.Draw(ebiten.NewImage(40, 20))
-	// Compute expected cursor X the same way Draw() does: measure the visible
-	// prefix before the cursor using TextWidth (works for both debug and TrueType).
+	// As Draw measures it: the visible prefix through TextWidth, valid for both fonts.
 	_, start := ti.visibleText()
 	rs := []rune(ti.Text)
 	bi := byteIndex(ti.Text, start)
@@ -261,8 +260,6 @@ func TestTextInputCursorPosition(t *testing.T) {
 	}
 }
 
-// cursor alignment regression test: ensure caret sits exactly after the
-// preceding glyphs with no extra spacing.
 func TestTextInputCursorAlignment(t *testing.T) {
 	assertDefaultParityState(t)
 	ti := NewTextInput(image.Rect(0, 0, 80, 20), BPMBoxStyle)
@@ -371,8 +368,7 @@ func TestTextInputDrawAnimatedPreservesBounds(t *testing.T) {
 	ti := NewTextInput(image.Rect(0, 0, 100, 24), BPMBoxStyle)
 	ti.focused = true
 	ti.anim = 1
-	// Flat-tonal (2026-07-25): an input's body paints via drawFlatButtonBody ->
-	// drawRoundedRect(filled); it no longer uses the drawButton primitive.
+	// The body paints through drawFlatButtonBody → drawRoundedRect(filled).
 	var got image.Rectangle
 	old := drawRoundedRect
 	drawRoundedRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, radius int, filled bool) {
@@ -441,8 +437,7 @@ func TestTextInputHomeEnd(t *testing.T) {
 	}
 }
 
-// TestTextInputForwardDelete covers the Delete key (removes the rune AT the
-// caret; the caret does not move).
+// The caret does not move.
 func TestTextInputForwardDelete(t *testing.T) {
 	assertDefaultParityState(t)
 	ti := NewTextInput(image.Rect(0, 0, 200, 20), BPMBoxStyle)
@@ -461,9 +456,7 @@ func TestTextInputForwardDelete(t *testing.T) {
 	}
 }
 
-// TestTextInputHardCapDefends verifies the widget refuses to grow past an
-// absolute defensive rune cap even when MaxLen is unset (0). Malicious/pathological
-// paste must not grow the buffer without bound.
+// A pathological paste must not grow the buffer without bound.
 func TestTextInputHardCapDefends(t *testing.T) {
 	assertDefaultParityState(t)
 	ti := NewTextInput(image.Rect(0, 0, 100, 20), BPMBoxStyle)

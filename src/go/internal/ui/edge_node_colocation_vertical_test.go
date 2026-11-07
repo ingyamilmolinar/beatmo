@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// TestEdgeNodeColocationVertical ensures vertical edges align with node centers
-// across a spread of pans and zooms.
 func TestEdgeNodeColocationVertical(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

@@ -8,11 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Verifies the slim-bar diagnostic records which compositing path produced the
-// drum-row frame: "windowed" during locked scrolled playback, "legacy" once
-// free. This is the key correlate the JS canvas watcher logs when it catches an
-// anomaly, so we can tell whether the artifact came from the windowed sub-image
-// blit or the legacy shift-and-fill path.
+// "windowed" during locked scrolled playback, "legacy" when free: the correlate the JS canvas watcher logs with an
+// anomaly.
 func TestRowsRenderPathRecorded(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultAudio(t)

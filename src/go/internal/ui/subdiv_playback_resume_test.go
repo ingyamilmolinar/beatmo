@@ -8,8 +8,6 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// Repro for: after changing subdivisions following an earlier playback,
-// the timeline counter and global playhead should advance normally.
 func TestTimelineAdvancesAfterSubdivChangeAndEdit(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
@@ -49,8 +47,6 @@ func TestTimelineAdvancesAfterSubdivChangeAndEdit(t *testing.T) {
 	pressStop(t, g.drum)
 	_ = g.Update()
 
-	// Edit: add a new node connected to the existing circuit.
-	// Connect from n1 to a new node further to the right.
 	g.pendingStartRow = 0
 	nx := g.tryAddNode(beat+beat/2, 0, model.NodeTypeRegular)
 	g.addEdge(n1, nx)

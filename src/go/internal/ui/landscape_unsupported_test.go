@@ -19,10 +19,7 @@ func newLandscapeTestGame(t *testing.T) *Game {
 	return g
 }
 
-// TestLandscapeUnsupported_MobileLandscapeBlocked verifies that on a mobile
-// (small-screen) profile, a landscape framebuffer (width > height) is reported
-// as unsupported so the UI can show the rotate-to-portrait notice instead of
-// the broken layout.
+// Mobile landscape shows the rotate-to-portrait notice instead of a broken layout.
 func TestLandscapeUnsupported_MobileLandscapeBlocked(t *testing.T) {
 	setupMobileTest(t, true)
 	g := newLandscapeTestGame(t)
@@ -34,8 +31,6 @@ func TestLandscapeUnsupported_MobileLandscapeBlocked(t *testing.T) {
 	}
 }
 
-// TestLandscapeUnsupported_MobilePortraitOK verifies portrait mobile is always
-// supported (height >= width).
 func TestLandscapeUnsupported_MobilePortraitOK(t *testing.T) {
 	setupMobileTest(t, true)
 	g := newLandscapeTestGame(t)
@@ -47,8 +42,6 @@ func TestLandscapeUnsupported_MobilePortraitOK(t *testing.T) {
 	}
 }
 
-// TestLandscapeUnsupported_DesktopLandscapeOK verifies a wide desktop landscape
-// is NOT blocked — only the mobile profile disables landscape.
 func TestLandscapeUnsupported_DesktopLandscapeOK(t *testing.T) {
 	setupMobileTest(t, false) // NOT a small screen
 	g := newLandscapeTestGame(t)
@@ -60,9 +53,6 @@ func TestLandscapeUnsupported_DesktopLandscapeOK(t *testing.T) {
 	}
 }
 
-// TestLandscapeUnsupported_DrawShowsNoticeSkipsPanes verifies that when the
-// mobile landscape layout is active, Draw renders the unsupported notice and
-// skips the normal grid/drum panes entirely.
 func TestLandscapeUnsupported_DrawShowsNoticeSkipsPanes(t *testing.T) {
 	setupMobileTest(t, true)
 	g := newLandscapeTestGame(t)
@@ -72,8 +62,7 @@ func TestLandscapeUnsupported_DrawShowsNoticeSkipsPanes(t *testing.T) {
 	landscapeNoticeDrawHook = func() { noticeDrawn = true }
 	t.Cleanup(func() { landscapeNoticeDrawHook = nil })
 
-	// Sentinel: the normal grid-pane draw path overwrites lastDrawGridMS with a
-	// real (>=0) measurement. If it stays -1, the normal panes were skipped.
+	// The normal grid-pane draw writes a real measurement; -1 left means it was skipped.
 	g.lastDrawGridMS = -1
 
 	img := ebiten.NewImage(800, 400)
@@ -87,8 +76,6 @@ func TestLandscapeUnsupported_DrawShowsNoticeSkipsPanes(t *testing.T) {
 	}
 }
 
-// TestLandscapeUnsupported_PortraitDrawsNormally verifies the notice path is NOT
-// taken in portrait — the normal panes still draw.
 func TestLandscapeUnsupported_PortraitDrawsNormally(t *testing.T) {
 	setupMobileTest(t, true)
 	g := newLandscapeTestGame(t)
@@ -106,9 +93,7 @@ func TestLandscapeUnsupported_PortraitDrawsNormally(t *testing.T) {
 	}
 }
 
-// TestLandscapeUnsupported_RotationRoundTripRestores is the seamless-transition
-// guard: portrait -> landscape -> portrait must end fully supported again with
-// both panes covering the full width (no corruption from the landscape detour).
+// The landscape detour must leave no corruption: both panes cover the full width again.
 func TestLandscapeUnsupported_RotationRoundTripRestores(t *testing.T) {
 	setupMobileTest(t, true)
 	g := newLandscapeTestGame(t)
@@ -139,10 +124,8 @@ func TestLandscapeUnsupported_RotationRoundTripRestores(t *testing.T) {
 	}
 }
 
-// TestLandscapeUnsupported_GridTapSuppressed verifies that in mobile landscape
-// the grid tap handler is disabled, so a tap can't reach the (invisible) grid
-// beneath the notice. Uses connect-mode: a tap on empty space normally cancels
-// connect mode; in landscape it must be ignored, leaving connect mode active.
+// A tap on empty space normally cancels connect mode, so connect mode surviving proves the tap never reached
+// the hidden grid.
 func TestLandscapeUnsupported_GridTapSuppressed(t *testing.T) {
 	setupMobileTest(t, true) // also disables default-start
 	g := newLandscapeTestGame(t)
@@ -163,8 +146,6 @@ func TestLandscapeUnsupported_GridTapSuppressed(t *testing.T) {
 	}
 }
 
-// TestLandscapeNoticeLines_Localized verifies the notice text resolves to
-// non-empty strings in every supported locale.
 func TestLandscapeNoticeLines_Localized(t *testing.T) {
 	prev := i18n.ActiveLocale()
 	t.Cleanup(func() { i18n.SetLocale(prev) })

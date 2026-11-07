@@ -10,9 +10,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestBeatCounterDrawsLeadingTargetIcon verifies the beat/time counter renders a
-// leading IconTarget affordance so it reads as a pressable button (it opens the
-// navigation menu on tap).
+// A leading IconTarget, so it reads as the button that opens navigation.
 func TestBeatCounterDrawsLeadingTargetIcon(t *testing.T) {
 	assertDefaultParityState(t)
 	beatRect := image.Rect(0, 0, 240, 24)
@@ -42,10 +40,7 @@ func TestBeatCounterDrawsLeadingTargetIcon(t *testing.T) {
 	}
 }
 
-// TestBeatCounterRendersMatteKeycap verifies the counter renders as a matte
-// keycap (a rounded cap face with the shared secondary fill via
-// drawKeycapPanelButton), NOT a flat rect — DESIGN.md "Keycap elevation"
-// requires every discrete control to read as a slim matte key.
+// A matte keycap, never a flat rect.
 func TestBeatCounterRendersMatteKeycap(t *testing.T) {
 	assertDefaultParityState(t)
 	beatRect := image.Rect(0, 0, 240, 28)

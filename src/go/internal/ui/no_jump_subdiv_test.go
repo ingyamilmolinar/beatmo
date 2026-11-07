@@ -8,8 +8,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// Ensure that between successive UI updates, the highlighted subdivision does
-// not advance by more than one step when time-based sync is active.
 func TestNeverJumpSubdivPerFrame(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -36,8 +34,7 @@ func TestNeverJumpSubdivPerFrame(t *testing.T) {
 	g.SetAppliedBPMForTest(60)
 	pressPlay(t, g.drum)
 
-	// Use deterministic audio clock so syncUIToTime doesn't depend on
-	// wall-clock jitter (which causes flaky jumps under CPU load).
+	// A deterministic audio clock: wall-clock jitter under load causes flaky jumps.
 	div := g.grid.MaxDiv()
 	bpm := 60
 	const audioStart = 1000.0

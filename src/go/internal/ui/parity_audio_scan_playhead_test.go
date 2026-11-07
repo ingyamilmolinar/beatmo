@@ -7,9 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Regression: audio parity checks must be anchored to the playhead, not the
-// currently rendered DrumView offset. Otherwise panning the DrumView can hide
-// audio↔predictor mismatches (no panic, no mismatch ring entry).
+// Anchored to the playhead, not the rendered offset: panning the view must not hide a mismatch.
 func TestParityDetectsAudioMismatchWhenViewIsPannedAway(t *testing.T) {
 	assertDefaultParityState(t)
 	g := buildTestGame(t)
@@ -20,8 +18,7 @@ func TestParityDetectsAudioMismatchWhenViewIsPannedAway(t *testing.T) {
 
 	g.drum.SetLength(8)
 
-	// Predictor path exists, but the node snapshot is empty, so the predictor
-	// should treat all beats as inaudible/invisible.
+	// An empty node snapshot makes every beat inaudible and invisible to the predictor.
 	pathLen := 256
 	paths := [][]model.BeatInfo{make([]model.BeatInfo, pathLen)}
 	for i := range paths[0] {
@@ -43,8 +40,7 @@ func TestParityDetectsAudioMismatchWhenViewIsPannedAway(t *testing.T) {
 	g.recordSeqDecision(0, abs, true, model.NodeTypeRegular, false)
 	g.recordParityAudio(0, abs, 1.0, roster.Kick, 1, 0, 1, g.audioGen.Load(), g.parityGen.Load())
 
-	// Pan DrumView far away from the playhead so the rendered window doesn't
-	// include abs=4.
+	// The rendered window excludes abs=4.
 	g.drum.Offset = 200
 	g.refreshDrumRow()
 

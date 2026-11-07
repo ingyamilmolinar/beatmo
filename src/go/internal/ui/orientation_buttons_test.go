@@ -6,8 +6,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestLandscapeButtonRectsInsideDrumBounds verifies that after laying out in
-// landscape (side-by-side), drum pane buttons are positioned inside drum bounds.
 func TestLandscapeButtonRectsInsideDrumBounds(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -32,8 +30,6 @@ func TestLandscapeButtonRectsInsideDrumBounds(t *testing.T) {
 		t.Fatal("stopBtn rect is empty")
 	}
 
-	// In landscape side-by-side, drum pane starts at split.X.
-	// Buttons must be inside the drum bounds.
 	if playR.Min.X < db.Min.X {
 		t.Fatalf("playBtn.Min.X=%d < drumBounds.Min.X=%d", playR.Min.X, db.Min.X)
 	}
@@ -48,8 +44,6 @@ func TestLandscapeButtonRectsInsideDrumBounds(t *testing.T) {
 	}
 }
 
-// TestPortraitToLandscapeButtonRectsUpdate verifies that switching from portrait
-// to landscape moves drum pane buttons to the right-side drum pane.
 func TestPortraitToLandscapeButtonRectsUpdate(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -80,8 +74,6 @@ func TestPortraitToLandscapeButtonRectsUpdate(t *testing.T) {
 	}
 }
 
-// TestLandscapeToPortraitButtonRectsUpdate verifies that switching from landscape
-// back to portrait repositions buttons to the bottom stacked pane.
 func TestLandscapeToPortraitButtonRectsUpdate(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -114,8 +106,6 @@ func TestLandscapeToPortraitButtonRectsUpdate(t *testing.T) {
 	}
 }
 
-// TestOrientationRoundTripButtonsValid verifies that after a full
-// Portrait→Landscape→Portrait round trip, buttons remain valid and inside drum bounds.
 func TestOrientationRoundTripButtonsValid(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -155,8 +145,6 @@ func TestOrientationRoundTripButtonsValid(t *testing.T) {
 	checkButtons("portrait-2")
 }
 
-// TestOrientationSwitchCameraRecenters verifies that on first layout with
-// default start enabled, the camera centers in the grid pane.
 func TestOrientationSwitchCameraRecenters(t *testing.T) {
 	setupMobileTest(t, true)
 	// Enable default start so centering logic runs.
@@ -176,17 +164,13 @@ func TestOrientationSwitchCameraRecenters(t *testing.T) {
 		t.Fatalf("portrait camX=%.0f expected near %.0f", g.cam.OffsetX, expectedCamX)
 	}
 
-	// Switch to landscape — stacked, grid pane is full width (800)
-	// Camera was already centered on first Layout, so it won't re-center
-	// (centered=true). That's expected — the camera position is valid.
+	// The camera centred on the first Layout and stays put: that position is valid.
 	g.Layout(800, 400)
 	if g.cam.OffsetX <= 0 {
 		t.Fatalf("landscape camX=%.0f should be positive", g.cam.OffsetX)
 	}
 }
 
-// TestOrientationSwitchResetsAutoSize verifies that auto-sizing produces
-// a valid split.Y after rotating (both stacked on mobile).
 func TestOrientationSwitchResetsAutoSize(t *testing.T) {
 	setupMobileTest(t, true)
 

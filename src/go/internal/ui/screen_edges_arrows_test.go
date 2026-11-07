@@ -8,8 +8,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// Test that arrowheads are drawn in the screen-space edge path when the
-// connection is complete (t >= 1).
 func TestScreenEdgesDrawArrows(t *testing.T) {
 	assertDefaultParityState(t)
 	if RuntimeProf().IsBrowser {
@@ -43,8 +41,7 @@ func TestScreenEdgesDrawArrows(t *testing.T) {
 	g.addEdge(a, b)
 	g.edges[0].t = 1
 
-	// Count line draws; in SCREEN_EDGES path, baseline uses drawRect, but
-	// arrowheads use DrawLineCam (drawEdgeLine).
+	// In the SCREEN_EDGES path the line uses drawRect but arrowheads use DrawLineCam.
 	draws := 0
 	oldDraw := drawEdgeLine
 	drawEdgeLine = func(dst *ebiten.Image, x1, y1, x2, y2 float64, cam *ebiten.GeoM, col color.Color, thick float64) {

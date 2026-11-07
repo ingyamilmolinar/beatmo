@@ -10,10 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// escStub presses Esc through the universal handler (edge-triggered, the way
-// Game.Update drives it). stubKeys swaps BOTH isKeyPressed and isKeyJustPressed
-// (SetInputForTest only swaps isKeyPressed, so handleEscape — which uses
-// isKeyJustPressed — would not fire under it).
+// Swaps isKeyPressed AND isKeyJustPressed: SetInputForTest swaps only the first, and handleEscape reads the second.
 func escStub() func() {
 	return stubKeys(
 		map[ebiten.Key]bool{ebiten.KeyEscape: true},
@@ -21,11 +18,7 @@ func escStub() func() {
 	)
 }
 
-// TestEsc_SaveAsDialog_CancelsWithoutSaveOrStop is the regression for the bug
-// where Esc on the inline Save-As dialog (not a portal, not a focused zone)
-// fell through the ladder to the Stop rung — stopping playback instead of just
-// cancelling the dialog. Esc must: close the dialog, NOT save the typed name,
-// and NOT request Stop.
+// The inline Save As dialog is neither a portal nor a focused zone, so Esc must stop at it: close, no save, no Stop.
 func TestEsc_SaveAsDialog_CancelsWithoutSaveOrStop(t *testing.T) {
 	g := newTestGameForUndo(t)
 	g.SetPlaying(true)
@@ -52,10 +45,7 @@ func TestEsc_SaveAsDialog_CancelsWithoutSaveOrStop(t *testing.T) {
 	}
 }
 
-// TestEsc_SaveAsDialog_CancelsThroughRealUpdate drives the FULL Game.Update
-// loop (the production path) to confirm the dialog cancels end-to-end and
-// playback is not stopped — guarding against the isolated-handler-passes /
-// real-loop-fails trap.
+// Through the full Game.Update loop, where an isolated handler passing proves nothing.
 func TestEsc_SaveAsDialog_CancelsThroughRealUpdate(t *testing.T) {
 	g := newTestGameForUndo(t)
 	g.SetPlaying(true)

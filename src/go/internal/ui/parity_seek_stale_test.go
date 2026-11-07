@@ -10,23 +10,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
-// A seek is a transport discontinuity, exactly like Stop→Play: everything the
-// parity comparator recorded about the superseded pass (audio events, seq
-// decisions, timing traces, dropped-highlight marks) describes cells that are
-// about to be REPLAYED (backward seek) or never reached (forward seek). SeekSteps
-// wiped the highlights (resetHighlights) but left the audio-event log in place,
-// so every cell between a backward seek's target and the old playhead read
-// "audio fired, no highlight" until the playhead re-passed it — the
-// `[parity] [highlight_vs_audio] … src=refresh` storm the default circuit logs
-// after every rewind / timeline go-to while playing (TestImportStopReplayClearsParity
-// is the Stop→Play sibling of this guard).
-//
-// Every seek path a user has is driven through the real request queue +
-// Game.Update (drainSeekRequest → SeekSteps), lane on (browser) and off (desktop
-// legacy dispatch). The RecordedAt freshness grace is pinned 1 s ahead so the
-// test sees what a real session sees: the scan lands long after the pre-seek
-// events were stamped (the harness otherwise finishes inside 120 ms of wall time
-// and the grace hides the stale events).
+// A seek is a transport discontinuity like Stop→Play: what parity recorded about the superseded pass describes
+// cells about to be replayed or never reached. Every user seek runs through drainSeekRequest, lane on and off,
+// with the freshness grace pinned ahead so the pre-seek events read as old, as in a real session.
 func TestSeekWhilePlayingLeavesNoStaleParity(t *testing.T) {
 	type seekFn func(g *Game)
 	seeks := []struct {
@@ -90,9 +76,7 @@ func TestSeekWhilePlayingLeavesNoStaleParity(t *testing.T) {
 	}
 }
 
-// newSeekParityGame is the lane test circuit (one looping row, fake audio clock)
-// with parity in LOG mode so the test can read the ring instead of dying on the
-// first panic, and the ring cleared of the play-start transient.
+// LOG mode so the ring can be read instead of dying on the first panic; the play-start transient is cleared.
 func newSeekParityGame(t *testing.T, lane bool) *Game {
 	t.Helper()
 	var g *Game
@@ -114,12 +98,8 @@ func parityHasAudio(g *Game) bool {
 	return len(g.parityAudio) > 0
 }
 
-// The audio lane ticks at the END of a sequencer pass, so on the pass that
-// first reaches a cell (play start; equally a seek or a new row) the UI lane
-// gets there before the lane has committed it. The UI lane used to read the
-// lane's ledger right then, find it empty, and record nothing: the first note
-// of every playback stayed "audible but never enqueued" — an audio_missing for
-// a note the engine was in fact playing — and never lit its trigger.
+// The lane ticks at the END of a pass, so the UI lane reaches a new cell before the lane commits it; it must still
+// observe the note, or the first note of every playback reads as audio_missing and never lights.
 func TestLanePlayStartObservesTheFirstCell(t *testing.T) {
 	g, sink := newLaneGame(t)
 	g.parityWatch = parityWatchLog
@@ -160,14 +140,8 @@ func TestLanePlayStartObservesTheFirstCell(t *testing.T) {
 	}
 }
 
-// RewindTo moves a backward seek's superseded commits (abs >= target) into the
-// timeline's cold ARCHIVE — retained, by the full-history rule — and the
-// Service's lookup falls back to that archive. Parity read it through that
-// lookup, so every not-yet-replayed cell after a rewind presented the ABANDONED
-// pass's Playback commit as live immutable history. Without an edit the two
-// passes agree and nothing shows; edit the circuit, then rewind, and the
-// abandoned pass contradicts the predictor: timeline_vs_pred(_immutable) for
-// every cell between the new playhead and the old one.
+// RewindTo retains a backward seek's superseded commits, and a lookup that falls back to them presents the
+// ABANDONED pass as live history: after an edit it contradicts the predictor for every cell up to the old playhead.
 func TestBackwardSeekAfterEditDoesNotCompareAbandonedPass(t *testing.T) {
 	for _, lane := range []bool{true, false} {
 		name := "legacy"
@@ -180,8 +154,7 @@ func TestBackwardSeekAfterEditDoesNotCompareAbandonedPass(t *testing.T) {
 			defer restore()
 
 			laneRun(t, g, 2.0, 0.004)
-			// Delete a node on the loop: from here the predictor plays a
-			// different pattern than the pass the timeline recorded.
+			// The predictor now plays a different pattern than the recorded pass.
 			var victim *uiNode
 			for _, n := range g.nodes {
 				if n != g.start && n.I == 6 {
@@ -209,8 +182,7 @@ func TestBackwardSeekAfterEditDoesNotCompareAbandonedPass(t *testing.T) {
 			if after := g.playheadAbsSubdiv(); after >= before {
 				t.Fatalf("setup: seek did not go back (%d → %d)", before, after)
 			}
-			// Non-vacuity: the abandoned pass disagrees with what the predictor
-			// now plays there — the comparison parity must NOT make.
+			// Non-vacuity: the abandoned pass disagrees with what the predictor plays there.
 			disagree := 0
 			for abs, v := range played {
 				if v != g.engine.Predictor.VisibleAt(0, abs) {
@@ -224,10 +196,7 @@ func TestBackwardSeekAfterEditDoesNotCompareAbandonedPass(t *testing.T) {
 			for _, m := range g.ParityMismatchSnapshot() {
 				t.Errorf("rewind after an edit: %s row=%d abs=%d expected=%v actual=%v detail=%s", m.Kind, m.Row, m.Abs, m.Expected, m.Actual, m.Detail)
 			}
-			// What the grid DRAWS for the replayed past: the played snapshot
-			// froze the replay (the predictor's pass), not the abandoned one —
-			// CrossingCell prefers a Playback commit, so an abandoned commit
-			// answering the lookup was frozen into the past for good.
+			// The drawn past must freeze the replay, not the abandoned pass: CrossingCell prefers a Playback commit.
 			tl := g.timelineService()
 			wrong, checked := 0, 0
 			for abs := target; abs < g.rowPastExclusive(0) && abs < before; abs++ {
@@ -250,15 +219,8 @@ func TestBackwardSeekAfterEditDoesNotCompareAbandonedPass(t *testing.T) {
 	}
 }
 
-// With the audio lane on, every note is committed to the engine up to the
-// horizon ahead; the UI lane reaching a cell late moves a highlight, never a
-// sound. Stage A ("seqfire": how late the sequencer fires a cell vs its grid
-// time) therefore measures UI-lane lag, not audio timing — on WASM the
-// sequencer shares the main thread, so one ~17 ms frame puts its p99 over the
-// browser bound and the gate dumped "[PARITY] scheduler vs DrumView mismatch"
-// by itself, mid-playback, with every audio stage clean. Audio timing in lane
-// mode is the lane's own Stage C (lead at commit) and Stage D (start vs
-// requested): those stay gated.
+// With the lane on, a late UI lane moves a highlight, never a sound, so Stage A measures UI lag, not audio; one
+// WASM frame would breach it. The lane's own Stage C and D stay gated.
 func TestLaneModeSeqFireIsNotAnAudioTimingBreach(t *testing.T) {
 	for _, lane := range []bool{false, true} {
 		g := newSeekParityGame(t, lane)
@@ -283,24 +245,13 @@ func TestLaneModeSeqFireIsNotAnAudioTimingBreach(t *testing.T) {
 	}
 }
 
-// A main-thread stall longer than the audio lane's horizon (seen in the
-// browser suite under load: ~32 frames drawn in ~32 s of playback). When the
-// sequencer resumes, the UI lane fires the CURRENT cell (it never replays
-// further back), but the lane walks only from now − LateToleranceSec: a note
-// that late is dropped by policy, not played. Parity then saw "audible, never
-// enqueued" — audio_missing — and, armed, panicked the WASM runtime. A policy
-// drop is the lane's documented behaviour under starvation (the legacy path
-// exempts its own downstream drops the same way); it must not read as a
-// scheduler bug. Real misses (the lane SHOULD have committed and did not)
-// stay reported: TestLanePlayStartObservesTheFirstCell.
+// After a stall longer than the horizon the lane walks only from now − LateToleranceSec, dropping older notes by
+// policy; that drop is not audio_missing. Real misses stay reported.
 func TestLaneStarvationLateDropIsNotAudioMissing(t *testing.T) {
 	drops := uint64(0)
 	for _, stall := range []float64{1.2, 1.5, 1.8, 3.0} {
 		g, _ := newLaneGame(t) // parity armed (panic) by default
-		// The browser case had 150 ms cells (4/beat at 100 BPM): the cell
-		// just behind the playhead is far past the lane's 25 ms late
-		// tolerance when a stall makes the lane discover it. Same shape
-		// here with a slow tempo (32 cells/beat at 20 BPM ≈ 94 ms cells).
+		// A slow tempo makes the cell behind the playhead far older than the late tolerance when the lane finds it.
 		g.SetPlayingForTest(false)
 		g.drum.SetBPM(20)
 		g.state.SetAppliedBPM(20)
@@ -313,9 +264,7 @@ func TestLaneStarvationLateDropIsNotAudioMissing(t *testing.T) {
 		advanceLaneClock(laneTestNow(g), stall) // the stall: no Update for this long
 		g.state.SetPlayStart(g.state.PlayStart().Add(-time.Duration(stall * float64(time.Second))))
 		before := g.audioLane.Stats().DroppedLate
-		// The sequencer ticker (a JS timer on WASM) fires before the next
-		// frame's Update has moved the UI playhead: one pass with the stale
-		// nextBeatIdxs floor, as in the browser.
+		// The sequencer timer fires before the next Update moves the UI playhead: one pass on the stale floor.
 		g.playbackSlate.seqScheduleTime()
 		laneRun(t, g, 0.3, 0.004)
 		restore()

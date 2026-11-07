@@ -6,10 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestMultipleProbabilityNodes_SchedulerMatchesPrediction verifies that with
-// several probability nodes in a single circuit (plus every/skip on others),
-// the audio scheduler consults the single prediction source of truth and the
-// drum view mirrors that exact state.
+// The scheduler and the drum view both read the one prediction source, whatever mix of logic nodes is present.
 func TestMultipleProbabilityNodes_WindowsMatchPrediction(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -65,8 +62,7 @@ func TestMultipleProbabilityNodes_WindowsMatchPrediction(t *testing.T) {
 	g.drum.SetLength(horizon)
 	g.updateBeatInfos()
 	g.engine.Predictor.Ensure(horizon)
-	// Drum should mirror prediction windows. Compare up to the visible
-	// length (may be less than horizon due to screen-aware clamping).
+	// The visible length can be shorter than the horizon (screen-aware clamping).
 	visLen := g.drum.Length
 	g.drum.Offset = 0
 	g.refreshDrumRow()

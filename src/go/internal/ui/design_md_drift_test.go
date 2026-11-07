@@ -13,14 +13,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// TestDesignMDDrift pins the YAML front matter in DESIGN.md to the runtime Go
-// constants. If a color/spacing/radius value changes in DESIGN.md without a
-// matching update in theme.go / touch_sizes.go (or vice versa), this test
-// fails. This is the bridge contract: DESIGN.md is the design source of
-// truth; Go is its runtime expression.
-//
-// To extend: add an entry to wantColors / wantSpacing / wantRounded mapping
-// the YAML token name to the Go constant value.
+// DESIGN.md is the source of truth and Go its runtime expression: a value changed on one side only fails here.
 func TestDesignMDDrift(t *testing.T) {
 	path := findDesignMD(t)
 	body, err := os.ReadFile(path)
@@ -36,11 +29,7 @@ func TestDesignMDDrift(t *testing.T) {
 	gotSpacing := extractScalarBlock(front, "spacing")
 	gotRounded := extractScalarBlock(front, "rounded")
 
-	// Every color in DESIGN.md's `colors:` block must map to a Go constant
-	// here. RGB components are compared bit-exact; alpha is verified by
-	// the constants whose Go form is RGBA (alpha 255 implicit). Tokens
-	// whose Go form is NRGBA with intentional alpha (e.g. colEQBg, colEQCurveFill,
-	// border tokens) are RGB-compared via their .R/.G/.B fields below.
+	// Every colour maps to a Go constant, RGB bit-exact; tokens carrying alpha in Go compare RGB below.
 	wantColors := map[string]color.RGBA{
 		"primary":             colAccent,
 		"primary-bright":      colAccentBright,
@@ -66,14 +55,10 @@ func TestDesignMDDrift(t *testing.T) {
 		"viz-meter-low":       meterLow,
 		"viz-meter-mid":       meterMid,
 		"viz-meter-high":      meterHigh,
-		// Spectrum frequency-group tinting tokens (Phase 5 audio-panel polish).
-		"viz-bass":   colVizBass,
-		"viz-mids":   colVizMids,
-		"viz-treble": colVizTreble,
-		// ── Phase 3 PR1: graph pane / timeline / drum-mute / EQ overlay ──
-		// Each pinned to the runtime alias declared in theme.go. RGB-only
-		// comparison; tokens that pick up a non-255 alpha at runtime are
-		// listed under rgbOnly below.
+		"viz-bass":            colVizBass,
+		"viz-mids":            colVizMids,
+		"viz-treble":          colVizTreble,
+		// Pinned to the theme.go aliases; non-255-alpha tokens are in rgbOnly.
 		"grid-line":          colGridLine,
 		"grid-half":          colGridHalf,
 		"grid-quarter":       colGridQuarter,
@@ -106,23 +91,18 @@ func TestDesignMDDrift(t *testing.T) {
 		}
 	}
 
-	// Tokens whose Go form carries a non-255 alpha (panels, viz canvas,
-	// borders, EQ curves, wave-mid) only compare RGB. Alpha is applied
-	// in code, not encoded as part of the color token.
+	// Alpha is applied in code, not part of the token.
 	type rgbBytes struct{ R, G, B uint8 }
 	rgbOnly := map[string]rgbBytes{
 		"surface-overlay": {colPanelBG.R, colPanelBG.G, colPanelBG.B},
 		"viz-bg":          {colEQBg.R, colEQBg.G, colEQBg.B},
 		"viz-curve":       {colEQCurve.R, colEQCurve.G, colEQCurve.B},
 		"viz-wave-b":      {colWaveMid.R, colWaveMid.G, colWaveMid.B},
-		// Record state colors are NRGBA in Go (always opaque, but the
-		// type forces .R/.G/.B access).
+		// NRGBA in Go, opaque.
 		"record-idle":   {colRecordIdle.R, colRecordIdle.G, colRecordIdle.B},
 		"record-active": {colRecordActive.R, colRecordActive.G, colRecordActive.B},
-		// Border base — Go encodes per-strength alphas; the RGB is white
-		// across all three border tokens. Verify against colBorderSubtle.
-		"border": {colBorderSubtle.R, colBorderSubtle.G, colBorderSubtle.B},
-		// ── Phase 3 PR1: tokens whose runtime form picks up a non-255 alpha ──
+		// The RGB is white for every border strength.
+		"border":              {colBorderSubtle.R, colBorderSubtle.G, colBorderSubtle.B},
 		"edge-color":          {EdgeUI.Color.(color.NRGBA).R, EdgeUI.Color.(color.NRGBA).G, EdgeUI.Color.(color.NRGBA).B},
 		"splitter-handle":     {colSplitterHandle.R, colSplitterHandle.G, colSplitterHandle.B},
 		"timeline-view":       {colTimelineView.R, colTimelineView.G, colTimelineView.B},
@@ -210,9 +190,7 @@ func TestDesignMDDrift(t *testing.T) {
 			t.Errorf("DESIGN.md rounded.%s = %dpx but Go has %d", key, got, want)
 		}
 	}
-	// A pill is not a shape this system can express — see DESIGN.md
-	// "The anti-pill invariant". Re-adding the token would let a call site
-	// name one, even though drawRoundedRect would still clamp it.
+	// A pill is not a shape this system expresses (the anti-pill invariant).
 	if _, ok := gotRounded["full"]; ok {
 		t.Error("DESIGN.md declares rounded.full; the pill step was retired — use rounded.control, or drawCapsule for a genuine capsule")
 	}
@@ -249,13 +227,7 @@ func TestDesignMDDrift(t *testing.T) {
 		}
 	}
 
-	// ── Phase 3 PR2: instrumentDefaults / instrumentFallbackPalette drift ──
-	// The generator emits genInstrumentDefaults (map) +
-	// genInstrumentFallbackPalette (slice) from DESIGN.md. Both shapes
-	// flow through theme.go's buildInstColors / buildCustomPalette
-	// helpers into instColors / customPalette. Verify the runtime values
-	// match what's in DESIGN.md by parsing the YAML blocks here via a
-	// regex-only path (independent of the generator's yaml.v3 codepath).
+	// Parsed by regex, independent of the generator's YAML path, so a consistently wrong generator still fails.
 	defaults := parseInstrumentDefaultsBlock(front)
 	if len(defaults) == 0 {
 		t.Errorf("DESIGN.md instrumentDefaults: missing or empty")
@@ -300,10 +272,7 @@ func TestDesignMDDrift(t *testing.T) {
 		}
 	}
 
-	// ── Phase 3 PR3: animations drift ──
-	// Each animation entry in DESIGN.md must match the corresponding
-	// genAnim* runtime value. exp-decay → ExpDecayAnim struct;
-	// sin-pulse → SinPulseAnim struct; fade → FadeFactor.
+	// exp-decay → ExpDecayAnim, sin-pulse → SinPulseAnim, fade → FadeFactor.
 	anims := parseAnimationsBlock(front)
 	wantExpDecay := map[string]ExpDecayAnim{
 		"highlight-decay":     genAnimHighlightDecay,
@@ -372,11 +341,7 @@ func TestDesignMDDrift(t *testing.T) {
 		}
 	}
 
-	// ── Phase 3 PR4: geometry drift ──
-	// Each entry under DESIGN.md `geometry:` must equal the
-	// corresponding genGeom* runtime constant. extractScalarBlock
-	// yields scalar key→string-value pairs; convert to float64 for
-	// comparison.
+	// Each geometry scalar equals its genGeom* constant.
 	gotGeometry := extractScalarBlock(front, "geometry")
 	wantGeometry := map[string]float64{
 		"signal-glow-radius-multiplier": genGeomSignalGlowRadiusMultiplier,
@@ -433,25 +398,8 @@ func TestDesignMDDrift(t *testing.T) {
 	}
 }
 
-// TestDesignMDComponentDrift extends the primitive drift test to cover
-// the components: block. For every entry in design_components.gen.go,
-// it independently parses the corresponding DESIGN.md YAML stanza
-// (regex-based, via parseComponentsBlock from design_md_contrast_test.go,
-// distinct from the generator's yaml.v3 codepath) and asserts the
-// resolved backgroundColor → spec.Fill mapping matches.
-//
-// This catches the class of generator regression that the freshness
-// test cannot: a generator bug that emits the wrong (but consistent)
-// value will produce a green freshness diff and a green
-// components_drift_test (which compares Go-vs-Go), but a red drift
-// here (which compares YAML-vs-Go via an independent code path).
-//
-// We intentionally check only `Fill` per component: validating every
-// field would require duplicating the generator's resolver, which
-// defeats the "independent path" goal. Fill is the most load-bearing
-// surface — a wrong Fill is the screenshot regression most likely to
-// slip through review. Adding more fields here is welcome but must
-// stay regex-based so the two parsers do not converge.
+// YAML vs Go through an independent regex path, which catches a generator emitting a wrong but consistent value. Only
+// Fill: checking every field would duplicate the generator's resolver; keep any additions regex-based.
 func TestDesignMDComponentDrift(t *testing.T) {
 	path := findDesignMD(t)
 	body, err := os.ReadFile(path)
@@ -466,12 +414,7 @@ func TestDesignMDComponentDrift(t *testing.T) {
 	colors := extractScalarBlock(front, "colors")
 	components := parseComponentsBlock(front)
 
-	// Each entry: kebab-case YAML name → Go ComponentID. Only specs whose
-	// generated Fill is byte-equal to a DESIGN.md backgroundColor are
-	// listed. Specs with default-zero Fill (e.g. ComponentPanel using
-	// {colors.surface-overlay} which carries non-255 alpha) or specs
-	// computed from variant deltas are out of scope here — the contrast
-	// test (which has its own RGB-only path) covers those.
+	// Only specs whose Fill is byte-equal to a backgroundColor; the contrast test covers the rest.
 	cases := []struct {
 		yamlName string
 		id       ComponentID
@@ -494,15 +437,13 @@ func TestDesignMDComponentDrift(t *testing.T) {
 	for _, tc := range cases {
 		fields, ok := components[tc.yamlName]
 		if !ok {
-			// Component absent from DESIGN.md is a separate failure
-			// mode (the generator should have rejected the build).
+			// The generator should have rejected the build.
 			t.Errorf("component %q not present in DESIGN.md components: block", tc.yamlName)
 			continue
 		}
 		ref, ok := fields["backgroundColor"]
 		if !ok {
-			// Components without a backgroundColor (synthetic / panel
-			// references) skip the Fill comparison.
+			// Synthetic and panel references have no backgroundColor.
 			continue
 		}
 		hex, ok := resolveColorRef(ref, colors)
@@ -516,9 +457,7 @@ func TestDesignMDComponentDrift(t *testing.T) {
 			continue
 		}
 		spec := Spec(tc.id)
-		// Compare RGB only; alpha is fixed at 255 for resting fills and
-		// per-component alpha overrides are encoded elsewhere (variant
-		// rebindings, BorderRef.Alpha) which would be tested separately.
+		// Alpha is 255 at rest; overrides live elsewhere.
 		if spec.Fill.R != want.R || spec.Fill.G != want.G || spec.Fill.B != want.B {
 			t.Errorf("DESIGN.md components.%s.backgroundColor = #%02X%02X%02X but generated Spec(%v).Fill = {%d,%d,%d}",
 				tc.yamlName, want.R, want.G, want.B, tc.id, spec.Fill.R, spec.Fill.G, spec.Fill.B)
@@ -558,8 +497,7 @@ func frontMatter(s string) string {
 	return m[1]
 }
 
-// extractScalarBlock returns the immediate scalar children of a top-level
-// YAML key. Indented sub-keys (like typography role objects) are ignored.
+// Sub-keys are ignored.
 func extractScalarBlock(front, key string) map[string]string {
 	out := map[string]string{}
 	lines := strings.Split(front, "\n")
@@ -609,12 +547,7 @@ type parseErr struct{ raw, msg string }
 
 func (e *parseErr) Error() string { return e.msg + ": " + e.raw }
 
-// parseInstrumentDefaultsBlock reads the `instrumentDefaults:` sequence
-// from DESIGN.md's front matter and returns id→hex. Regex-based by
-// design — kept independent of the generator's yaml.v3 codepath so a
-// generator regression that emits the wrong (but consistent) value
-// fails a YAML-vs-Go drift check rather than silently slipping through
-// the freshness diff. Returns nil when the block is missing.
+// Regex-based, independent of the generator; nil when missing.
 func parseInstrumentDefaultsBlock(front string) map[string]string {
 	out := map[string]string{}
 	lines := strings.Split(front, "\n")
@@ -647,12 +580,7 @@ func parseInstrumentDefaultsBlock(front string) map[string]string {
 	return out
 }
 
-// parseAnimationsBlock reads the `animations:` mapping from DESIGN.md
-// and returns name → field-map. Each animation entry is a sub-mapping
-// of scalar fields (kind, rate, threshold, frame-step, amplitude,
-// base, alpha-scale, factor) — the parser is regex-only, independent
-// of the generator's yaml.v3 codepath, so a generator regression that
-// emits a wrong-but-consistent value fails this drift check.
+// Regex-only, independent of the generator.
 func parseAnimationsBlock(front string) map[string]map[string]string {
 	out := map[string]map[string]string{}
 	lines := strings.Split(front, "\n")
@@ -687,9 +615,7 @@ func parseAnimationsBlock(front string) map[string]map[string]string {
 	return out
 }
 
-// parseInstrumentFallbackBlock reads the `instrumentFallbackPalette:`
-// sequence from DESIGN.md and returns the source-ordered hex slice.
-// Same regex-only contract as parseInstrumentDefaultsBlock.
+// In source order, regex-only.
 func parseInstrumentFallbackBlock(front string) []string {
 	var out []string
 	lines := strings.Split(front, "\n")

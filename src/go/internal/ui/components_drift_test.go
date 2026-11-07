@@ -5,21 +5,8 @@ import (
 	"testing"
 )
 
-// TestComponentSpecsDrift asserts that each generated ComponentSpec's
-// resolved fill+border matches the corresponding hand-coded ButtonStyle /
-// TextInputStyle byte-for-byte. This is the byte-equivalence guard from
-// the Phase 2 plan — it catches generator bugs that the freshness test
-// can't (where committed and regenerated agree but both are wrong against
-// the runtime reality).
-//
-// Coverage now spans every named ButtonStyle/TextInputStyle whose value
-// is fully expressible in the schema. Active variants and runtime-alpha
-// composites are included via the optional-alpha mechanism (omitted
-// border.alpha → opaque 255).
-//
-// Comparison strategy: use the color.Color interface RGBA() method so
-// RGBA{R,G,B,255} and NRGBA{R,G,B,255} compare equal — the runtime can
-// hold either concrete type interchangeably and renders identically.
+// Each generated spec's fill and border match the hand-coded style byte for byte, catching a generator that is
+// consistently wrong. Compared through RGBA(), so RGBA and NRGBA of the same colour are equal.
 func TestComponentSpecsDrift(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -91,21 +78,14 @@ func TestComponentSpecsDrift(t *testing.T) {
 	}
 }
 
-// sameColor compares two color.Color values via the interface RGBA()
-// method, which normalizes RGBA / NRGBA / etc. to identical premultiplied
-// uint32 components. This sidesteps concrete-type mismatch (the runtime
-// holds Border as color.Color and accepts either flavor).
+// The runtime may hold either flavour.
 func sameColor(a, b color.Color) bool {
 	ar, ag, ab, aa := a.RGBA()
 	br, bg, bb, bA := b.RGBA()
 	return ar == br && ag == bg && ab == bb && aa == bA
 }
 
-// TestComponentSpecMatchesHandCodedSibling spot-checks that every
-// hand-coded ButtonStyle var that resolves to button-secondary's recipe
-// produces the same Fill/Border bytes as the spec. If a future edit
-// breaks this drift, both the hand-coded var and the spec must move in
-// lockstep — typically by changing only DESIGN.md and regenerating.
+// Changing one means changing DESIGN.md and regenerating, so both move together.
 func TestComponentSpecMatchesHandCodedSibling(t *testing.T) {
 	spec := Spec(ComponentButtonSecondary)
 	specBorder := spec.Border.Resolve()

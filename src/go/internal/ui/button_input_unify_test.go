@@ -7,12 +7,8 @@ import (
 	"testing"
 )
 
-// TestButtonHitAdapterDrivesPressLifecycle pins the unified contract: the shared
-// buttonHitAdapter must drive the Button's full press lifecycle, not just fire
-// OnClick blind. Press sets the visual pressed state and fires once; release
-// clears it; a second press fires again (no stale-held latch). Before the
-// unification the adapter fired OnClick directly and never touched the Button's
-// pressed state, so buttons gave no press feedback and bypassed the release path.
+// The adapter drives the Button's whole press lifecycle: press shows pressed and fires once, release clears it, a
+// second press fires again with no stale latch.
 func TestButtonHitAdapterDrivesPressLifecycle(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -40,8 +36,7 @@ func TestButtonHitAdapterDrivesPressLifecycle(t *testing.T) {
 		t.Fatal("after OnRelease the button must no longer read as pressed")
 	}
 
-	// Second press fires again — the press edge is never swallowed by a stale
-	// held counter even though the same *Button is reused.
+	// The same *Button reused, with no stale held counter.
 	h.OnPress(25, 10)
 	if fires != 2 {
 		t.Fatalf("second OnPress fired total=%d, want 2 (stale-held latch swallowed it)", fires)
@@ -49,8 +44,7 @@ func TestButtonHitAdapterDrivesPressLifecycle(t *testing.T) {
 	h.OnRelease(25, 10)
 }
 
-// TestButtonHitAdapterDisabledSwallows verifies a disabled button consumes the
-// press (no fall-through to a lower-z sibling) but never fires.
+// Consumes the press, so nothing beneath gets it, but never fires.
 func TestButtonHitAdapterDisabledSwallows(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false

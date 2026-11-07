@@ -9,10 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// pickVisibleInstrument selects the visible instrument row whose id == want by
-// driving a full press+release through dv.Update() (the production input loop),
-// mirroring a real desktop mouse click on a menu row. Returns false if the id
-// is not currently visible in the menu.
+// A full press+release through dv.Update, like a real desktop click on a row.
 func pickVisibleInstrument(t *testing.T, dv *DrumView, comp *InstrumentMenuComponent, want instrument.ID, w, h int) bool {
 	t.Helper()
 	ids := comp.VisibleInstIDs()
@@ -32,19 +29,8 @@ func pickVisibleInstrument(t *testing.T, dv *DrumView, comp *InstrumentMenuCompo
 	return true
 }
 
-// TestInstMenuRepeatedSelectionRegistersEveryClick reproduces the "very flaky"
-// click bug on the main instrument menu. The menu STAYS OPEN after a selection
-// (audition mode) and returns InputConsumed (one-shot, not captured), so the
-// input tree never delivers a release to the menu's row buttons. The same
-// *Button objects persist across presses, so a row that was clicked once keeps
-// Button.held == 1 forever. Because the desktop dispatch loop returns on the
-// FIRST consuming button, a previously-clicked row that sits later in iteration
-// order never gets its state reset — and when the user clicks it again,
-// Button.held increments 1 -> 2, so the `held == 1` press-edge check fails and
-// the click is silently swallowed.
-//
-// This drives the real DrumView.Update() loop and asserts that re-selecting a
-// previously-selected instrument always registers.
+// The open menu returns InputConsumed, so its row buttons never see a release; a reused Button whose held count
+// outlives the click reaches held == 2 on the next press, fails the press-edge check and swallows the click.
 func TestInstMenuRepeatedSelectionRegistersEveryClick(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -52,9 +38,7 @@ func TestInstMenuRepeatedSelectionRegistersEveryClick(t *testing.T) {
 	dv, cx, cy := newCategoryDrumView(t, W, H)
 	comp := openInstMenuInstrumentsMode(t, dv, cx, cy, W, H)
 
-	// Sequence revisits instruments so each row button is clicked more than
-	// once within a single open session. "kick", "snare", "tom" all share the
-	// first (Drums) category that openInstMenuInstrumentsMode lands on.
+	// Revisits rows so each button is clicked more than once in one open session; all three share the Drums category.
 	seq := []instrument.ID{roster.Snare, roster.Tom, roster.Kick, roster.Snare, roster.Tom, roster.Kick, roster.Snare}
 	for step, want := range seq {
 		if comp.Mode() != InstMenuModeInstruments {
@@ -70,11 +54,7 @@ func TestInstMenuRepeatedSelectionRegistersEveryClick(t *testing.T) {
 	}
 }
 
-// TestInstMenuRepeatedSelectionMobile is the mobile counterpart: the bottom-sheet
-// instrument menu must also register every audition pick across one open session.
-// The mobile path fires via the deferred tap (fireTapAt → PressFromTree, the
-// same Button press core the desktop mouse path uses), so this guards that
-// repeated selection stays reliable on touch as well.
+// The mobile deferred tap reaches the same Button press core (fireTapAt → PressFromTree) as the desktop mouse.
 func TestInstMenuRepeatedSelectionMobile(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true

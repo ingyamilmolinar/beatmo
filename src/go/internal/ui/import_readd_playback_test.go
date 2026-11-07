@@ -24,8 +24,7 @@ func ensureRowInstrumentsAvailable(t *testing.T, g *Game) {
 			continue
 		}
 		if !g.drum.IsInstrumentAvailable(row.Instrument) {
-			// Empty path → silent placeholder sample (no decode attempt, no
-			// log noise). See sample_desktop.go RegisterAudio empty-path branch.
+			// An empty path registers a silent placeholder: no decode, no log noise.
 			_ = audio.RegisterWAV(row.Instrument, "")
 		}
 	}
@@ -66,10 +65,6 @@ func driveSchedulerToAbs(t *testing.T, g *Game, row, abs int) {
 	}
 }
 
-// Regression guard for playback parity when re-adding a node on a non-primary
-// row while the sequencer is running and history is frozen. DrumView should
-// mirror the engine predictor after a delete+re-add, rather than keeping a
-// stale mask even though the predictor says the step is on.
 func TestImportPlaybackReaddKeepsPredictorParity(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -142,8 +137,7 @@ func TestImportPlaybackReaddKeepsPredictorParity(t *testing.T) {
 		}
 	}
 
-	// Remove the target node and refresh while stopped so the prior window
-	// records the cleared state.
+	// Refreshed while stopped so the prior window records the cleared state.
 	n := g.nodeByID(bi.NodeID)
 	if n == nil {
 		t.Fatalf("node %d missing", bi.NodeID)
@@ -168,16 +162,8 @@ func TestImportPlaybackReaddKeepsPredictorParity(t *testing.T) {
 	g.pendingStartRow = -1
 	g.updateBeatInfos()
 
-	// Position the playhead just BEFORE the target subdivision so targetAbs is
-	// the next (still-future) beat and everything before it is frozen history.
-	// The immutable-past boundary is the visual playhead (elapsedBeats): every
-	// subdivision the playhead has passed is past and renders from committed
-	// history, not the live predictor (see rowPastExclusive). The prior version
-	// of this test set elapsedBeats far AHEAD of targetAbs while leaving next at
-	// targetAbs — an internally inconsistent state (the playhead claims to have
-	// long since passed targetAbs) that asserted a re-add could retroactively
-	// rewrite ancient past. That is the exact immutability violation this suite
-	// guards against, so it is corrected here to a consistent preview state.
+	// Just before the target, so targetAbs is the next beat and everything before it is frozen history. Putting the
+	// playhead past targetAbs would assert that a re-add rewrites the past.
 	g.elapsedBeats = targetAbs - 1
 	if g.elapsedBeats < 0 {
 		g.elapsedBeats = 0
@@ -226,9 +212,7 @@ func TestImportPlaybackReaddKeepsPredictorParity(t *testing.T) {
 
 }
 
-// Future playback commits that leak past the playhead should be demoted even
-// after pausing; otherwise re-added nodes stay masked when the window is
-// rebuilt in preview mode.
+// Otherwise re-added nodes stay masked when the window is rebuilt in preview mode.
 func TestTimelinePlaybackCommitInFutureDemotedWhenPaused(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -280,8 +264,7 @@ func TestTimelinePlaybackCommitInFutureDemotedWhenPaused(t *testing.T) {
 		t.Fatalf("future playback commit not demoted after pause: want=%v got=%v commit=%v typ=%v kind=%v ok=%v next=%v freeze=%v",
 			want, got, v, typ, kind, ok, g.nextBeatIdxs, g.frozenUpToByRow)
 	}
-	// Demotion should preserve the recorded value/type for debugging while
-	// relaxing immutability (CommitKindReleased).
+	// Demotion keeps the recorded value and type, relaxing only the immutability.
 	v, typ, kind, ok := g.timelineCommittedWithKind(0, targetAbs)
 	if !ok {
 		t.Fatalf("expected timeline commit retained after demotion")
@@ -297,9 +280,6 @@ func TestTimelinePlaybackCommitInFutureDemotedWhenPaused(t *testing.T) {
 	}
 }
 
-// Repro using the real ./beatmo.json project: during playback, deleting and
-// re‑adding a node on row 4 should not leave DrumView masked by an old commit.
-// The user observed TIMELINE_TRACE mismatches in /tmp/llm.log for this flow.
 func TestImportPlaybackReaddBeatmoProject(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -383,12 +363,9 @@ func TestImportPlaybackReaddBeatmoProject(t *testing.T) {
 	}
 	driveSchedulerToAbs(t, g, row, nextIdx+g.grid.MaxDiv())
 	g.engine.Predictor.Ensure(targetAbs + g.grid.MaxDiv())
-	// Sweep offsets around the current playhead and assert predictor/view
-	// parity for future cells (abs >= nextBeatIdxs[row]) where no immutable
-	// playback/import commit exists.
+	// Only future cells with no immutable playback/import commit must match the predictor.
 	nextIdx = g.nextBeatIdxs[row]
-	// Stop playback before the manual window sweep so parity scans don't
-	// treat offset probing as a scheduler vs view mismatch.
+	// Stopped, so parity scans don't read the offset probing as a scheduler-vs-view mismatch.
 	g.SetPlaying(false)
 	for off := targetAbs - g.drum.Length; off < nextIdx+g.drum.Length; off++ {
 		if off < 0 {
@@ -418,9 +395,6 @@ func TestImportPlaybackReaddBeatmoProject(t *testing.T) {
 	}
 }
 
-// Parity-watch repro: inserting a new node along an existing edge, deleting it,
-// and re-adding it while playback is running should not produce scheduler vs
-// DrumView mismatches even when PARITY_WATCH is active.
 func TestImportPlaybackAddRemoveReaddParityWatch(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -435,9 +409,7 @@ func TestImportPlaybackAddRemoveReaddParityWatch(t *testing.T) {
 	g.updateBeatInfos()
 	g.refreshDrumRow()
 
-	// Choose the vertical edge (-36,8) -> (-36,10) on the tom row and insert a
-	// node between them at (-36,9). This matches the user flow that triggered
-	// a parity panic when PARITY_WATCH=panic in the app.
+	// The edge on the tom row whose split once panicked under PARITY_WATCH=panic.
 	pred := g.nodeAt(-36, 8)
 	succ := g.nodeAt(-36, 10)
 	if pred == nil || succ == nil {
@@ -478,9 +450,6 @@ func TestImportPlaybackAddRemoveReaddParityWatch(t *testing.T) {
 	}
 }
 
-// Regression: deleting and re-adding the same existing node on the imported
-// tom row during playback should not leave DrumView masked relative to the
-// engine predictor (row=4 at grid=-36,10 in the repro log).
 func TestImportPlaybackDeleteReaddSameNodeKeepsPredictorParity(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -595,8 +564,6 @@ func TestImportPlaybackDeleteReaddSameNodeKeepsPredictorParity(t *testing.T) {
 	}
 }
 
-// Regression: after deleting and re-adding the same node, the sequencer should
-// resume scheduling that node on the row (audio should not silently disappear).
 func TestImportPlaybackDeleteReaddReschedulesNode(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -672,8 +639,6 @@ func TestImportPlaybackDeleteReaddReschedulesNode(t *testing.T) {
 	}
 }
 
-// Stale sequencer highlights (queued before a path change) should not create
-// immutable commits that mask the predictor after a delete+re-add flow.
 func TestImportPlaybackStaleHighlightAfterReaddMasksPredictor(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -761,8 +726,7 @@ func TestImportPlaybackStaleHighlightAfterReaddMasksPredictor(t *testing.T) {
 	}
 }
 
-// Stale sequencer highlights that arrive for the current beat (idx == next-1)
-// after a path change should be ignored so they don't freeze incorrect history.
+// A stale highlight for idx == next-1 must be ignored, or it freezes wrong history.
 func TestImportPlaybackStaleHighlightCurrentBeatAfterReadd(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

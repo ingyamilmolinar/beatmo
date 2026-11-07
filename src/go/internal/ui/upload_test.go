@@ -22,11 +22,7 @@ func waitForUploadNaming(t *testing.T, g *Game) {
 	t.Fatalf("upload click did not enter naming state (uploading=%v naming=%v)", g.drum.uploading, g.drum.IsNamingOpen())
 }
 
-// clickUploadViaOverflow opens the overflow ("...") menu and fires its "Upload"
-// entry. Upload is no longer an inline transport button on either platform — it
-// lives behind the overflow menu — so this is the real user path to start an
-// upload. The overflow entry invokes the same uploadBtn().OnClick the inline
-// button used to, exercising the menu-item wiring end to end.
+// Upload lives behind the overflow menu on both platforms, so this is the real path to it.
 func clickUploadViaOverflow(t *testing.T, g *Game) {
 	t.Helper()
 	dv := g.drum
@@ -141,17 +137,14 @@ func TestUploadButtonWorksAfterSelectingCustom(t *testing.T) {
 		t.Fatalf("expected instrument 'a' to be listed after upload")
 	}
 
-	// upload again via the overflow menu — the entry must keep working after a
-	// prior upload completed.
+	// The entry keeps working after an upload completed.
 	clickUploadViaOverflow(t, g)
 	if !g.drum.uploading && !g.drum.IsNamingOpen() {
 		t.Fatalf("upload entry inactive on second use")
 	}
 }
 
-// When the instrument menu is open, clicking Upload should close the menu and
-// still trigger a file selection in the same click. Previously the click was
-// swallowed while closing the menu, leaving the Upload button unresponsive.
+// The click that closes the instrument menu must still start the file selection.
 func TestUploadButtonWhileMenuOpen(t *testing.T) {
 	withDefaultAudio(t)
 	g := New(testLogger)
@@ -168,18 +161,11 @@ func TestUploadButtonWhileMenuOpen(t *testing.T) {
 		t.Fatalf("instrument menu did not open")
 	}
 
-	// Start an upload via the overflow "..." menu while the instrument menu is
-	// open. Upload is no longer an inline button (it moved behind the overflow
-	// menu), so this is the path a user takes — it must still trigger the
-	// upload flow regardless of the instrument menu being open.
 	clickUploadViaOverflow(t, g)
 	if !g.drum.uploading && !g.drum.IsNamingOpen() {
 		t.Fatalf("upload not triggered via overflow while instrument menu open")
 	}
 }
-
-// After uploading and choosing a custom instrument from the menu, the Upload
-// button should still respond to clicks and begin another file selection.
 
 func TestUploadButtonClickableTwice(t *testing.T) {
 	prevSuppress := suppressClicksUntilRelease

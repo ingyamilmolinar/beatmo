@@ -8,10 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// TestLiveSwitchRendersSpanish drives a real settings-overlay build under the
-// Spanish locale and asserts user-facing surfaces resolve to Spanish strings —
-// proving the resolve-at-draw rule works end to end (catalog → i18n.T at the
-// render site), not just at construction.
+// Strings resolve at draw time through i18n.T, not at construction.
 func TestLiveSwitchRendersSpanish(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 
@@ -42,16 +39,12 @@ func TestLiveSwitchRendersSpanish(t *testing.T) {
 	}
 }
 
-// TestSpanishFitsNarrowSurfaces guards against Spanish strings overflowing the
-// tightest text surfaces. The two narrowest are the settings language pills
-// (fixed width) and short menu labels. A clipped label (StyledTextWidth beyond
-// the slot) would silently truncate, so assert the rendered ES width fits.
+// A clipped label truncates silently, so the rendered width must fit the narrowest slots.
 func TestSpanishFitsNarrowSurfaces(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	i18n.SetLocale(i18n.LocaleES)
 
-	// Settings language pills are 150px wide (see settings_overlay.go pillW),
-	// with ~12px left text inset. The pill label must fit the remaining width.
+	// A 150 px pill with about 12 px of left inset.
 	const pillW = 150
 	const pillTextBudget = pillW - 24 // inset both sides, generous
 	for _, k := range []i18n.Key{i18n.KeyLangEnglish, i18n.KeyLangSpanish} {
@@ -61,8 +54,7 @@ func TestSpanishFitsNarrowSurfaces(t *testing.T) {
 		}
 	}
 
-	// Short menu labels should fit a typical menu column (~220px content) with
-	// room for an icon. Catch gross ES overflow.
+	// A typical menu column with room for an icon: catches gross overflow.
 	const menuTextBudget = 220
 	for _, k := range []i18n.Key{
 		i18n.KeyMenuRename, i18n.KeyMenuDelete, i18n.KeyMenuOrigin,

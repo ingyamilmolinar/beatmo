@@ -1,17 +1,8 @@
 //go:build test
 
-// SELECTING PREVIEWS, RE-SELECTING CONFIRMS — the instrument menu's half of the
-// rule the colour picker (applySwatch) and the note matrix (applyNoteMatrixPitch)
-// already follow.
-//
-// Choosing a DIFFERENT instrument applies it and leaves the menu open, so
-// several can be auditioned without reopening. Choosing the one already applied
-// is the confirm gesture and closes. The rule is positional, not time-based:
-// there is no double-click timer to tune, and because both the pointer and the
-// keyboard funnel through applyInstrument they cannot drift apart.
-//
-// These drive the real DrumView.Update() loop. A component-level test calling
-// HandleInput directly cannot see a menu that never gets its keys pumped.
+// Choosing a DIFFERENT instrument applies it and keeps the menu open for auditioning; choosing the applied one
+// confirms and closes. The rule is positional, not a double-click timer, and pointer and keyboard both go
+// through applyInstrument. Driven through DrumView.Update so the keys are really pumped.
 
 package ui
 
@@ -23,8 +14,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// pressKeyDrumView taps a key through n real DrumView.Update() frames,
-// honouring rising-edge detection: one frame held, one frame released.
+// Rising-edge detection needs one frame held and one released.
 func pressKeyDrumView(dv *DrumView, k ebiten.Key, w, h int) {
 	held := k
 	r := SetInputForTest(
@@ -68,9 +58,6 @@ func pressChordDrumView(dv *DrumView, w, h int, keys ...ebiten.Key) {
 	r()
 }
 
-// navToInstrument arrows the keyboard cursor onto the row whose id == want,
-// starting from wherever the cursor currently is. Returns false if the id is
-// not in the filtered list at all.
 func navToInstrument(t *testing.T, dv *DrumView, comp *InstrumentMenuComponent, want instrument.ID, w, h int) bool {
 	t.Helper()
 	nav := comp.MenuKeyNavForTest()
@@ -96,9 +83,7 @@ func navToInstrument(t *testing.T, dv *DrumView, comp *InstrumentMenuComponent, 
 	return true
 }
 
-// TestInstMenuEnterPreviewsWithoutClosing is the core of the request: Enter must
-// do what a CLICK does — apply the instrument and leave the menu open — rather
-// than the old select-and-slam-shut, which gave the user no chance to audition.
+// Enter does what a click does: apply and stay open, so the user can audition.
 func TestInstMenuEnterPreviewsWithoutClosing(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -144,9 +129,7 @@ func TestInstMenuSecondEnterConfirmsAndCloses(t *testing.T) {
 	}
 }
 
-// TestInstMenuEnterOnDifferentRowPreviewsAgain pins that the confirm is
-// POSITIONAL: moving the cursor first means the next Enter is a fresh preview,
-// not a confirm of the previous one.
+// Moving the cursor first makes the next Enter a fresh preview, not a confirm of the previous row.
 func TestInstMenuEnterOnDifferentRowPreviewsAgain(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -171,8 +154,6 @@ func TestInstMenuEnterOnDifferentRowPreviewsAgain(t *testing.T) {
 	}
 }
 
-// TestInstMenuClickOnAlreadySelectedRowCloses is the pointer half of the same
-// rule — the user chose one rule for both inputs, so a click cannot diverge.
 func TestInstMenuClickOnAlreadySelectedRowCloses(t *testing.T) {
 	assertDefaultParityState(t)
 	prev := suppressClicksUntilRelease
@@ -202,10 +183,8 @@ func TestInstMenuClickOnAlreadySelectedRowCloses(t *testing.T) {
 	}
 }
 
-// TestInstMenuClickThenEnterConfirms is the coherence test: after a CLICK, the
-// keyboard cursor must sit on what was clicked, so Enter confirms it rather
-// than re-applying whatever row the cursor was left pointing at. This is the
-// bug the colour picker's syncCursorToApplied exists to prevent.
+// After a click the keyboard cursor must sit on what was clicked, or Enter re-applies the row the cursor was left
+// on (the colour picker's syncCursorToApplied exists for the same reason).
 func TestInstMenuClickThenEnterConfirms(t *testing.T) {
 	assertDefaultParityState(t)
 	prev := suppressClicksUntilRelease

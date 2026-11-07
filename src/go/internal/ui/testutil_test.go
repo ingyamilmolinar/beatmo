@@ -1,20 +1,8 @@
 package ui
 
-// ─── E2E Test Utilities ─────────────────────────────────────────────────────
-//
-// Essential test patterns for Go E2E/functional tests:
-//
-//   1. Always call assertDefaultParityState(t) at the start of every test to
-//      reset parity globals and verify clean state.
-//   2. After any circuit change (addNode, addEdge, etc.), MUST call
-//      g.updateBeatInfos() + g.refreshDrumRow() to sync predictor and UI.
-//   3. Use stopPlaybackForTest(g) for clean stop — it resets all sequencer
-//      state (indices, pulses, highlights, parity).
-//   4. Never access lastTriggeredByRow directly — use thread-safe helpers:
-//      setLastTriggeredForTest, lastTriggeredForTest, lastTriggeredRowSnapshotForTest.
-//   5. Use advanceFrames(g, N) to tick the game loop N times (~N/60 seconds).
-//   6. Use withDefaultStart(t, false) to disable default start node for clean slate.
-//   7. Use withDefaultAudio(t) to reset audio channels/instruments at test start.
+// Start each test with assertDefaultParityState(t); after a circuit edit call g.updateBeatInfos() +
+// g.refreshDrumRow(); stop with stopPlaybackForTest(g); read lastTriggeredByRow only through its thread-safe
+// helpers; tick with advanceFrames(g, N).
 
 import (
 	"bytes"
@@ -239,8 +227,7 @@ func advanceFrames(g *Game, frames int) {
 	}
 }
 
-// advancePlaybackByAbs advances playback by a fixed number of absolute steps.
-// It preserves the current absolute position to keep progression monotonic.
+// Monotonic: it continues from the current absolute position.
 func advancePlaybackByAbs(g *Game, steps int) {
 	if g == nil || steps <= 0 {
 		return
@@ -267,18 +254,9 @@ func spinWait(t *testing.T, steps int, cond func() bool) {
 	t.Fatalf("condition not met after %d steps", steps)
 }
 
-// waitForChan blocks until ch delivers a value or a derived wall-clock budget
-// elapses. It BLOCKS on the channel (does not busy-poll): the value it waits
-// for is produced by a background goroutine — e.g. audioLoop draining g.audioCh
-// and invoking the test playFn — and a busy-spin here keeps the calling
-// goroutine RUNNABLE, competing for a P with that very producer. Under the full
-// internal/ui package run (hundreds of concurrent test goroutines saturating
-// every P), the old spin exhausted its poll window before the producer got a
-// timeslice, so TestSoundPlaysAfterHighlight / TestMuteAndSoloPlayback flaked
-// with "channel did not receive". Blocking yields the P so the producer runs.
-//
-// steps is retained as the caller-expressed patience budget (100µs/step),
-// clamped to [25ms, 5s].
+// Blocks on the channel rather than spinning: the value comes from a background goroutine (audioLoop calling the
+// test playFn), and a spin keeps this goroutine runnable, competing for a P with its own producer under a full
+// package run. steps is the patience budget, 100 µs each, clamped to [25 ms, 5 s].
 func waitForChan[T any](t *testing.T, ch <-chan T, steps int) T {
 	t.Helper()
 	var zero T
@@ -318,14 +296,8 @@ func waitForUpdateCond(t *testing.T, g *Game, steps int, cond func() bool) {
 	t.Fatalf("condition not met after %d steps", steps)
 }
 
-// waitForCount waits until current() reaches at least want, within the same
-// derived wall-clock budget as waitForChan (100µs/step, clamped to [25ms, 5s]).
-// The count is produced by a background goroutine (audioLoop invoking the test
-// playFn), and a bound counted in Gosched spins is not a time: under the full
-// parallel `go test ./...` run the producer's OS thread can be descheduled for
-// longer than 10000 spins take, and TestAudioDecoupledDuringHeavyDraw failed
-// at 55-63 of 64 although every note arrived within ~10ms more. It sleeps
-// between polls so the waiting goroutine does not hold a P.
+// Bounded in time, not spin count: under a parallel run the producer's thread can be descheduled longer than any
+// spin count takes. It sleeps between polls so it does not hold a P.
 func waitForCount(t *testing.T, steps int, want int, current func() int) {
 	t.Helper()
 	if steps < 1 {
@@ -361,8 +333,7 @@ func ensureInstrumentAvailable(t *testing.T, g *Game, id instrument.ID) {
 	})
 	g.drum.refreshInstruments()
 	if !g.drum.IsInstrumentAvailable(id) {
-		// Empty path → silent placeholder sample (no decode attempt, no log
-		// noise). See sample_desktop.go RegisterAudio's empty-path branch.
+		// An empty path registers a silent placeholder: no decode, no log noise.
 		_ = audio.RegisterWAV(id, "")
 		g.drum.refreshInstruments()
 	}
@@ -427,25 +398,9 @@ func clearMuteSolo(t *testing.T, dv *DrumView) {
 	}
 }
 
-// waitForPlaybackReady blocks until the warm-up readiness gate opens.
-//
-// Game.Update DISCARDS a Play press made while a warm set is outstanding
-// ("Never queue the press" — game_update.go) and the transport renders the
-// Play button disabled, so a real user CANNOT press Play before the gate
-// opens. A test can, and then races the warm renders: after an Import the
-// gate holds until every voice in the circuit is rendered.
-// TestSwitchInstrumentAfterStopReplayParity passed alone (its 4
-// guitar-electric voices finished before its single press) and failed under
-// the full package run with the press silently swallowed — measured
-// warmupProgress 0/4 at the press, 4/4 by the assertion, playing=false
-// throughout. Four more import-then-press tests carry the same latent race,
-// so the wait lives here in pressPlay rather than at one call site.
-//
-// Completion is driven by the prewarm pool's workers, not by frames, so this
-// deliberately does NOT call Update: the caller's frame sequence stays
-// exactly as written, which the parity/timeline tests depend on. It sleeps
-// rather than spinning — a busy-spin keeps this goroutine RUNNABLE and
-// competes with the very pool workers it is waiting on (see waitForChan).
+// Update DISCARDS a Play press while warm-up is outstanding; a user cannot press before the gate opens, but a test
+// can, racing the warm renders after an Import. Completion is driven by the prewarm workers, so this does not call
+// Update (callers' frame sequences stay exact) and sleeps rather than spins.
 func waitForPlaybackReady(t *testing.T, g *Game) {
 	t.Helper()
 	if g == nil {
@@ -510,12 +465,8 @@ func pressLenDec(t *testing.T, dv *DrumView) {
 	dv.lenDecPressed = true
 }
 
-// testParityWatchDefault is the parity watch mode EVERY test Game starts in:
-// panic on the first mismatch, on every platform. Production keeps its own
-// defaults (desktop: scans fatal, inline checks off; WASM: log-only); tests
-// run strictly so a desync can never pass silently. A test that deliberately
-// manufactures a mismatch to exercise the checker opts down to log mode on
-// its own Game and reads the ring.
+// Every test Game panics on the first mismatch, so a desync can never pass silently; production keeps its own
+// defaults. A test that manufactures a mismatch on purpose opts its own Game down to log mode.
 const testParityWatchDefault = parityWatchPanic
 
 func assertDefaultParityState(t *testing.T) {
@@ -523,9 +474,7 @@ func assertDefaultParityState(t *testing.T) {
 	// Reset parity globals so tests don't depend on prior side effects.
 	parityWatchDefault = testParityWatchDefault
 	parityFatalEnabled.Store(true)
-	// Timing gate is armed under go test too (see init() in
-	// game_parity_timing.go) — reset so a test that opted a gate down can't
-	// leak that into the tests that follow it.
+	// The timing gate is armed under go test too; reset so a test that opted down can't leak it forward.
 	parityTimingWatchDefault = parityWatchPanic
 	parityTimingFatalEnabled.Store(true)
 	if enableDefaultStart != true {
@@ -537,21 +486,9 @@ func assertDefaultParityState(t *testing.T) {
 	if forceSmallScreenForTest != false {
 		t.Fatalf("forceSmallScreenForTest=%v want false (default)", forceSmallScreenForTest)
 	}
-	// ...and put them BACK afterwards, which is the half that was missing.
-	//
-	// Asserting the default without restoring it makes this function a
-	// tripwire that reports the SECOND test to touch a global while saying
-	// nothing about the first — the one that actually leaked. That asymmetry
-	// produced a 140-test cascade under `make test-real` in which every
-	// failure read "forceSmallScreenForTest=true want false" and not one of
-	// them named the mobile helper that set it.
-	//
-	// The leak is invisible to the stubbed build: SetForceMobileProfile is a
-	// no-op in game_state_setters_stub.go and only mutates the global in the
-	// real-build game_state_setters.go, so `make test` is structurally unable
-	// to see this class of bug. testutil_cleanup_regression_test.go pins the
-	// behaviour and documented this reset as the intended fix; the reset
-	// itself was never actually here.
+	// Restore them afterwards too: asserting without restoring reports the SECOND test to touch a global and says
+	// nothing about the one that leaked. SetForceMobileProfile is a no-op in the stub build, so only `make test-real`
+	// can see this class of leak.
 	t.Cleanup(func() {
 		if forceSmallScreenForTest || forceAutoSize {
 			forceSmallScreenForTest = false
@@ -578,18 +515,9 @@ func assertDefaultParityState(t *testing.T) {
 		t.Fatalf("parityFatalEnabled=%v want true for tests (PARITY_FATAL should be unset)", parityFatalEnabled.Load())
 	}
 
-	// Auto-reset every package global this function asserts on. Production
-	// helpers like (*Game).SetForceMobileProfile mutate these (used by 31
-	// scene Setups in scene_catalog.go for the screenshot harness's mobile
-	// pass), and tests exercising those scenes via RunSceneMobile rarely
-	// register their own t.Cleanup. Without this defense the very first
-	// mobile-scene test poisons every subsequent test that calls
-	// assertDefaultParityState — a 100+-test cascade.
-	//
-	// The entry-time assertions above still catch NEW state-leak bugs
-	// originating outside the test runner (e.g. init() functions, env
-	// vars set in test bootstrap). The cleanup is purely defensive against
-	// in-test mutations the test forgot to undo.
+	// Scene Setups mutate these through helpers like SetForceMobileProfile and tests rarely clean up; without this
+	// reset one mobile-scene test poisons every later one. The entry assertions still catch leaks from outside the
+	// test runner.
 	t.Cleanup(func() {
 		forceSmallScreenForTest = false
 		forceAutoSize = false
@@ -686,8 +614,7 @@ func setPlayStartForAbsFloat(g *Game, abs float64) {
 	g.SetAudioStartForTest(0)
 }
 
-// stopPlaybackForTest mirrors the stop-button reset path to ensure
-// scheduling restarts from a clean default state.
+// Mirrors the stop button's reset, so scheduling restarts from a clean state.
 func stopPlaybackForTest(g *Game) {
 	if g == nil {
 		return

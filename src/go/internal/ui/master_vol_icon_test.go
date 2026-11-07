@@ -31,9 +31,7 @@ func captureFilledDrawRect(t *testing.T, fn func()) []filledDraw {
 	return calls
 }
 
-// isPrimaryColor returns true iff `c` is the genColorPrimary token at any
-// alpha. Compares NRGBA channels (the form WithAlpha returns) so we
-// avoid lossy premultiplied-RGBA round-trips.
+// NRGBA, the form WithAlpha returns, avoiding lossy premultiplied round-trips.
 func isPrimaryColor(c color.Color) bool {
 	if n, ok := c.(color.NRGBA); ok {
 		return n.R == genColorPrimary.R && n.G == genColorPrimary.G && n.B == genColorPrimary.B

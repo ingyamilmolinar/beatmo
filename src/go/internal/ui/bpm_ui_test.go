@@ -9,8 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestBPMButtonsWithMouseClick simulates real mouse clicks on the +/- buttons
-// and verifies that Game picks up the BPM change and applies it to the engine.
+// Real clicks; the engine picks up the change.
 func TestBPMButtonsWithMouseClick(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -86,9 +85,7 @@ func TestBPMButtonsAffectSpeedTimeBased(t *testing.T) {
 	g.addEdge(n0, n1)
 	g.updateBeatInfos()
 
-	// Start playback on a simple 1-beat segment.
-	// Click + once to change BPM, and compare before/after rates.
-	// Compute base rate at current BPM.
+	// One click of +, comparing the rate before and after.
 	_ = g.Update()
 	pressPlay(t, g.drum)
 	// Measure baseline progression over a fixed window.
@@ -149,7 +146,3 @@ func TestBPMButtonsAffectSpeedTimeBased(t *testing.T) {
 		t.Fatalf("visual progression slowed unexpectedly: base=%d after=%d", baseDelta, delta2)
 	}
 }
-
-// TestBPMEditorMouseFocusAndCommit verifies that clicking the BPM box focuses it
-// and that typed numbers plus Enter are applied end-to-end via Game.
-// Removed flaky focus test; verified BPM input behavior in other tests.

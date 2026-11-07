@@ -10,22 +10,12 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// END-TO-END coverage for the note-matrix picker: real clicks driven through
-// Game.Update, not direct calls into the component.
-//
-// The component's own unit tests passed while the feature was completely dead
-// in the app, because they called NoteMatrixComponent.HandleInput directly.
-// Nothing proved the click actually REACHED it. NodeSidebar.Hit() only matched
-// points inside the sidebar card, so a press on the floating matrix panel was
-// never routed to the sidebar at all and fell through to the grid.
-//
-// Every test here goes through clickAt (press + release across two real
-// Update frames), which is the only path that proves the wiring.
+// Real clicks through Game.Update, never direct HandleInput calls: unit tests passed while a press on the
+// floating panel never reached the sidebar at all. clickAt (press + release over two frames) is the only path
+// that proves the wiring.
 
-// nmClick is clickAt plus a settle frame. Sidebar buttons dispatch through
-// g.enqueueUI, which runs the action on the NEXT Update — a real app keeps
-// producing frames, so a test that stops at the release frame would never see
-// the effect.
+// Sidebar buttons dispatch through g.enqueueUI, which runs on the NEXT Update; stopping at the release frame
+// would never see the effect.
 func nmClick(g *Game, x, y int) {
 	clickAt(g, x, y)
 	_ = g.Update()
@@ -36,8 +26,6 @@ func nmCenter(r image.Rectangle) (int, int) {
 	return r.Min.X + r.Dx()/2, r.Min.Y + r.Dy()/2
 }
 
-// matrixTestGame opens the node sidebar on a node whose row carries a pitched
-// instrument, with all sections expanded.
 func matrixTestGame(t *testing.T) (*Game, *uiNode) {
 	t.Helper()
 	g := newTestGameForUndo(t)
@@ -67,9 +55,7 @@ func TestNoteMatrixE2E_ChipClickOpensPicker(t *testing.T) {
 	}
 }
 
-// THE REGRESSION: clicking a cell must change the node's pitch. This failed
-// before NodeSidebar.Hit() was taught about the matrix panel — the click never
-// reached the sidebar.
+// The click must reach the sidebar through NodeSidebar.Hit, which must know the matrix panel.
 func TestNoteMatrixE2E_ClickingACellSetsThePitch(t *testing.T) {
 	g, node := matrixTestGame(t)
 
@@ -102,15 +88,13 @@ func TestNoteMatrixE2E_ClickingACellSetsThePitch(t *testing.T) {
 		t.Errorf("clicking the cell for pitch %v left the node at %v — "+
 			"the click never reached the picker", want, mn.Params.Pitch)
 	}
-	// Selecting APPLIES and leaves the picker open; re-selecting the same note
-	// is the confirm gesture. See picker_confirm_on_reselect_test.go.
+	// Selecting applies and keeps the picker open; re-selecting the same note confirms.
 	if !g.sidebar.noteMatrixIsOpen() {
 		t.Error("picker closed on a single pick; it must stay open for the next audition")
 	}
 }
 
-// The chip label, the sidebar summary and the matrix must all agree after a
-// pick — they are three views of one value.
+// Three views of one value.
 func TestNoteMatrixE2E_ChipLabelFollowsThePick(t *testing.T) {
 	g, node := matrixTestGame(t)
 
@@ -145,8 +129,6 @@ func TestNoteMatrixE2E_ChipLabelFollowsThePick(t *testing.T) {
 	}
 }
 
-// A second click on the chip closes the picker (toggle), so the control is not
-// a one-way trip.
 func TestNoteMatrixE2E_ChipClickTogglesClosed(t *testing.T) {
 	g, _ := matrixTestGame(t)
 	cx, cy := nmCenter(g.sidebar.rects[sbPitchNote])
@@ -161,9 +143,7 @@ func TestNoteMatrixE2E_ChipClickTogglesClosed(t *testing.T) {
 	}
 }
 
-// A press on a dimmed (out-of-range) cell must cost nothing: it must not
-// change the pitch, must not dismiss the picker, and must not fall through to
-// the grid and close the node sidebar.
+// It must not change the pitch, dismiss the picker, or fall through to the grid and close the sidebar.
 func TestNoteMatrixE2E_DimmedCellIsInert(t *testing.T) {
 	g, node := matrixTestGame(t)
 	cx, cy := nmCenter(g.sidebar.rects[sbPitchNote])
@@ -201,8 +181,7 @@ func TestNoteMatrixE2E_DimmedCellIsInert(t *testing.T) {
 
 // ─── Keyboard + wheel, end to end ──────────────────────────────────────────
 
-// nmKey holds a key down for one Update, then releases it — the edge shape
-// MenuKeyNav keys off.
+// The edge shape MenuKeyNav keys off.
 func nmKey(g *Game, k ebiten.Key) {
 	restore := SetInputForTest(
 		func() (int, int) { return 0, 0 },
@@ -242,8 +221,7 @@ func openMatrixForKeys(t *testing.T) (*Game, *uiNode) {
 	return g, node
 }
 
-// Arrow keys must move a cursor inside the matrix. Down moves a whole ROW in a
-// grid (MenuKeyNav's grid mode), Right one cell.
+// Grid mode: Down moves a whole row, Right one cell.
 func TestNoteMatrixE2E_ArrowKeysMoveTheCursor(t *testing.T) {
 	g, _ := openMatrixForKeys(t)
 
@@ -322,9 +300,7 @@ func TestNoteMatrixE2E_CursorSkipsUnselectableCells(t *testing.T) {
 	}
 }
 
-// Moving the cursor off the visible page must scroll it into view — the picker
-// scrolls in ROWS while the cursor counts CELLS, which is why it implements
-// MenuKeyNavRevealer rather than handing over a ScrollBehavior.
+// The picker scrolls in ROWS while the cursor counts CELLS, which is why it implements MenuKeyNavRevealer.
 func TestNoteMatrixE2E_CursorScrollsIntoView(t *testing.T) {
 	g, _ := openMatrixForKeys(t)
 	if !g.sidebar.noteMatrix.HasScroll() {
@@ -369,8 +345,6 @@ func TestNoteMatrixE2E_WheelOverPickerScrollsRows(t *testing.T) {
 	}
 }
 
-// With the picker open, the wheel over the sidebar card (outside the picker)
-// must still scroll the sidebar.
 func TestNoteMatrixE2E_WheelOutsidePickerStillScrollsSidebar(t *testing.T) {
 	g, _ := openMatrixForKeys(t)
 	panel := g.sidebar.rects[sbPanel]

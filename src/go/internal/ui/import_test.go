@@ -58,8 +58,6 @@ func TestImportScalesSubdivisionsAndKeepsOrthogonality(t *testing.T) {
 		t.Fatalf("import failed: %v", err)
 	}
 
-	// With import applying the JSON's subdiv, the grid now uses 32 and node
-	// coordinates match the file exactly.
 	if g.grid.MaxDiv() != 32 {
 		t.Fatalf("import should set grid subdiv to 32; got %d", g.grid.MaxDiv())
 	}

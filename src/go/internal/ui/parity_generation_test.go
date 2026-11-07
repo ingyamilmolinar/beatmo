@@ -8,11 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestParityGenAdvancesOnStructuralMutation locks down the contract that a
-// runtime structural mutation through bumpParityGen monotonically advances
-// the generation counter and grants a grace window. The gen counter is the
-// spine of cross-thread parity coordination — any regression that stops
-// it from advancing on a real mutation should fail this test.
+// The generation counter is the spine of cross-thread parity coordination: every runtime structural mutation
+// advances it and grants a grace window.
 func TestParityGenAdvancesOnStructuralMutation(t *testing.T) {
 	assertDefaultParityState(t)
 	g := buildTestGame(t)
@@ -51,9 +48,7 @@ func TestParityGenAdvancesOnStructuralMutation(t *testing.T) {
 	}
 }
 
-// TestParityGenStampedOnRecord verifies that recordParityAudio and
-// recordSeqDecision capture the current parity generation. Future scan
-// policies that filter by gen rely on this stamp; the test pins the contract.
+// Generation filters rely on this stamp.
 func TestParityGenStampedOnRecord(t *testing.T) {
 	assertDefaultParityState(t)
 	g := buildTestGame(t)
@@ -93,11 +88,8 @@ func TestParityGenStampedOnRecord(t *testing.T) {
 	}
 }
 
-// TestMarkAllRowsPathChangedAt is a unit-level guard for the cross-row marker.
-// When mutateStructural runs without SkipPathChangeMark, every row's
-// pathChangeBeatByRow must advance to (at least) the current elapsedBeats so
-// the freeze loop in refreshDrumRow does not commit pre-mutation past beats
-// against the post-mutation predictor view.
+// Every row's marker advances to at least elapsedBeats, so the freeze loop never commits pre-mutation past
+// beats against the post-mutation predictor.
 func TestMarkAllRowsPathChangedAt(t *testing.T) {
 	assertDefaultParityState(t)
 	g := buildTestGame(t)

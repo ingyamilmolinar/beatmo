@@ -8,10 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// TestBottomNavRelabelsOnLocaleSwitch guards live re-localization of the mobile
-// bottom-nav SegmentedControl, which copies its labels at construction. A
-// runtime SetLocale → OnLocaleChanged must push fresh-locale labels into it
-// (zone Invalidate does not reach a cached SegmentedControl).
+// It copies its labels at construction, and a zone Invalidate does not reach it, so OnLocaleChanged pushes fresh ones.
 func TestBottomNavRelabelsOnLocaleSwitch(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	i18n.SetLocale(i18n.LocaleEN)

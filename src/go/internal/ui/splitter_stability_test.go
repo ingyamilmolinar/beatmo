@@ -7,10 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestSplitterStability is the main regression test for the drum-view divider
-// jitter bug. It enables forceAutoSize and production eqPanelHeight, then
-// calls Layout() 10 times at each window size and asserts split.Y and
-// drum.eqH never change frame-to-frame.
+// Repeated Layout at a fixed size must not move split.Y or eqH: that was the divider jitter.
 func TestSplitterStability(t *testing.T) {
 	assertDefaultParityState(t)
 	withForceAutoSize(t, true)
@@ -56,8 +53,7 @@ func TestSplitterStability(t *testing.T) {
 	}
 }
 
-// TestWidgetBoardRowHeightsSumToTotal verifies that cumulative rounding in
-// WidgetBoard.recalc() produces row heights that sum exactly to the total.
+// Cumulative rounding must still sum to the total.
 func TestWidgetBoardRowHeightsSumToTotal(t *testing.T) {
 	weights := []float64{2, 3, 3}
 	heights := []int{100, 101, 150, 199, 200, 201, 300, 301, 400, 479, 480, 481, 600}
@@ -75,9 +71,6 @@ func TestWidgetBoardRowHeightsSumToTotal(t *testing.T) {
 	}
 }
 
-// TestSplitterRatioRoundtrip verifies that after a user sets the splitter via
-// drag (userSet=true), UpdateResize preserves the exact Y position when the
-// window size hasn't changed.
 func TestSplitterRatioRoundtrip(t *testing.T) {
 	totalH := 800
 	s := NewSplitter(totalH)

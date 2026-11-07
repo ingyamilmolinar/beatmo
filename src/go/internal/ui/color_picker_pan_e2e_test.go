@@ -7,26 +7,10 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// A FAITHFUL reproduction of "I open the colour picker and use the arrows and
-// it pans".
-//
-// DELIBERATELY UNTAGGED, so it runs under BOTH the -tags test ebitestub build
-// AND the real-Ebiten build (make test-real). Every other picker test carries
-// //go:build test and therefore only ever exercised the stub — which is a real
-// blind spot here, because the stub declares KeyUp/KeyArrowUp (and the other
-// arrow pairs) as DISTINCT constants while real Ebiten ALIASES them.
-//
-// The earlier guard test pressed each arrow for exactly ONE frame. A real user
-// HOLDS the key for many frames, and gridShortcut's arrow-pan is
-// level-triggered (isKeyPressed, not isKeyJustPressed) — so it pans on EVERY
-// frame the key is down. A single-frame press therefore cannot catch a gate
-// that fails on any frame other than the first.
-//
-// It also opens the picker through the real row-colour-button callback rather
-// than reaching for an internal opener.
+// Untagged, so it runs on the real build too: the stub declares the arrow spellings distinct while real Ebiten
+// aliases them. A user HOLDS an arrow, and the grid's pan is level-triggered, so a one-frame press cannot catch a
+// gate that fails on a later frame.
 
-// holdKey holds a key down across n consecutive Update frames, then releases,
-// mirroring a real key hold.
 func holdKey(g *Game, k ebiten.Key, frames int) {
 	restore := SetInputForTest(
 		func() (int, int) { return g.winW / 2, g.winH / 4 },
@@ -43,15 +27,13 @@ func holdKey(g *Game, k ebiten.Key, frames int) {
 	_ = g.Update()
 }
 
-// openColorPickerViaRowButton opens the picker the way the row colour button
-// does, then settles a frame.
+// The way the row colour button does.
 func openColorPickerViaRowButton(t *testing.T) *Game {
 	t.Helper()
 	g := newTestGameForUndo(t)
 	g.Layout(1280, 720)
 
-	// Go through the row rack's real OnColorWheelOpen callback — the same one
-	// the colour button fires — rather than an internal opener.
+	// The callback the colour button fires, not an internal opener.
 	z := g.drum.rowRackZone
 	if z == nil || z.callbacks.OnColorWheelOpen == nil {
 		t.Fatal("row colour-wheel callback is not wired")
@@ -65,8 +47,7 @@ func openColorPickerViaRowButton(t *testing.T) *Game {
 	return g
 }
 
-// THE BUG: holding an arrow with the picker open must not pan the grid on ANY
-// frame.
+// No frame of a held arrow pans the grid while the picker is open.
 func TestColorPickerE2E_HeldArrowNeverPansTheGrid(t *testing.T) {
 	g := openColorPickerViaRowButton(t)
 
@@ -84,8 +65,7 @@ func TestColorPickerE2E_HeldArrowNeverPansTheGrid(t *testing.T) {
 	}
 }
 
-// The picker must also survive the hold — a guard that works by closing the
-// picker would "pass" the test above while being useless.
+// A guard that worked by closing the picker would pass the test above while being useless.
 func TestColorPickerE2E_StaysOpenAcrossAHeldArrow(t *testing.T) {
 	g := openColorPickerViaRowButton(t)
 	holdKey(g, ebiten.KeyArrowDown, 20)
@@ -94,8 +74,7 @@ func TestColorPickerE2E_StaysOpenAcrossAHeldArrow(t *testing.T) {
 	}
 }
 
-// And the counterpart: a held arrow with no picker open pans every frame, so
-// the guard above is not just "pan is broken".
+// The control: with no picker, a held arrow pans every frame.
 func TestColorPickerE2E_HeldArrowPansWhenNoPickerOpen(t *testing.T) {
 	g := newTestGameForUndo(t)
 	g.Layout(1280, 720)
@@ -107,8 +86,7 @@ func TestColorPickerE2E_HeldArrowPansWhenNoPickerOpen(t *testing.T) {
 	}
 }
 
-// noKeyboardOverlay is a minimal overlay that does NOT claim the keyboard —
-// a tooltip, a notification, any transient surface.
+// A tooltip, a notification: any transient surface.
 type noKeyboardOverlay struct{}
 
 func (noKeyboardOverlay) Layout(anchor, screen image.Rectangle) {}
@@ -116,13 +94,8 @@ func (noKeyboardOverlay) HitAreas() []HitArea                   { return nil }
 func (noKeyboardOverlay) Draw(dst *ebiten.Image)                {}
 func (noKeyboardOverlay) ShouldClose() bool                     { return false }
 
-// THE REAL BUG: the keyboard claim consulted only the portal's TOP overlay, so
-// anything stacked above an open picker silently dropped the claim and the
-// arrows went back to panning the grid.
-//
-// The picker is still open and still on screen — the user sees it, presses an
-// arrow, and the camera moves. That is the reported symptom, and no test that
-// opened the picker in isolation could ever catch it.
+// The claim considers every open overlay, not only the top one: anything stacked above an open picker must not drop
+// its claim and let the arrows pan.
 func TestColorPickerE2E_KeepsKeyboardWhenAnotherOverlayIsOnTop(t *testing.T) {
 	g := openColorPickerViaRowButton(t)
 	if !g.KeyboardClaimed() {

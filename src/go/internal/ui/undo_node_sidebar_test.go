@@ -8,25 +8,16 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// sidebarUndoCase drives ONE real node-sidebar ("main node pop-up menu") control
-// through its production OnClick closure and asserts the resulting document
-// mutation is undoable. Unlike the direct emit-call cases in
-// undo_all_actions_test.go, these exercise the actual button handlers in
-// game_node_sidebar.go end-to-end, so they catch handlers that mutate the graph
-// without recording an undo step.
+// Through each control's production OnClick, which catches a handler that mutates the graph without recording.
 type sidebarUndoCase struct {
 	name string
-	// prep establishes prerequisite node state and the sidebar UI state
-	// (open sections / open dropdowns) required for the target control to be
-	// wired. It runs before the undo baseline is taken.
+	// Runs before the undo baseline is taken.
 	prep func(t *testing.T, g *Game, node *uiNode)
 	// fire is the sidebar button id whose production OnClick is invoked.
 	fire sbID
 }
 
-// sidebarUndoCases enumerates EVERY document-mutating control reachable from the
-// node sidebar. Pure-UI controls (close, the logic/groove dropdown toggles, the
-// move button) are intentionally absent — they change no exported state.
+// Pure-UI controls (close, the dropdown toggles, move) change no exported state and are absent.
 func sidebarUndoCases() []sidebarUndoCase {
 	setLogic := func(kind model.LogicKind, n int, p float64) func(*testing.T, *Game, *uiNode) {
 		return func(t *testing.T, g *Game, node *uiNode) {
@@ -100,10 +91,7 @@ func sidebarUndoCases() []sidebarUndoCase {
 			fire: sbGrooveOption(model.GrooveDelay),
 		},
 		{
-			// Groove percentage only round-trips through the snapshot when a groove
-			// kind is set (export writes groove_pct unconditionally but import reads
-			// it only alongside a non-empty groove_kind — a separate import gap). A
-			// groove percentage is only meaningful with a kind anyway, so set one.
+			// Import reads groove_pct only alongside a groove kind, so one is set.
 			name: "groove-pct-up",
 			prep: setGroove(model.GrooveDelay, 0.3),
 			fire: sbPlus(fieldGroovePct),
@@ -120,11 +108,8 @@ func sidebarUndoCases() []sidebarUndoCase {
 	}
 }
 
-// fireSidebarControl lays out the sidebar (wiring its button closures), invokes
-// the named control's production OnClick, then drains the UI queue exactly the
-// way Game.Update does — inside the per-frame undo bracket (game_update.go). This
-// is the real execution path: OnClick only enqueues; the mutation (and any undo
-// tap) happens during the drain.
+// OnClick only enqueues; the mutation and its undo tap happen in the drain, inside the per-frame bracket as in
+// Update.
 func (g *Game) fireSidebarControl(t *testing.T, id sbID) {
 	t.Helper()
 	g.sidebar.layout()
@@ -149,14 +134,8 @@ func (g *Game) fireSidebarControl(t *testing.T, id sbID) {
 	endUndoGroup()
 }
 
-// TestNodeSidebarControlsAreUndoable proves that every document-mutating control
-// in the node pop-up menu records an atomic, reversible undo step. For each
-// control it asserts:
-//
-//  1. firing the real handler changes the exported document,
-//  2. it records EXACTLY ONE undo step (atomic), and
-//  3. Undo restores the pre-action document byte-for-byte, and Redo re-applies
-//     the post-action document.
+// For every document-mutating control: it changes the document, records EXACTLY ONE step, and Undo / Redo restore
+// the before / after documents.
 func TestNodeSidebarControlsAreUndoable(t *testing.T) {
 	for _, tc := range sidebarUndoCases() {
 		t.Run(tc.name, func(t *testing.T) {
@@ -193,9 +172,7 @@ func TestNodeSidebarControlsAreUndoable(t *testing.T) {
 				t.Fatalf("%s: Undo not byte-identical to pre-action document", tc.name)
 			}
 
-			// Param mutations don't renumber node ids, but normalise through the
-			// import path anyway (matching undo_all_actions_test.go) so the Redo
-			// comparison is robust. restoring suppresses recording/clearing.
+			// Normalised through import, as the all-actions sweep does; restoring suppresses recording.
 			normalize := func(b []byte) string {
 				g.undoManager.restoring = true
 				_ = g.Import(b)

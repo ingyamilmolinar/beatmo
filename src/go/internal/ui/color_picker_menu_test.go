@@ -9,12 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestColorPickerGridMatchesSwatchCount pins the picker's fixed grid geometry
-// to the swatch source. rebuildWheel lays the swatches into a colorSwatchRows ×
-// colorSwatchCols grid and silently drops any swatch past row colorSwatchRows
-// (`if row >= colorSwatchRows break`). If the curated swatch set ever changes
-// size, that truncation would hide colors from the picker with no other test
-// failing — so assert the grid is sized to hold exactly every swatch.
+// The grid silently drops swatches past colorSwatchRows, so it must hold exactly every swatch.
 func TestColorPickerGridMatchesSwatchCount(t *testing.T) {
 	if got, want := len(SuggestedInstrumentSwatches), colorSwatchRows*colorSwatchCols; got != want {
 		t.Fatalf("picker grid is %d×%d=%d cells but there are %d swatches; "+
@@ -23,11 +18,7 @@ func TestColorPickerGridMatchesSwatchCount(t *testing.T) {
 	}
 }
 
-// pressAtThenUpdate drives a single left-button press at (x,y) through the real
-// DrumView input loop (the same SetInputForTest + dv.Update() path the sibling
-// kebab/context-menu tests in drumview_context_menu_test.go use) and then
-// releases. It mirrors how a real frame delivers a tap to whatever widget /
-// portal overlay sits under the cursor.
+// A press, then a release, through the real DrumView input loop.
 func pressReleaseAtThenUpdate(t *testing.T, dv *DrumView, x, y, w, h int) {
 	t.Helper()
 	// Press frame.
@@ -54,18 +45,8 @@ func pressReleaseAtThenUpdate(t *testing.T, dv *DrumView, x, y, w, h int) {
 	r()
 }
 
-// TestEllipsisColorOpensPickerAndRecolors is a FULL functional test of the
-// Vice City color-pick chain, driven through the real Game.Update() input loop
-// and real layout (not synthetic HitIndex / hand-set rects):
-//
-//	kebab tap -> "Color" item tap -> swatch tap -> row recolors + undo recorded
-//	-> Undo restores the previous color.
-//
-// Harness: newTestGameForUndo (undo_seam_test.go / release_commit_test.go) so a
-// real Game.undoManager exists; the DrumView is g.drum. Input is delivered the
-// same way drumview_context_menu_test.go's kebab tests do (SetInputForTest +
-// dv.Update()), which routes through the tree dispatcher -> button OnClick and
-// -> the color picker's portal HitArea/compHitHandler.HandleInput.
+// Kebab → "Color" → swatch → the row recolours with an undo step, and Undo restores the old colour, all through real
+// layout and Game.Update.
 func TestEllipsisColorOpensPickerAndRecolors(t *testing.T) {
 	g := newTestGameForUndo(t) // real Game + g.undoManager, Layout(800,600) = desktop popup
 	dv := g.drum
@@ -89,8 +70,7 @@ func TestEllipsisColorOpensPickerAndRecolors(t *testing.T) {
 	dv.Update()
 	warmUp()
 
-	// 1. Open the row kebab context menu by tapping the kebab button through the
-	//    real input loop (its OnClick is the production openContextMenu path).
+	// Its OnClick is the production openContextMenu path.
 	if len(dv.rowMenuBtns()) == 0 {
 		t.Fatal("rowMenuBtns not created after warm-up")
 	}
@@ -100,17 +80,13 @@ func TestEllipsisColorOpensPickerAndRecolors(t *testing.T) {
 	}
 	kx := kebabRect.Min.X + kebabRect.Dx()/2
 	ky := kebabRect.Min.Y + kebabRect.Dy()/2
-	// A full tap (press + release): OnClick fires on the press edge and opens the
-	// context menu; the release frame clears the suppress-clicks-until-release
-	// latch that openContextMenu -> CloseAllPopups sets, so the next item tap is
-	// not swallowed.
+	// A full tap: the release clears the suppression opening the menu set, so the next item tap is not swallowed.
 	pressReleaseAtThenUpdate(t, dv, kx, ky, W, H)
 	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu did not open after kebab tap")
 	}
 
-	// 2. Click the "Color" item by tapping its laid-out button rect through the
-	//    real input loop. Its OnClick closes the menu and opens the picker.
+	// Its OnClick closes the menu and opens the picker.
 	var colorRect image.Rectangle
 	foundColor := false
 	for _, btn := range dv.contextMenuBtns {
@@ -134,10 +110,7 @@ func TestEllipsisColorOpensPickerAndRecolors(t *testing.T) {
 		t.Fatal(`"Color" item did not open the color picker`)
 	}
 
-	// 3. Pick a swatch whose color differs from the current row color, clicking
-	//    its cell center through the real input path (the picker receives this
-	//    via its portal HitArea -> compHitHandler.HandleInput -> OnColorPick ->
-	//    SetRowColorManual).
+	// A swatch of a different colour, through the picker's portal hit area.
 	cells := dv.colorWheelComp.SwatchCells()
 	if len(cells) == 0 {
 		t.Fatal("picker has no swatch cells")
@@ -147,9 +120,7 @@ func TestEllipsisColorOpensPickerAndRecolors(t *testing.T) {
 	for _, cell := range cells {
 		mx := (cell.Min.X + cell.Max.X) / 2
 		my := (cell.Min.Y + cell.Max.Y) / 2
-		// Resolve the color this cell would pick (same-package access to the
-		// picker's pickColorAt) and require it to differ from the current row
-		// color so the recolor assertion is meaningful.
+		// It must differ from the current colour, or the recolour check is meaningless.
 		col := dv.colorWheelComp.pickColorAt(mx, my)
 		if col == nil {
 			continue

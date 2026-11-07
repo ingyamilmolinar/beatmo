@@ -101,12 +101,8 @@ func TestOverflowMenu_SelectTemplateQueuesImport(t *testing.T) {
 	}
 }
 
-// TestOverflowButtonsPersistAcrossFrames verifies that after the persistence
-// refactor the SAME *Button instances survive repeated drawOverflowMenu calls
-// so input state (hover/press edges, deferred taps) stays coherent across
-// frames (the old code called NewButton on every frame). Menu rows are flat
-// (no keycap animation — TestDrawMenuRowIsFlatNoKeycap), so persistence is
-// asserted directly on the pointer.
+// The same *Button instances survive across frames, so hover/press edges and deferred taps stay coherent; rows are
+// flat, so persistence is asserted on the pointer.
 func TestOverflowButtonsPersistAcrossFrames(t *testing.T) {
 	// Use the same harness as openTemplatePageClamped.
 	assertDefaultParityState(t)

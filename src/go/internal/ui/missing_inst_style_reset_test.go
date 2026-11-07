@@ -10,8 +10,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
-// After registering a WAV matching a missing instrument ID, the row label
-// style should switch from MissingInstStyle to InstButtonStyle.
 func TestMissingInstrumentStyleResetsOnRegister(t *testing.T) {
 	withDefaultAudio(t)
 	g := New(testLogger)

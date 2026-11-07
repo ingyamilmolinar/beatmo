@@ -7,9 +7,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestRowCacheRebuildOnOffsetChange ensures that when DrumView auto-tracks and
-// changes Offset mid-playback, the row cache is invalidated and rebuilt so the
-// visible window continues to update.
+// Auto-tracking moves Offset, and the cache rebuilds so the window keeps updating.
 func TestRowCacheRebuildOnOffsetChange(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)

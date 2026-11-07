@@ -12,12 +12,8 @@ import (
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
-// TestCachedAnalyzerState_TTLHonored pins the WASM-layer analyzer.State
-// cache contract: build() is invoked only when the cache entry is older
-// than stateCacheTTL OR the key (activeID, rowsFP, sampleRate) differs.
-// This caps per-Draw State construction at 30 Hz regardless of the
-// 60-120 fps Draw rate — the dominant OOM-prevention mechanism for the
-// EQ panel hot path on WASM.
+// Rebuilt only past stateCacheTTL or on a new key (activeID, rowsFP, sampleRate), capping State construction at 30 Hz
+// whatever the draw rate: the main OOM guard for the EQ panel on WASM.
 func TestCachedAnalyzerState_TTLHonored(t *testing.T) {
 	t.Cleanup(InvalidateAnalyzerStateCacheForTest)
 	InvalidateAnalyzerStateCacheForTest()
@@ -56,9 +52,7 @@ func TestCachedAnalyzerState_TTLHonored(t *testing.T) {
 	}
 }
 
-// TestCachedAnalyzerState_HitAllocBudget pins the per-cached-hit
-// allocation count to 0. The cache returns the stored pointer directly
-// — no allocation, just a mutex acquire + pointer read.
+// A hit returns the stored pointer: zero allocations.
 func TestCachedAnalyzerState_HitAllocBudget(t *testing.T) {
 	t.Cleanup(InvalidateAnalyzerStateCacheForTest)
 	InvalidateAnalyzerStateCacheForTest()
@@ -82,11 +76,7 @@ func TestCachedAnalyzerState_HitAllocBudget(t *testing.T) {
 		allocs, budget)
 }
 
-// TestRowsFingerprint_StableForSameRows asserts the fingerprint stays
-// the same when the underlying row contents are unchanged — even when
-// the slice header is a new copy. This is the property that lets the
-// cache key on row content rather than slice identity, so callers that
-// recompute `dv.Rows` every Draw still hit the cache.
+// Keyed on row content, not slice identity, so a fresh copy of the same rows still hits.
 func TestRowsFingerprint_StableForSameRows(t *testing.T) {
 	rows := []*DrumRow{
 		{Instrument: roster.Kick, Name: "Kick"},
@@ -104,9 +94,7 @@ func TestRowsFingerprint_StableForSameRows(t *testing.T) {
 	}
 }
 
-// TestRowsFingerprint_ChangesOnRename asserts the fingerprint shifts
-// when any row's instrument or name changes. Critical so the cache
-// doesn't serve stale state after an instrument swap mid-session.
+// Or an instrument swap serves stale state.
 func TestRowsFingerprint_ChangesOnRename(t *testing.T) {
 	rows := []*DrumRow{{Instrument: roster.Kick, Name: "Kick"}}
 	base := rowsFingerprint(rows)
@@ -144,9 +132,7 @@ func TestCachedScopeState_TTLHonored(t *testing.T) {
 	}
 }
 
-// TestCachedAnalyzerState_TTLExpiry verifies the cache rebuilds after
-// the TTL elapses. Uses a small artificial sleep — the actual TTL is
-// 33 ms which is safe for a unit test.
+// The TTL is 33 ms, short enough to sleep through.
 func TestCachedAnalyzerState_TTLExpiry(t *testing.T) {
 	t.Cleanup(InvalidateAnalyzerStateCacheForTest)
 	InvalidateAnalyzerStateCacheForTest()

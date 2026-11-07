@@ -10,8 +10,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestSegmentedControl_DrawsThreeEqualWidthCells verifies that a 3-segment
-// control partitions its rect into three equal-width hit zones.
 func TestSegmentedControl_DrawsThreeEqualWidthCells(t *testing.T) {
 	sc := NewSegmentedControl([]string{"Pads", "EQ", "Wave"}, 0, nil)
 	sc.SetRect(image.Rect(0, 0, 300, 44))
@@ -28,8 +26,6 @@ func TestSegmentedControl_DrawsThreeEqualWidthCells(t *testing.T) {
 	}
 }
 
-// TestSegmentedControl_TapDispatchesIndex verifies a tap at the geometric
-// center of each segment fires the callback with the matching index.
 func TestSegmentedControl_TapDispatchesIndex(t *testing.T) {
 	got := -1
 	sc := NewSegmentedControl([]string{"A", "B", "C"}, 0, func(i int) { got = i })
@@ -52,8 +48,6 @@ func TestSegmentedControl_TapDispatchesIndex(t *testing.T) {
 	}
 }
 
-// TestSegmentedControl_OutsideTapIgnored verifies hits outside the rect
-// are not consumed.
 func TestSegmentedControl_OutsideTapIgnored(t *testing.T) {
 	called := false
 	sc := NewSegmentedControl([]string{"A", "B"}, 0, func(int) { called = true })
@@ -67,11 +61,6 @@ func TestSegmentedControl_OutsideTapIgnored(t *testing.T) {
 	}
 }
 
-// TestSegmentedControl_ActiveSegmentUsesAccent verifies the active segment
-// renders as a lit sunset-gold keycap — its cap face is drawn via the cached
-// rounded-button primitive (drawRoundedButton, the same path drawPillTabAt
-// uses for the desktop audio tabs) with the accent (#FFB30A) fill, located
-// inside the active segment. Inactive segments must NOT carry an accent fill.
 func TestSegmentedControl_ActiveSegmentUsesAccent(t *testing.T) {
 	sc := NewSegmentedControl([]string{"A", "B", "C"}, 1, nil)
 	sc.SetRect(image.Rect(0, 0, 300, 44))
@@ -80,9 +69,7 @@ func TestSegmentedControl_ActiveSegmentUsesAccent(t *testing.T) {
 	var rec drawCallRecorder
 	rec.record(t, func() { sc.Draw(dst) })
 
-	// Flat-tonal: an active segment is marked by a 2px accent BAR on its
-	// bottom edge (drawFlatSelectionBar), not by an accent-filled cap. See
-	// DESIGN.md "One selection primitive".
+	// The active segment is marked by a 2 px accent bar on its bottom edge, the one selection primitive.
 	accent := color.RGBAModel.Convert(TokenAccent()).(color.RGBA)
 	accentIn := func(seg image.Rectangle) bool {
 		for _, c := range rec.calls {
@@ -104,10 +91,7 @@ func TestSegmentedControl_ActiveSegmentUsesAccent(t *testing.T) {
 	}
 }
 
-// TestSegmentedControl_DisabledSegmentNotAccented verifies a disabled segment
-// never renders the lit-amber active cap even when it is the active index
-// (e.g. the Synth segment greyed for WAV instruments). It also must not draw
-// dark-on-amber active text.
+// A disabled segment never reads as active, even at the active index (Synth greyed for WAV instruments).
 func TestSegmentedControl_DisabledSegmentNotAccented(t *testing.T) {
 	sc := NewSegmentedControl([]string{"A", "B", "C"}, 1, nil)
 	sc.SetRect(image.Rect(0, 0, 300, 44))
@@ -125,8 +109,6 @@ func TestSegmentedControl_DisabledSegmentNotAccented(t *testing.T) {
 	}
 }
 
-// TestSegmentedControl_SetActiveDoesNotFireCallback verifies SetActive is
-// a quiet setter — only HitTest fires onClick.
 func TestSegmentedControl_SetActiveDoesNotFireCallback(t *testing.T) {
 	calls := 0
 	sc := NewSegmentedControl([]string{"A", "B"}, 0, func(int) { calls++ })

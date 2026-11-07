@@ -43,9 +43,6 @@ func TestContextMenuLabelsLocalized(t *testing.T) {
 	}
 }
 
-// TestInstMenuBreadcrumbLocalized pins the instrument-picker breadcrumb chrome
-// ("Categories" / "Favorites") to the central i18n catalog rather than hardcoded
-// English literals.
 func TestInstMenuBreadcrumbLocalized(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	comp := NewInstrumentMenuComponent()
@@ -75,9 +72,6 @@ func TestInstMenuBreadcrumbLocalized(t *testing.T) {
 	}
 }
 
-// TestSynthActionLabelsLocalized pins the shared Synth/Sampler action button
-// labels (synthActionLabel) to localized, non-empty strings in every supported
-// language.
 func TestSynthActionLabelsLocalized(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	i18n.SetLocale(i18n.LocaleES)

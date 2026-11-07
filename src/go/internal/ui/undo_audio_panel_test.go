@@ -13,12 +13,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// assertOneUndoStepRoundTrip runs the shared 3-property undo assertion against a
-// game whose pre-action document baseline has just been established: the action
-// (1) changes the exported document, (2) records EXACTLY ONE undo step, and
-// (3) Undo restores the pre-action bytes and Redo restores the post-action bytes.
-// before/depth0 are captured by the caller right before invoking the action so
-// only the action under test is measured.
+// before/depth0 are captured just before the action, so only it is measured.
 func assertOneUndoStepRoundTrip(t *testing.T, g *Game, name string, before []byte, depth0 int) {
 	t.Helper()
 	after := g.undoCapture()
@@ -46,11 +41,7 @@ func assertOneUndoStepRoundTrip(t *testing.T, g *Game, name string, before []byt
 	}
 }
 
-// TestUndoEQFilterAndMuteControls drives the REAL EQ-tab toggle handlers
-// (toggleHPF / toggleLPF / toggleEQBandMute) — the production methods the HP/LP
-// and band-mute buttons invoke — and proves each records a single reversible
-// undo step. These mutate exported master-EQ state (hpf_enabled / lpf_enabled /
-// band_muted) live via applyEQ, so the snapshot can restore them.
+// The production toggle handlers write the exported master EQ live through applyEQ, so the snapshot can restore it.
 func TestUndoEQFilterAndMuteControls(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -80,13 +71,8 @@ func TestUndoEQFilterAndMuteControls(t *testing.T) {
 	}
 }
 
-// firstStageEnableParam returns a "*_enabled" stage-toggle param for instID's
-// document whose value is non-zero (so toggling it OFF changes the exported
-// instrument document) AND that is actually toggleable — a sole-source
-// generator stage (e.g. OSC on a pure-oscillator voice) is greyed out and
-// non-interactive, so toggleSynthStage no-ops on it (see StageDisableSilences).
-// Iterates in deterministic (sorted) order so the choice is stable across runs.
-// ok=false means the instrument has no toggleable stage param.
+// Non-zero and actually toggleable: a sole-source generator stage is greyed out and toggleSynthStage no-ops on it.
+// Sorted, so the choice is stable; ok=false when none exists.
 func firstStageEnableParam(instID string) (string, bool) {
 	shipped := audio.MergedInstrumentParamsRO(instrument.ID(instID))
 	names := make([]string, 0, len(shipped))
@@ -106,10 +92,7 @@ func firstStageEnableParam(instID string) (string, bool) {
 	return "", false
 }
 
-// TestUndoSynthStageToggle drives the REAL synth stage enable/disable handler
-// (toggleSynthStage — what the per-stage enable pill invokes) and proves it
-// records a single reversible undo step. Stage enables live in the instrument document, so
-// the snapshot can restore them.
+// The per-stage enable pill's handler; stage enables live in the instrument document.
 func TestUndoSynthStageToggle(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
@@ -128,10 +111,8 @@ func TestUndoSynthStageToggle(t *testing.T) {
 	assertOneUndoStepRoundTrip(t, g, "synth-stage-toggle", before, depth0)
 }
 
-// TestSynthControlWheelRecordsExactlyOneUndoStep proves the Task-9 ARMED wheel
-// nudge (ArmedControlEditor's value lane) collapses a whole spin into EXACTLY
-// ONE undo step, committed once the debounce elapses, through the real
-// production adapter (synthControlHitAdapter.OnWheel while armed).
+// A whole spin of the armed value lane is ONE step, committed when the debounce elapses, through the real
+// synthControlHitAdapter.OnWheel.
 func TestSynthControlWheelRecordsExactlyOneUndoStep(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
@@ -149,9 +130,7 @@ func TestSynthControlWheelRecordsExactlyOneUndoStep(t *testing.T) {
 		t.Fatalf("knob %d rect empty after draw", idx)
 	}
 
-	// Arm the control (Task 9: wheel edits require the control to be armed
-	// first — a not-armed wheel now scrolls the row instead of nudging the
-	// value).
+	// An unarmed wheel scrolls the row instead of changing the value.
 	dv.armSynthControl(instID, idx)
 	e := dv.instEditorArmedEditor
 	if e == nil {
@@ -175,8 +154,7 @@ func TestSynthControlWheelRecordsExactlyOneUndoStep(t *testing.T) {
 			t.Fatalf("undo step recorded mid-spin at notch %d (got %d, want 0 until debounce)", f, steps)
 		}
 	}
-	// Settle the kinetic barrel so the value lane actually crosses detents
-	// (SHARED FACTS: ImpulseNotch only resolves into a value change via Tick).
+	// An impulse notch turns into a value change only through Tick.
 	for i := 0; i < 240 && e.Tick(); i++ {
 	}
 	for i := 0; i < wheelNudgeCommitFrames+4; i++ {

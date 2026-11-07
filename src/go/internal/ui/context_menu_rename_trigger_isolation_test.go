@@ -9,10 +9,7 @@ import (
 	gamelog "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// contextMenuBtnRectByIcon returns the rect of the open context menu's button
-// whose leading icon matches `icon` (e.g. "pencil" for Rename, "color" for
-// Color). The icons slice is parallel to ContextMenuBtns (close button has no
-// icon entry).
+// Icons are parallel to the buttons; close has no entry.
 func contextMenuBtnRectByIcon(dv *DrumView, icon string) (image.Rectangle, bool) {
 	btns := dv.ContextMenuBtns()
 	icons := dv.ContextMenuIconsForTest()
@@ -24,12 +21,8 @@ func contextMenuBtnRectByIcon(dv *DrumView, icon string) (image.Rectangle, bool)
 	return image.Rectangle{}, false
 }
 
-// TestMobileColorButtonDoesNotTriggerRename pins the mobile input-isolation
-// contract: the "rename-N" native-input TRIGGER must be registered on the
-// Rename menu item's rect — never on the adjacent Color item. The original bug
-// hard-coded contextMenuBtns[1] as "Rename", but dividers are skipped when
-// buttons are built, so index 1 is actually the Color item. Tapping Color then
-// opened the rename text input.
+// The rename trigger sits on the Rename item, never on Color next to it: dividers are skipped when buttons are
+// built, so a fixed index pointed at Color.
 func TestMobileColorButtonDoesNotTriggerRename(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultAudio(t)
@@ -38,10 +31,7 @@ func TestMobileColorButtonDoesNotTriggerRename(t *testing.T) {
 	logger := gamelog.New(testLogOutput(), gamelog.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 400, 700), nil, logger)
 
-	// Open the row context menu (bottom sheet on mobile) and drive a full
-	// Update so the mobile native-input rects get produced (nativeInputCandidates),
-	// gated (rootTree.TopmostOwnerAt against owner "context-menu"), and synced
-	// (syncNativeGestures) exactly like a real frame.
+	// A full Update produces, gates and syncs the native rects as a real frame does.
 	dv.OpenContextMenu(0)
 	dv.Update()
 

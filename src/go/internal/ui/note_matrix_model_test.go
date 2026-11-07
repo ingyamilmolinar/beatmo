@@ -10,10 +10,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// The matrix must agree with the note label the sidebar and coord badge
-// already show — all three derive from the same A3 = pitch-0 convention. If
-// this drifts, tapping a cell labelled "C4" would set a pitch that reads back
-// as something else.
+// The matrix, the sidebar and the coord badge share the A3 = pitch-0 convention; drift would make a cell labelled
+// "C4" read back as another note.
 
 func TestNoteMatrix_PitchZeroIsA3(t *testing.T) {
 	m := newNoteMatrixModel(0)
@@ -26,8 +24,7 @@ func TestNoteMatrix_PitchZeroIsA3(t *testing.T) {
 	}
 }
 
-// The instrument's own offset shifts every label, exactly as it does in
-// nodeNoteLabel: a +3 instrument puts node pitch 0 at C4.
+// A +3 instrument puts node pitch 0 at C4, as in nodeNoteLabel.
 func TestNoteMatrix_InstrumentOffsetShiftsLabels(t *testing.T) {
 	m := newNoteMatrixModel(3)
 	col, row, ok := m.CellFor(0)
@@ -69,8 +66,7 @@ func TestNoteMatrix_CellPitchRoundTrip(t *testing.T) {
 	}
 }
 
-// Cells outside the range must be rejected, not clamped — clamping would make
-// two different cells select the same pitch.
+// Rejected, not clamped: clamping would make two cells select the same pitch.
 func TestNoteMatrix_OutOfRangeCellsAreNotSelectable(t *testing.T) {
 	m := newNoteMatrixModel(0)
 	rejected := 0
@@ -155,9 +151,7 @@ func TestNoteMatrix_BlackKeys(t *testing.T) {
 	}
 }
 
-// The matrix label must agree with nodeNoteLabel, the shared formatter the
-// sidebar chip and coord badge use. Two formatters that disagree would let a
-// user pick "C4" and see "B3".
+// Two formatters that disagree would let a user pick "C4" and see "B3".
 func TestNoteMatrix_AgreesWithNodeNoteLabel(t *testing.T) {
 	g := newTestGameForUndo(t)
 	node := noteTestNode(t, g)

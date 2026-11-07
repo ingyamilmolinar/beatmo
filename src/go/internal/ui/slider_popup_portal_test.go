@@ -248,8 +248,7 @@ func TestSliderPopupHitHandler_OnPressContinuesDrag(t *testing.T) {
 		t.Fatal("should be dragging after first OnPress")
 	}
 
-	// Second press outside popup rect but while dragging → still captured
-	// because HandleInput checks sp.dragging first.
+	// HandleInput checks dragging first, so a drag outside the rect stays captured.
 	result := handler.OnPress(0, 0)
 	if result != InputCaptured {
 		t.Fatalf("OnPress while dragging (even outside rect) returned %v, want InputCaptured", result)
@@ -257,9 +256,8 @@ func TestSliderPopupHitHandler_OnPressContinuesDrag(t *testing.T) {
 }
 
 func TestSliderPopupHitHandler_OnPressConsumedNotCaptured(t *testing.T) {
-	// Test the InputConsumed branch: HandleInput returns true but IsDragging is false.
-	// This can't happen in normal flow because HandleInput with pressed=true + inside rect
-	// always sets dragging=true. So we test the release path where HandleInput returns false.
+	// A press inside the rect always starts a drag, so the consumed-but-not-dragging branch is reached through the
+	// release.
 	assertDefaultParityState(t)
 
 	val := 0.5
@@ -431,8 +429,7 @@ func TestSliderPopupPortalOverlay_HitAreasTouchFlag(t *testing.T) {
 	if !areas[0].Touch {
 		t.Fatal("slider popup portal overlay popup HitArea must have Touch == true for mobile touch expansion")
 	}
-	// Anchor-close must NOT be touch-expanded — that would make it eat
-	// clicks far outside the icon and inappropriately close the popup.
+	// A touch-expanded anchor-close would eat clicks far outside the icon.
 	if areas[1].Touch {
 		t.Fatal("anchor-close HitArea must have Touch == false (exact rect only)")
 	}
@@ -528,8 +525,7 @@ func TestSliderPopupPortal_TouchDragIntegration(t *testing.T) {
 		t.Fatal("popup should be dragging after OnPress")
 	}
 
-	// On mobile (horizontal), drag to the right end of the track → value
-	// should approach 1.0. trackEnd() returns the X endpoint on horizontal.
+	// On mobile the track is horizontal: trackEnd() is its X end.
 	trackEnd := sp.trackEnd()
 	hits[0].Handler.OnDrag(trackEnd, cy)
 	if val != 1.0 {

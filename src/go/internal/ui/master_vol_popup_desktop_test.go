@@ -10,8 +10,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// TestDesktopMasterVolIconOpensPopup verifies that clicking the master volume
-// icon on desktop fires the OnMasterVolClick callback.
 func TestDesktopMasterVolIconOpensPopup(t *testing.T) {
 	forceSmallScreenForTest = false
 	activeProfile = nil
@@ -50,8 +48,7 @@ func TestDesktopMasterVolIconOpensPopup(t *testing.T) {
 	}
 }
 
-// TestDesktopMasterVolNoInlineSlider verifies that no "transport-vol-slider"
-// hit area is registered on desktop (popup mode only).
+// Desktop uses the popup only.
 func TestDesktopMasterVolNoInlineSlider(t *testing.T) {
 	forceSmallScreenForTest = false
 	activeProfile = nil
@@ -66,8 +63,6 @@ func TestDesktopMasterVolNoInlineSlider(t *testing.T) {
 	}
 }
 
-// TestDesktopMasterVolIconHitAreaExists verifies that the "transport-vol-icon"
-// hit area exists on desktop.
 func TestDesktopMasterVolIconHitAreaExists(t *testing.T) {
 	forceSmallScreenForTest = false
 	activeProfile = nil
@@ -82,8 +77,6 @@ func TestDesktopMasterVolIconHitAreaExists(t *testing.T) {
 	}
 }
 
-// TestDesktopMasterVolPopupDrag verifies that dragging inside the master
-// volume popup changes audio.MainVolume().
 func TestDesktopMasterVolPopupDrag(t *testing.T) {
 	withDefaultAudio(t)
 	forceSmallScreenForTest = false
@@ -118,8 +111,6 @@ func TestDesktopMasterVolPopupDrag(t *testing.T) {
 	}
 }
 
-// TestDesktopExportButtonNotOverlapped verifies that the export, import, and
-// upload button rects do not overlap the master volume icon area.
 func TestDesktopExportButtonNotOverlapped(t *testing.T) {
 	forceSmallScreenForTest = false
 	activeProfile = nil
@@ -145,8 +136,7 @@ func TestDesktopExportButtonNotOverlapped(t *testing.T) {
 	}
 }
 
-// TestDesktopMasterVolPopupCloseOnOutsideClick verifies that pressing outside
-// the popup does not consume input (allowing dismissal).
+// Not consuming the outside press is what lets it dismiss.
 func TestDesktopMasterVolPopupCloseOnOutsideClick(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = false

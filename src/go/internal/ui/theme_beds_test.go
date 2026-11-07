@@ -11,11 +11,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/theme"
 )
 
-// TestDrumBedsFollowBackgroundCategory: the drum-view BEDS (row-rack column,
-// mobile toolbar, add-row strip) share surface-1's hex by design but are
-// AREAS, not controls — they must follow the Background category together
-// with the cell grid and the canvas, or a background-only theme leaves a
-// violet rack next to a recolored grid (the reported mismatch).
+// The beds share surface-1's hex but are AREAS, not controls: they follow the Background category with the grid and
+// canvas, or a background-only theme leaves the old rack beside a recoloured grid.
 func TestDrumBedsFollowBackgroundCategory(t *testing.T) {
 	for _, tok := range []string{"rack-bed", "toolbar-bed"} {
 		if cat, ok := themeCategoryOfToken(tok); !ok || cat != "background" {
@@ -36,8 +33,7 @@ func TestDrumBedsFollowBackgroundCategory(t *testing.T) {
 		t.Fatalf("surface-1 is a control surface and must NOT move with the background: %v", colSurface1)
 	}
 
-	// Frame-level: the rack column is painted in the themed bed color, and
-	// no large fill in that column still carries the default surface-1.
+	// No large fill in the rack column may keep the default surface-1.
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(1280, 720)

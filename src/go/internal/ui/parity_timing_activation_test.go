@@ -3,12 +3,8 @@ package ui
 import "testing"
 
 func TestParityTimingActivationDefaults(t *testing.T) {
-	// Desktop default: fatal on (per RuntimeProf().Timing.FatalDefault). Under
-	// `go test`, the gate is forced dormant regardless of runtime profile (see
-	// init() in game_parity_timing.go) so fast-forwarded/synthetic-time tests
-	// elsewhere never false-trigger; this test only exercises SetParityTimingFatal
-	// plumbing directly and must restore the prior (dormant) value on exit so it
-	// doesn't leak an armed gate into later tests.
+	// The gate is dormant under go test whatever the profile; restore the prior value so no armed gate leaks into
+	// later tests.
 	restorePersist := SetRuntimeProfileForTest(desktopRuntimeProfile())
 	defer restorePersist()
 	prevFatal := parityTimingFatalEnabled.Load()
@@ -79,8 +75,7 @@ func TestResolveParityTimingActivation(t *testing.T) {
 			wantFatal: true,
 		},
 		{
-			// Regression case: a leaked PARITY_TIMING=panic in a browser/CI
-			// environment must NOT arm the fatal panic path.
+			// A leaked PARITY_TIMING=panic in a browser or CI environment must not arm the panic.
 			name:      "browser PARITY_TIMING=panic NOT armed stays log/false",
 			seedWatch: parityWatchOff,
 			seedFatal: false,

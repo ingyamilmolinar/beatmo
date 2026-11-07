@@ -7,8 +7,7 @@ import (
 	"testing"
 )
 
-// openTemplatePageClamped opens the overflow menu on the template page with a
-// drum pane short enough that the template list overflows the popup.
+// Short enough that the template list overflows the popup.
 func openTemplatePageClamped(t *testing.T) *DrumView {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -21,8 +20,7 @@ func openTemplatePageClamped(t *testing.T) *DrumView {
 	return dv
 }
 
-// lastTemplateBtn returns the button rect for the last template row ("Techno")
-// from the menu's real hit geometry.
+// From the menu's real hit geometry.
 func lastTemplateBtn(dv *DrumView) (image.Rectangle, bool) {
 	popup := dv.overflowPopupRect()
 	btns := dv.overflowPopupBtns(popup)
@@ -50,15 +48,11 @@ func TestTemplateMenu_ScrollsToReachLastItem(t *testing.T) {
 	if !ok {
 		t.Fatal("could not locate last template button")
 	}
-	// Bug: with no offset applied, the last row sits at the same Y regardless of
-	// scroll. After wheel-scrolling toward the end, its Y must decrease (move up
-	// into the viewport). Scroll until the bottom is reached (the last row stops
-	// moving) rather than a fixed step count — the template list grew well past
-	// the original 7 genres, so a hard-coded count under-scrolls the longer list.
+	// Scrolled until the last row stops moving rather than a fixed count, which under-scrolls a longer list; scrolled
+	// toward the end its Y must decrease.
 	prevY := 1 << 30
 	for i := 0; i < scroll.ScrollBehavior().VS.Total+4; i++ {
-		// The menu wheel is smooth (continuous, magnitude-respecting, no cooldown
-		// lock), so each notch moves the list with no cooldown clock to advance.
+		// The menu wheel is smooth with no cooldown clock to advance.
 		scroll.HandleWheel(-1) // scroll down one item
 		row, _ := lastTemplateBtn(dv)
 		if row.Min.Y == prevY {

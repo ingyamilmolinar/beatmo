@@ -30,8 +30,6 @@ func idleFrames(dv *DrumView, n int, w, h int) func() {
 	return r
 }
 
-// newCategoryDrumView builds a DrumView with two categories for testing.
-// Returns dv, label center (cx, cy), and viewport (w, h).
 func newCategoryDrumView(t *testing.T, w, h int) (*DrumView, int, int) {
 	t.Helper()
 
@@ -46,10 +44,7 @@ func newCategoryDrumView(t *testing.T, w, h int) (*DrumView, int, int) {
 		roster.Crash: audio.CatCymbal,
 	}
 	dv.instMenuForceCategories = true
-	// Legacy tests built on this helper assume Categories[0] is the first
-	// caller-supplied category; opt out of the virtual "Favorites" entry so
-	// the index math in the test bodies stays correct. Tests that exercise
-	// the virtual category live in inst_menu_favorites_test.go.
+	// These tests index Categories from the caller's first entry, so the virtual Favorites category is off.
 	dv.instMenuShowFavoritesCategory = false
 
 	dv.Rows = []*DrumRow{{
@@ -119,10 +114,8 @@ func clickDrumViewAt(t *testing.T, dv *DrumView, x, y, w, h int) {
 
 // ---------- tests ----------
 
-// TestInstMenuBackButtonViaDrumViewUpdate exercises the back button through
-// the full DrumView.Update() loop using SetInputForTest, NOT direct
-// comp.HandleInput() calls. This catches bugs where suppressClicksUntilRelease
-// is cleared too early at drumview_update.go:22-24 causing click-outside close.
+// Through DrumView.Update, not comp.HandleInput: clearing suppressClicksUntilRelease too early turns the
+// Back click into a click outside.
 func TestInstMenuBackButtonViaDrumViewUpdate(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -142,8 +135,6 @@ func TestInstMenuBackButtonViaDrumViewUpdate(t *testing.T) {
 	}
 	t.Logf("mode after open: %s", comp.Mode())
 
-	// Navigate to a category first to ensure we can get back to instruments mode.
-	// If already in instruments mode, click back.
 	if comp.Mode() == InstMenuModeInstruments {
 		backBtn := comp.BackBtn()
 		if backBtn == nil {
@@ -209,8 +200,6 @@ func TestInstMenuBackButtonViaDrumViewUpdate(t *testing.T) {
 	t.Log("back button via DrumView.Update() — PASS")
 }
 
-// TestInstMenuBackThenCategoryRoundtrip tests: open → back → categories →
-// select category → instruments → back → select different category.
 func TestInstMenuBackThenCategoryRoundtrip(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -329,8 +318,6 @@ func TestInstMenuBackThenCategoryRoundtrip(t *testing.T) {
 	t.Log("back-then-category roundtrip — PASS")
 }
 
-// TestInstMenuFullSelectionViaDrumViewUpdate tests: open → back → category →
-// select instrument → verify menu closed and instrument applied.
 func TestInstMenuFullSelectionViaDrumViewUpdate(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -396,9 +383,7 @@ func TestInstMenuFullSelectionViaDrumViewUpdate(t *testing.T) {
 	hr := hihatBtn.Rect()
 	clickDrumViewAt(t, dv, hr.Min.X+hr.Dx()/2, hr.Min.Y+hr.Dy()/2, W, H)
 
-	// Audition contract: menu must STAY open after selection so the user
-	// can rapidly try multiple instruments. Dismissal is explicit (X / Esc
-	// / click-outside / row switch). See inst_menu_audition_test.go.
+	// The menu stays open after a pick (audition); dismissal is explicit.
 	if !dv.IsInstMenuOpen() {
 		t.Fatal("menu should stay open after instrument selection (audition contract)")
 	}
@@ -411,10 +396,8 @@ func TestInstMenuFullSelectionViaDrumViewUpdate(t *testing.T) {
 	t.Log("full selection via DrumView.Update() — menu stayed open — PASS")
 }
 
-// TestInstMenuMobileTapPatternFullFlow tests the mobile-specific flow:
-// open menu → stays open → navigate categories → select instrument.
-// On mobile, the label click can hit the color button due to layout overlap,
-// so we open via openInstMenuForRow (matching the JS export path).
+// On mobile a label click can land on the colour button, so the menu opens through openInstMenuForRow, the JS
+// export's path.
 func TestInstMenuMobileTapPatternFullFlow(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -478,8 +461,6 @@ func TestInstMenuMobileTapPatternFullFlow(t *testing.T) {
 	t.Log("mobile tap pattern full flow — PASS")
 }
 
-// TestInstMenuClickOutsideCloses tests that clicking outside the menu
-// dismisses it (after suppress has cleared).
 func TestInstMenuClickOutsideCloses(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -509,8 +490,6 @@ func TestInstMenuClickOutsideCloses(t *testing.T) {
 	t.Log("click outside closes — PASS")
 }
 
-// TestInstMenuRapidToggle verifies open → close (toggle) → reopen → close
-// (click outside) → reopen with clean state at each step.
 func TestInstMenuRapidToggle(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -563,10 +542,7 @@ func TestInstMenuRapidToggle(t *testing.T) {
 	t.Log("rapid toggle — PASS")
 }
 
-// TestInstMenuBackButtonStaysCategoriesAfterClick clicks the back button
-// (quick press+release) and verifies the menu stays in categories mode for
-// multiple idle frames. This catches bugs where the geometry change from
-// instruments→categories causes the menu to close or flicker.
+// The geometry change from instruments to categories must not close or flicker the menu.
 func TestInstMenuBackButtonStaysCategoriesAfterClick(t *testing.T) {
 	assertDefaultParityState(t)
 

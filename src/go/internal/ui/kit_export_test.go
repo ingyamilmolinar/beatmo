@@ -12,10 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
-// TestExportSchema_Phase6FieldsAreAdditive — verifies the two new
-// Phase-6 export fields (top-level Kits, per-instrument Role) are
-// omitempty so projects with no kits / no roles round-trip to byte
-// shapes pre-Phase-6 loaders accept.
+// Kits and Role are omitempty, so a project with neither exports without them.
 func TestExportSchema_Phase6FieldsAreAdditive(t *testing.T) {
 	// Empty kit registry → top-level Kits omitted.
 	t.Cleanup(audio.ResetKitsForTest)

@@ -7,11 +7,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
-// Failing regression: if a frozen past entry marks a future cell off, and the
-// graph/path does NOT change (path signature identical), DrumView currently
-// keeps the stale mask even though the predictor says the cell is on.
-// This mirrors the desktop repro: delete/re-add restores the same path hash
-// but the freeze mask remains, so the UI stays silent while audio plays.
+// A frozen past entry marking a future cell off must not survive when the path signature is unchanged (a delete
+// and re-add restore the same hash), or the UI stays silent while audio plays.
 func TestDrumView_FrozenMaskBlocksReaddedNode_NoPathChange(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -40,8 +37,7 @@ func TestDrumView_FrozenMaskBlocksReaddedNode_NoPathChange(t *testing.T) {
 	advancePlaybackByAbs(g, 2)
 	target := g.nextBeatIdxs[0] // absolute index that will trigger b
 
-	// Simulate a delete that froze the future cell to OFF but the path hash
-	// didn't change (we do NOT call updateBeatInfos or alter the graph).
+	// A delete froze the future cell off but the path hash did not change.
 	if len(g.frozenUpToByRow) != len(g.drum.Rows) {
 		g.frozenUpToByRow = make([]int, len(g.drum.Rows))
 		for i := range g.frozenUpToByRow {
@@ -93,8 +89,7 @@ func TestDrumView_FrozenMaskBeforeNextBeatReleases(t *testing.T) {
 	g.nextBeatIdxs = []int{220}
 	g.elapsedBeats = g.drum.Offset
 
-	// Freeze the target cell with a seeded commit that disagrees with the
-	// predictor so refreshDrumRow must release the stale mask.
+	// A seeded commit disagreeing with the predictor, which refreshDrumRow must release.
 	rows := len(g.drum.Rows)
 	g.frozenUpToByRow = make([]int, rows)
 	for i := range g.frozenUpToByRow {

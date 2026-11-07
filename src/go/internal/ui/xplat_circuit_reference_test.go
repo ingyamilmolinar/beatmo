@@ -16,20 +16,9 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestWriteXplatCircuitReference writes desktop's master output for whole
-// circuits — the reference xplat_audio_stages.browser.test.js compares the
-// browser against, rendered fresh from this tree every run (never committed).
-// It runs only when the browser test asks for it (XPLAT_CIRCUIT_OUT names the
-// output file).
-//
-// Each circuit is imported into a real Game exactly as the app does, its
-// schedule read from the live predictor (liveArrangement) and rendered through
-// desktop's offline mixer against the live engine (RenderMasterMixOffline).
-// The file carries the project as desktop holds it (exported, so the browser
-// imports the very state that was rendered), the notes, and the output after
-// the soft clip. The browser imports the project through Go — which pushes
-// every document, insert chain, EQ program and the master volume to audio.js
-// — and renders those notes from what was pushed.
+// The desktop reference xplat_audio_stages.browser.test.js compares against, rendered fresh every run and never
+// committed; runs only when XPLAT_CIRCUIT_OUT names an output. The file carries the project as exported, so the
+// browser imports exactly the rendered state, plus the notes and the output after the soft clip.
 func TestWriteXplatCircuitReference(t *testing.T) {
 	out := os.Getenv("XPLAT_CIRCUIT_OUT")
 	if out == "" {

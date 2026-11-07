@@ -9,8 +9,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/assets"
 )
 
-// openTemplatePageForSearch opens the overflow menu on the template page at a
-// roomy size and returns the DrumView.
 func openTemplatePageForSearch(t *testing.T) *DrumView {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -23,8 +21,7 @@ func openTemplatePageForSearch(t *testing.T) *DrumView {
 	return dv
 }
 
-// templateRowLabels returns the labels of the template rows currently in the
-// overflow item list (excludes header, search, and Back rows).
+// Excludes the header, search and Back rows.
 func templateRowLabels(dv *DrumView) []string {
 	var out []string
 	for _, it := range dv.overflowItems() {
@@ -236,9 +233,7 @@ func TestTemplateMenu_SearchResultsMemoizedOnRepeatCall(t *testing.T) {
 	if len(r1) == 0 {
 		t.Fatal("no results for query 'bach'")
 	}
-	// A repeat call with an unchanged query must return the SAME backing slice
-	// (memo cache hit) — i.e. MenuSearcher.Search was not re-invoked. This guards
-	// the documented template-menu-hang regression class (per-frame refuzz).
+	// The SAME backing slice on an unchanged query: Search was not re-run, the per-frame re-fuzz that hung the menu.
 	if &r1[0] != &r2[0] {
 		t.Fatal("templateSearchResults recomputed on unchanged query — memo cache not hit")
 	}

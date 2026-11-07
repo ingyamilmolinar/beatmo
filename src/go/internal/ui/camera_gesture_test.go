@@ -2,8 +2,6 @@ package ui
 
 import "testing"
 
-// A pan gesture (press-drag-release) emits exactly one pan event with the
-// cumulative delta; a release with no movement emits nothing.
 func TestCameraGestureEmitsOncePerPan(t *testing.T) {
 	var pans []struct{ dx, dy float64 }
 	g := &cameraGesture{emitPan: func(dx, dy float64) {

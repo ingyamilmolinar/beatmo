@@ -42,8 +42,7 @@ func TestPerfFastPath_BypassesThrottleOnGraphEdit(t *testing.T) {
 	g.updateBeatInfos()
 	g.refreshDrumRow()
 
-	// Enter "playing" mode without triggering a transition hook so Update uses
-	// the steady-state refresh throttle path.
+	// No transition hook, so Update takes the steady-state refresh throttle.
 	g.SetPlaying(true)
 	if len(g.nextBeatIdxs) == 0 {
 		t.Fatalf("nextBeatIdxs not initialised")

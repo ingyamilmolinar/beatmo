@@ -5,9 +5,7 @@ import (
 	"testing"
 )
 
-// The sprite cache must stay bounded: a text input caches one sprite per DISTINCT
-// string, so typing/searching generates thousands of transient strings over a
-// session. Without a cap the cache grows without bound (a slow memory leak).
+// One sprite per DISTINCT string, so typing and searching would grow an uncapped cache for the whole session.
 func TestTextSpriteCacheBounded(t *testing.T) {
 	assertDefaultParityState(t)
 	ClearTextCacheForTest()

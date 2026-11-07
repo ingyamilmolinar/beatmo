@@ -10,8 +10,7 @@ import (
 	"testing"
 )
 
-// fakeApplier records every applier call as a printable label so tests
-// can assert both the call set and ordering without a real *ui.Game.
+// Labels, so call set and order can be asserted without a real *ui.Game.
 type fakeApplier struct {
 	calls []string
 }

@@ -10,9 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// Templates are authoritative JSON project files (no procedural generator), so
-// these guards import the ACTUAL embedded bytes. Each shipped template must
-// import cleanly, attach known instruments, and produce a playable circuit.
+// Templates are JSON files with no generator at runtime, so the ACTUAL embedded bytes are imported.
 
 func TestTemplates_ImportRoundTrip(t *testing.T) {
 	assertDefaultParityState(t)
@@ -44,17 +42,8 @@ func TestTemplates_ImportRoundTrip(t *testing.T) {
 					t.Fatalf("%s row %d (%s): empty beat path", tp.Genre, i, r.Instrument)
 				}
 			}
-			// The circuit must actually play: at least one row shows a visible
-			// step in the opening import window. We deliberately do NOT require
-			// row 0 specifically — row 0 is just the first-listed part, and a
-			// faithful multi-part transcription can have that part rest at the
-			// opening. handel-water-horn is the canonical case: "Horn 1" (row 0)
-			// is silent for the first 10 bars (first score onset at step 120),
-			// so on the square-perimeter layout its first audible node lands at
-			// beat 480 — past the ~250-wide import window — while the trumpets
-			// hit the downbeat. The circuit plays; only the top row is quiet at
-			// the very start. (Every row already asserted a non-empty beat path
-			// above, so a truly dead circuit still fails.)
+			// Any row, not row 0: a faithful transcription can have its first part rest at the opening (handel-water-horn's
+			// Horn 1 is silent for ten bars). A truly dead circuit already failed above.
 			anyStep := false
 			for _, r := range g.drum.Rows {
 				for _, v := range r.Steps {
@@ -74,8 +63,7 @@ func TestTemplates_ImportRoundTrip(t *testing.T) {
 	}
 }
 
-// Every instrument id referenced by a template must be a registered builtin, or
-// audio.Play silently drops it (the kick-punchy / unknown-id gotcha).
+// audio.Play silently drops an unregistered id.
 func TestTemplates_AllInstrumentsRegistered(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultAudio(t)
@@ -89,9 +77,7 @@ func TestTemplates_AllInstrumentsRegistered(t *testing.T) {
 			t.Fatalf("%s: unmarshal: %v", tp.Genre, err)
 		}
 		for _, in := range f.Instruments {
-			// Instance variants ("organ-2") aren't pre-registered builtins; import
-			// promotes them to first-class instruments aliased onto their base.
-			// Mirror that promotion (import.go does the same) before the check.
+			// Instance variants ("organ-2") are promoted onto their base by import, as here.
 			audio.EnsureInstanceInstrument(in.ID)
 			registered[string(in.ID)] = registered[string(in.ID)] || slices.Contains(audio.Instruments(), in.ID)
 			if !registered[string(in.ID)] {

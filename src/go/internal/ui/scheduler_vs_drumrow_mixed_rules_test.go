@@ -7,20 +7,11 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// TestSchedulerVsDrumRow_MixedEverySkipRules builds a rectangular loop with
-// invisible pass-through nodes and mixes multiple every/skip rules across
-// distinct audible nodes. It asserts that what the scheduler plays over a
-// horizon matches the drum view row Steps computed by the UI.
 func TestSchedulerVsDrumRow_MixedEverySkipRules(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	assertDefaultParityState(t)
 	g.Layout(800, 600)
-	// Build rectangle:
-	// A(0,0)-> inv(1,0)-> B(2,0)-> C(3,0)
-	//  ^                             |
-	//  |                             v
-	// F(0,1)<- inv(1,1)<- E(2,1)<- D(3,1)
 	A := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	inv1 := g.tryAddNode(1, 0, model.NodeTypeInvisible)
 	B := g.tryAddNode(2, 0, model.NodeTypeRegular)

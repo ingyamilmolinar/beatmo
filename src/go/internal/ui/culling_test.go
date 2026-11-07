@@ -8,8 +8,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestDrawCullingSkipsOffscreen verifies edges and nodes inside the viewport
-// are drawn, then culling skips them after a large pan.
+// Drawn inside the viewport, culled after a large pan.
 func TestDrawCullingSkipsOffscreen(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(testLogOutput(), game_log.LevelError)

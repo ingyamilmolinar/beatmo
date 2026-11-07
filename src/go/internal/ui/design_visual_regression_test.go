@@ -5,26 +5,11 @@ import (
 	"testing"
 )
 
-// TestDesignVisualRegression is the end-of-pipeline check for
-// "DESIGN.md changes the entirety of the game visual aspect."
-//
-// For each visual surface that previously bypassed the token system
-// (grid lattice, graph nodes, connector edges, splitter handles,
-// timeline strip, drum-mute cells, EQ overlays, instrument default
-// palette, animation timings, geometry constants), this test asserts
-// that the runtime value reachable from that surface's call site
-// flows back to a generated `gen*` symbol — i.e. flipping the
-// corresponding YAML entry in DESIGN.md will, after a regenerate,
-// change the runtime behaviour.
-//
-// This is a coverage check, not a pixel-diff. Pixel-diff sits one
-// layer above (`make screenshots-all`); this test catches the
-// "tokenization is broken even though screenshots happen to match"
-// failure mode.
+// Every surface once outside the token system reads a generated gen* symbol at its call site, so a DESIGN.md
+// edit reaches it. A coverage check: screenshots can match while tokenisation is broken.
 func TestDesignVisualRegression(t *testing.T) {
 	t.Run("grid_lattice_uses_generated_tokens", func(t *testing.T) {
-		// All six grid subdivision tiers must alias to a generated
-		// genColor* — not an inline RGBA literal.
+		// Each grid tier aliases a genColor*, not an inline literal.
 		cases := []struct {
 			name   string
 			alias  color.RGBA
@@ -45,8 +30,6 @@ func TestDesignVisualRegression(t *testing.T) {
 	})
 
 	t.Run("node_edge_use_generated_tokens", func(t *testing.T) {
-		// NodeStyle / EdgeStyle / SignalStyle must source their colors
-		// from genColor* — not an inline literal.
 		nodeFill, ok := NodeUI.Fill.(color.RGBA)
 		if !ok {
 			t.Fatalf("NodeUI.Fill is not color.RGBA: %T", NodeUI.Fill)
@@ -124,25 +107,19 @@ func TestDesignVisualRegression(t *testing.T) {
 		if aliveLow {
 			t.Errorf("DecayStep below threshold returned alive=true")
 		}
-		// Sin pulse base sanity: at frame 0, sin(0)=0 → result should
-		// equal Base (not Base+Amplitude).
+		// sin(0) = 0, so frame 0 is Base.
 		if got := SinPulse(0, genAnimPlayheadPulse); got != genAnimPlayheadPulse.Base {
 			t.Errorf("SinPulse(0) = %v, want Base = %v", got, genAnimPlayheadPulse.Base)
 		}
 	})
 
 	t.Run("geometry_consumed_at_call_sites", func(t *testing.T) {
-		// EdgeArrowSize must scale with genGeomEdgeArrowStepFraction.
-		// Build a Grid with a known Step and verify the formula is
-		// step * fraction.
+		// step × genGeomEdgeArrowStepFraction.
 		g := &Grid{Step: 100}
 		if got, want := g.EdgeArrowSize(), 100*genGeomEdgeArrowStepFraction; got != want {
 			t.Errorf("Grid.EdgeArrowSize() = %v, want %v (= 100 * %v)", got, want, genGeomEdgeArrowStepFraction)
 		}
-		// NodeUI.Radius and SignalUI.Radius must source their geometry
-		// from the generated genGeom* values — so editing DESIGN.md
-		// `geometry.node-radius` / `geometry.signal-radius` retunes the
-		// graph node body and travelling-pulse core.
+		// So geometry.node-radius / signal-radius retune the node and pulse.
 		if got, want := NodeUI.Radius, float32(genGeomNodeRadius); got != want {
 			t.Errorf("NodeUI.Radius = %v, want %v (= float32(genGeomNodeRadius))", got, want)
 		}
@@ -152,9 +129,7 @@ func TestDesignVisualRegression(t *testing.T) {
 	})
 
 	t.Run("theme_residue_routed_through_gen", func(t *testing.T) {
-		// Surfaces that previously held inline RGBA literals inside
-		// theme.go (the discipline-exempt file) — now sourced through
-		// gen* tokens. A DESIGN.md edit to any of these must propagate.
+		// Once inline literals in theme.go, now through gen* tokens.
 		if colMuteActiveBdr != genColorMuteActiveBorder {
 			t.Errorf("colMuteActiveBdr = %v but expected genColorMuteActiveBorder = %v", colMuteActiveBdr, genColorMuteActiveBorder)
 		}
@@ -164,9 +139,7 @@ func TestDesignVisualRegression(t *testing.T) {
 		if colRecordActive != genColorRecordActive {
 			t.Errorf("colRecordActive = %v but expected genColorRecordActive = %v", colRecordActive, genColorRecordActive)
 		}
-		// Beat-group / transport white-with-alpha composites must
-		// flow through their named alpha buckets — verified by
-		// checking the alpha channel matches the expected gen alpha.
+		// Through their named alpha buckets.
 		if colBeatGroupAlt.A != genAlphaBeatGroupAlt {
 			t.Errorf("colBeatGroupAlt.A = %d but expected genAlphaBeatGroupAlt = %d", colBeatGroupAlt.A, genAlphaBeatGroupAlt)
 		}

@@ -7,10 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// runtimeMutationCase exercises a single runtime mutation while playback
-// is active and asserts no parity panic + clean ring afterwards. Every
-// case in the matrix below MUST route through the mutation gate
-// (game_mutation_gate.go) — this test pins the contract.
+// Every case routes through the mutation gate.
 type runtimeMutationCase struct {
 	name   string
 	mutate func(t *testing.T, g *Game)
@@ -144,13 +141,8 @@ func TestParityRuntimeMutationMatrix(t *testing.T) {
 		{
 			name: "length-change-midplay",
 			mutate: func(t *testing.T, g *Game) {
-				// Change the sequence length / subdivision window mid-play; must
-				// not trip parity. DrumView.SetLength already routes through the
-				// mutation gate (onStructuralMutation -> g.bumpParityGen), same
-				// as the real transport length control (see
-				// js_exports_graph_ui.go setDrumLength). updateBeatInfos()
-				// mirrors that control's follow-up recompute of per-row paths
-				// from the graph (which SetLength alone does not touch).
+				// SetLength routes through the mutation gate like the transport control; updateBeatInfos mirrors that
+				// control's path recompute, which SetLength alone does not do.
 				g.drum.SetLength(g.drum.Length + 4)
 				g.updateBeatInfos()
 			},

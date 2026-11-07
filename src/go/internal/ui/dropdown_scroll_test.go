@@ -13,8 +13,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestInstMenuScrollbarBackgroundExtended verifies the menu background
-// extends to include the scrollbar area when scrolling is needed.
+// The background includes the scrollbar when it scrolls.
 func TestInstMenuScrollbarBackgroundExtended(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(io.Discard, game_log.LevelError)
@@ -65,8 +64,7 @@ func TestInstMenuScrollbarBackgroundExtended(t *testing.T) {
 		t.Fatalf("scrollbar rect is empty")
 	}
 
-	// The scrollbar should be positioned at or near the right edge of the menu view
-	// (it may be placed inside or just outside depending on layout)
+	// Inside or just outside the view, depending on layout.
 	if bar.Min.X < menuBg.Min.X {
 		t.Errorf("scrollbar starts before menu left edge: bar.Min.X=%d, menuBg.Min.X=%d", bar.Min.X, menuBg.Min.X)
 	}
@@ -89,8 +87,6 @@ func TestInstMenuScrollbarBackgroundExtended(t *testing.T) {
 	}
 }
 
-// TestInstMenuAndEQMenuScrollersAreIndependent verifies that scrolling
-// one menu doesn't affect the other.
 func TestInstMenuAndEQMenuScrollersAreIndependent(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -165,8 +161,7 @@ func TestInstMenuAndEQMenuScrollersAreIndependent(t *testing.T) {
 		dv.instCategoryBtns[0].OnClick()
 	}
 
-	// The two scrollers use independent state (different types/instances).
-	// Verify by checking that setting one doesn't affect the other.
+	// Independent state.
 	dv.instMenuScroll.First = 5
 	if eqScroll.VS.First == 5 {
 		t.Errorf("instrument and EQ scrollers should be independent instances")
@@ -174,8 +169,6 @@ func TestInstMenuAndEQMenuScrollersAreIndependent(t *testing.T) {
 	dv.instMenuScroll.First = 0 // reset
 }
 
-// TestInstMenuScrollDoesNotAffectRowOffset verifies wheel scrolling
-// over the instrument menu doesn't change the drum row offset.
 func TestInstMenuScrollDoesNotAffectRowOffset(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(io.Discard, game_log.LevelError)
@@ -252,8 +245,6 @@ func TestInstMenuScrollDoesNotAffectRowOffset(t *testing.T) {
 	}
 }
 
-// TestEQMenuScrollDoesNotAffectRowOffset verifies wheel scrolling
-// over the EQ channel menu doesn't change the drum row offset.
 func TestEQMenuScrollDoesNotAffectRowOffset(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -305,14 +296,11 @@ func TestEQMenuScrollDoesNotAffectRowOffset(t *testing.T) {
 			startRowOff, dv.rowOffset)
 	}
 
-	// EQ menu scroll should have changed (or at least been handled)
-	// Note: The scroll might be clamped if already at max
+	// It may already sit at max.
 	_ = startEQScroll // Used for debugging if needed
 }
 
-// TestInstMenuScrollbarClickKeepsMenuOpen verifies that clicking on the
-// scrollbar thumb/track does not close the instrument menu. This was a bug
-// where InputBounds() didn't include the scrollbar area.
+// InputBounds includes the scrollbar, so a click on it keeps the menu open.
 func TestInstMenuScrollbarClickKeepsMenuOpen(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(io.Discard, game_log.LevelError)

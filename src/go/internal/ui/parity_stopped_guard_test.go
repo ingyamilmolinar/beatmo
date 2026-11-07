@@ -7,8 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Parity scan should ignore checks after playback is stopped so stale audio
-// events/highlights collected during the last frame cannot trigger panics.
+// Stale events from the last frame must not panic after Stop.
 func TestParityScanSkippedWhenNotPlaying(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

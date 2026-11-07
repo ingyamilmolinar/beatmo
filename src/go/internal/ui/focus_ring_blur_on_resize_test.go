@@ -8,9 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestFocusRing_BPMBlursOnResize verifies that resizing the viewport clears
-// focus on the BPM text input. Regression for the orange focus ring that
-// persisted across orientation changes (A4 in the screenshot critique).
+// A resize clears the BPM focus, so the ring does not survive an orientation change.
 func TestFocusRing_BPMBlursOnResize(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -31,8 +29,7 @@ func TestFocusRing_BPMBlursOnResize(t *testing.T) {
 	}
 }
 
-// TestFocusRing_BPMBlursOnOrientationFlip verifies focus is cleared when the
-// viewport flips landscape ↔ portrait at the same total area.
+// At the same area too.
 func TestFocusRing_BPMBlursOnOrientationFlip(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -53,9 +50,7 @@ func TestFocusRing_BPMBlursOnOrientationFlip(t *testing.T) {
 	}
 }
 
-// TestFocusRing_NotBlurredOnIdenticalLayout verifies focus is preserved when
-// Layout is called with the same dimensions (defensive regression: don't
-// blur on every Update/Draw cycle).
+// Not on every Update/Draw.
 func TestFocusRing_NotBlurredOnIdenticalLayout(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)

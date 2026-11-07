@@ -8,9 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// The past must never change: once playback has advanced past a subdivision,
-// edits to the circuit must not alter previously-rendered cells. Only future
-// cells may change. This also implies we can cache the past.
+// Once played, a cell never changes under circuit edits; only future cells may, which lets the past be cached.
 func TestDrumView_PastNeverChanges(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -242,9 +240,7 @@ func TestDrumView_FutureUpdatesImmediatelyOnEdit(t *testing.T) {
 	}
 }
 
-// TODO: Failing test exposing that frozen past cells still mutate while the
-// game loop runs and future edits are applied. The refactor must ensure past
-// snapshots remain immutable.
+// Past snapshots stay immutable while the loop runs and future edits apply.
 func TestDrumView_PastCellsImmutableDuringPlayback(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)

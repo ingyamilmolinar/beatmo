@@ -23,44 +23,24 @@ type soakScenario struct {
 	playing bool
 	// editEvery, when > 0, toggles row 0 solo + row 2 mute every N frames during play.
 	editEvery int
-	// drawEvery overrides the default Draw cadence (1 = draw every frame).
-	// Zero falls back to the helper's default (30) which keeps the soak fast
-	// while still exercising the row controls path.
+	// 0 falls back to 30, which keeps the soak fast while still drawing the row controls.
 	drawEvery int
-	// fxChurnEvery, when > 0, adds an insert effect on row 0 then removes it
-	// every N frames. Mirrors the production OOM repro where the user added
-	// and removed insert effects mid-play right before the crash. Catches
-	// leaks in the effect_chain / channel processor / WASM JSON-marshal path.
+	// Adds then removes an insert effect on row 0 every N frames: effect-chain, channel-processor and WASM marshal
+	// leaks.
 	fxChurnEvery int
-	// fxParamChurnEvery, when > 0, twiddles a parameter on the first slot of
-	// row 0's chain every N frames (simulates slider drag). Catches leaks in
-	// the per-param-update WASM bridge marshal path. Requires that an effect
-	// be present (the helper adds one on first churn tick).
+	// A slider drag on row 0's first slot every N frames; the helper adds a slot on the first tick.
 	fxParamChurnEvery int
-	// graphEditEvery, when > 0, adds a regular node + edge to row 1 then
-	// deletes it every N frames during play. Catches leaks in graph mutation
-	// + predDirty rebuild + parity-gen churn paths that pure playback misses.
+	// Graph mutation, predictor rebuild and parity-gen churn that pure playback misses.
 	graphEditEvery int
-	// synthTabOpen, when true, switches EQPanelZone to TabSynth before the
-	// play loop and re-applies the Synth-tab layout each Draw so the helper
-	// exercises the production OOM stack — EQPanelZone.Draw → drawSynthTab →
-	// drawSynthSectionCard → Knob.Draw → drawArc. Without this the helper
-	// draws the row rack and never enters the synth-panel code path the
-	// user crashed in.
+	// Draws the Synth tab every frame (EQPanelZone.Draw → drawSynthTab → Knob.Draw); otherwise only the row rack is
+	// drawn.
 	synthTabOpen bool
-	// paramChurnEvery, when > 0, calls audio.SetInstrumentParam on row 0's
-	// instrument every N frames so hashRecipeParams flips and the voice
-	// cache key rotates. Drives the SetInstrumentParam → voiceCacheInvalidate
-	// → platformInstrumentParamsChanged path and the JS bridge marshal on
-	// WASM. Requires synthTabOpen or an instrument id assignment so the
-	// param sets land on a recipe-bound channel.
+	// Rotates row 0's voice cache key every N frames through SetInstrumentParam and the bridge marshal; needs a
+	// recipe-bound channel.
 	paramChurnEvery int
 }
 
-// wasmHeapCeilingBytes is the WASM linear-memory effective ceiling we project
-// failures against. The production crash logged "out of memory: cannot allocate
-// 4194304-byte block (2130444288 in use)" — i.e. ~2.0 GB in use plus the next
-// 4 MB allocation overflowed. Browsers cap Go-WASM linear memory near 2 GB.
+// Browsers cap Go-WASM linear memory near 2 GB.
 const wasmHeapCeilingBytes = 2_130_444_288
 
 // soakSample captures a heap-size measurement at a given frame.
@@ -69,41 +49,14 @@ type soakSample struct {
 	alloc   uint64
 	objects uint64
 	gc      uint32
-	// total is runtime.MemStats.TotalAlloc — cumulative bytes allocated since
-	// process start. Unlike alloc/HeapAlloc this is NOT reset by GC, so it
-	// detects high allocation churn that the standard Go GC reclaims but the
-	// WASM single-threaded GC cannot keep up with at production scale (the
-	// 2 GB OOM root cause).
+	// TotalAlloc is never reset by GC, so it sees churn native GC reclaims but WASM's single-threaded GC cannot keep up
+	// with.
 	total uint64
 }
 
-// runSoakHeapBound drives `frames` Update/Draw cycles against a freshly
-// constructed Game in the given scenario, collecting MemStats every
-// `sampleEvery` frames. After a `warmupSamples`-sample warmup it asserts
-// three complementary bounds on post-warmup samples:
-//
-//  1. allocBoundX  — max/min HeapAlloc ratio (catches sudden spikes).
-//  2. allocSlopeMaxBytesPerFrame — least-squares slope of HeapAlloc over the
-//     post-warmup window (catches steady leaks; robust to starting-heap
-//     pollution from earlier tests in the same process).
-//  3. objBoundX    — last/first HeapObjects ratio (catches per-abs map growth
-//     before it dominates HeapAlloc).
-//
-// Plus a post-shutdown HeapObjects check vs. pre-loop, to catch goroutine /
-// closure-rooted leaks the per-loop bounds would miss.
-//
-// Defaults (used by the test wrappers):
-//
-//	frames                       = 8400   (10× the production OOM observed at ~840 frames)
-//	sampleEvery                  = 300    (28 samples; 4 warmup + 24 measured)
-//	warmupSamples                = 4
-//	allocBoundX                  = 1.5
-//	allocSlopeMaxBytesPerFrame   = 256    (~2 MB over 8400 frames)
-//	objBoundX                    = 1.3
-//
-// On failure the helper logs a tabular sample trace, the allocation slope,
-// projected size at frame 50_000, top diagnostic counts, and writes a heap
-// pprof profile under t.TempDir() so the failure is debuggable.
+// Three bounds on post-warm-up samples: the max/min HeapAlloc ratio (spikes), the least-squares HeapAlloc slope
+// (steady leaks, robust to earlier tests' residue) and the HeapObjects ratio (per-abs map growth), plus live heap
+// after shutdown (goroutine-rooted leaks). A failure writes a heap profile under t.TempDir().
 func runSoakHeapBound(
 	t *testing.T,
 	sc soakScenario,
@@ -111,12 +64,7 @@ func runSoakHeapBound(
 	allocBoundX, objBoundX float64,
 ) {
 	t.Helper()
-	// Per-frame net-growth tolerance for the head→tail median check.
-	// DrawHeavy redraws every frame and legitimately allocates more
-	// (RowRackZone caches rebuild on full-rate Draws), so it gets a higher
-	// budget. All other scenarios share the production-tight 256 B/frame
-	// bound — production OOM measured ~62 KB/frame, ~250× this bound, so
-	// any real leak swamps the threshold.
+	// DrawHeavy redraws every frame and legitimately rebuilds caches, so it gets a higher budget.
 	allocSlopeMaxBytesPerFrame := 256.0
 	if sc.drawEvery == 1 {
 		allocSlopeMaxBytesPerFrame = 768.0
@@ -129,16 +77,12 @@ func runSoakHeapBound(
 		warmupSamples = 0
 	}
 
-	// withDefaultAudio first: both helpers call assertDefaultParityState(t),
-	// which checks enableDefaultStart == true. Reversing the order would fail
-	// the second assertion because withDefaultStart flips the global to false.
+	// withDefaultAudio first: withDefaultStart flips the global the second assertDefaultParityState checks.
 	withDefaultAudio(t)
 	withDefaultStart(t, false)
 
-	// Force parity recording on so the leaky path actually runs. The check in
-	// recordSeqDecision short-circuits when watch=off AND fatals=false; we
-	// flip watch=log so recording proceeds, and disable fatals so synthetic
-	// playback timing in tests does not panic.
+	// recordSeqDecision short-circuits with watch off and fatals off; watch=log records, fatals off keep synthetic
+	// timing from panicking.
 	prevWatch := parityWatchDefault
 	prevFatal := parityFatalEnabled.Load()
 	parityWatchDefault = parityWatchLog
@@ -151,13 +95,11 @@ func runSoakHeapBound(
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(1280, 720)
-	// Belt-and-suspenders: respect parityWatchLog even though New() reads
-	// parityWatchDefault at construction time.
+	// New() reads parityWatchDefault at construction; set it on the game too.
 	g.parityWatch = parityWatchLog
 	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 
-	// Subdiv 16 + BPM 240 picks an absolute index advance rate comparable to
-	// the production WASM crash (which logged play→OOM in ~14 s).
+	// An abs advance rate comparable to the production crash.
 	if err := g.SetSubdivisions(16); err != nil {
 		t.Fatalf("set subdiv 16: %v", err)
 	}
@@ -165,20 +107,11 @@ func runSoakHeapBound(
 
 	buildSoakScene(t, g, 6 /* rows */, 8 /* nodes per row */)
 
-	// Drawing target. Stub Ebiten allocates a backing buffer once; subsequent
-	// Draws reuse it.
 	screen := ebiten.NewImage(1280, 720)
 
-	// Switch the EQPanelZone to the Synth tab before play starts so the
-	// soak loop's Draw goes through the same EQPanelZone.Draw → drawSynthTab
-	// → drawSynthSectionCard → Knob.Draw stack the production crash landed
-	// in. Without this, draw exercises drawDrumPane → RowRackZone instead
-	// and the regression hides.
+	// Before play, so Draw goes through the synth panel the crash landed in rather than the row rack.
 	if sc.synthTabOpen {
-		// Anchor a recipe binding for row 0 + row 1 so the synth tab has a
-		// non-empty ParamDef set to render. ResetInstrumentParams is wired
-		// to the manager in synth_recipe.go and cleanly drops the entries
-		// at test teardown.
+		// A recipe binding so the Synth tab has params to render; ResetInstrumentParams drops them at teardown.
 		if len(g.drum.Rows) > 0 && g.drum.Rows[0].Instrument != "" {
 			_ = audio.InstallInstrumentDocForTest(g.drum.Rows[0].Instrument, roster.Snare)
 			t.Cleanup(func() { audio.ResetInstrumentParams(g.drum.Rows[0].Instrument) })
@@ -189,10 +122,7 @@ func runSoakHeapBound(
 		}
 		g.drum.eqPanelZone.SetActiveTab(TabSynth)
 		g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
-		// Drive one Update so the tree picks up the new hit areas and
-		// buildSynthTab populates instEditorControls; without this the very
-		// first Draw inside the loop sees zero knobs and the regression
-		// hides until the natural layout-dirty heuristic re-fires.
+		// One Update lets the tree pick up the hit areas and build the knobs, or the first Draws see none.
 		_ = g.Update()
 	}
 
@@ -206,11 +136,7 @@ func runSoakHeapBound(
 
 	var graphChurn graphChurnState
 	samples := make([]soakSample, 0, frames/sampleEvery+1)
-	// Drawing every frame is faithful to production but expensive under stub
-	// Ebiten (the row controls cache rebuild dominates wall time). The default
-	// drawEvery=30 still exercises the RowRackZone.Draw → icon path regularly
-	// while keeping the soak runtime tractable. Scenarios that specifically
-	// want to measure Draw-path allocation rate set sc.drawEvery=1.
+	// Drawing every frame is faithful but slow under the stub; scenarios measuring the Draw path set drawEvery=1.
 	drawEvery := 30
 	if sc.drawEvery > 0 {
 		drawEvery = sc.drawEvery
@@ -246,9 +172,7 @@ func runSoakHeapBound(
 	// Final sample at the loop end so the tail measurement reflects the full run.
 	samples = append(samples, sampleHeap(frames))
 
-	// Post-shutdown sample: drop the Game's goroutines and force GC, then
-	// measure live heap. Catches leaks rooted in goroutines / channels that
-	// the per-loop bound would miss.
+	// Dropping the Game's goroutines then forcing GC exposes leaks rooted in goroutines and channels.
 	g.CloseForTest()
 	runtime.GC()
 	runtime.GC()
@@ -281,12 +205,8 @@ func runSoakHeapBound(
 				ratio, minAlloc/1024, maxAlloc/1024, allocBoundX))
 		}
 	}
-	// Net-growth check: compare the median of the head-quartile of post-warmup
-	// samples to the FINAL post-loop sample (which is taken after a forced
-	// GC by sampleHeap). Using the final sample for the tail eliminates GC
-	// oscillation noise — the heap may rise mid-run and fall again, so what
-	// matters for an OOM regression is whether the run ENDED higher than it
-	// started. Bound scales as bytesPerFrame × frames.
+	// The head-quartile median against the FINAL post-GC sample: the heap may rise and fall mid-run, and what matters
+	// is whether the run ENDED higher than it started.
 	headEnd := len(post) / 4
 	if headEnd < 1 {
 		headEnd = 1
@@ -296,12 +216,7 @@ func runSoakHeapBound(
 	netGrowth := int64(tailAlloc) - int64(headMed)
 	netBound := int64(allocSlopeMaxBytesPerFrame) * int64(frames)
 	if netGrowth > netBound {
-		// Project the observed per-frame growth to the WASM ceiling so the
-		// failure message tells the reader WHEN this leak rate would crash a
-		// real WASM session. Production stack landed in
-		// RowRackZone.drawRowControlsToCache → vector.Path tessellation —
-		// the upstream growth tracked here is what pushed the heap to the 2
-		// GB ceiling so the next vector.Path alloc could not fit.
+		// Projected to the WASM ceiling so the message says WHEN this rate would crash a real session.
 		perFrame := float64(netGrowth) / float64(frames)
 		framesToOOM := projectFramesToOOM(tailAlloc, perFrame)
 		secondsToOOM := framesToOOM / 60
@@ -322,9 +237,7 @@ func runSoakHeapBound(
 				ratio, firstObj, lastObj, objBoundX))
 		}
 	}
-	// Goroutine-rooted leak guard: live heap after shutdown should not exceed
-	// pre-loop live heap by more than 10% — a small tolerance for residual
-	// allocator state held by the runtime.
+	// The tolerance covers residual allocator state.
 	if preSample.objects > 0 {
 		ratio := float64(postShutdown.objects) / float64(preSample.objects)
 		if ratio > 1.1 {
@@ -334,11 +247,7 @@ func runSoakHeapBound(
 		}
 	}
 
-	// Per-component hard bounds — deterministic checks against the specific
-	// accumulators that have caused unbounded growth in the past or could in
-	// the future. Unlike the noisy LSQ slope, these check exact counts on
-	// known suspect data structures so a regression can be diagnosed by
-	// looking at WHICH bound failed.
+	// Exact counts on known suspect structures, so a failure names WHICH one grew.
 	failures = append(failures, checkComponentBounds(g, sc, frames)...)
 
 	if len(failures) > 0 {
@@ -350,10 +259,7 @@ func runSoakHeapBound(
 	}
 }
 
-// buildSoakScene constructs `rows` separate small loops (each `nodesPerRow`
-// nodes arranged as a rectangle), one per drum row. This mirrors the kind of
-// scene a user would have during sustained playback: a per-instrument circuit
-// per row with audible nodes that exercise predictor + parity recording.
+// One small rectangular loop per row with audible nodes, as during sustained playback.
 func buildSoakScene(t *testing.T, g *Game, rows, nodesPerRow int) {
 	t.Helper()
 	if rows <= 0 || nodesPerRow < 4 {
@@ -361,8 +267,7 @@ func buildSoakScene(t *testing.T, g *Game, rows, nodesPerRow int) {
 	}
 	width := nodesPerRow / 2 // 4 wide → 4×2 rectangle for 8 nodes
 	for r := 0; r < rows; r++ {
-		// Each row's loop occupies its own vertical band so the geometries
-		// don't overlap and the predictor builds clean per-row paths.
+		// Separate bands so the geometries don't overlap and each row gets a clean path.
 		baseJ := r * 16
 		var first *uiNode
 		var prev *uiNode
@@ -409,9 +314,7 @@ func buildSoakScene(t *testing.T, g *Game, rows, nodesPerRow int) {
 	g.refreshDrumRow()
 }
 
-// toggleSoakEdits flips solo/mute on the first two rows so per-row state
-// machinery (mute gates, solo masks, parity gen bumps) is exercised across
-// a long run, not just steady-state playback.
+// Mute gates, solo masks and parity-gen bumps across a long run, not only steady playback.
 func toggleSoakEdits(g *Game) {
 	if g == nil || g.drum == nil {
 		return
@@ -424,17 +327,8 @@ func toggleSoakEdits(g *Game) {
 	}
 }
 
-// toggleSoakFXChurn adds an insert effect on row 0's instrument and removes
-// it on the next call. Mirrors the production OOM repro where the user added
-// then removed insert effects mid-play right before the crash. Catches leaks
-// in:
-//   - audio.effectChainManager (slot/processor accumulation across add/remove)
-//   - rebuildChannelProcessors (per-call Processor slice churn into the live channel)
-//   - platformInsertEffectsChanged (per-call JSON marshal on WASM)
-//
-// On WASM the platform callback marshals the new slot list to JSON every call;
-// on stub builds the callback is a no-op but the Go-side slot/processor
-// reallocation still runs and is what we measure here.
+// Exercises slot/processor accumulation across add/remove; on stub builds the platform callback is a no-op but
+// the Go-side reallocation still runs.
 func toggleSoakFXChurn(g *Game) {
 	if g == nil || g.drum == nil || len(g.drum.Rows) == 0 {
 		return
@@ -451,11 +345,7 @@ func toggleSoakFXChurn(g *Game) {
 	}
 }
 
-// toggleSoakFXParamChurn updates a parameter on the first slot of row 0's
-// chain (adding a slot if missing) every tick. Simulates a slider drag on a
-// live FX param. Production WASM marshals the entire slot list to JSON on
-// each call (insert_effects_wasm.go) — we measure the Go-side allocation
-// rate of that path here.
+// A slider drag on a live FX param; adds a slot if missing.
 func toggleSoakFXParamChurn(g *Game, f int) {
 	if g == nil || g.drum == nil || len(g.drum.Rows) == 0 {
 		return
@@ -471,17 +361,8 @@ func toggleSoakFXParamChurn(g *Game, f int) {
 	audio.SetInsertEffectParam(id, 0, "drive", val)
 }
 
-// toggleSoakSynthParamChurn cycles synth recipe params on row 0 + row 1
-// every tick so hashRecipeParams flips. Each call invalidates the voice
-// cache for that instrument (via voiceCacheInvalidate inside
-// SetInstrumentParam) AND publishes a hooks event AND calls
-// platformInstrumentParamsChanged. Mirrors a user dragging a synth-tab
-// knob during sustained playback — the exact UX the production OOM trace
-// landed inside.
-//
-// Two params are touched so the manager.params map for each instrument
-// holds more than a single key (a one-key map is degenerate and would
-// underexercise the manager's lock-bound path).
+// A synth-knob drag while playing: each call invalidates the voice cache, publishes a hook and notifies the
+// platform. Two params, so each instrument's map holds more than one key.
 func toggleSoakSynthParamChurn(g *Game, f int) {
 	if g == nil || g.drum == nil || len(g.drum.Rows) == 0 {
 		return
@@ -499,37 +380,20 @@ func toggleSoakSynthParamChurn(g *Game, f int) {
 	}
 }
 
-// graphChurnState retains the most recently added churn node so the next
-// invocation can delete it. Reset between runs by runSoakHeapBound.
+// Reset between runs.
 type graphChurnState struct {
 	node *uiNode
 }
 
-// checkComponentBounds returns failure messages for any per-component
-// accumulator that has grown past a hard ceiling. Bounds are sized for the
-// 8400-frame production-comparable run and explicitly account for each
-// data structure's expected steady-state size — a failure here means
-// something is leaking, not that the bound was hit by ordinary growth.
-//
-// The bounds catch leaks that the heap-level slope/ratio checks miss when:
-//   - a single accumulator grows large enough to OOM but is amortized by
-//     other allocations dropping (slope sees no net trend);
-//   - the leak grows in HeapObjects but each entry is small (HeapAlloc bound
-//     not tripped);
-//   - GC oscillation makes the slope estimate noise-dominated.
-//
-// All bounds are absolute counts, computed at the end of the run. They are
-// independent of the slope/ratio checks above so a single soak run can
-// flag several distinct regressions at once.
+// Absolute counts sized to each structure's expected steady state: they catch leaks the heap checks miss (one
+// accumulator amortised by others, many tiny objects, GC noise), and several can fail in one run.
 func checkComponentBounds(g *Game, sc soakScenario, frames int) []string {
 	if g == nil {
 		return nil
 	}
 	var fails []string
 
-	// parityAudio is enforced bounded at 1024 entries by the recordParityAudio
-	// drop-oldest cap (game_parity_state.go:150-153). If this assertion ever
-	// fails, the cap was bypassed or removed.
+	// recordParityAudio's drop-oldest cap; a failure means it was bypassed.
 	const parityAudioMaxBound = 1024
 	if got := len(g.parityAudio); got > parityAudioMaxBound {
 		fails = append(fails, fmt.Sprintf(
@@ -537,11 +401,7 @@ func checkComponentBounds(g *Game, sc soakScenario, frames int) []string {
 			got, parityAudioMaxBound))
 	}
 
-	// paritySeqDecisions is pruned by parityPrune(minAbs) which is called by
-	// the sequencer with the row's earliest still-relevant abs index. Each
-	// row's map should never hold more than ~one cycle length × a few cycles
-	// of buffer. We allow 4096 per row as a generous bound (production cycles
-	// are typically <64 long; 4096 = 64 cycles of slack).
+	// Pruned to the row's earliest relevant abs; generous slack over real cycle lengths.
 	const paritySeqDecisionsPerRowBound = 4096
 	for r, m := range g.paritySeqDecisions {
 		if len(m) > paritySeqDecisionsPerRowBound {
@@ -551,12 +411,7 @@ func checkComponentBounds(g *Game, sc soakScenario, frames int) []string {
 		}
 	}
 
-	// Timeline immutables sidecar. RecordCommitKind stores every playback
-	// commit in immutables[row][abs] and never deletes — see service.go:84-93.
-	// Bounded by elapsed playback in absolute indices: at 1 commit/frame for
-	// `frames` frames, immutables can grow to `frames` entries per row. We
-	// allow 2× headroom (16800 for the default 8400-frame run) so a benign
-	// pre-existing growth pattern doesn't trip; anything larger is a leak.
+	// Every playback commit is retained, so it grows with elapsed abs; 2× headroom over one per frame.
 	immutablesMaxBound := 2 * frames
 	if g.timeline != nil && g.drum != nil {
 		for r := 0; r < len(g.drum.Rows); r++ {
@@ -569,11 +424,7 @@ func checkComponentBounds(g *Game, sc soakScenario, frames int) []string {
 		}
 	}
 
-	// Predictor horizon grows linearly with elapsed wall-clock × bpm × subdiv.
-	// The slate is []bool so this directly bounds the per-row prediction
-	// buffer size in bytes. At subdiv=16 + bpm=240 the helper advances ~64
-	// indices/sec, so 8400 frames at 60fps wall-clock → ~9000 horizon.
-	// Allow 4× headroom (32×frames) before flagging as runaway.
+	// Grows with elapsed time × BPM × subdiv; 4× headroom before it counts as runaway.
 	horizonMaxBound := 4 * frames
 	if g.engine != nil && g.engine.Predictor != nil {
 		if h := g.engine.Predictor.Horizon(); h > horizonMaxBound {
@@ -581,17 +432,8 @@ func checkComponentBounds(g *Game, sc soakScenario, frames int) []string {
 				"predictor horizon=%d exceeds bound=%d (frames=%d) — Ensure() is being called with horizons growing past elapsed wall-clock",
 				h, horizonMaxBound, frames))
 		}
-		// Predictor slice growth pattern. Two healthy regimes are accepted:
-		//   1) Geometric growth ramp (early in playback, before windowCap is
-		//      reached): cap > len for at least one row × buffer, indicating
-		//      growBoolBuf is doubling cap rather than reallocating per step.
-		//   2) Sliding-window plateau (after windowCap subdivisions have been
-		//      retained): len == windowCap for every row × buffer, with future
-		//      Ensure calls sliding in place rather than allocating.
-		// The regression condition is cap == len AND len < windowCap — that
-		// would mean Ensure is reallocating per step inside the growth ramp.
-		// Production OOM at 10:20 of playback (~14 835-element horizon) was
-		// this exact regression; fix is in growBoolBuf + slideAllRowsLocked.
+		// Healthy: a geometric ramp (cap > len) before windowCap, or a plateau at windowCap. cap == len below windowCap
+		// means Ensure reallocates per step.
 		if h := g.engine.Predictor.Horizon(); h > 256 && sc.playing {
 			perRowCaps := g.engine.Predictor.BufferCapsForTest()
 			_, _, windowCap := g.engine.Predictor.WindowBoundsForTest()
@@ -621,13 +463,8 @@ func checkComponentBounds(g *Game, sc soakScenario, frames int) []string {
 		}
 	}
 
-	// Voice cache entries. Native cap is 256 (voice_cache.go:49); under
-	// `-tags test` the stub returns 0/0 because globalVoiceCache only
-	// compiles under !test && !js. The bound applies to whichever number
-	// the build returns — a regression that surfaces under `make test-real`
-	// (Ebiten + native audio) will trip here. We do NOT skip on stub
-	// because checking the field on stub still validates the test hook
-	// path, just against zero values.
+	// The stub returns 0/0 (the cache compiles only under !test && !js); checking it still exercises the hook, and
+	// `make test-real` checks the real numbers.
 	entries, totalBytes := audio.VoiceCacheStatsForTest()
 	const voiceCacheEntriesBound = 256
 	if entries > voiceCacheEntriesBound {
@@ -638,12 +475,8 @@ func checkComponentBounds(g *Game, sc soakScenario, frames int) []string {
 			entries, voiceCacheEntriesBound, totalBytes/1024))
 	}
 
-	// Modified project documents. Every SetInstrumentParam on an unedited
-	// instrument makes its copy differ from its library entry; only
-	// ResetInstrumentParams brings it back. The shipped catalog has ~25 ids
-	// in play — anything above 64 means SetInstrumentParam is being called
-	// with synthesized or stale ids faster than ResetInstrumentParams
-	// catches up.
+	// Every SetInstrumentParam on an unedited instrument makes its copy differ from the library; far more than the
+	// ids in play means stale or synthesised ids.
 	const paramsMgrBound = 64
 	if n := audio.ModifiedInstrumentDocCountForTest(); n > paramsMgrBound {
 		fails = append(fails, fmt.Sprintf(
@@ -653,13 +486,8 @@ func checkComponentBounds(g *Game, sc soakScenario, frames int) []string {
 			n, paramsMgrBound))
 	}
 
-	// Analyzer bridge churn. WASM allocates a fresh []float64 inside
-	// ChannelAnalyzerSnapshot every call (analyzer_wasm.go:96/104). The
-	// stub build keeps the counter at zero. Anything above 20 reads/frame
-	// averaged across the soak is per-Draw allocation pressure even though
-	// the slice itself is short-lived — WASM single-threaded GC cannot
-	// keep up with that rate at production scale. AnalyzerBridgeStats
-	// returns cumulative counters; divide by frame count for the rate.
+	// WASM allocates a fresh slice on every snapshot; a sustained per-frame rate is pressure its GC cannot keep up
+	// with. The stub keeps the counter at zero.
 	calls, reads := audio.AnalyzerBridgeStats()
 	if frames > 0 && reads/uint64(frames) > 20 {
 		fails = append(fails, fmt.Sprintf(
@@ -668,10 +496,7 @@ func checkComponentBounds(g *Game, sc soakScenario, frames int) []string {
 			reads/uint64(frames), calls, reads, frames))
 	}
 
-	// Insert effects per instrument. Add/Remove churn should keep this
-	// oscillating between 0 and 1; in graph-mutation scenarios it should
-	// stay below ~16 (UI ceiling). Anything >32 means RemoveInsertEffect
-	// is leaking slots.
+	// Churn keeps it between 0 and 1; well above the UI ceiling means RemoveInsertEffect leaks slots.
 	const fxSlotsPerInstrumentBound = 32
 	if g.drum != nil {
 		for r := 0; r < len(g.drum.Rows); r++ {
@@ -691,24 +516,18 @@ func checkComponentBounds(g *Game, sc soakScenario, frames int) []string {
 	return fails
 }
 
-// toggleSoakGraphEdit alternates between adding a node + edge to row 1 and
-// deleting it. Real users edit while playing — every mutation marks the
-// predictor dirty and bumps parity gen, exercising rebuild paths that
-// steady-state playback skips entirely.
+// Every edit marks the predictor dirty and bumps the parity generation, paths steady playback skips.
 func toggleSoakGraphEdit(g *Game, st *graphChurnState) {
 	if g == nil || g.drum == nil || len(g.drum.Rows) < 2 || st == nil {
 		return
 	}
 	if st.node == nil {
-		// Place near row 1's home band (baseJ = 16 from buildSoakScene) but
-		// off the loop's path so the existing cycle stays intact.
+		// Near row 1's band, off the loop's path, so the cycle stays intact.
 		n := g.tryAddNode(48, 18, model.NodeTypeRegular)
 		if n == nil {
 			return
 		}
-		// Connect the orphan to the row's first node so it actually
-		// participates in path computation (and thus exercises predictor
-		// rebuild + parity gen).
+		// Connected, so it joins path computation.
 		if g.drum.Rows[1].Node != nil {
 			g.addEdge(n, g.drum.Rows[1].Node)
 		}
@@ -778,26 +597,18 @@ func dumpSoakDiagnostics(
 				t.Logf("timeline[row=%d] ring_size=%d ring_cap=%d immutables=%d", r, size, capa, immut)
 			}
 		}
-		// Predictor horizon grows with elapsed-time × bpm × subdiv. The slate
-		// itself is []bool so cap == horizon in bytes/row, but a runaway
-		// horizon during a long session signals that target is being computed
-		// off a wall-clock that wasn't reset.
+		// A runaway horizon means the target is computed off a wall clock that was not reset.
 		if g.engine != nil && g.engine.Predictor != nil {
 			t.Logf("predictor horizon=%d", g.engine.Predictor.Horizon())
 		}
-		// New diagnostic counters for the synth-recipe regression vector.
-		// Voice cache (entries+bytes), params manager size, analyzer bridge
-		// reads — read once at end-of-run so the dump shows the post-soak
-		// state that drove the per-component bound decisions above.
+		// Read once at the end: the state the component bounds judged.
 		vcEntries, vcBytes := audio.VoiceCacheStatsForTest()
 		t.Logf("voice_cache entries=%d totalBytes=%dKB", vcEntries, vcBytes/1024)
 		t.Logf("modified instrument documents=%d", audio.ModifiedInstrumentDocCountForTest())
 		bridgeCalls, bridgeReads := audio.AnalyzerBridgeStats()
 		t.Logf("analyzer bridge calls=%d reads=%d", bridgeCalls, bridgeReads)
 
-		// Insert effect chain length per row's instrument. Add/Remove churn
-		// on row 0 should keep this oscillating between 0 and 1; a steady
-		// climb means RemoveInsertEffect leaked a slot.
+		// A steady climb means RemoveInsertEffect leaked a slot.
 		if g.drum != nil {
 			for r := 0; r < len(g.drum.Rows) && r < 8; r++ {
 				id := g.drum.Rows[r].Instrument
@@ -809,8 +620,7 @@ func dumpSoakDiagnostics(
 		}
 	}
 
-	// Heap pprof under t.TempDir() — the path lands in test logs so a human
-	// can `go tool pprof` it after the run.
+	// Logged so a human can `go tool pprof` it.
 	path := filepath.Join(t.TempDir(), "soak_heap.pprof")
 	if f, err := os.Create(path); err == nil {
 		defer f.Close()
@@ -825,10 +635,7 @@ func dumpSoakDiagnostics(
 	}
 }
 
-// projectFramesToOOM returns how many additional frames at the given
-// allocation slope would push the heap to the WASM linear-memory ceiling
-// from currentAlloc. Returns math.MaxInt64 if the slope is non-positive
-// (no leak) or if the heap is already over the ceiling.
+// math.MaxInt64 for a non-positive slope or a heap already over the ceiling.
 func projectFramesToOOM(currentAlloc uint64, slopeBytesPerFrame float64) int64 {
 	if slopeBytesPerFrame <= 0 {
 		return math.MaxInt64
@@ -844,8 +651,7 @@ func projectFramesToOOM(currentAlloc uint64, slopeBytesPerFrame float64) int64 {
 	return int64(frames)
 }
 
-// medianAlloc returns the median HeapAlloc across the given samples.
-// Robust to a single GC sample landing low (or high) within a quartile.
+// Robust to one GC sample landing low or high.
 func medianAlloc(samples []soakSample) uint64 {
 	if len(samples) == 0 {
 		return 0
@@ -863,8 +669,7 @@ func medianAlloc(samples []soakSample) uint64 {
 	return vals[len(vals)/2]
 }
 
-// allocSlopePerFrame returns least-squares slope of (frame → alloc) across
-// the given samples in bytes/frame. Used purely for diagnostic projection.
+// Diagnostic projection only.
 func allocSlopePerFrame(samples []soakSample) float64 {
 	if len(samples) < 2 {
 		return 0

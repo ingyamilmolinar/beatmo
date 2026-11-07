@@ -11,8 +11,6 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestSliderHandleInputResult_PressStartsCapture verifies that pressing
-// inside the slider starts a drag and returns InputCaptured.
 func TestSliderHandleInputResult_PressStartsCapture(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -30,8 +28,6 @@ func TestSliderHandleInputResult_PressStartsCapture(t *testing.T) {
 	}
 }
 
-// TestSliderHandleInputResult_DragMaintainsCapture verifies that continued
-// pressing during a drag returns InputCaptured and tracks the value.
 func TestSliderHandleInputResult_DragMaintainsCapture(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -53,8 +49,6 @@ func TestSliderHandleInputResult_DragMaintainsCapture(t *testing.T) {
 	}
 }
 
-// TestSliderHandleInputResult_ReleaseReturnsConsumed verifies that releasing
-// after a drag returns InputConsumed and clears capture.
 func TestSliderHandleInputResult_ReleaseReturnsConsumed(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -76,8 +70,6 @@ func TestSliderHandleInputResult_ReleaseReturnsConsumed(t *testing.T) {
 	}
 }
 
-// TestSliderHandleInputResult_MissReturnsIgnored verifies that pressing
-// outside the slider returns InputIgnored.
 func TestSliderHandleInputResult_MissReturnsIgnored(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -95,8 +87,6 @@ func TestSliderHandleInputResult_MissReturnsIgnored(t *testing.T) {
 	}
 }
 
-// TestSliderHandleInputResult_ReleaseWithoutDragIgnored verifies that
-// releasing without a prior drag returns InputIgnored.
 func TestSliderHandleInputResult_ReleaseWithoutDragIgnored(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -111,8 +101,6 @@ func TestSliderHandleInputResult_ReleaseWithoutDragIgnored(t *testing.T) {
 	}
 }
 
-// TestSliderHandleInputResult_SuppressReturnsIgnored verifies that the
-// suppress guard blocks slider input and clears on release.
 func TestSliderHandleInputResult_SuppressReturnsIgnored(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = true
@@ -139,8 +127,6 @@ func TestSliderHandleInputResult_SuppressReturnsIgnored(t *testing.T) {
 	}
 }
 
-// TestSliderHandleInputResult_BackwardCompat verifies that Handle() returns
-// the same booleans as before the refactor.
 func TestSliderHandleInputResult_BackwardCompat(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -167,8 +153,6 @@ func TestSliderHandleInputResult_BackwardCompat(t *testing.T) {
 	}
 }
 
-// TestSliderHandleInputResult_ValueTracking verifies that HandleInputResult
-// updates the slider value during drag (same as Handle).
 func TestSliderHandleInputResult_ValueTracking(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -196,9 +180,7 @@ func TestSliderHandleInputResult_ValueTracking(t *testing.T) {
 	}
 }
 
-// TestMobileTransportNotBlockedByTouchDeadZone verifies that a mobile touch
-// press on the transport area (play button) is NOT blocked by the touch dead
-// zone. The dead zone should only apply to the row scroll area.
+// The touch dead zone applies to the row scroll area only.
 func TestMobileTransportNotBlockedByTouchDeadZone(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -247,8 +229,7 @@ func TestMobileTransportNotBlockedByTouchDeadZone(t *testing.T) {
 	playFired := false
 	pb.OnClick = func() { playFired = true }
 
-	// Simulate a real mobile touch press on the play button.
-	// Touch override coordinates are at the play button position (outside rows).
+	// Touch coordinates on the play button, outside the rows.
 	r := SetInputForTest(
 		func() (int, int) { return px, py },
 		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
@@ -274,8 +255,6 @@ func TestMobileTransportNotBlockedByTouchDeadZone(t *testing.T) {
 	}
 }
 
-// TestMobileRowTouchStillBlockedByDeadZone verifies that the dead zone still
-// blocks row-area touches on mobile when scrolling is possible.
 func TestMobileRowTouchStillBlockedByDeadZone(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -343,9 +322,7 @@ func TestMobileRowTouchStillBlockedByDeadZone(t *testing.T) {
 	}
 }
 
-// TestPortalSliderNotBlockedByDeadZone verifies that a volume popup portal
-// slider receives touch even when the touch dead zone would otherwise block.
-// Portal overlays have z-index >= ZOverlayMin and bypass the dragBlocked guard.
+// Portal overlays (z >= ZOverlayMin) bypass the dragBlocked guard.
 func TestPortalSliderNotBlockedByDeadZone(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -376,9 +353,7 @@ func TestPortalSliderNotBlockedByDeadZone(t *testing.T) {
 	dv.Update()
 	warmUp()
 
-	// Open a volume popup portal. This creates an overlay with z >= ZOverlayMin.
-	// Use a fallback anchor rect in the row area since mobile may not show
-	// row vol sliders directly.
+	// A fallback anchor in the row area: mobile may not show row volume sliders directly.
 	iconRect := image.Rect(10, dv.rowsRect().Min.Y+10, 50, dv.rowsRect().Min.Y+50)
 	if len(dv.rowVolSliders()) > 0 && !dv.rowVolSliders()[0].Rect().Empty() {
 		iconRect = dv.rowVolSliders()[0].Rect()
@@ -397,8 +372,7 @@ func TestPortalSliderNotBlockedByDeadZone(t *testing.T) {
 	}
 	px, py := popupRect.Min.X+popupRect.Dx()/2, popupRect.Min.Y+popupRect.Dy()/2
 
-	// Simulate a real mobile touch press on the popup slider, with touch
-	// coordinates in the row area (activating the dead zone).
+	// In the row area, which activates the dead zone.
 	rowsRect := dv.rowsRect()
 	// Place touch override in the rows area to trigger dead zone.
 	dzY := rowsRect.Min.Y + rowsRect.Dy()/2
@@ -415,8 +389,6 @@ func TestPortalSliderNotBlockedByDeadZone(t *testing.T) {
 	dv.Update()
 	r()
 
-	// The overlay tree should have dispatched the press to the portal overlay
-	// even though the dead zone is active.
 	if !dv.overlayTree.InputHandled() {
 		t.Fatal("overlay tree should have dispatched press to portal slider (portal bypasses drag block)")
 	}

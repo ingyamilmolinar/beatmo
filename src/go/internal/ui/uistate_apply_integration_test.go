@@ -12,22 +12,14 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/ui/uistate"
 )
 
-// uistate_apply_integration_test.go closes the gap that Round 1 documented
-// in MEMORY.md: uistate.Apply / ApplyFile sit at 0% because the unit tests
-// inside the uistate package decouple via an `applier` interface. These
-// tests drive the *real* *ui.Game so the contract "Game implements applier"
-// is enforced at compile + behavior level. They also prove ApplyFile's
-// JSON I/O end-to-end.
-//
-// Lives in package ui_test (external) to break the import cycle:
-// uistate imports ui, so a uistate import inside package ui is forbidden.
+// The uistate unit tests decouple through an `applier` interface, so these drive the real *ui.Game: "Game
+// implements applier" holds at compile and behaviour level, and ApplyFile's JSON I/O runs end to end. External
+// package: uistate imports ui.
 
 // silentLogger discards UI log output so test runs stay quiet.
 var silentLogger = game_log.New(io.Discard, game_log.LevelError)
 
-// newTestGame mirrors the convention from the in-package tests but works
-// from the external package. It still has to call out to the real audio
-// reset helpers since import-time wiring registers a default catalog.
+// Still calls the real audio reset helpers: import-time wiring registers a default catalog.
 func newTestGame(t *testing.T) *ui.Game {
 	t.Helper()
 	ui.SetDefaultStartForTest(false)
@@ -57,10 +49,7 @@ func TestUistateApplyFileFullConfigDrivesGame(t *testing.T) {
 	g := newTestGame(t)
 	g.Layout(1280, 720)
 
-	// Note: sidebar.open_node_id is intentionally omitted here — opening
-	// the sidebar from an external test would require a way to seed a
-	// node from the public API. The (camera, splitter, view, profile)
-	// path covers every other applier method.
+	// No sidebar.open_node_id: the public API offers no way to seed a node; every other applier method is covered.
 	body := `{
 		"schema_version": "0.0.1",
 		"profile": "mobile",

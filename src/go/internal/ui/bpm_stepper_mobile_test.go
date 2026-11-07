@@ -8,11 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestBPMStepperMobile_HorizontalLayout verifies that the mobile BPM stepper
-// renders as [−][BPM box][+] in a single horizontal row with both ± buttons
-// at full row height. Regression for B1 in the screenshot critique: prior
-// `stackVerticalTransport` halved the row to 22 px, violating DESIGN.md's
-// 44 px touch minimum.
+// [−][BPM][+] in one row, both buttons at full row height (the 44 px touch minimum).
 func TestBPMStepperMobile_HorizontalLayout(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -44,11 +40,7 @@ func TestBPMStepperMobile_HorizontalLayout(t *testing.T) {
 	}
 }
 
-// TestBPMStepperMobile_NotHalvedVertically verifies that the BPM ± buttons
-// are NOT vertically halved. The prior `stackVerticalTransport` cut the
-// row in half, leaving each button ~22 px tall — direct violation of
-// DESIGN.md §"Touch sizing". The horizontal stepper must give each button
-// the FULL row height (matching the BPM box rect).
+// Each button gets the full row height, matching the BPM box; a vertical stack halved them to ~22 px.
 func TestBPMStepperMobile_NotHalvedVertically(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -69,9 +61,7 @@ func TestBPMStepperMobile_NotHalvedVertically(t *testing.T) {
 	}
 }
 
-// TestBPMStepperDesktop_VerticalStackUnchanged verifies the desktop layout
-// keeps the vertical ± stack — the mobile redesign must not regress
-// desktop pixel layout.
+// Desktop keeps the vertical ± stack.
 func TestBPMStepperDesktop_VerticalStackUnchanged(t *testing.T) {
 	setupMobileTest(t, false) // desktop
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -94,8 +84,7 @@ func TestBPMStepperDesktop_VerticalStackUnchanged(t *testing.T) {
 	}
 }
 
-// TestBPMStepperMobile_IncrementsBPM presses the [+] button and verifies the
-// BPM value rises. Catches wiring regressions (button tied to wrong handler).
+// Catches the button wired to the wrong handler.
 func TestBPMStepperMobile_IncrementsBPM(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)

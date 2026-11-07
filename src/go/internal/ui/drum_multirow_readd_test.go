@@ -6,9 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Regression: deleting and re-adding a node on a non-primary row (e.g., row 4)
-// during playback must update the predictor/timeline view immediately so
-// DrumView does not show stale off/on states.
+// On a non-primary row too, the view updates at once with no stale state.
 func TestMultiRowFutureReaddParity(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -80,8 +78,7 @@ func TestMultiRowFutureReaddParity(t *testing.T) {
 	// Re-add the node in the same spot and reclose the loop.
 	g.pendingStartRow = row
 	newNode := g.tryAddNode(targetBi.I, targetBi.J, model.NodeTypeRegular)
-	// Reconnect to a simple line forward/back to guarantee inclusion.
-	// Reconnect into the original path shape.
+	// Into the original path shape.
 	if p := g.nodeByID(prevBi.NodeID); p != nil {
 		g.addEdge(p, newNode)
 	}

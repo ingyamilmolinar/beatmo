@@ -11,22 +11,9 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestRowsLayerMixedPitchDoesNotPersist is the symptom-level regression guard.
-// It reproduces a mid-session pitch change (via SetLength) after the rowsLayer
-// has been populated and shifted, then asserts that the resulting composite
-// has uniform cell pitch across the entire row width — no left-side stale
-// pixels at old pitch mixed with right-side fresh pixels at new pitch.
-//
-// Detection: walk the row centerline, count colored runs (non-background
-// pixels). Before the fix, a Length change after a shift would leave the
-// leftmost ~30% at the old pitch; the run histogram would show two distinct
-// run-length clusters (e.g. ~100px and ~12px). After the fix, the histogram
-// has a single cluster.
-//
-// Build-tag note: pixel sampling via *ebiten.Image.At() requires the stubbed
-// Ebiten path. Real Ebiten (test-real) panics on ReadPixels outside a running
-// game loop. The predicate-level guards in
-// drum_rows_layer_pitch_invalidation_test.go remain in force under both tags.
+// After a mid-session pitch change the composite has one cell pitch across the row, never stale left pixels at
+// the old pitch, measured as colour runs along the centreline. Stub only: real Ebiten cannot ReadPixels outside the
+// loop.
 func TestRowsLayerMixedPitchDoesNotPersist(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
@@ -52,20 +39,12 @@ func TestRowsLayerMixedPitchDoesNotPersist(t *testing.T) {
 		t.Fatalf("rowsLayer not built")
 	}
 
-	// Advance offset slightly to cycle the shift-and-fill path at least once.
-	// padPx default is 96; one step's worth at L=16, w≈1500 is ~94px, which
-	// fits. If clamping makes dxPx exceed padPx the path falls back to full
-	// rebuild — still valid for this test since we're testing post-change
-	// uniformity, not which path runs.
+	// Through the shift-and-fill path at least once; a fallback to a full rebuild is fine too.
 	g.drum.Offset += 1
 	g.drum.markRowsShiftDirty()
 	g.drum.Draw(dst, nil, 0, nil, 0)
 
-	// Now change Length mid-session. After the fix, SetLength fully invalidates
-	// caches; before the fix, the rows-layer safety net (allPatches=false →
-	// needFull=true via per-row sprite rebuild) eventually catches it. Both
-	// paths must yield uniform pitch — this assertion is the user-visible
-	// contract regardless of which internal path produced the rebuild.
+	// Whichever internal path rebuilds, the pitch must be uniform.
 	g.drum.SetLength(128)
 	for j := range g.drum.Rows[0].Steps {
 		g.drum.Rows[0].Steps[j] = true
@@ -73,8 +52,7 @@ func TestRowsLayerMixedPitchDoesNotPersist(t *testing.T) {
 	g.drum.markRowDirty(0)
 	g.drum.Draw(dst, nil, 0, nil, 0)
 
-	// Sample the rendered rowsLayer along the row's centerline. Local coords
-	// inside rowsLayer: x relative to Bounds.Min.X, y relative to Bounds.Min.Y.
+	// In rowsLayer-local coordinates.
 	baseX := g.drum.timelineRect.Min.X - g.drum.Bounds.Min.X
 	rowWidth := g.drum.timelineRect.Dx()
 	rowH := g.drum.rowHeight()
@@ -83,10 +61,7 @@ func TestRowsLayerMixedPitchDoesNotPersist(t *testing.T) {
 	}
 	y := g.drum.headerH + rowH/2
 
-	// Count colored→background transitions in the left half and right half
-	// of the timeline strip. With every step set "on", every cell renders as
-	// a colored block, so transition density directly reflects cell pitch:
-	// finer pitch → more transitions per pixel.
+	// Every step is on, so transition density per half is the cell pitch.
 	half := rowWidth / 2
 	leftTransitions := countColorTransitions(t, g.drum.rowsLayer, baseX, baseX+half, y)
 	rightTransitions := countColorTransitions(t, g.drum.rowsLayer, baseX+half, baseX+rowWidth, y)
@@ -95,9 +70,7 @@ func TestRowsLayerMixedPitchDoesNotPersist(t *testing.T) {
 		t.Skipf("rowsLayer pixel sampling returned zero transitions on both halves — render-stub may not populate composite pixels; skipping symptom-level assertion. Predicate-level coverage in TestRowsLayerInvalidatesOnLengthChange / TestRowsLayerInvalidatesOnTimelineWidthChange remains in force.")
 	}
 
-	// Allow a modest tolerance: at L=128 with rowWidth=~1500, expected pitch
-	// is ~12px → ~125 transitions across the row. A 2× imbalance between
-	// halves indicates pitch mixing.
+	// A 2× imbalance between halves means mixed pitches.
 	ratio := float64(maxInt(leftTransitions, rightTransitions)) / float64(maxInt(1, minInt(leftTransitions, rightTransitions)))
 	if ratio > 2.0 {
 		t.Fatalf("mixed-pitch rowsLayer detected: left half=%d transitions, right half=%d transitions, ratio=%.2f (>2.0). Mid-session SetLength left stale-pitch pixels in the composite.",
@@ -105,10 +78,7 @@ func TestRowsLayerMixedPitchDoesNotPersist(t *testing.T) {
 	}
 }
 
-// countColorTransitions walks pixels from x0 (inclusive) to x1 (exclusive) at
-// row y, counting transitions between background (alpha<128) and foreground
-// (alpha>=128) pixels. A row of filled cells produces one transition per
-// cell boundary, so this is a proxy for visible cell pitch.
+// One background↔foreground transition per cell boundary.
 func countColorTransitions(t *testing.T, img *ebiten.Image, x0, x1, y int) int {
 	t.Helper()
 	transitions := 0

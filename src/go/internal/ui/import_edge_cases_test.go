@@ -161,8 +161,6 @@ func TestImportMasterVolumeApplied(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 
-	// Build a payload that includes master_volume using a custom struct that
-	// extends tFile with the field.
 	type tFileMV struct {
 		SchemaVersion string  `json:"schema_version"`
 		Subdiv        int     `json:"subdiv"`

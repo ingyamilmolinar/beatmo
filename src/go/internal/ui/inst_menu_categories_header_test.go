@@ -33,11 +33,8 @@ func openCategoriesModeMenu(t *testing.T) *InstrumentMenuComponent {
 	return comp
 }
 
-// Categories mode must render a title band (the "Categories" breadcrumb
-// root) above the rows, exactly like instruments mode renders its
-// breadcrumb strip. Regression: pre-fix, categories mode laid out rows
-// from the panel's very top — no title at all — so the menu opened as a
-// bare list and the close × sat on top of the first row.
+// Categories mode renders a title band above the rows, as instruments mode renders its breadcrumb, or the
+// menu opens as a bare list with the close × on the first row.
 func TestInstrumentMenuCategoriesModeHasTitleBand(t *testing.T) {
 	comp := openCategoriesModeMenu(t)
 
@@ -54,8 +51,7 @@ func TestInstrumentMenuCategoriesModeHasTitleBand(t *testing.T) {
 	}
 }
 
-// The close × must never overlap a category row — it shares the title
-// band, which reserves clearance for it (mirrors instruments mode).
+// The × shares the title band, which reserves clearance for it.
 func TestInstrumentMenuCategoriesModeCloseClearOfRows(t *testing.T) {
 	comp := openCategoriesModeMenu(t)
 

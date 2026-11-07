@@ -8,8 +8,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestPulseAnimationSmooth verifies that pulse progress advances smoothly
-// frame-to-frame at roughly the expected rate for a 1-beat segment at 60 BPM.
 func TestPulseAnimationSmooth(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

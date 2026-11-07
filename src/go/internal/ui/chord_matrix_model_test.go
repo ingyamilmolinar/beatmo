@@ -31,8 +31,7 @@ func TestChordMatrixModelShape(t *testing.T) {
 	}
 }
 
-// Picking keeps the root in the CURRENT root's octave and sets the quality;
-// the inversion is re-clamped to the new quality, the spread kept.
+// The root stays in its octave; the inversion re-clamps to the new quality, the spread is kept.
 func TestChordMatrixPickKeepsTheRootOctave(t *testing.T) {
 	// Root C4 (pitch 3); pick Triads col 1 (m) on row 7 (G) → G4 = pitch 10.
 	m := chordMatrixModel{page: 0, rootPitch: 3, spec: model.ChordSpec{Quality: "maj7", Inversion: 3, Spread: 2}}
@@ -49,8 +48,7 @@ func TestChordMatrixPickKeepsTheRootOctave(t *testing.T) {
 	}
 }
 
-// Review Focus 4: near the ±24 edge the picked root folds by an octave rather
-// than leaving the legal pitch range.
+// Near ±24 the root folds an octave rather than leave the range.
 func TestChordMatrixPickClampsToThePitchRange(t *testing.T) {
 	hi := chordMatrixModel{rootPitch: model.NodePitchMax - 1, spec: model.ChordSpec{Quality: "maj"}} // G#5
 	for row := 0; row < 12; row++ {
@@ -68,8 +66,7 @@ func TestChordMatrixPickClampsToThePitchRange(t *testing.T) {
 	}
 }
 
-// The cells name chords on the same MIDI root the Pitch chip names (the
-// instrument's live offset included).
+// On the same MIDI root the Pitch chip names, the instrument's offset included.
 func TestChordMatrixHonoursTheInstrumentOffset(t *testing.T) {
 	m := chordMatrixModel{rootPitch: 0, instOffset: 3, spec: model.ChordSpec{Quality: "maj"}} // A3 + 3 = C4
 	if _, row, ok := m.Selected(); !ok || row != 0 {

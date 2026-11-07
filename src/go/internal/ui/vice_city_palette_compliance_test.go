@@ -12,18 +12,13 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/templates"
 )
 
-// rgbKey returns the canonical "RRGGBB" upper-hex key for a color, ignoring
-// alpha. Circuit colors are compared on RGB only because the curated swatches
-// are opaque while exported/template colors carry an explicit FF alpha.
+// RGB only: the swatches are opaque while exported colours carry an explicit FF alpha.
 func rgbKey(c color.Color) string {
 	r, g, b, _ := c.RGBA()
 	return fmt.Sprintf("%02X%02X%02X", uint8(r>>8), uint8(g>>8), uint8(b>>8))
 }
 
-// viceCitySwatchSet maps every curated Vice City swatch's RGB key to its name.
-// This is THE set of colors any circuit (startup demo, genre template, or a
-// newly added instrument row) is allowed to use — the "always comply with the
-// Vice City style" invariant.
+// THE set any circuit may use: startup demo, template or a new row.
 func viceCitySwatchSet() map[string]string {
 	set := make(map[string]string, len(SuggestedInstrumentSwatches))
 	for _, s := range SuggestedInstrumentSwatches {
@@ -32,10 +27,6 @@ func viceCitySwatchSet() map[string]string {
 	return set
 }
 
-// TestTemplateColorsAreViceCityPalette asserts every instrument color baked
-// into the shipped genre templates is a member of the curated Vice City
-// palette. Guards the "templates always comply with the Vice City style"
-// requirement against drift in internal/templates/layout.go rowColors.
 func TestTemplateColorsAreViceCityPalette(t *testing.T) {
 	palette := viceCitySwatchSet()
 	for _, tp := range assets.Templates() {
@@ -65,12 +56,7 @@ func TestTemplateColorsAreViceCityPalette(t *testing.T) {
 	}
 }
 
-// TestTemplateColorsDeriveFromSequence is the stronger sibling of
-// TestTemplateColorsAreViceCityPalette: it asserts every shipped genre
-// template's instrument colors are not merely on-palette but are derived, in
-// row order, from the single canonical instrument SEQUENCE — row N takes
-// genInstrumentSequence[N % len]. This pins the user requirement that circuit
-// instrument colors "always derive from a predictable sequential finite series".
+// Not merely on-palette: row N takes genInstrumentSequence[N % len], a predictable finite series.
 func TestTemplateColorsDeriveFromSequence(t *testing.T) {
 	if len(genInstrumentSequence) == 0 {
 		t.Fatal("genInstrumentSequence is empty — DESIGN.md instrumentSequence: not generated")
@@ -98,11 +84,7 @@ func TestTemplateColorsDeriveFromSequence(t *testing.T) {
 	}
 }
 
-// TestInstrumentSequenceParity asserts the two generated copies of the canonical
-// series — ui's genInstrumentSequence ([]color.RGBA) and templates.InstrumentSequence
-// ([]string) — are identical and every entry is a Vice City swatch. Both are
-// emitted from the same DESIGN.md instrumentSequence: block, so this guards the
-// codegen against the two outputs drifting apart.
+// Both are generated from the same DESIGN.md block; this guards the two outputs from drifting apart.
 func TestInstrumentSequenceParity(t *testing.T) {
 	palette := viceCitySwatchSet()
 	if len(genInstrumentSequence) == 0 {
@@ -125,11 +107,7 @@ func TestInstrumentSequenceParity(t *testing.T) {
 	}
 }
 
-// TestNewInstrumentColorsAreViceCityPalette asserts the "creating new
-// instruments" path only ever produces Vice City swatch colors, even when the
-// row count exceeds the palette size (the uniqueness substitution and the
-// exhausted-palette fallback both stay on-palette). Guards the user
-// requirement that newly added instruments always comply with the style.
+// Past the palette size too: the uniqueness substitution and the exhausted fallback both stay on-palette.
 func TestNewInstrumentColorsAreViceCityPalette(t *testing.T) {
 	assertDefaultParityState(t)
 	palette := viceCitySwatchSet()
@@ -138,8 +116,6 @@ func TestNewInstrumentColorsAreViceCityPalette(t *testing.T) {
 	g.Layout(640, 480)
 	dv := g.drum
 
-	// Add far more rows than the palette has distinct colors so we exercise
-	// the unique-scan AND the exhausted-palette fallback branch.
 	for len(dv.Rows) < len(palette)+4 {
 		dv.AddRow()
 	}
@@ -153,9 +129,6 @@ func TestNewInstrumentColorsAreViceCityPalette(t *testing.T) {
 	}
 }
 
-// TestEnsureUniqueColorStaysOnPalette asserts the uniqueness substitution
-// never drifts off-palette: when a palette color is already taken, the
-// replacement is a DIFFERENT but still-palette swatch.
 func TestEnsureUniqueColorStaysOnPalette(t *testing.T) {
 	assertDefaultParityState(t)
 	palette := viceCitySwatchSet()

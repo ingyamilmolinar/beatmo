@@ -259,8 +259,7 @@ func TestMenuSearcher_Highlights(t *testing.T) {
 
 func TestMenuSearcher_KeyMatchFallback(t *testing.T) {
 	var s MenuSearcher
-	// "tom_hi" is the key but "High Tom" is the label. Search for "tom_h" — should
-	// match via key even if label doesn't contain the underscore.
+	// "tom_hi" is the key and "High Tom" the label, so "tom_h" can only match through the key.
 	results := s.Search("tom_h", testMenuItems())
 	found := false
 	for _, r := range results {
@@ -460,11 +459,8 @@ func TestInstMenuSearchBox_FuzzyBestMatchFirst(t *testing.T) {
 	}
 }
 
-// TestFuzzyMatch_ContiguousBeatsScattered pins the load-bearing contract
-// of the DP rewrite: a contiguous run scores strictly higher than a
-// scattered run of the same letters in a longer target. Without DP, the
-// greedy matcher could pick the scattered first-position match (with its
-// start-of-string +15 bonus) and ignore a clearly better contiguous tail.
+// Without the DP a greedy matcher takes the scattered first-position match (start-of-string bonus) over a
+// better contiguous tail.
 func TestFuzzyMatch_ContiguousBeatsScattered(t *testing.T) {
 	contiguous := FuzzyMatch("kik", "kick")
 	scattered := FuzzyMatch("kik", "k_random_i_random_k")
@@ -479,15 +475,9 @@ func TestFuzzyMatch_ContiguousBeatsScattered(t *testing.T) {
 	}
 }
 
-// TestFuzzyMatch_GapPenaltyMonotonic pins the gap penalty's monotonicity:
-// growing the gap between matched characters (with all else equal) must
-// strictly lower the score. Without monotonicity the DP could prefer
-// arbitrarily distant matches.
+// Without monotonicity the DP could prefer arbitrarily distant matches.
 func TestFuzzyMatch_GapPenaltyMonotonic(t *testing.T) {
-	// "ab" matched against three targets with growing gap. Each target has
-	// 'a' at position 0 (so start-of-string +15 fires identically), then 'b'
-	// at increasing distance. Length penalties also grow with the targets,
-	// reinforcing the direction.
+	// Every target starts with 'a', so the start-of-string bonus is identical and only the gap differs.
 	targets := []string{"ab", "a_b", "a__b", "a___b"}
 	prev := 1 << 30
 	for _, target := range targets {
@@ -502,11 +492,8 @@ func TestFuzzyMatch_GapPenaltyMonotonic(t *testing.T) {
 	}
 }
 
-// TestFuzzyMatch_DPFindsBetterMatch is the canonical pathological case:
-// query "abc" against "a_b_abc". A greedy left-to-right scan picks
-// positions [0, 2, 4] (a, b, c at the front) and never reaches the "abc"
-// suffix at [4, 5, 6]. The DP enumerates both and picks the contiguous
-// suffix because of the +5 consecutive bonuses.
+// A greedy left-to-right scan takes the front a and b and never prefers the contiguous "abc" suffix; the DP does,
+// through the consecutive bonuses.
 func TestFuzzyMatch_DPFindsBetterMatch(t *testing.T) {
 	got := FuzzyMatch("abc", "a_b_abc")
 	if got.Score < 0 {
@@ -523,11 +510,6 @@ func TestFuzzyMatch_DPFindsBetterMatch(t *testing.T) {
 	}
 }
 
-// TestFuzzyMatch_OrderingMenuRanking is a table-driven full-pipeline
-// regression net. Each case is the canonical instrument list, a query, and
-// the expected ranked order; the test asserts MenuSearcher produces the
-// expected ordering top-to-bottom. Catches subtle scoring regressions that
-// the per-function tests above might miss.
 func TestFuzzyMatch_OrderingMenuRanking(t *testing.T) {
 	items := []MenuSearchItem{
 		{Key: "kick", Label: "Kick"},
@@ -562,10 +544,7 @@ func TestFuzzyMatch_OrderingMenuRanking(t *testing.T) {
 	}
 }
 
-// TestFuzzyMatch_TracebackMatchesScore is a sanity check on the DP: the
-// score reported in FuzzyResult.Score must equal the score recomputed from
-// the traceback positions (sans length penalty). Catches off-by-one bugs in
-// the prev[] back-pointers.
+// The reported score must equal the one recomputed from the traceback, which catches off-by-one prev[] pointers.
 func TestFuzzyMatch_TracebackMatchesScore(t *testing.T) {
 	cases := []struct{ q, t string }{
 		{"abc", "a_b_abc"},
@@ -583,8 +562,6 @@ func TestFuzzyMatch_TracebackMatchesScore(t *testing.T) {
 				t.Errorf("positions not strictly increasing for q=%q t=%q: %v", tc.q, tc.t, got.Positions)
 			}
 		}
-		// Verify each matched position contains the corresponding query char
-		// (case-insensitively).
 		qLower := []rune(strings.ToLower(tc.q))
 		tLower := []rune(strings.ToLower(tc.t))
 		for i, p := range got.Positions {

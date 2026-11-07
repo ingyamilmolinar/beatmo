@@ -7,10 +7,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestNodeGridPhaseOnPanAndZoom verifies that node screen positions remain in
-// phase with grid subdivisions across zoom and pan. We compare the node center
-// against the expected pixel coordinate computed via rounded world→screen math
-// that the grid tile uses.
+// Node centres stay in phase with the grid subdivisions across zoom and pan, by the grid tile's rounded maths.
 func TestNodeGridPhaseOnPanAndZoom(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(testLogOutput(), game_log.LevelError)

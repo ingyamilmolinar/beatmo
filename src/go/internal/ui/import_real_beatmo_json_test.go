@@ -14,8 +14,7 @@ func TestImportRealBeatmoJSON(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(1280, 720)
 
-	// A real exported project (current schema, 6 instruments incl. embedded
-	// PCM, 53 nodes) — committed, so the test never depends on a local file.
+	// Committed, so the test never depends on a local file.
 	data, err := os.ReadFile("testdata/import_embedded_pcm.json")
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)

@@ -11,9 +11,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestHighlightSpriteAlphaSufficientForVisibility verifies that the highlight
-// sprite rendered by ensureHighlightSprites has enough opacity to be clearly
-// visible against the dark grid background.
 func TestHighlightSpriteAlphaSufficientForVisibility(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -29,18 +26,14 @@ func TestHighlightSpriteAlphaSufficientForVisibility(t *testing.T) {
 	_, _, _, a := at.RGBA()
 	alpha := a >> 8
 
-	// The highlight must have alpha >= 200 to produce a visible flash
-	// against the dark grid background (~{14-24, 14-24, 18-30}).
+	// Below this the flash is lost against the dark grid background.
 	const minAlpha = 200
 	if alpha < minAlpha {
 		t.Fatalf("highlight sprite alpha %d is too low for visibility against dark backgrounds (need >= %d)", alpha, minAlpha)
 	}
 }
 
-// TestDrumCellHighlightUsesWhiteNotInstrumentColor verifies that
-// DrumCellStyle.Draw uses colHighlight (white) when highlighted, NOT
-// the instrument color. If the highlight fill equals the instrument color,
-// the playback cursor is invisible.
+// A highlight in the instrument colour would make the playback cursor invisible.
 func TestDrumCellHighlightUsesWhiteNotInstrumentColor(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -83,9 +76,6 @@ func TestDrumCellHighlightUsesWhiteNotInstrumentColor(t *testing.T) {
 
 // --- Node type highlight color distinction tests ---
 
-// highlightColorForCellType is a test helper that sets up a TimelineZone with
-// one row, assigns the given NodeType to cell index 2, triggers a non-mute
-// highlight at that cell, and returns the fill colors drawn by drawHighlights.
 func highlightColorForCellType(t *testing.T, cellType model.NodeType) []color.RGBA {
 	t.Helper()
 
@@ -125,8 +115,6 @@ func highlightColorForCellType(t *testing.T, cellType model.NodeType) []color.RG
 	return fills
 }
 
-// TestTimelineHighlightSilentNodeUsesGrey verifies that a silent node's
-// highlight uses the grey colMuteHighlight, not the white colHighlight.
 func TestTimelineHighlightSilentNodeUsesGrey(t *testing.T) {
 	assertDefaultParityState(t)
 	fills := highlightColorForCellType(t, model.NodeTypeSilent)
@@ -151,8 +139,6 @@ func TestTimelineHighlightSilentNodeUsesGrey(t *testing.T) {
 	}
 }
 
-// TestTimelineHighlightInvisibleNodeUsesGrey verifies that an invisible node's
-// highlight uses the grey colMuteHighlight.
 func TestTimelineHighlightInvisibleNodeUsesGrey(t *testing.T) {
 	assertDefaultParityState(t)
 	fills := highlightColorForCellType(t, model.NodeTypeInvisible)
@@ -177,8 +163,6 @@ func TestTimelineHighlightInvisibleNodeUsesGrey(t *testing.T) {
 	}
 }
 
-// TestTimelineHighlightRegularNodeUsesWhite is a regression guard that
-// verifies regular (audible) nodes still use the bright white highlight.
 func TestTimelineHighlightRegularNodeUsesWhite(t *testing.T) {
 	assertDefaultParityState(t)
 	fills := highlightColorForCellType(t, model.NodeTypeRegular)
@@ -197,8 +181,6 @@ func TestTimelineHighlightRegularNodeUsesWhite(t *testing.T) {
 	}
 }
 
-// TestHighlightSpriteIsWhiteNotRowColor verifies that the production sprite
-// path for non-muted highlights uses the white highlight, not the row color.
 func TestHighlightSpriteIsWhiteNotRowColor(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -234,8 +216,7 @@ func TestHighlightSpriteIsWhiteNotRowColor(t *testing.T) {
 	}
 	defer func() { drawRect = orig }()
 
-	// The test path (runningUnderGoTest=true, simpleDraw=false)
-	// calls DrumCellUI.Draw with highlighted=true.
+	// Under go test with simpleDraw off this draws through DrumCellUI.Draw.
 	z.drawHighlights(dst, false)
 
 	instRGBA := color.RGBAModel.Convert(instColor).(color.RGBA)

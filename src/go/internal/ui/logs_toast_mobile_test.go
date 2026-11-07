@@ -10,13 +10,8 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestToastVisibleInEveryMobileViewMode pins the placement rule: the progress
-// toast must land inside the currently VISIBLE surface in every mobile view
-// mode. A grid-pane-only toast is invisible in EQ/Wave/Spectrum/Levels/
-// Chain/Synth/Sampler modes — exactly when the user is staring at a disabled
-// Play button wondering why. Iterates bottomNavModeList (the canonical
-// mobile bottom-nav segment list, drumview_ctor.go) so a future added view
-// mode is covered automatically.
+// A grid-pane-only toast is invisible in every mobile view but Pads, exactly when the user stares at a
+// disabled Play. Iterating bottomNavModeList covers a future view automatically.
 func TestToastVisibleInEveryMobileViewMode(t *testing.T) {
 	assertDefaultParityState(t)
 	restore := SetRuntimeProfileForTest(browserRuntimeProfile())
@@ -44,9 +39,7 @@ func TestToastVisibleInEveryMobileViewMode(t *testing.T) {
 			t.Errorf("view mode %v: toast rect %v is outside the screen %v", vm, r, screen)
 		}
 
-		// Placement invariant: Pads (viewModeRows) uses the grid pane; every
-		// other mode falls back to the drum pane. Exactly one of the two
-		// toast layers is visible at a time — never both, never neither.
+		// Exactly one of the two toast layers is visible: Pads uses the grid pane, every other mode the drum pane.
 		wantGrid := vm == viewModeRows
 		gotGrid := g.drum.gridPaneVisibleForToast()
 		if gotGrid != wantGrid {
@@ -57,9 +50,7 @@ func TestToastVisibleInEveryMobileViewMode(t *testing.T) {
 	}
 }
 
-// TestDrumToastLayerVisibilityMatchesHostRect confirms the audioTree's
-// passive fallback layer only paints when the grid pane is NOT the active
-// mobile surface, and never on desktop.
+// The fallback paints only when the grid pane is not the active mobile surface, and never on desktop.
 func TestDrumToastLayerVisibilityMatchesHostRect(t *testing.T) {
 	assertDefaultParityState(t)
 	restore := SetRuntimeProfileForTest(browserRuntimeProfile())
@@ -97,9 +88,7 @@ func TestDrumToastLayerVisibilityMatchesHostRect(t *testing.T) {
 	}
 }
 
-// TestToastLayerRegistersNoHitArea confirms the toast is passive: the
-// audioTree HitIndex must never carry an entry for it, so it can't swallow a
-// tap destined for the row rack / EQ panel beneath.
+// A passive toast must not swallow a tap meant for the row rack or EQ panel beneath.
 func TestToastLayerRegistersNoHitArea(t *testing.T) {
 	assertDefaultParityState(t)
 	restore := SetRuntimeProfileForTest(browserRuntimeProfile())

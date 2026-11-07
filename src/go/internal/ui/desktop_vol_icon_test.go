@@ -9,8 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestDesktopVolClickOpensPopup verifies that clicking the volume cell on
-// desktop fires OnVolPopupOpen (not OnVolumeChange).
+// Opens the popup, not OnVolumeChange.
 func TestDesktopVolClickOpensPopup(t *testing.T) {
 	// Ensure desktop profile is active.
 	forceSmallScreenForTest = false
@@ -55,8 +54,6 @@ func TestDesktopVolClickOpensPopup(t *testing.T) {
 	}
 }
 
-// TestDesktopVolIconHitArea verifies that the "row-rack-vol-icon" hit area
-// exists on desktop (not just mobile).
 func TestDesktopVolIconHitArea(t *testing.T) {
 	forceSmallScreenForTest = false
 	activeProfile = nil
@@ -72,9 +69,7 @@ func TestDesktopVolIconHitArea(t *testing.T) {
 	}
 }
 
-// TestDesktopVolColumnWidth asserts the desktop volume cell is a compact
-// mini-bar (a fixed multiple of the control-button size), not the old
-// full-width slider that dominated the row.
+// A compact mini-bar, a fixed multiple of the control size, not a full-width slider.
 func TestDesktopVolColumnWidth(t *testing.T) {
 	forceSmallScreenForTest = false
 	activeProfile = nil
@@ -89,8 +84,7 @@ func TestDesktopVolColumnWidth(t *testing.T) {
 		t.Fatal("expected a non-empty volume slider rect on desktop")
 	}
 	volW := sliders[0].Rect().Dx()
-	// Compact: at most a few control-buttons wide, and narrower than the
-	// flexing label cell.
+	// A few buttons wide at most, narrower than the label.
 	if volW > 3*RowControlBtnSize() {
 		t.Errorf("desktop volume width %d too wide (> 3*RowControlBtnSize=%d)", volW, 3*RowControlBtnSize())
 	}

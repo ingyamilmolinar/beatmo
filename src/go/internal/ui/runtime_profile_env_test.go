@@ -7,11 +7,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/env"
 )
 
-// TestApplyEnvProfileOverrideAppliesEveryField pins that every one of the 14
-// bench-sweep knobs (13 from the original spec + MinDispatchLeadSec, added by
-// Task 4 to avoid losing the capability that used to live only behind
-// window.__beatmoProfileOverride) reaches the profile when its env var is
-// set.
 func TestApplyEnvProfileOverrideAppliesEveryField(t *testing.T) {
 	restores := []func(){
 		env.EdgeCachePad.SetForTest(11),
@@ -80,9 +75,7 @@ func TestApplyEnvProfileOverrideAppliesEveryField(t *testing.T) {
 	}
 }
 
-// TestApplyEnvProfileOverrideLeavesUnsetFieldsAlone pins the "override only
-// when explicitly set" contract. A var left at its default must not clobber
-// the builder's value.
+// A var left unset must not clobber the builder's value.
 func TestApplyEnvProfileOverrideLeavesUnsetFieldsAlone(t *testing.T) {
 	p := &RuntimeProfile{EdgeCachePad: 99, DisableNodeGlow: true, MinDispatchLeadSec: 0.5}
 	applyEnvProfileOverride(p)

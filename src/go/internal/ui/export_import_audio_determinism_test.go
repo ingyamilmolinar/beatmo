@@ -2,20 +2,9 @@
 
 package ui
 
-// Determinism and completeness guards for the export → import path.
-//
-// These sit alongside export_import_master_audio_identity_test.go and cover the
-// three ways a project file stopped being a faithful description of its sound:
-//
-//  1. Stateful DSP that survived a discontinuity, so the same circuit played
-//     differently depending on what ran before it (audio.ResetDSPState).
-//  2. A Save-As instrument the file NAMED but did not DEFINE, so the tone existed
-//     only on the machine that created it (now: projectFile.InstrumentDocs).
-//  3. A wall-clock-derived user id, so the same project exported twice was two
-//     different documents (now content addressed: audio.NewUserInstrumentID,
-//     guarded by TestNewUserInstrumentIDIsContentAddressed).
-//
-// Real build only — the `-tags test` synth and EQ are stubs.
+// A project file stays a faithful description of its sound: stateful DSP resets at a discontinuity, a Save-As
+// instrument is defined in the file, and user ids are content-addressed. Real build only: the -tags test synth and
+// EQ are stubs.
 
 import (
 	"encoding/json"
@@ -30,8 +19,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// oneRowGame builds a minimal two-node loop on row 0 so a render has repeated
-// hits to work with, and applies `setup` before the paths are computed.
+// Two nodes, so a render has repeated hits; setup runs before the paths are computed.
 func oneRowGame(t *testing.T, id instrument.ID, setup func(g *Game)) *Game {
 	t.Helper()
 	withPrivateInstrumentLibrary(t)
@@ -51,11 +39,8 @@ func oneRowGame(t *testing.T, id instrument.ID, setup func(g *Game)) *Game {
 	g.drum.Rows[0].Node = a
 	g.drum.selRow = 0
 	g.drum.SetInstrument(id)
-	// Master volume and master EQ are process-global and are what Import
-	// rewrites from the file. Normalize them to the same values an EQ-less
-	// project imports to, so a sibling test that
-	// boosted the master cannot make "before" and "after" differ for reasons
-	// that have nothing to do with what is under test.
+	// Process-global and rewritten by Import; normalised to what an EQ-less project imports, so a sibling test cannot
+	// make the two sides differ.
 	audio.SetMainVolume(0.5)
 	for i := range g.drum.eqBandGainsDB() {
 		g.drum.eqBandGainsDB()[i] = 0
@@ -73,16 +58,8 @@ func oneRowGame(t *testing.T, id instrument.ID, setup func(g *Game)) *Game {
 	return g
 }
 
-// TestEveryDSPStageRendersIdenticallyOnReplay walks the mix chain one stateful
-// stage at a time and asserts each renders the same bytes twice.
-//
-// Every one of these failed before audio.ResetDSPState existed, each for its own
-// reason: EQ and the distortion's tone filter carry a biquad delay line, the
-// tremolo carries LFO PHASE (which decides the gain of sample 0, so 100% of the
-// output moved), the reverb send carries a tail, and a loud master leaves the
-// compressor envelope part-way down. A per-stage matrix rather than one
-// composite case because the composite tells you only that something is
-// non-deterministic, never which stage to go fix.
+// One stateful stage at a time, each rendering the same bytes twice (biquad history, LFO phase that decides
+// sample 0's gain): a composite case would say something is non-deterministic, never which stage.
 func TestEveryDSPStageRendersIdenticallyOnReplay(t *testing.T) {
 	const id = roster.Kick
 	cases := []struct {
@@ -131,10 +108,8 @@ func TestEveryDSPStageRendersIdenticallyOnReplay(t *testing.T) {
 	}
 }
 
-// TestImportResetsDSPStateFromThePreviousProject pins the reason ResetDSPState
-// is called from Import and not only from the render harness: loading a project
-// is a discontinuity, and the incoming circuit must not inherit the outgoing
-// one's filter memory, LFO phase, compressor envelope or reverb tail.
+// Loading a project is a discontinuity, so the incoming circuit inherits none of the outgoing one's filter memory
+// or LFO phase.
 func TestImportResetsDSPStateFromThePreviousProject(t *testing.T) {
 	const id = roster.Kick
 	g := oneRowGame(t, id, func(g *Game) {
@@ -148,8 +123,7 @@ func TestImportResetsDSPStateFromThePreviousProject(t *testing.T) {
 	}
 	pristine := renderLiveMasterMix(t, g, 2.0)
 
-	// Dirty every stateful stage by running audio through the live chain, then
-	// import. A clean import must land on the pristine render regardless.
+	// Every stage dirtied through the live chain; a clean import still lands on the pristine render.
 	_ = renderLiveMasterMix(t, g, 2.0)
 	g2 := New(game_log.New(nil, game_log.LevelError))
 	t.Cleanup(g2.CloseForTest)
@@ -160,15 +134,8 @@ func TestImportResetsDSPStateFromThePreviousProject(t *testing.T) {
 	assertMasterPCMIdentical(t, pristine, renderLiveMasterMix(t, g2, 2.0), "import after a dirtied chain")
 }
 
-// TestSaveAsInstrumentSurvivesExportImportOnAMachineThatNeverSawIt is the
-// portability guard for Save As.
-//
-// A Save As writes a NEW user library instrument and repoints the row's
-// document at it. Before instrument documents the file merely NAMED that user
-// recipe and carried not one synth param; on the machine that made it that
-// still sounded right — the recipe was registered — which is exactly why the
-// loss was invisible. An empty library here is what a different machine,
-// another browser profile, or cleared storage looks like.
+// The file carries the new instrument's document, so it sounds right on a machine with an empty library (another
+// browser profile, cleared storage), not only where it was made.
 func TestSaveAsInstrumentSurvivesExportImportOnAMachineThatNeverSawIt(t *testing.T) {
 	const id = roster.Kick
 	g := oneRowGame(t, id, func(g *Game) {
@@ -212,9 +179,7 @@ func TestSaveAsInstrumentSurvivesExportImportOnAMachineThatNeverSawIt(t *testing
 	assertMasterPCMIdentical(t, before, renderLiveMasterMix(t, g2, 2.0), "Save-As tone on a fresh machine")
 }
 
-// TestImportNeverOverwritesTheLibrary: a project file is attacker- and
-// accident-controlled input. Its documents are the PROJECT's copies; importing
-// one must never re-tune the instrument for every other project (the library).
+// A file is untrusted input: its documents are the project's copies and never re-tune the library.
 func TestImportNeverOverwritesTheLibrary(t *testing.T) {
 	g := oneRowGame(t, roster.Kick, nil)
 	before, _ := audio.LibraryDoc(roster.Kick)
@@ -251,12 +216,8 @@ func TestImportNeverOverwritesTheLibrary(t *testing.T) {
 	}
 }
 
-// TestImportClearsThePreviousProjectsInstrumentEQ: import is replace-not-merge,
-// and that has to reach the audio layer. The exporter omits a flat `eq` block,
-// and the importer used to apply EQ only when one was present — so an
-// instrument that is flat in the incoming project kept the OUTGOING project's
-// curve on its channel, audible while the rebuilt row read flat in the UI.
-// (The master-EQ branch already handled this; rows did not.)
+// Replace-not-merge at the audio layer: a flat instrument in the incoming project must not keep the outgoing curve
+// on its channel.
 func TestImportClearsThePreviousProjectsInstrumentEQ(t *testing.T) {
 	const id = roster.Snare
 	flat := oneRowGame(t, id, nil)
@@ -295,23 +256,8 @@ func TestImportClearsThePreviousProjectsInstrumentEQ(t *testing.T) {
 	assertMasterPCMIdentical(t, want, renderLiveMasterMix(t, g2, 2.0), "EQ-less project imported over a boosted one")
 }
 
-// TestMasterEQSurvivesExportImportWithAnInstrumentChannelSelected pins the
-// channel the master EQ is read from and written to.
-//
-// `dv.eqBandGainsDB()` is `eqPanelZone.bandGainsDB` — the audio panel's WORKING
-// COPY of whichever channel is on screen, not the master's store. Export, import
-// and applyMasterEQ all read it as if it were the master, so a single click on
-// the channel pill (selecting any instrument) silently changed three things:
-// the file exported that instrument's curve as the master EQ — or, for a flat
-// instrument, dropped the `eq` block entirely and lost the master EQ for good;
-// importing wrote the file's master curve into the instrument's display buffer
-// and left the master bus untouched; and applyMasterEQ pushed the instrument's
-// curve onto the master bus.
-//
-// Caught by the cross-engine browser test (xplat_browser_export_import), which
-// selects an instrument channel to edit its EQ — the natural way to drive it —
-// and then found the re-export missing a block on every engine. It is not a
-// browser bug at all: it reproduces natively, which is what this test pins.
+// The panel's band gains are the working copy of the channel on screen, not the master's store; export, import and
+// applyMasterEQ must read the master's own, or one pick on the channel pill rewrites the master EQ.
 func TestMasterEQSurvivesExportImportWithAnInstrumentChannelSelected(t *testing.T) {
 	const id = roster.Kick
 	g := oneRowGame(t, id, nil)
@@ -339,8 +285,7 @@ func TestMasterEQSurvivesExportImportWithAnInstrumentChannelSelected(t *testing.
 	}
 	masterEQAudio := renderLiveMasterMix(t, g, 2.0)
 
-	// The user clicks the channel pill and picks an instrument. Nothing about
-	// the master EQ has changed — so neither may the file, nor the master bus.
+	// Neither the file nor the master bus may change.
 	dv.setEQActiveChannel(channel.Of(id))
 	withInstrument, err := dv.exportBytes()
 	if err != nil {

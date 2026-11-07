@@ -6,12 +6,8 @@ import (
 	"time"
 )
 
-// TestTimingWarnOnlyDumpDedupedPerWindow pins the WarnOnly dump rate limit
-// (2026-07-13): parityTimingCheck runs every frame, and a latched WarnOnly
-// breach re-dumped its full WARN block on every scan until the metrics window
-// reset (~60 dumps/s; 4788 dumps in a 90s bench). emitTimingFatal dedups
-// non-fatal dumps to one per (stage, stat) per metrics window; the window
-// reset refreshes the budget.
+// The check runs every frame; a latched warn-only breach would re-dump its WARN block on every scan. One dump per
+// (stage, stat) per metrics window.
 func TestTimingWarnOnlyDumpDedupedPerWindow(t *testing.T) {
 	g := newTestGameForParity(t)
 	enableParityTimingForTest(t, g)
@@ -38,11 +34,8 @@ func TestTimingWarnOnlyDumpDedupedPerWindow(t *testing.T) {
 	}
 }
 
-// TestSettleGuardClearsReservoirsNotJustPeaks pins the full-Reset settle
-// guard (2026-07-13): clearing only the peak fields left warmup spikes in the
-// percentile reservoirs, where they polluted mean/p99/stddev for the rest of
-// the metrics window (field signature: emit.p99=83ms while emit.absMax=11.5ms,
-// plus ~10s of stale WarnOnly dumps after every play start).
+// Clearing only the peaks left warm-up spikes in the percentile reservoirs, polluting mean/p99/stddev for the
+// rest of the window.
 func TestSettleGuardClearsReservoirsNotJustPeaks(t *testing.T) {
 	g := newTestGameForParity(t)
 	enableParityTimingForTest(t, g)
@@ -61,8 +54,7 @@ func TestSettleGuardClearsReservoirsNotJustPeaks(t *testing.T) {
 	g.parityTimingCheck()
 
 	snap := g.schedMetrics.Snapshot()
-	// A fully-reset window reports EmitCount 0, EmitAbsMax 0 and a NaN
-	// percentile (empty reservoir) — NOT the warmup spike values.
+	// An empty window: count 0, absMax 0, NaN percentile.
 	if snap.EmitCount != 0 || snap.EmitAbsMax != 0 || !math.IsNaN(snap.EmitP99) {
 		t.Fatalf("warmup spikes survived the settle guard: EmitCount=%d EmitP99=%v EmitAbsMax=%v (want 0 / NaN / 0)", snap.EmitCount, snap.EmitP99, snap.EmitAbsMax)
 	}

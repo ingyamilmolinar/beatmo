@@ -23,11 +23,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/theme"
 )
 
-// The landing page's showcase tour (tour.go, tour_steps.go, tour_checks.go;
-// spec docs/superpowers/specs/2026-10-23-landing-page-design.md): each cut's
-// script runs through real Game.Update/Draw frames on a frame clock, every
-// step must reach the state it exists to show — through real input only — and
-// the cue file the landing reads must describe what the video shows.
+// Each cut's script runs through real Game.Update/Draw frames on a frame clock; every step must reach its state
+// through real input only, and the cue file must describe what the video shows.
 
 type tourRun struct {
 	g      *Game
@@ -37,15 +34,11 @@ type tourRun struct {
 	end    float64 // tour clock at the end
 }
 
-// startTourGame is the game a tour runs on, laid out as the recorded binary
-// lays it out.
 func startTourGame(t *testing.T, cut string) *Game {
 	t.Helper()
 	t.Cleanup(func() { ApplyTheme(theme.Doc{}) })
-	// The test build stubs SetForceMobileProfile / SetForceAutoSize; flip the
-	// test knobs instead so both cuts lay out as the recorded binary does.
-	// Likewise the test build collapses the audio panel; the tour shows it,
-	// so drive the real production-floored layout (eqPanelHeightForTest).
+	// The test build stubs SetForceMobileProfile / SetForceAutoSize and collapses the audio panel, so the test knobs and
+	// the production-floored layout are set directly.
 	prevEQ, prevEQT := eqPanelHeight, eqPanelHeightForTest
 	eqPanelHeight, eqPanelHeightForTest = 190, 190
 	forceAutoSize = true
@@ -62,14 +55,12 @@ func startTourGame(t *testing.T, cut string) *Game {
 	t.Cleanup(func() { i18n.SetLocale(prevLocale) })
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
-	// The test build builds no startup demo; the tour imports its own circuit
-	// once the demo is in, so mark it built.
+	// The test build builds no startup demo; the tour imports its own circuit.
 	g.demoBuilt = true
 	return g
 }
 
-// runTour plays a tour (steps == nil: the cut's real script) to its end and
-// returns without judging it; maxFrames bounds a tour that never ends.
+// steps == nil plays the cut's real script; maxFrames bounds a tour that never ends.
 func runTour(t *testing.T, cut string, w, h int, steps []tourStep, maxFrames int) tourRun {
 	t.Helper()
 	g := startTourGame(t, cut)
@@ -115,17 +106,14 @@ func TestShowcaseTourReachesEveryStep(t *testing.T) {
 			if r.err != nil {
 				t.Fatalf("the tour failed: %v", r.err)
 			}
-			// Every step's own check (tour_checks.go) and the invariants
-			// between steps: one line per failure, named by step.
+			// One line per failure, named by step.
 			for _, e := range r.errs {
 				t.Errorf("%s", e)
 			}
 			if r.idx != len(r.steps) {
 				t.Fatalf("the tour stopped at step %d/%d", r.idx, len(r.steps))
 			}
-			// The end state: the edited node is a chord, the lead row carries
-			// the effect the tour added, the theme is back to the opening one
-			// (seamless loop), the song plays, and the circuit is the template.
+			// The theme is back to the opening one, so the loop is seamless.
 			n, ok := g.graph.GetNodeByID(r.target)
 			if !ok || n.Type != model.NodeTypeChord {
 				t.Errorf("the tour's node is not a chord (found=%v)", ok)
@@ -168,8 +156,7 @@ func TestShowcaseTourReachesEveryStep(t *testing.T) {
 	}
 }
 
-// Every step declares the state it exists to show: a step without a check is
-// a step whose mis-tap would go into the video unnoticed.
+// A step without a check is one whose mis-tap would reach the video unnoticed.
 func TestEveryTourStepDeclaresItsState(t *testing.T) {
 	for cut, steps := range tourScripts {
 		seen := map[string]bool{}
@@ -188,9 +175,8 @@ func TestEveryTourStepDeclaresItsState(t *testing.T) {
 	}
 }
 
-// The checks are not vacuous: a step that misses its state, a stray tap that
-// edits the circuit, a failing action and a repeat step that never converges
-// are each reported — by name — and none of them hangs the tour.
+// A missed state, a stray tap, a failing action and a non-converging repeat are each reported by name; none hangs
+// the tour.
 func TestTourReportsEveryKindOfFailure(t *testing.T) {
 	tapEmptyGrid := func(r *tourRunner, g *Game) error {
 		p, ok := emptyGridPoint(g, 0.5, 0.5)
@@ -234,11 +220,8 @@ func TestTourReportsEveryKindOfFailure(t *testing.T) {
 	}
 }
 
-// The recorder writes one frame into every 1/25 s slot of the recording
-// clock. A slot no draw arrived in holds the PREVIOUS frame (what was on
-// screen then); a new frame lands in its own slot, never early — so a stall
-// freezes the picture and never shows a frame ahead of its sound. Repeats are
-// counted per second for the report.
+// A slot with no new draw holds the PREVIOUS frame and a new frame lands in its own slot, never early, so a stall
+// freezes the picture and never shows a frame ahead of its sound.
 func TestTourFrameSlotsAreConstantRate(t *testing.T) {
 	var buf bytes.Buffer
 	r := &tourRunner{ffIn: nopWriteCloser{&buf}, pix: make([]byte, 4)}
@@ -257,9 +240,6 @@ func TestTourFrameSlotsAreConstantRate(t *testing.T) {
 	if r.written != 27 || buf.Len() != 27*4 {
 		t.Fatalf("wrote %d frames (%d bytes), want 27", r.written, buf.Len())
 	}
-	// Which draw each slot shows: draw 0 (t=0) in slot 0, draw 3 (0.04) in
-	// slot 1 and held through 4, draw 4 (0.2) in slot 5 and held through 25,
-	// draw 5 (1.05) in slot 26.
 	var got []string
 	for slot := 0; slot < 27; slot++ {
 		got = append(got, strconv.Itoa(int(buf.Bytes()[slot*4])))
@@ -339,8 +319,7 @@ func TestFirstOnsetSeconds(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", c.name, err)
 		}
-		// The first sample of the burst may sit under the threshold (sin
-		// phase); a couple of samples is far below one video frame (40 ms).
+		// The first sample may sit under the threshold (sine phase); a few samples are far below one video frame.
 		if want := float64(c.onset) / sr; got < want || got > want+3.0/sr {
 			t.Errorf("%s: onset %.6f s, want %.6f s", c.name, got, want)
 		}
@@ -358,8 +337,7 @@ func TestFirstOnsetSeconds(t *testing.T) {
 	}
 }
 
-// No landing asset, caption or file name names the template's source game
-// either (decided with the user; the template's own title is out of scope).
+// A user decision; the template's own title is out of scope.
 func TestLandingAssetsNeverSayTetris(t *testing.T) {
 	js := filepath.Join("..", "..", "..", "js")
 	files := []string{filepath.Join(js, "landing.js"), filepath.Join(js, "landing_crystal.js"), filepath.Join(js, "index.html")}
@@ -398,8 +376,7 @@ type vttCue struct {
 
 var vttTimingRE = regexp.MustCompile(`^(\d\d):(\d\d):(\d\d)\.(\d\d\d) --> (\d\d):(\d\d):(\d\d)\.(\d\d\d)$`)
 
-// parseTourVTT parses the recorder's WebVTT: a header, then blocks of a timing
-// line and ONE JSON payload line.
+// A header, then blocks of a timing line and ONE JSON payload line.
 func parseTourVTT(s string) ([]vttCue, error) {
 	blocks := strings.Split(strings.TrimSpace(strings.ReplaceAll(s, "\r\n", "\n")), "\n\n")
 	if len(blocks) == 0 || blocks[0] != "WEBVTT" {
@@ -436,12 +413,8 @@ func parseTourVTT(s string) ([]vttCue, error) {
 
 var hexColorRE = regexp.MustCompile(`^#[0-9A-F]{6}$`)
 
-// checkTourCues: the cue file describes the tour — a head cue (beat clock +
-// every preset's palette), one caption cue per captioned step in script order
-// with the step's own words, back-to-back, each at least as long as its step's
-// dwell, and contiguous theme cues covering the video. beatSec <= 0 skips the
-// dwell check (a committed recording's clock is the real one). The video
-// runs from start (the first step after the pre-roll; 0 in a recording) to end.
+// beatSec <= 0 skips the dwell check, since a committed recording's clock is the real one. The video runs from the
+// first step after the pre-roll to end.
 func checkTourCues(t *testing.T, cues []vttCue, steps []tourStep, start, end, bpm, beatSec float64) {
 	t.Helper()
 	if len(cues) == 0 {
@@ -520,8 +493,7 @@ func checkTourCues(t *testing.T, cues []vttCue, steps []tourStep, start, end, bp
 			t.Errorf("caption %q lasts %.2f s, shorter than its step's %.1f-beat dwell", s.title, c.end-c.start, s.beats)
 		}
 	}
-	// Themes: contiguous, cover the video, start and end on the default (so
-	// the loop is seamless), and only ever name a known palette.
+	// Start and end on the default so the loop is seamless.
 	if len(themes) == 0 {
 		t.Fatal("no theme cues")
 	}

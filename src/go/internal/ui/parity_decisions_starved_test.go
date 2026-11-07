@@ -8,18 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestParityDecisionsBoundedUnderScanStarvation reproduces the production WASM
-// OOM where the sequencer goroutine writes to paritySeqDecisions at audio
-// cadence while the UI goroutine — which calls parityScan and triggers
-// parityPruneAroundPlayhead — is starved (long draws, slow refresh, the
-// WARN [refresh] total slow elapsed=49–100ms messages just before the crash).
-//
-// The pre-existing TestParityDecisionsBounded passes today because in synthetic
-// runs Draw/Update advance in lockstep with playback, so parityScan runs on
-// every frame and pruning keeps up. This test omits the UI loop entirely and
-// calls recordSeqDecision directly; without the inline cap in
-// recordSeqDecision, paritySeqDecisions[row] grows linearly with abs and OOMs
-// the WASM heap on long sessions.
+// The sequencer records decisions at audio cadence while the UI goroutine that scans and prunes is starved, so
+// recordSeqDecision needs its own inline cap; without the UI loop the per-row map would grow with abs.
 func TestParityDecisionsBoundedUnderScanStarvation(t *testing.T) {
 	withDefaultAudio(t)
 	withDefaultStart(t, false)
@@ -37,10 +27,7 @@ func TestParityDecisionsBoundedUnderScanStarvation(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.parityWatch = parityWatchLog
 
-	// Simulate the production failure mode: sequencer-goroutine writes happen
-	// without ever calling parityScan (which is what would call the deferred
-	// parityPruneAroundPlayhead). 200_000 abs steps comfortably exceeds the
-	// per-row cap and matches the production crash horizon (~55 min playback).
+	// Writes with no parityScan, so the deferred prune never runs; far more steps than the per-row cap.
 	const rows = 6
 	const steps = 200_000
 	for row := 0; row < rows; row++ {
