@@ -664,6 +664,14 @@ gograph-test:
 js-audit:
 	cd scripts/jsaudit && $(GO) test ./... && $(GO) run . $(CURDIR)/src/go ./...
 
+# Comment census + policy lint: make comment-census [ARGS="--check" | "--top 60" | "--json"].
+.PHONY: comment-census test-comment-census
+comment-census:
+	python3 scripts/comment_census.py $(ARGS)
+
+test-comment-census:
+	python3 scripts/comment_census_test.py
+
 # ─── Linting ─────────────────────────────────────────────────────────────────
 GOLANGCI_LINT = .tools/golangci-lint
 

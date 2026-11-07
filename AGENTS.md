@@ -28,6 +28,16 @@ The loop for any UI feature or UI bug:
 
 **Never claim a UI change is complete, and never leave the tree, without a screenshot you have actually opened and inspected.**
 
+## Comments — the code is the spec
+
+A comment says **why**, in one or two sentences (at most 3 lines): a non-obvious choice, the constraint that forced it, or what breaks if someone "simplifies" it. Never what or how.
+
+- **Delete:** restated names or next lines, step narration, banners; history (dates, phases, "it used to", bug stories — git has it); drifting state (measurements, sizes, counts, "as of", "for now"); cross-references ("see foo.go", "Guard: TestX", spec paths); commented-out code.
+- **Keep:** the reason for a surprising choice; a hazard ("must not take seqMu: called under it"); an external constraint the code cannot show (a browser bug, a licence rule); a contract the type cannot express (units, ranges, lock ownership).
+- Tests follow the same rules: the test name is the spec.
+- Directives are not comments (`//go:*`, `//export`, cgo preambles, `//nolint`, eslint, shebangs).
+- `make comment-census ARGS=--check` must pass (blocks ≤ 3 lines, no history markers); `--digest` / `--compare` prove a comment edit changed no code.
+
 ---
 
 ## Quick Start
