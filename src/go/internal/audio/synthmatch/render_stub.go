@@ -1,4 +1,4 @@
-//go:build test
+//go:build test || js
 
 package synthmatch
 
@@ -11,7 +11,7 @@ import (
 
 // RenderInstrument renders instID at the given pitch (semitones from A3=220Hz)
 // for durSec (0 = instrument default) at sr, returning a mono wave.Wave (float64).
-// Test build: uses a pure-Go param-responsive synth (no CGo).
+// Test and js builds: a pure-Go param-responsive synth (the C engine is native-only).
 func RenderInstrument(instID instrument.ID, pitch float64, sr int, durSec float64) (wave.Wave, error) {
 	return RenderWithParams(instID, pitch, sr, durSec, nil)
 }

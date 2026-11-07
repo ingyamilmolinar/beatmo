@@ -14,7 +14,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version-file: src/go/go.mod
           cache-dependency-path: src/go/go.sum
       - name: Install system dependencies
         run: |
@@ -25,19 +25,10 @@ jobs:
             libxi-dev libxxf86vm-dev
       - name: Build C library
         run: make build/libdrums.a
-      - name: Build Go (desktop)
-        run: cd src/go && CGO_ENABLED=1 go build ./...
-      - name: Build Go (WASM)
-        run: cd src/go && GOOS=js GOARCH=wasm go build -o /dev/null ./cmd/...
-      # The gograph architecture/refactor-ranking tool (scripts/gograph) is its own
-      # module; CI runs `go test` in src/go only, so without this step an x/tools
-      # or Go upgrade breaks the tool silently (it went unbuildable for months once).
-      - name: gograph tool tests
-        run: cd scripts/gograph && go test ./...
-      # A typed id or enum handed to syscall/js panics in the browser only;
-      # nothing native can see it (scripts/jsaudit/main.go).
-      - name: JS bridge audit
-        run: cd scripts/jsaudit && go test ./... && go run . "$GITHUB_WORKSPACE/src/go" ./...
+      # `make test` runs this same target first, so a tree that builds locally
+      # cannot fail to build here.
+      - name: Build (desktop, js/wasm, gograph, JS bridge audit)
+        run: make ci-build
 
   lint:
     name: Lint
@@ -48,7 +39,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version-file: src/go/go.mod
           cache-dependency-path: src/go/go.sum
       - uses: actions/setup-node@v4
         with:
@@ -80,7 +71,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version-file: src/go/go.mod
           cache-dependency-path: src/go/go.sum
       - name: Install system dependencies
         run: |
@@ -188,7 +179,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version-file: src/go/go.mod
           cache-dependency-path: src/go/go.sum
       - name: Install system dependencies
         run: |
@@ -235,7 +226,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version-file: src/go/go.mod
           cache-dependency-path: src/go/go.sum
       - uses: actions/setup-node@v4
         with:

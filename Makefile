@@ -658,6 +658,16 @@ refactor-packets:
 gograph-test:
 	cd scripts/gograph && $(GO) test ./...
 
+# The CI Build job runs exactly this target, and `make test` runs it first, so a
+# tree that builds locally builds in CI. js/wasm builds ./... (not just ./cmd):
+# a native-only file tagged `!test` instead of `!test && !js` breaks only there.
+.PHONY: ci-build
+ci-build: $(C_LIB)
+	cd src/go && CGO_ENABLED=1 $(GO) build ./...
+	cd src/go && GOOS=js GOARCH=wasm $(GO) build ./...
+	$(MAKE) gograph-test
+	$(MAKE) js-audit
+
 # js-audit: no value js.ValueOf cannot convert (a typed id or enum) reaches
 # syscall/js — it panics in the browser only, invisible to the compiler and to
 # every native test. See scripts/jsaudit/main.go.
@@ -854,12 +864,11 @@ test: $(C_LIB)
 # watchdog (the synth/engine/node-groups overhaul grew the package from ~609s to
 # ~734s). Bumped 900s->1500s for headroom. This has been raised as the suite grew
 # (1->10->20->60->300->600->900->1500); the pace is cumulative test work, not a hang.
+	$(MAKE) ci-build
 	cd src/go; $(LOG_ENV) $(GO) test -tags test -modfile=go.test.mod -timeout 1500s ./...
 # Untagged = real C DSP (no stubs), so this suite runs ~270s across ~880 tests.
 # The budget is whole-package, not per-test.
 	cd src/go; $(LOG_ENV) $(GO) test -timeout 900s ./internal/audio
-	$(MAKE) gograph-test
-	$(MAKE) js-audit
 
 # Run the concurrency-relevant Go packages under the race detector (-race is
 # native-only; it cannot instrument the js/wasm build, so this is the desktop
