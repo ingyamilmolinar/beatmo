@@ -48,3 +48,7 @@ ENV GOTOOLCHAIN=local \
     GOCACHE=/cache/go-build GOMODCACHE=/cache/gomod npm_config_cache=/cache/npm \
     PATH=/usr/local/go/bin:/opt/emsdk:/opt/emsdk/upstream/emscripten:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 RUN mkdir -p /cache && chmod 1777 /cache
+
+# Tools the tests shell out to; last so adding one keeps every layer above cached.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+ && rm -rf /var/lib/apt/lists/*
