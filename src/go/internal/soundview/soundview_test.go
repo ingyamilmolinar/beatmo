@@ -366,6 +366,9 @@ func TestWarmYieldsOftenAndComputesOnlyWhatIsNeeded(t *testing.T) {
 		t.Fatalf("a 1.5 s note warmed with only %d yields — the long loops do not yield", yields)
 	}
 	t.Logf("%d yields, longest stretch (best of 5) %v", yields, best)
+	if raceEnabled {
+		return // the race detector slows these loops several-fold; the budget is for real code
+	}
 	if best > 10*time.Millisecond {
 		t.Fatalf("the longest uninterrupted stretch is %v (budget 10 ms here, 3 ms per frame in the browser)", best)
 	}
