@@ -6,8 +6,6 @@ import (
 	"testing"
 )
 
-// armedContinuousControl arms the first continuous synth control that has a
-// resolution ladder, and returns its value binding plus the live knob.
 func armedContinuousControl(t *testing.T) (synthValueBinding, *Knob, float64) {
 	t.Helper()
 	g := newModularSynthTabGame(t)
@@ -36,10 +34,7 @@ func armedContinuousControl(t *testing.T) (synthValueBinding, *Knob, float64) {
 	return synthValueBinding{}, nil, 0
 }
 
-// TestBarrelValueLabelsStopAtRangeEnd proves the barrel never advertises a value
-// the wheel cannot reach. canStep() already refuses to move below Min, so a row
-// reading "-0.01 s" under a 0-minimum Attack is a lie; labelAt must return ""
-// there and drawBarrelLane skips it.
+// canStep refuses to go below Min, so a row below it would be a lie: labelAt returns "" there.
 func TestBarrelValueLabelsStopAtRangeEnd(t *testing.T) {
 	b, k, _ := armedContinuousControl(t)
 	def, _ := b.def()
@@ -58,11 +53,7 @@ func TestBarrelValueLabelsStopAtRangeEnd(t *testing.T) {
 	}
 }
 
-// TestBarrelValueLabelsDistinctOffGrid proves adjacent rows never format to the
-// same string. A saved param value is under no obligation to land on the active
-// resolution's grid; parked half a step off it, rows one detent apart used to
-// round to an identical label (0.005 and 0.015 both rendering "0.01 s"), which
-// reads as a frozen wheel.
+// A saved value off the active grid must not round adjacent rows to one label, which reads as a frozen wheel.
 func TestBarrelValueLabelsDistinctOffGrid(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	layoutSynthTab(t, g)
@@ -87,8 +78,7 @@ func TestBarrelValueLabelsDistinctOffGrid(t *testing.T) {
 		}
 		step := badge.Step()
 		k.StepMul = step
-		// Park exactly half a step above Min — the worst case for a display
-		// precision derived from the step alone.
+		// Half a step above Min, the worst case for a precision derived from the step.
 		k.Value = (0.5 * step) / span
 
 		b := synthValueBinding{dv: dv, idx: idx, instID: inst}

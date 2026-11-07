@@ -12,10 +12,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// setupChainScopeGame drives the Chain tab with a synthetic scope state fed
-// through the same override path the audio-panel pixel tests use, and returns
-// the game plus the live *scope.State override so the caller can mutate its
-// Timestamp to simulate a 30 Hz scope republish.
+// Returns the live override so the caller can simulate a ~30 Hz republish.
 func setupChainScopeGame(t *testing.T) (*Game, *scope.State) {
 	t.Helper()
 	g := driveScene(t, "crop_chain_default")
@@ -29,12 +26,8 @@ func setupChainScopeGame(t *testing.T) (*Game, *scope.State) {
 	return g, st
 }
 
-// TestChainTraceCacheHitsAndInvalidates proves the cache removes the trace
-// render from frames where the scope state is unchanged (a cache hit is a
-// single blit, not ~thousands of per-column blits) and rebuilds when the
-// scope service republishes a new state (Timestamp changes). This is the
-// mechanism that hands the sequencer goroutine a cheap frame between renders
-// and stops the audio stuttering under the Chain tab.
+// An unchanged state is one blit, not thousands of per-column blits, which hands the sequencer a cheap frame;
+// a republished state rebuilds.
 func TestChainTraceCacheHitsAndInvalidates(t *testing.T) {
 	defer SetChainTraceCacheForTest(true)()
 	g, _ := setupChainScopeGame(t)
@@ -52,9 +45,7 @@ func TestChainTraceCacheHitsAndInvalidates(t *testing.T) {
 		t.Fatalf("expected cache hit to be far cheaper than cold render: cold=%d hit=%d", cold, hit)
 	}
 
-	// A new *scope.State (what ScopeState() returns when the data refreshes —
-	// every ~30 Hz tick on desktop / stateCacheTTL on WASM) must rebuild the
-	// trace. Identity, not Timestamp: the WASM path leaves Timestamp 0.
+	// Keyed on identity, not Timestamp: the WASM path leaves Timestamp 0.
 	snap := snapshotWithSine()
 	testScopeStateOverride = SynthesizeScopeState(channel.Master, scope.StageSynth, scope.StageEQ,
 		ScopeStageSnapshots{Synth: snap, PreEQ: snap, PostEQ: snap, Master: snap})
@@ -70,12 +61,7 @@ func TestChainTraceCacheHitsAndInvalidates(t *testing.T) {
 	t.Logf("cold=%d hit=%d miss=%d again=%d", cold, hit, miss, again)
 }
 
-// rectShape is a position-independent fingerprint of a filled rect: its size
-// and color. The cache renders the trace at a (0,0) origin instead of at the
-// content rect, so the on-screen positions differ by a constant offset that
-// the blit reproduces — but the SHAPES drawn are identical. Comparing the
-// multiset of shapes therefore proves the cached and direct renders emit the
-// exact same primitives (pixel-equivalent once translated).
+// Size and colour only: the cache draws at a (0,0) origin, so equal shape multisets mean the same primitives.
 type rectShape struct {
 	w, h int
 	c    color.RGBA
@@ -91,14 +77,8 @@ func shapeHistogram(rects []drawnRect) map[rectShape]int {
 
 func toRGBA(c color.Color) color.RGBA { return color.RGBAModel.Convert(c).(color.RGBA) }
 
-// TestChainTraceCacheRenderMatchesDirect proves equivalence-by-construction:
-// on the same game/frame, the multiset of filled-rect shapes is identical
-// whether the trace renders directly to the screen (cache off) or into the
-// offscreen cache (cache on, cold). drawChainTraces is the one shared renderer
-// in both paths, differing only in the destination and the rect origin, so any
-// shape difference would mean the cache draws something different. The blit
-// translates the cached pixels back to the content rect, so identical shapes ⇒
-// identical on-screen pixels.
+// One shared renderer for both paths, so the shape multisets match whether drawn direct or into the cold cache,
+// and the blit translates them back.
 func TestChainTraceCacheRenderMatchesDirect(t *testing.T) {
 	g, _ := setupChainScopeGame(t)
 	screen := ebiten.NewImage(1280, 720)
@@ -116,9 +96,7 @@ func TestChainTraceCacheRenderMatchesDirect(t *testing.T) {
 	if len(direct) == 0 {
 		t.Fatal("no filled rects captured in direct render")
 	}
-	// The cache-on draw additionally issues exactly one DrawImage blit, which
-	// collectFilledRects does not record (it only records filled drawRect), so
-	// the filled-rect shape multisets must be exactly equal.
+	// The extra blit is a DrawImage, which collectFilledRects does not record.
 	if len(direct) != len(cached) {
 		t.Fatalf("distinct shape count differs: direct=%d cached=%d", len(direct), len(cached))
 	}

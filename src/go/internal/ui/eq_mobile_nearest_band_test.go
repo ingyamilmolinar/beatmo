@@ -4,12 +4,7 @@ package ui
 
 import "testing"
 
-// On mobile, a press between two packed band handles must select the
-// NEAREST band. The precise-handle radius loop ran before the forgiving
-// column grab, and with a 26px hit radius against a ~39px band pitch the
-// radii overlap — so a press just right of the midpoint (nearest to band
-// i+1, still inside band i's circle) grabbed band i instead (the mobile
-// EQ handle-overlap item, 2026-07-04 critique).
+// A press between two packed handles picks the NEAREST band: the 26 px radii overlap at a ~39 px pitch.
 func TestMobileEQPressSelectsNearestBand(t *testing.T) {
 	restore := SetForceSmallScreen(t, true)
 	defer restore()
@@ -28,8 +23,7 @@ func TestMobileEQPressSelectsNearestBand(t *testing.T) {
 	if x5 <= x4 {
 		t.Fatalf("band handles not laid out left-to-right: x4=%d x5=%d", x4, x5)
 	}
-	// Just right of the midpoint: nearest band is 5, but still within
-	// band 4's hit circle when the radii overlap.
+	// Nearest is band 5, yet still inside band 4's circle.
 	px := (x4+x5)/2 + 2
 	if dx := px - x4; dx*dx >= Profile().EQHandleRadius*Profile().EQHandleRadius {
 		t.Skipf("bands 4/5 don't overlap at this width (pitch %d, radius %d)", x5-x4, Profile().EQHandleRadius)

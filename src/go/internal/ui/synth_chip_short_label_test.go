@@ -8,11 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// A chip too narrow for its full stage label falls back to the stage's
-// DESIGNED short label ("ENV", "F.ENV") — never a mid-word ellipsis
-// ("ENVELOP…", "FILTER E…" in the mobile_bottom_nav_synth screenshot,
-// 2026-07-04 critique A7). Ellipsis remains the last resort for widths
-// even the short label can't fit.
+// Too narrow for the full label, a chip shows its designed short label ("ENV"), never a mid-word ellipsis; the
+// ellipsis is the last resort.
 func TestChipLabelFallsBackToShortNotMidWordEllipsis(t *testing.T) {
 	full := sectionLabelLocalized(synthSectionEnvelope)
 	avail := TextWidth(full) - 1 // just too narrow for the full label

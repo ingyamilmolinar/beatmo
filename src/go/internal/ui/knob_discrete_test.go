@@ -26,8 +26,6 @@ func TestDiscreteKnobDetentCount(t *testing.T) {
 	}
 }
 
-// nearAnyDetent reports whether v sits (within float slop) on one of the n
-// evenly spaced detents in [0,1].
 func nearAnyDetent(v float64, n int) bool {
 	for i := 0; i < n; i++ {
 		d := float64(i) / float64(n-1)

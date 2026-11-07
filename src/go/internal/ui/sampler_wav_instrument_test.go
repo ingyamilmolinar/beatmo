@@ -10,24 +10,14 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// sampler_wav_instrument_test.go — a WAV instrument imported via the file
-// picker is a raw-PCM Sample with NO recipe binding and NO entry in the
-// user-sample store (registerInstrument → audio.RegisterWAV). It must behave in
-// the Sampler tab exactly like a synth: edits apply in REAL TIME (per gesture,
-// no Save) and are non-destructive.
-//
-// Mechanism: the Sampler seeds the WAV's pristine PCM into the user-sample
-// store on load, then every edit gesture writes the sample-edit DESCRIPTOR
-// (commitSamplerEdit). audio.SetSampleEdit re-derives the playable PCM from the
-// pristine source through the descriptor and re-registers it
-// (reapplyUserSampleEdit), so the chop is audible on the next trigger without
-// clicking Save.
+// A file-picker WAV has no synth document and no user-sample entry, yet behaves like a synth in the Sampler:
+// edits apply live, non-destructively. Its pristine PCM is seeded into the store, and each edit re-derives
+// the playable PCM through the descriptor, audible on the next trigger.
 
 func TestSamplerWAVInstrumentClassifiedAsWAVSource(t *testing.T) {
 	g := newSamplerTabGame(t)
 	const id = "user.wav.rawsample"
-	// A file-picker WAV: registered for playback but NOT a synth document and NOT in
-	// the user-sample store (mirrors registerInstrument → audio.RegisterWAV).
+	// Registered for playback, but no document and no user-sample entry, as registerInstrument does.
 	if err := audio.RegisterWAV(id, "dummy.wav"); err != nil {
 		t.Fatalf("RegisterWAV: %v", err)
 	}
@@ -46,9 +36,7 @@ func TestSamplerWAVInstrumentClassifiedAsWAVSource(t *testing.T) {
 	}
 }
 
-// TestSamplerWAVEditAppliesLiveWithoutSave is the core regression for the
-// reported bug: trim/reverse/etc on a WAV instrument must take effect in real
-// time, NOT wait for the Save button.
+// Trim/reverse on a WAV take effect at once, not on Save.
 func TestSamplerWAVEditAppliesLiveWithoutSave(t *testing.T) {
 	g := newSamplerTabGame(t)
 	const id = "user.wav.realtime"
@@ -81,8 +69,6 @@ func TestSamplerWAVEditAppliesLiveWithoutSave(t *testing.T) {
 	}
 }
 
-// TestSamplerWAVReverseAppliesLiveWithoutSave guards the specific control the
-// user called out (reverse) through the same live path.
 func TestSamplerWAVReverseAppliesLiveWithoutSave(t *testing.T) {
 	g := newSamplerTabGame(t)
 	const id = "user.wav.reverse"
@@ -109,16 +95,13 @@ func TestSamplerWAVReverseAppliesLiveWithoutSave(t *testing.T) {
 	if !ok || len(rec.PCM) == 0 {
 		t.Fatal("live reverse must re-register the baked PCM")
 	}
-	// The re-registered buffer is baked from the PRISTINE source + Reverse, so its
-	// tail equals the source head — proving the reversal reached playback.
+	// Baked from the pristine source + Reverse, so its tail is the source's head.
 	if rec.PCM[len(rec.PCM)-2] != first {
 		t.Errorf("re-registered buffer not reversed: tail=%v want source-head %v", rec.PCM[len(rec.PCM)-2], first)
 	}
 }
 
-// TestSamplerWAVEditReloadKeepsPristineSource verifies the edit is
-// non-destructive: re-loading the instrument shows the PRISTINE waveform with
-// the saved edit overlaid on the knobs (not a re-baked, double-trimmed buffer).
+// Reloading shows the pristine waveform with the edit on the knobs, never a double-trimmed buffer.
 func TestSamplerWAVEditReloadKeepsPristineSource(t *testing.T) {
 	g := newSamplerTabGame(t)
 	const id = "user.wav.reload"
@@ -146,12 +129,8 @@ func TestSamplerWAVEditReloadKeepsPristineSource(t *testing.T) {
 	}
 }
 
-// TestSamplerEditDescriptorFlipsTrimWhenReversed is the root-cause unit test for
-// the "reverse + trim don't match the audio" bug. The trim handles are over the
-// DISPLAYED (reversed) buffer, but the descriptor is applied to the FORWARD
-// source and BakeSample trims BEFORE it reverses — so the source-frame trim must
-// be the mirror of the display-frame trim: [s,e] over reverse(P) ==
-// reverse(P[1-e : 1-s]).
+// The handles sit over the DISPLAYED (reversed) buffer, but BakeSample trims the forward source before
+// reversing, so the source trim is the mirror: [s,e] over reverse(P) == reverse(P[1-e : 1-s]).
 func TestSamplerEditDescriptorFlipsTrimWhenReversed(t *testing.T) {
 	s := &samplerState{}
 	s.reset()
@@ -169,9 +148,7 @@ func TestSamplerEditDescriptorFlipsTrimWhenReversed(t *testing.T) {
 	}
 }
 
-// TestSamplerWAVReverseTrimMatchesDisplay is the end-to-end audible check: with
-// reverse on, the live (no-Save) playback buffer must equal the region the trim
-// handles select over the DISPLAYED (reversed) waveform.
+// With reverse on, the live buffer equals the region the handles select over the displayed waveform.
 func TestSamplerWAVReverseTrimMatchesDisplay(t *testing.T) {
 	g := newSamplerTabGame(t)
 	const id = "user.wav.revtrim"
@@ -189,8 +166,7 @@ func TestSamplerWAVReverseTrimMatchesDisplay(t *testing.T) {
 		t.Fatal("no buffer after loading the WAV instrument")
 	}
 
-	// Displayed buffer after reverse = [799, 798, ..., 0]. Selecting the first
-	// half ([0,0.5]) of THAT is [799 .. 400].
+	// Displayed: [799 .. 0]; its first half is [799 .. 400].
 	s.reverseBuffer()
 	s.startFrac, s.endFrac = 0.0, 0.5
 	g.drum.commitSamplerEdit()
@@ -208,9 +184,7 @@ func TestSamplerWAVReverseTrimMatchesDisplay(t *testing.T) {
 	}
 }
 
-// TestSamplerReverseTrimDescriptorRoundTrips verifies the source-frame flip is
-// inverted on load, so reopening a reversed+trimmed chop restores the same
-// display-frame handles.
+// The flip is inverted on load, so a reopened chop shows the same handles.
 func TestSamplerReverseTrimDescriptorRoundTrips(t *testing.T) {
 	s := &samplerState{}
 	s.reset()

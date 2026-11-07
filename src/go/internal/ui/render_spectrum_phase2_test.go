@@ -10,15 +10,11 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 )
 
-// TestSpectrumPhase2_PersistentMaxMarker — once a band crosses a higher
-// dB value, the persistent MAX marker should stay at that level even
-// after the live value drops. Distinct from the existing peak-hold
-// (which decays in ~500 ms): MAX never decays until Reset is called.
+// The MAX marker stays at the loudest level seen; unlike the ~500 ms peak-hold it never decays until Reset.
 func TestSpectrumPhase2_PersistentMaxMarker(t *testing.T) {
 	var st SpectrumPeakState
 
-	// Feed a loud burst on band 4 (Mids). Levels are dBFS now, not
-	// normalised heights — see SpectrumPeakState.
+	// Levels are dBFS, not normalised heights.
 	loud := [10]float64{}
 	for i := range loud {
 		loud[i] = spectrumMinDB
@@ -42,8 +38,6 @@ func TestSpectrumPhase2_PersistentMaxMarker(t *testing.T) {
 	}
 }
 
-// TestSpectrumPhase2_ResetMaxClearsAllBands — calling ResetMax on the
-// state should zero every band's MAX.
 func TestSpectrumPhase2_ResetMaxClearsAllBands(t *testing.T) {
 	var st SpectrumPeakState
 	st.MaxPeaksDB = [10]float64{-1, -2, -3, -4, -5, -6, -7, -8, -9, -10}
@@ -55,16 +49,12 @@ func TestSpectrumPhase2_ResetMaxClearsAllBands(t *testing.T) {
 	}
 }
 
-// TestSpectrumPhase2_MaxMarkerRendered — when SpectrumPeakState.MaxPeaks
-// has non-zero entries, the spectrum renderer should paint
-// genColorVizSpectrumPeakMarker rects at the MAX positions on top of the
-// existing decaying peak-hold markers.
+// Painted at the MAX positions on top of the decaying peak markers.
 func TestSpectrumPhase2_MaxMarkerRendered(t *testing.T) {
 	rect := image.Rect(0, 0, 600, 120)
 	dst := ebiten.NewImage(rect.Dx(), rect.Dy())
 
-	// Build a minimal ChannelMetrics with non-empty FFT/Freq pairs so the
-	// renderer's "active" check passes.
+	// Non-empty FFT/freq pairs, so the renderer's active check passes.
 	const n = 64
 	freq := make([]float64, n)
 	fft := make([]float64, n)
@@ -80,25 +70,19 @@ func TestSpectrumPhase2_MaxMarkerRendered(t *testing.T) {
 	st.MaxPeaksDB[4] = -24
 	st.MaxPeaksDB[8] = -6
 
-	// detail is unconditional now (the DTL pill is gone), but the renderer
-	// still takes the flag, so pass it explicitly.
+	// The renderer still takes the detail flag.
 	rects := collectFilledRects(t, func() {
 		drawAnalyzerSpectrumImpl(dst, rect, ch, st, freqScaleLog, spectrumChromeOpts{detail: true})
 	})
 
-	// MAX markers are rendered in genColorVizSpectrumPeakMarker (same hue
-	// as the decay peak), but at a 2px-tall mark distinguishable by
-	// surviving in many positions. Count their occurrences.
+	// The same hue as the decay peak, counted across positions.
 	got := rectsWithColorInside(rects, rect, genColorVizSpectrumPeakMarker)
 	if got < 3 {
 		t.Fatalf("expected ≥3 spectrum peak-marker rects (MAX + decay), got %d in %v", got, rect)
 	}
 }
 
-// TestSpectrumSynthwaveFill — the spectrum tab gets two synthwave touches:
-// a faint area wash beneath the hi-res FFT curve (colSpectrumCurveFill) down
-// to the baseline, and a bright→deep three-band gradient on each ISO bar
-// (colSpectrumBarTop). Both must render when the channel carries real energy.
+// A faint wash under the curve and a three-band gradient on each bar, both drawn when there is energy.
 func TestSpectrumSynthwaveFill(t *testing.T) {
 	rect := image.Rect(0, 0, 600, 160)
 	dst := ebiten.NewImage(rect.Dx(), rect.Dy())

@@ -1,8 +1,6 @@
 package ui
 
-// synth_armed_keys_test.go — Task 10: arrow/Esc keyboard editing while a synth
-// control is ARMED, plus the keyboard-claim guard that suppresses grid arrow
-// pan while armed (see keyboard_focus.go's KeyboardClaimed contract).
+// Arrow/Esc editing of an armed control, which claims the arrows so the grid does not pan.
 
 import (
 	"testing"
@@ -21,15 +19,12 @@ func TestArmedArrowKeysEditValueAndEsc(t *testing.T) {
 
 	before := dv.instEditorControls[idx].Value
 
-	// Drive the REAL key path: the armed control is a partial keyboard claimant
-	// (keyboard_key_claim.go), so handleGlobalShortcuts — not synthTabUpdate — is
-	// the single site that reads its arrows and masks the same press for the
-	// grid's arrow-pan. Reading them in synthTabUpdate too would step twice.
+	// The armed control is a partial claimant, so handleGlobalShortcuts is the one site that reads its arrows and
+	// masks them for the grid; a second reader would step twice.
 	withStubbedKeys(nil, []ebiten.Key{ebiten.KeyArrowUp}, func() {
 		g.handleGlobalShortcuts()
 	})
-	// Drain the kinetic animation the StepImmediate impulse kicked off so the
-	// knob's Value has settled before we compare.
+	// Drain the StepImmediate animation so the value has settled.
 	for i := 0; i < 120 && dv.instEditorArmedEditor != nil && dv.instEditorArmedEditor.Tick(); i++ {
 	}
 
@@ -42,13 +37,8 @@ func TestArmedArrowKeysEditValueAndEsc(t *testing.T) {
 		t.Fatal("control should still be armed before Esc")
 	}
 
-	// Esc is owned by handleEscape (the SINGLE authority for the Esc key),
-	// NOT synthTabUpdate — drive the real path here, exactly as Game.Update
-	// would each frame. This is the regression guard for the Task 10
-	// Critical bug: arming a control opens no portal/focus/mode, so before
-	// the fix, handleEscape fell through its whole ladder to the Stop
-	// fallback and reset playback as an unrequested side effect of locking
-	// the armed control.
+	// Through handleEscape, the one Esc authority: arming opens no portal or mode, so its ladder must lock the control
+	// rather than fall through to Stop.
 	withStubbedKeys(nil, []ebiten.Key{ebiten.KeyEscape}, func() {
 		g.handleEscape()
 	})
@@ -81,8 +71,7 @@ func TestArmedControlClaimsKeyboard(t *testing.T) {
 	if !dv.armedControlActive() {
 		t.Fatal("armedControlActive should be true while armed on the Synth tab")
 	}
-	// An armed control owns the ARROWS, not the whole keyboard: it is a PARTIAL
-	// claimant, so Space still plays and [ ] still zoom while it is armed.
+	// A partial claimant: Space still plays and [ ] still zoom.
 	if dv.KeyboardClaimed() {
 		t.Fatal("an armed control must NOT claim the whole keyboard — it declares only the keys it handles")
 	}

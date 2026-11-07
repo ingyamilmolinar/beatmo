@@ -10,8 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// modalSynthGame puts the generated WAV-clone-shaped document (MODAL + STRIKE
-// + NOISE, synth_modal_demo.go) on row 0 and lays the Synth tab out.
+// MODAL + STRIKE + NOISE on row 0.
 func modalSynthGame(t *testing.T) (*Game, string) {
 	t.Helper()
 	const inst = roster.TubularBells
@@ -42,8 +41,7 @@ func TestModalStagesShowOnlyOnADocumentWithRows(t *testing.T) {
 	if !(pos[synthSectionModal] < pos[synthSectionStrike] && pos[synthSectionStrike] < pos[synthSectionNoise]) {
 		t.Fatalf("order %v: want MODAL · STRIKE · NOISE", order)
 	}
-	// Every shipped instrument (no table rows): no such stage, not even
-	// dimmed under "+ Add" — knobs over an empty table would be silence.
+	// No table rows, so no stage, not even under "+ Add": knobs over an empty table would be silence.
 	_ = audio.InstallInstrumentDocForTest(instrument.ID(inst), instrument.ID(inst))
 	for _, id := range roster.All {
 		for _, s := range synthSectionOrderForSchema(audio.InstrumentParamDefs(id)) {

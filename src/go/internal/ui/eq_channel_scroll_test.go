@@ -10,13 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// TestEQChannelMenuWheelScroll verifies that mouse wheel events scroll the
-// EQ channel dropdown when it has more items than fit in the visible area.
-// This is a regression test: after the portal refactoring,
-// wheel events stopped reaching the EQ channel menu because:
-//   - The legacy Update path had no wheel handling for eqChannelOpen
-//   - The portal path's buttonHitAdapter returns InputIgnored for wheel
-//   - The tree skips wheel dispatch when popupActive() returns true
+// With more items than fit, the wheel scrolls the dropdown through the portal path.
 func TestEQChannelMenuWheelScroll(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -24,8 +18,7 @@ func TestEQChannelMenuWheelScroll(t *testing.T) {
 	dv.recalcButtons()
 	dv.calcLayout()
 
-	// Add enough rows to overflow the visible limit (eqChannelMenuMaxVisibleRows = 8).
-	// Total items = 1 (Master) + len(Rows). Need total > 8 → need ≥ 9 rows.
+	// More than eqChannelMenuMaxVisibleRows (8) items, Master included.
 	dv.Rows = make([]*DrumRow, 10)
 	for i := range dv.Rows {
 		dv.Rows[i] = &DrumRow{
@@ -74,9 +67,7 @@ func TestEQChannelMenuWheelScroll(t *testing.T) {
 			initialFirst, newFirst)
 	}
 
-	// The menu wheel is smooth (continuous, magnitude-respecting, no cooldown
-	// lock), matching every other list menu — the opposite-direction notch is
-	// accepted immediately with no cooldown clock to advance.
+	// Smooth like every list menu: the reverse notch needs no cooldown.
 
 	// Scroll back up.
 	restore = SetInputForTest(
@@ -112,8 +103,7 @@ func makeOverflowRows(n int) []*DrumRow {
 	return rows
 }
 
-// clickAndRelease simulates a press→release on the tree, clearing the global
-// suppress flag that DrumView.Update() would normally clear.
+// Clears the suppress flag DrumView.Update would clear on mouse-up.
 func clickAndRelease(t *testing.T, tree *DrumViewTree, x, y int, restore func(),
 	setMx func(int), setMy func(int), setPressed func(bool),
 ) {
@@ -124,14 +114,11 @@ func clickAndRelease(t *testing.T, tree *DrumViewTree, x, y int, restore func(),
 	tree.Update()
 	setPressed(false)
 	tree.Update()
-	// DrumView.Update() clears suppressClicksUntilRelease on mouse-up (line 22-24).
-	// Portal-only tests must do this manually.
+	// Portal-only tests clear it themselves.
 	suppressClicksUntilRelease = false
 }
 
-// TestEQChannelDropdownPortalWheelScroll opens the channel dropdown via
-// EQPanelZone with >8 rows, simulates wheel through tree.Update() (not
-// DrumView.Update), and verifies the scroll position changes.
+// Through tree.Update, not DrumView.Update.
 func TestEQChannelDropdownPortalWheelScroll(t *testing.T) {
 	rows := makeOverflowRows(10) // 11 total items (1 Master + 10)
 	z, _ := newTestEQPanelZone(rows)
@@ -191,8 +178,6 @@ func TestEQChannelDropdownPortalWheelScroll(t *testing.T) {
 	}
 }
 
-// TestEQChannelDropdownPortalTouchScroll opens the dropdown, simulates
-// press→drag→release through the tree, and verifies scroll position changes.
 func TestEQChannelDropdownPortalTouchScroll(t *testing.T) {
 	rows := makeOverflowRows(10)
 	z, _ := newTestEQPanelZone(rows)
@@ -234,8 +219,7 @@ func TestEQChannelDropdownPortalTouchScroll(t *testing.T) {
 
 	initialFirst := z.channelScroll.VS.First
 
-	// Press inside dropdown, drag UP to scroll down (VS.First increases).
-	// Touch UX: drag up → see items further down the list.
+	// Drag up to see items further down (VS.First grows).
 	menuRect := z.channelScroll.VS.View
 	startY := menuRect.Min.Y + menuRect.Dy()/2
 	mx = menuRect.Min.X + menuRect.Dx()/2
@@ -260,9 +244,7 @@ func TestEQChannelDropdownPortalTouchScroll(t *testing.T) {
 	}
 }
 
-// TestEQChannelDropdownPortalDeferredTap opens the dropdown, simulates a
-// quick press→release (no movement), and verifies the button fires
-// (selected channel changes).
+// A still press→release fires the button.
 func TestEQChannelDropdownPortalDeferredTap(t *testing.T) {
 	rows := makeOverflowRows(3) // 4 total items; no scroll overflow
 	z, log := newTestEQPanelZone(rows)
@@ -299,8 +281,7 @@ func TestEQChannelDropdownPortalDeferredTap(t *testing.T) {
 		t.Fatal("expected dropdown to be open")
 	}
 
-	// Quick tap on the second button (first row instrument).
-	// The dropdown buttons are positioned below the channel button anchor.
+	// Below the channel button anchor.
 	anchor := z.stickyBar.ChannelBtn().Rect()
 	btnH := 24                           // default dropdown button height
 	tapY := anchor.Max.Y + btnH + btnH/2 // center of second button
@@ -320,8 +301,6 @@ func TestEQChannelDropdownPortalDeferredTap(t *testing.T) {
 	}
 }
 
-// TestEQChannelDropdownPortalClickOutside opens the dropdown, simulates
-// a click outside the menu rect, and verifies the portal entry is removed.
 func TestEQChannelDropdownPortalClickOutside(t *testing.T) {
 	rows := makeOverflowRows(3)
 	z, _ := newTestEQPanelZone(rows)
@@ -371,8 +350,6 @@ func TestEQChannelDropdownPortalClickOutside(t *testing.T) {
 	}
 }
 
-// TestEQChannelDropdownMomentumScroll opens the dropdown, simulates a touch
-// drag then release with velocity, and verifies scroll continues via momentum.
 func TestEQChannelDropdownMomentumScroll(t *testing.T) {
 	rows := makeOverflowRows(10)
 	z, _ := newTestEQPanelZone(rows)
@@ -442,24 +419,14 @@ func TestEQChannelDropdownMomentumScroll(t *testing.T) {
 	}
 }
 
-// TestEQChannelDropdownVisibleRowsCappedByAvailablePixels exercises the
-// pixel-aware overflow rule: when the channel button is anchored near the
-// bottom of the viewport so that fewer than eqChannelMenuMaxVisibleRows of
-// 24px-tall items fit beneath it, the dropdown must shrink its visible-row
-// count to whatever fits AND show a scrollbar — even when total items is
-// well below the constant cap.
-//
-// Today buildButtons only honours eqChannelMenuMaxVisibleRows = 8 and has no
-// view of screenBounds; the menu runs off the bottom of the screen and the
-// scrollbar never appears in this regime.
+// Anchored near the bottom, the dropdown shows only the rows that fit beneath it, with a scrollbar, even below
+// the 8-row cap.
 func TestEQChannelDropdownVisibleRowsCappedByAvailablePixels(t *testing.T) {
-	// 6 rows → 7 total items (Master + 6). Below the 8-item constant cap, so
-	// only the new pixel-aware rule can introduce a scrollbar.
+	// Seven items, under the cap, so only the pixel rule can add a scrollbar.
 	rows := makeOverflowRows(6)
 	z, _ := newTestEQPanelZone(rows)
 
-	// Tight 800x300 viewport with the EQ panel hugging the bottom: anchor
-	// sits at panel.Min.Y, so only ~3 rows of 24px fit before bottom.
+	// 800x300 with the panel at the bottom: ~3 rows of 24 px fit.
 	tree := NewDrumViewTree()
 	tree.SetBounds(image.Rect(0, 0, 800, 300))
 	z.SetPortal(tree.Portal())
@@ -509,8 +476,7 @@ func TestEQChannelDropdownVisibleRowsCappedByAvailablePixels(t *testing.T) {
 			availRows, anchor.Max.Y, availPx)
 	}
 
-	// Total = 7 (1 Master + 6 rows). Visible must be the smaller of
-	// (eqChannelMenuMaxVisibleRows=8, availRows, total=7) → availRows.
+	// min(cap 8, rows that fit, total 7) = rows that fit.
 	if scroll.VS.Total != 7 {
 		t.Fatalf("scroll.VS.Total = %d, want 7", scroll.VS.Total)
 	}
@@ -532,8 +498,6 @@ func TestEQChannelDropdownVisibleRowsCappedByAvailablePixels(t *testing.T) {
 	}
 }
 
-// TestEQChannelDropdownScrollbarPresent opens the dropdown with >8 items
-// and verifies HasScroll() is true and scrollbar geometry is non-empty.
 func TestEQChannelDropdownScrollbarPresent(t *testing.T) {
 	rows := makeOverflowRows(10)
 	z, _ := newTestEQPanelZone(rows)

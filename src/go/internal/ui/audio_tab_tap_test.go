@@ -2,22 +2,8 @@
 
 package ui
 
-// The programmatic replacement for "look at the screenshot".
-//
-// Three properties, each catching a different way the audio panel can go
-// wrong, all byte-exact:
-//
-//  1. DETERMINISM — the same circuit captured twice is the same bytes.
-//     Catches hidden state: a smoothing filter that never settles, a cache
-//     keyed on something it should not be, an axis anchored to whatever
-//     happened to play first.
-//  2. SHAPE — the analyser's resolution actually covers every display band,
-//     at every sample rate the product runs at. This is the layer the
-//     2026-09-19 browser-only blank Spectrum lived in.
-//  3. GOLDEN — the full layered digest is pinned to a committed file that
-//     the BROWSER must reproduce byte for byte (see
-//     xplat_audio_tab_tap.browser.test.js). Same Go code, same canonical
-//     input, both platforms: any divergence is real.
+// Byte-exact: determinism (no hidden state), shape (the analyser covers every display band at every shipped
+// rate) and a golden the browser must reproduce from the same Go code and input.
 
 import (
 	"encoding/json"
@@ -32,8 +18,7 @@ import (
 // tapGoldenPath is shared with the browser test, which reads the same file.
 const tapGoldenPath = "testdata/audio_tab_tap_golden.json"
 
-// captureCanonical builds the fixture both platforms agree on and digests
-// it through the real render derivations.
+// Through the real render derivations.
 func captureCanonical(t *testing.T) *audiotap.Snapshot {
 	t.Helper()
 	const sr = 48000
@@ -53,9 +38,7 @@ func TestAudioTabTapIsDeterministic(t *testing.T) {
 	}
 }
 
-// TestAudioTabTapDetectsAResolutionChange proves the capture actually
-// SEES the defect class it exists for. Without this the golden could be
-// pinning a digest that is blind to the very thing it is meant to catch.
+// Otherwise the golden could pin a digest blind to the very defect it exists for.
 func TestAudioTabTapDetectsAResolutionChange(t *testing.T) {
 	const sr = 48000
 	good := CanonicalAnalyzerState(audio.BridgeSpectrumBins, audio.BridgeSpectrumBins, sr)
@@ -89,8 +72,7 @@ func TestAudioTabTapDetectsAResolutionChange(t *testing.T) {
 	}
 }
 
-// TestAudioTabTapBandCoverageAtEveryShippedRate — the shape invariant,
-// stated over the capture rather than over a hand-built spectrum.
+// Stated over the capture, not a hand-built spectrum.
 func TestAudioTabTapBandCoverageAtEveryShippedRate(t *testing.T) {
 	for _, sr := range []int{44100, 48000} {
 		st := CanonicalAnalyzerState(audio.BridgeSpectrumBins, audio.BridgeSpectrumBins, sr)
@@ -143,8 +125,7 @@ func TestAudioTabTapMatchesGolden(t *testing.T) {
 	}
 }
 
-// TestAudioTabTapGoldenPathIsReadableFromJS keeps the two halves pointed at
-// one file: the browser test resolves the golden by this relative path.
+// The browser test resolves the golden by this relative path.
 func TestAudioTabTapGoldenPathIsReadableFromJS(t *testing.T) {
 	abs, err := filepath.Abs(tapGoldenPath)
 	if err != nil {

@@ -9,12 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Synth-tab Preview button: plays a one-shot of the active instrument with
-// the CURRENT (unsaved) knob state, routed through the same synthAuditionFn
-// hook as the knob-release audition — no parallel preview voice, identical
-// trigger plumbing. Lives in the header next to Save / Save As / Reset and
-// collapses FIRST into the overflow chevron (audition is the least
-// load-bearing header action: knob release already auditions).
+// Preview plays a one-shot of the current unsaved state through synthAuditionFn, the same trigger plumbing, and is
+// the first header action to collapse into ⋯.
 
 func TestSynthHeaderPreviewLaidOutOnWidePanel(t *testing.T) {
 	restore := SetDensityForTest(DensityComfortable)
@@ -31,9 +27,7 @@ func TestSynthHeaderPreviewLaidOutOnWidePanel(t *testing.T) {
 	}
 }
 
-// The mobile Preview button moved from the in-panel header to the sticky bar
-// (Approach B); its presence + touch-min there is covered by
-// TestSynthMobileActionsOnStickyBar + TestStickyBarTrailingActionsMobileTouchMin.
+// On mobile Preview lives on the sticky bar.
 
 func TestSynthPreviewButtonFiresAuditionOnce(t *testing.T) {
 	assertDefaultParityState(t)

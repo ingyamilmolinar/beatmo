@@ -11,8 +11,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// visibleSamplerKnobRects returns the laid-out (non-empty) knob dial rects keyed
-// by their original knob index.
+// Keyed by knob index.
 func visibleSamplerKnobRects(dv *DrumView) map[int]image.Rectangle {
 	out := map[int]image.Rectangle{}
 	for i, k := range dv.sampler.knobs {
@@ -24,12 +23,8 @@ func visibleSamplerKnobRects(dv *DrumView) map[int]image.Rectangle {
 	return out
 }
 
-// TestSamplerKnobsMultiColumnMobile pins the mobile Sampler tab to a
-// width-adaptive multi-column knob grid (2–4 columns, ControlGrid's native
-// behaviour capped at 4) so the panel's horizontal space is used instead of
-// stacking one pill per row. On a REAL 390×844 mobile layout at Spacious
-// density the grid adapts to 4 columns, so the whole first row of knobs is
-// visible at once (the second row scrolls, exactly like the Synth tab).
+// 2–4 columns (ControlGrid capped at 4), so the width is used; at 390×844 Spacious the first row of four shows at
+// once and the rest scrolls.
 func TestSamplerKnobsMultiColumnMobile(t *testing.T) {
 	g := newMobileSamplerTabGameForTestSize(t, 390, 844)
 
@@ -59,8 +54,7 @@ func TestSamplerKnobsMultiColumnMobile(t *testing.T) {
 	}
 }
 
-// TestSamplerKnobsSingleRowDesktop guards that the desktop layout is untouched:
-// all five knobs in one side-by-side row, no scrolling.
+// All five knobs in one row, no scrolling.
 func TestSamplerKnobsSingleRowDesktop(t *testing.T) {
 	g := samplerLayoutGame(t)
 	restore := SetDensityForTest(DensityComfortable)
@@ -81,9 +75,7 @@ func TestSamplerKnobsSingleRowDesktop(t *testing.T) {
 	}
 }
 
-// samplerScrollGame builds a mobile Sampler tab on a panel short enough that the
-// single-column knob list overflows and must scroll. Returns the game and the
-// content rect used so callers can re-layout after a scroll.
+// Short enough that the single-column list overflows.
 func samplerScrollGame(t *testing.T) (*Game, image.Rectangle) {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -95,17 +87,12 @@ func samplerScrollGame(t *testing.T) (*Game, image.Rectangle) {
 	restore := SetDensityForTest(DensitySpacious)
 	t.Cleanup(restore)
 	g.drum.sampler.captureFromSynth(roster.Kick)
-	// A deliberately short content rect so the five single-column knob cells
-	// cannot all fit — the overflow is what the scrollbar exists for.
 	contentR := image.Rect(0, 0, 390, 210)
 	g.drum.buildSamplerTab(contentR, roster.Kick)
 	return g, contentR
 }
 
-// TestSamplerKnobsScrollOverflowMobile proves that when the single-column knob
-// list overflows the mobile panel, the grid reports scroll, some knobs are
-// hidden (off-window empty rects), at least one stays visible, and the scroll
-// hit areas are published so the user can actually scroll.
+// The grid scrolls, some knobs are off-window, one stays visible, and the scroll hit areas exist.
 func TestSamplerKnobsScrollOverflowMobile(t *testing.T) {
 	g, _ := samplerScrollGame(t)
 	grid := g.drum.sampler.knobGrid
@@ -134,10 +121,7 @@ func TestSamplerKnobsScrollOverflowMobile(t *testing.T) {
 	}
 }
 
-// TestSamplerScrollRevealsLaterKnobs drives the real scroll input (wheel notch +
-// per-frame Tick to clear the cooldown) and asserts the last knob (Gain), which
-// starts off-window, becomes visible after scrolling to the bottom while the
-// first knob (Start) scrolls off.
+// A wheel notch plus a Tick per frame to clear the cooldown: Gain scrolls in, Start scrolls out.
 func TestSamplerScrollRevealsLaterKnobs(t *testing.T) {
 	g, contentR := samplerScrollGame(t)
 	dv := g.drum
@@ -156,10 +140,7 @@ func TestSamplerScrollRevealsLaterKnobs(t *testing.T) {
 		t.Fatal("precondition: Start (first knob) should be visible before scrolling")
 	}
 
-	// Scroll to the bottom: a wheel notch (negative = scroll DOWN, toward later
-	// rows) advances one row, then is throttled by the cooldown; Tick clears it so
-	// the next notch lands. Re-layout after every successful step so the visible
-	// window updates.
+	// Negative scrolls down; re-lay-out after each step.
 	for i := 0; i < 500 && !gainVisible(); i++ {
 		if grid.WheelStep(-1) {
 			dv.buildSamplerTab(contentR, roster.Kick)
@@ -175,10 +156,7 @@ func TestSamplerScrollRevealsLaterKnobs(t *testing.T) {
 	}
 }
 
-// TestSamplerKnobCellsNoOverlapMobile guards that the per-knob cells (which
-// carry the group label above the dial) never overlap on the scrolling mobile
-// layout — the label of one knob must never collide with the caption/badge of
-// the knob above it.
+// One knob's group label never collides with the caption above it.
 func TestSamplerKnobCellsNoOverlapMobile(t *testing.T) {
 	g, _ := samplerScrollGame(t)
 	s := &g.drum.sampler
@@ -207,9 +185,7 @@ func TestSamplerKnobCellsNoOverlapMobile(t *testing.T) {
 	}
 }
 
-// TestSamplerKnobCellReservesGroupLabelBandMobile asserts every mobile knob cell
-// reserves a band above the dial for the group label, so the label (drawn above
-// the dial, clamped into the cell) never overlaps the dial itself.
+// A band above the dial for the group label.
 func TestSamplerKnobCellReservesGroupLabelBandMobile(t *testing.T) {
 	g, _ := samplerScrollGame(t)
 	s := &g.drum.sampler

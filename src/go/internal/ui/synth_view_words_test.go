@@ -12,9 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/soundview"
 )
 
-// The graph's two readouts (spec 2026-10-25 §3.3): WORDS by default — a plain
-// summary a non-musician reads at a glance — and NUMBERS on request (the
-// "Details" toggle) — the literal measurements.
+// Words by default, a plain summary at a glance; numbers on the Details toggle.
 
 // renderFrom wraps a synthetic note as an analysed render.
 func renderFrom(name string, pcm []float32, voice float64) *graphRender {
@@ -31,8 +29,7 @@ func genNote(sec float64, f func(t float64) float64) []float32 {
 	return out
 }
 
-// No digit, no unit, no note name: words mode is for people who do not read
-// Hz, dB or cents.
+// Words mode is for people who do not read Hz, dB or cents.
 func TestWordReadoutsHaveNoNumbersOrUnits(t *testing.T) {
 	now := synthRender("now", 220, 0.2, 0.2, 2)
 	before := synthRender("before", 330, 0.6, 0.0, 1)
@@ -61,8 +58,7 @@ func TestWordReadoutsHaveNoNumbersOrUnits(t *testing.T) {
 	}
 }
 
-// "(was …)" names only the number that moved, never the whole sentence again
-// (the pitch readout used to repeat itself and get cut off).
+// Only the number that moved, never the sentence again, which got cut off.
 func TestWasCarriesOnlyTheKeyNumber(t *testing.T) {
 	now := synthRender("now", 55, 0.4, 0, 3)
 	before := synthRender("before", 110, 0.1, 0.3, 1.5)
@@ -114,8 +110,7 @@ func TestASlowDriftIsNotAWobble(t *testing.T) {
 	}
 }
 
-// Tone colour draws every curve on ONE level scale: a copy of the note 12 dB
-// quieter sits lower, it is not re-normalised to the same peak.
+// A copy 12 dB quieter sits lower; it is not re-normalised.
 func TestToneColourSharesOneLevelScale(t *testing.T) {
 	loud := synthRender("loud", 220, 0.3, 0, 1)
 	quietPCM := append([]float32(nil), loud.an.PCM()...)
@@ -153,8 +148,7 @@ func TestToneColourSharesOneLevelScale(t *testing.T) {
 	}
 }
 
-// Brightness over time is a line per sound (NOW, ends, BEFORE): readable, and
-// comparable — never a heat map.
+// A line per sound (NOW, ends, BEFORE), comparable, never a heat map.
 func TestBrightnessOverTimeIsALine(t *testing.T) {
 	now := synthRender("now", 220, 0.3, 0.1, 1)
 	lo := synthRender("lo", 220, 0.3, 0.6, 1)
@@ -170,8 +164,7 @@ func TestBrightnessOverTimeIsALine(t *testing.T) {
 	t.Fatal("the LO end has no brightness line")
 }
 
-// The first moment is its loudness at 1 ms (dB), so a fade-in rises and a
-// click stands out — not a raw waveform.
+// Loudness at 1 ms, so a fade-in rises and a click stands out.
 func TestFirstMomentIsALoudnessCurve(t *testing.T) {
 	fade := renderFrom("fade", genNote(0.5, func(t float64) float64 {
 		return 0.6 * math.Min(1, t/0.1) * math.Sin(2*math.Pi*220*t)
@@ -190,8 +183,7 @@ func TestFirstMomentIsALoudnessCurve(t *testing.T) {
 	}
 }
 
-// A wave close-up of noise shows nothing readable: an unpitched note falls
-// back to its tone colour.
+// Noise has no readable wave, so an unpitched note falls back to tone colour.
 func TestWaveCloseUpOfNoiseShowsToneColour(t *testing.T) {
 	rng := rand.New(rand.NewSource(3))
 	noise := renderFrom("noise", genNote(0.4, func(t float64) float64 { return 0.5 * math.Exp(-t/0.1) * rng.NormFloat64() }), 0.4)
@@ -224,9 +216,7 @@ func TestGraphLabelsNeverOverlap(t *testing.T) {
 
 var _ = image.Rect
 
-// A dial whose named view does not move on an instrument is shown through the
-// view that does: two ends that differ only in how long they ring hold the
-// same pitch, so a dial naming the pitch view is shown as loudness.
+// Ends that differ only in ring length hold the same pitch, so a pitch-view dial is shown as loudness.
 func TestADialIsShownThroughAViewThatMoves(t *testing.T) {
 	short := synthRender("short", 220, 0.05, 0, 1)
 	long := synthRender("long", 220, 0.5, 0, 1)
@@ -242,9 +232,8 @@ func TestADialIsShownThroughAViewThatMoves(t *testing.T) {
 	}
 }
 
-// The wave's shape words follow how long it sits near its peak: a sine about
-// half the time (smooth), a clipped wave nearly always (squared off) — a
-// rippled or lopsided drive included.
+// Time near the peak: a sine about half (smooth), a clipped wave nearly always (squared off), ripple and offset
+// included.
 func TestWaveShapeWordsFollowHowSquareTheWaveIs(t *testing.T) {
 	wave := func(f func(ph float64) float64) []float32 {
 		out := make([]float32, 600)
@@ -258,10 +247,7 @@ func TestWaveShapeWordsFollowHowSquareTheWaveIs(t *testing.T) {
 	if w := shapeWords(waveGrit(sine)); w != i18n.T(i18n.KeyGraphWordsSmooth) {
 		t.Fatalf("a sine reads %q, want smooth", w)
 	}
-	// A driven kick's close-up: three periods of a fast-decaying, offset,
-	// clipped wave, decaying as fast as a real kick does (Kick Wood: −40 dB
-	// at 248 ms, a ~18 ms period: ~28 % per period). The decay must not hide
-	// the squaring.
+	// Three periods decaying ~28% each, as fast as a real kick; the decay must not hide the squaring.
 	k := 0
 	drivenKick := wave(func(ph float64) float64 {
 		k++
@@ -275,12 +261,10 @@ func TestWaveShapeWordsFollowHowSquareTheWaveIs(t *testing.T) {
 	}
 }
 
-// With the dial's two ends on screen the shape words place the sound between
-// them (a kick's clean end already carries harmonics of its own: an absolute
-// scale would call every kick gritty).
+// Relative to the dial's ends: a kick's clean end already has harmonics, so an absolute scale would call every kick
+// gritty.
 func TestWaveWordsPlaceTheSoundBetweenTheDialsEnds(t *testing.T) {
-	// A kick-like note: its pitch glides down and it decays fast, so no
-	// close-up window holds whole, equal periods.
+	// Gliding down and decaying fast, so no window holds whole equal periods.
 	note := func(name string, drive float64) *graphRender {
 		ph := 0.0
 		return renderFrom(name, genNote(0.5, func(tt float64) float64 {

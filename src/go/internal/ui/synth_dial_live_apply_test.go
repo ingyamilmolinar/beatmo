@@ -10,8 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/synthdial"
 )
 
-// openMelodicSynthRoot builds a melodic row with many node pitches (so the
-// prewarmer enumerates them) and opens the Synth tab's category root on it.
+// Many node pitches, so the prewarmer enumerates them.
 func openMelodicSynthRoot(t *testing.T) (*Game, string) {
 	t.Helper()
 	g := newMelodicCircuitGame(t, 0, 5, -2, 7, -5, 12)
@@ -26,9 +25,7 @@ func openMelodicSynthRoot(t *testing.T) (*Game, string) {
 	return g, string(inst)
 }
 
-// multiTermDial returns a root dial on inst whose top end moves at least two
-// of its params — the shape whose live apply could publish half-applied
-// documents.
+// The top end moves at least two params, the shape that could publish half-applied documents.
 func multiTermDial(t *testing.T, dv *DrumView, inst string) (string, synthdial.Resolved) {
 	t.Helper()
 	anchor := audio.MergedInstrumentParamsRO(instrument.ID(inst))
@@ -50,18 +47,8 @@ func multiTermDial(t *testing.T, dv *DrumView, inst string) (string, synthdial.R
 	return "", synthdial.Resolved{}
 }
 
-// One dial detent is ONE edit of the sound: every document the engine hears
-// about (each binding change the voice prewarmer renders) must be the
-// detent's final document, never a half-applied one with only some of the
-// dial's params moved.
-//
-// Why it matters: the prewarmer renders every binding change at every pitch
-// the row plays (± the predictive neighbourhood) into a bounded, drop-on-
-// overflow pool. A dial wrote its N params one SetInstrumentParam at a time,
-// so each detent queued N documents × every pitch; the intermediate ones —
-// sounds nobody will ever hear — filled the queue first and the final one was
-// dropped, so playback kept serving an older cached voice while the dial
-// turned ("I hear no difference in real time").
+// A detent is ONE edit: the prewarmer renders each binding change at every played pitch into a bounded
+// drop-on-overflow pool, so half-applied documents would fill it and the final sound would be dropped.
 func TestSynthDialDetentPublishesOnlyItsFinalDocument(t *testing.T) {
 	g, inst := openMelodicSynthRoot(t)
 	dv := g.drum

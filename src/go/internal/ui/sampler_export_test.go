@@ -14,11 +14,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
-// TestExportImportSampleEditRoundTrip — a recipe-bound instrument with a
-// non-destructive sample-edit descriptor exports a `sample_edit` field
-// (effective-delta style, like synth_params) and importing the project
-// restores the descriptor, so the saved chop travels inside beatmo.json
-// while the synth stays the source of truth.
+// The descriptor exports as `sample_edit` and import restores it, so the chop travels in the file while the
+// synth stays the source of truth.
 func TestExportImportSampleEditRoundTrip(t *testing.T) {
 	g := newSamplerTabGame(t)
 	dv := g.drum
@@ -72,19 +69,14 @@ func TestExportImportSampleEditRoundTrip(t *testing.T) {
 	}
 }
 
-// TestImportClearsStaleSampleEdit — importing a project WITHOUT a sample_edit
-// for an instrument clears any leftover descriptor from the previous project
-// (parity with the SynthParams bulk-replace semantics).
+// Replace-not-merge, like the documents.
 func TestImportClearsStaleSampleEdit(t *testing.T) {
 	g := newSamplerTabGame(t)
 	dv := g.drum
 	inst := dv.Rows[0].Instrument
 	t.Cleanup(func() { audio.ClearSampleEdit(inst) })
 
-	// State the precondition instead of inheriting it. Sampler edits apply LIVE
-	// into a process-global store, so an earlier test that merely turned a knob
-	// can leave a descriptor on this instrument — and then the "clean" export
-	// below carries the very edit this test asserts import clears.
+	// Stated, not inherited: an earlier test that turned a knob may have left a descriptor in the global store.
 	audio.ClearSampleEdit(inst)
 	data, err := dv.exportBytes() // exported with NO descriptor
 	if err != nil {
@@ -116,9 +108,7 @@ func TestSamplePCMCodecRoundTripsBitExact(t *testing.T) {
 }
 
 func TestEncodeSamplePCMIsGzipped(t *testing.T) {
-	// A zero-filled buffer compresses dramatically; the payload must carry the
-	// gzip magic header (0x1f 0x8b) and be smaller than the raw LE bytes so
-	// embedded samples don't bloat beatmo.json (plan risk #5).
+	// Gzip (magic 0x1f 0x8b) and smaller than the raw bytes, so embedded samples do not bloat the file.
 	rec := audio.SampleRecord{PCM: make([]float32, 4096), SampleRate: 48000}
 	enc := encodeSamplePCM(rec)
 	raw, err := base64.StdEncoding.DecodeString(enc.DataB64)

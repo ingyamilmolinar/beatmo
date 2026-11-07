@@ -10,8 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
-// TestChainAutoFitDefaultOn — a fresh zone opens with auto-fit enabled so
-// the transient fills the trace without the user touching anything.
+// So the transient fills the trace untouched.
 func TestChainAutoFitDefaultOn(t *testing.T) {
 	z := NewChainPanelZone(ChainCallbacks{})
 	if !z.AutoFit() {
@@ -19,8 +18,7 @@ func TestChainAutoFitDefaultOn(t *testing.T) {
 	}
 }
 
-// TestChainManualZoomDisablesAutoFit — SetWindowMs and the plain-scroll
-// wheel are manual overrides; both must stick by disabling auto-fit.
+// Manual zoom sticks by disabling auto-fit.
 func TestChainManualZoomDisablesAutoFit(t *testing.T) {
 	z := NewChainPanelZone(ChainCallbacks{})
 	z.SetWindowMs(40)
@@ -38,8 +36,6 @@ func TestChainManualZoomDisablesAutoFit(t *testing.T) {
 	}
 }
 
-// TestChainSetAutoFitReenables — SetAutoFit(true) turns it back on after a
-// manual zoom disabled it.
 func TestChainSetAutoFitReenables(t *testing.T) {
 	z := NewChainPanelZone(ChainCallbacks{})
 	z.SetWindowMs(40) // disables
@@ -49,14 +45,12 @@ func TestChainSetAutoFitReenables(t *testing.T) {
 	}
 }
 
-// TestChainDoubleClickRestoresAutoFit — a double-click reset restores
-// auto-fit (and resets the window) so the user gets the default framing back.
+// Restores the default framing.
 func TestChainDoubleClickRestoresAutoFit(t *testing.T) {
 	z := NewChainPanelZone(ChainCallbacks{})
 	z.SetWindowMs(40) // disable + non-default window
 	h := &chainZoomHandler{zone: z}
-	// Two presses in quick succession land within the 300ms double-click
-	// window (the test runs in microseconds).
+	// Within the 300 ms double-click window.
 	h.OnPress(0, 0)
 	h.OnPress(0, 0)
 	if !z.AutoFit() {
@@ -67,13 +61,7 @@ func TestChainDoubleClickRestoresAutoFit(t *testing.T) {
 	}
 }
 
-// TestChainAutoFitReframesWindow — with auto-fit on and a tiny transient in a
-// large buffer, the effective window driving the labels must shrink far below
-// the manual 20ms ceiling (proving the trace frames the signal, not the dead
-// space). We assert via the time-axis label rendering: drawChainTraces draws
-// the max label at the effective window. Instead of pixel-reading text, we
-// drive Draw and confirm no panic + that auto-fit produced a sub-slice (the
-// fitState samples are shorter than the source).
+// A tiny transient in a large buffer frames to a sub-slice far shorter than the source.
 func TestChainAutoFitReframesWindow(t *testing.T) {
 	const n = 4410 // 100ms @ 44.1k
 	samples := make([]float64, n)
@@ -89,8 +77,7 @@ func TestChainAutoFitReframesWindow(t *testing.T) {
 	dst := ebiten.NewImage(600, 200)
 	z.Draw(dst)
 
-	// fitState.TapA.Samples is the sub-slice Draw rendered. It must be much
-	// shorter than the full buffer (framed to the transient + padding).
+	// Framed to the transient plus padding.
 	got := len(z.fitState.TapA.Samples)
 	if got == 0 {
 		t.Fatal("auto-fit produced empty sub-slice")
@@ -100,8 +87,6 @@ func TestChainAutoFitReframesWindow(t *testing.T) {
 	}
 }
 
-// TestChainAutoFitOffRendersFullBuffer — with auto-fit disabled, Draw must
-// NOT sub-slice; the full buffer feeds the trace.
 func TestChainAutoFitOffRendersFullBuffer(t *testing.T) {
 	const n = 4410
 	samples := make([]float64, n)

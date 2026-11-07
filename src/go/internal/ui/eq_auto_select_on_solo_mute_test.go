@@ -10,16 +10,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// These tests cover the "auto-select the sole audible instrument" QoL feature:
-// when exactly one row is audible (soloed, or all-but-one muted), the audio-panel
-// channel dropdown auto-switches to that instrument, and EVERY audio-panel tab
-// follows the dropdown as the single source of truth.
-//
-// Design: docs/superpowers/specs/2026-05-27-auto-select-sole-audible-channel-design.md
+// With exactly one audible row the channel dropdown switches to it, and every tab follows the dropdown.
 
-// newAutoSelectGame builds a Game whose drum view has one row per supplied
-// instrument id (distinct, since channel id == instrument id). The active
-// channel starts at Master.
+// Distinct ids (channel id == instrument id); the channel starts at Master.
 func newAutoSelectGame(t *testing.T, instruments ...instrument.ID) *Game {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -44,9 +37,7 @@ func firstNonEmptyInstrument(dv *DrumView) instrument.ID {
 	return ""
 }
 
-// assertChannelAllTabs asserts that every audio-panel tab's instrument-selection
-// observable resolves to want. The Synth tab falls back to the first non-empty
-// row when Master is selected, by design.
+// On Master the Synth tab falls back to the first non-empty row, by design.
 func assertChannelAllTabs(t *testing.T, g *Game, want channel.ID) {
 	t.Helper()
 	dv := g.drum
@@ -72,8 +63,6 @@ func assertChannelAllTabs(t *testing.T, g *Game, want channel.ID) {
 	}
 }
 
-// assertChannelStaysMaster asserts the dropdown has not switched to an
-// instrument (used for the negative / "stay put" cases).
 func assertChannelStaysMaster(t *testing.T, g *Game) {
 	t.Helper()
 	dv := g.drum
@@ -92,8 +81,7 @@ func TestSoloAutoSelectsInstrumentAllTabs(t *testing.T) {
 	assertChannelAllTabs(t, g, channel.Of(roster.Snare))
 }
 
-//  2. Muting all-but-one auto-selects the remaining instrument; muting only one
-//     of three (two still audible) does not.
+// Muting all but one selects it; muting one of three does not.
 func TestMuteAllButOneAutoSelects(t *testing.T) {
 	g := newAutoSelectGame(t, roster.Kick, roster.Snare, roster.Hihat)
 
@@ -113,9 +101,7 @@ func TestReSoloMovesSelection(t *testing.T) {
 	assertChannelAllTabs(t, g, channel.Of(roster.Hihat))
 }
 
-//  4. Leaving the single-audible state (un-solo) reverts the selection to
-//     Master: with more than one instrument audible there is no single focus,
-//     so the selector goes back to Master.
+// With more than one audible there is no single focus.
 func TestUnSoloRevertsToMasterWhenMultipleAudible(t *testing.T) {
 	g := newAutoSelectGame(t, roster.Kick, roster.Snare, roster.Hihat)
 	g.drum.toggleSolo(1)
@@ -125,17 +111,12 @@ func TestUnSoloRevertsToMasterWhenMultipleAudible(t *testing.T) {
 	assertChannelStaysMaster(t, g)
 }
 
-//  5. No instrument is auto-selected while two or more remain audible; if one
-//     was previously selected the selector reverts to Master.
 func TestNoAutoSelectWhenMultipleAudible(t *testing.T) {
 	g := newAutoSelectGame(t, roster.Kick, roster.Snare, roster.Hihat)
 	g.drum.toggleMute(0) // two still audible
 	assertChannelStaysMaster(t, g)
 }
 
-// 5b. Un-muting back into a multi-audible state reverts a previously
-//
-//	auto-selected instrument to Master.
 func TestUnMuteBackToMultipleRevertsToMaster(t *testing.T) {
 	g := newAutoSelectGame(t, roster.Kick, roster.Snare, roster.Hihat)
 	g.drum.toggleMute(0) // kick muted; snare+hat audible (2) -> stays Master
@@ -146,9 +127,7 @@ func TestUnMuteBackToMultipleRevertsToMaster(t *testing.T) {
 	assertChannelStaysMaster(t, g)
 }
 
-// 5c. A MANUAL channel selection also reverts to Master once a mute/solo
-//
-//	change leaves more than one instrument audible.
+// A manual selection reverts too once more than one is audible.
 func TestManualSelectionRevertsToMasterWhenMultipleAudible(t *testing.T) {
 	g := newAutoSelectGame(t, roster.Kick, roster.Snare, roster.Hihat)
 	g.drum.eqPanelZone.callbacks.OnChannelChange(channel.Of(roster.Kick)) // manually focus kick
@@ -175,9 +154,7 @@ func TestEmptyInstrumentNotAutoSelected(t *testing.T) {
 	assertChannelStaysMaster(t, g)
 }
 
-//  8. The dropdown's OnChannelChange callback is the single source of truth:
-//     selecting a channel through it updates EVERY tab's observable, and
-//     resetting to Master resets them (Synth falls back to first row).
+// Selecting through it moves every tab; Master resets them (Synth falls back to the first row).
 func TestOnChannelChangeDrivesAllTabs(t *testing.T) {
 	g := newAutoSelectGame(t, roster.Kick, roster.Snare, roster.Hihat)
 
@@ -188,10 +165,7 @@ func TestOnChannelChangeDrivesAllTabs(t *testing.T) {
 	assertChannelAllTabs(t, g, channel.Master)
 }
 
-//  9. Consolidation regression: the channel-cycle button and row-instrument
-//     rename keep eqPanelZone.activeChannel in lockstep with eqActiveChannel.
-//     Previously only the dropdown click synced z.activeChannel, so Wave/
-//     Spectrum/Synth tabs ignored these entry points.
+// The cycle button and rename keep eqPanelZone.activeChannel in step with eqActiveChannel.
 func TestCycleAndRenameSyncPanelChannel(t *testing.T) {
 	g := newAutoSelectGame(t, roster.Kick, roster.Snare, roster.Hihat)
 

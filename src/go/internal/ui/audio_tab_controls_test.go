@@ -18,10 +18,7 @@ func TestControlHeaderHeight(t *testing.T) {
 	}
 }
 
-// newFreezePill builds an icon-only pause pill that flips to a play icon /
-// colAccent when the freeze callback reports frozen, and back to the pause icon
-// / colTextSecondary. Text stays empty throughout (drawPillTabAt renders the
-// icon when Text == "").
+// Icon only: drawPillTabAt draws the icon when Text is empty.
 func TestNewFreezePillTogglesVisual(t *testing.T) {
 	frozen := false
 	b := newFreezePill(func() bool { frozen = !frozen; return frozen })
@@ -38,8 +35,7 @@ func TestNewFreezePillTogglesVisual(t *testing.T) {
 	}
 }
 
-// With no components built, the active controls are nil on every tab, the
-// header height is 0, and bodyRect equals contentRect (zero behavior change).
+// With no components the header is 0 and bodyRect equals contentRect.
 func TestPhase0NoControlHeader(t *testing.T) {
 	z := NewEQPanelZone(EQCallbacks{})
 	z.Layout(image.Rect(0, 400, 600, 600))
@@ -57,9 +53,7 @@ func TestPhase0NoControlHeader(t *testing.T) {
 	}
 }
 
-// On TabWave, the dispatcher publishes the wave AUTO and freeze hit areas in the
-// control header (below the switcher row, above the body), and NOT via the
-// sticky bar.
+// In the control header, not on the sticky bar.
 func TestWaveControlsOwnFreeze(t *testing.T) {
 	restore := SetRuntimeProfileForTest(desktopRuntimeProfile())
 	defer restore()
@@ -155,8 +149,7 @@ func TestSpectrumControlsButtonsAndWiring(t *testing.T) {
 			t.Fatalf("spectrum control %q hit area missing", want)
 		}
 	}
-	// The four retired pills must leave no hit area behind: an unreachable
-	// rect that still swallows clicks is worse than the pill was.
+	// An unreachable rect that still swallows clicks is worse than the pill was.
 	for _, gone := range []string{
 		"spectrum-freqscale-btn", "spectrum-slope-btn",
 		"spectrum-pre-btn", "spectrum-reset-hold-btn", "spectrum-detail-btn",
@@ -186,8 +179,7 @@ func TestWaveControlsInactiveNoHitAreas(t *testing.T) {
 	}
 }
 
-// The main tab-switcher row publishes ONLY channel/tabs/legend/expander hit
-// areas — never any per-tab control or the close button — on every tab.
+// Never a per-tab control.
 func TestMainTabBarOnlyHasTabsChannelLegendExpander(t *testing.T) {
 	restore := SetRuntimeProfileForTest(desktopRuntimeProfile())
 	defer restore()
@@ -208,9 +200,7 @@ func TestMainTabBarOnlyHasTabsChannelLegendExpander(t *testing.T) {
 	}
 }
 
-// On mobile, the desktop-only pills are absent but the freeze button is still
-// present on Spectrum/Levels (no mobile freeze regression). The Wave tab no
-// longer has a freeze pill (it has the AUTO pill instead).
+// Freeze stays on Spectrum/Levels; Wave has AUTO instead.
 func TestMobileControlVisibilityPreserved(t *testing.T) {
 	setupMobileTest(t, true)
 	UpdateProfile()

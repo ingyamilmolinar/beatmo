@@ -9,11 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// synth_control_i18n_test.go proves the Synth-tab knob LABELS and value ENUMS
-// follow the active locale (the gap the user reported: "Triangle", "Pitch", …
-// stayed English). Design mirrors the synth-stage pass: canonical English backs
-// logic/round-trips, a localized display layer reads i18n.T, and the EN catalog
-// mirrors canonical so every existing EN-locale test stays green.
+// Knob labels and enum values follow the locale; canonical English is the stored form, and the EN catalogue mirrors
+// it.
 
 func withLocaleES(t *testing.T) {
 	t.Helper()
@@ -21,9 +18,7 @@ func withLocaleES(t *testing.T) {
 	t.Cleanup(func() { i18n.SetLocale(i18n.LocaleEN) })
 }
 
-// TestSynthParamDisplayName_LocalizedES asserts curated knob labels translate
-// under the Spanish locale, including the composed FM-operator and burst-hit
-// families (the "OpN"/"Hit N" prefix stays English; the noun translates).
+// The composed families too: the "OpN"/"Hit N" prefix stays, the noun translates.
 func TestSynthParamDisplayName_LocalizedES(t *testing.T) {
 	withLocaleES(t)
 	cases := map[string]string{
@@ -68,9 +63,7 @@ func TestSynthParamDisplayName_LocalizedES(t *testing.T) {
 	}
 }
 
-// TestSynthParamDisplayName_ENMatchesCanonical pins zero behavior change in the
-// English locale: the localized layer must reproduce the canonical caption for
-// every curated id (including the composed families).
+// English reproduces the canonical caption for every curated id.
 func TestSynthParamDisplayName_ENMatchesCanonical(t *testing.T) {
 	i18n.SetLocale(i18n.LocaleEN)
 	cases := map[string]string{
@@ -95,10 +88,7 @@ func TestSynthParamDisplayName_ENMatchesCanonical(t *testing.T) {
 	}
 }
 
-// TestEnumLabelFor_LocalizedES asserts the knob VALUE enums localize — the
-// "Triangle" the user called out by name — while keeping the universal "FM"
-// member English. Canonical strings stay the storage form (def.Enum), so this
-// is a display-only transform.
+// Display-only: def.Enum keeps the canonical strings, and the universal "FM" stays English.
 func TestEnumLabelFor_LocalizedES(t *testing.T) {
 	withLocaleES(t)
 	wave := audio.ParamDef{Name: "osc_type", Min: 0, Max: 6,
@@ -137,8 +127,6 @@ func TestEnumLabelFor_LocalizedES(t *testing.T) {
 	}
 }
 
-// TestEnumLabelFor_ENMatchesCanonical pins that the English locale returns the
-// canonical enum strings verbatim (no behavior change for existing tests).
 func TestEnumLabelFor_ENMatchesCanonical(t *testing.T) {
 	i18n.SetLocale(i18n.LocaleEN)
 	wave := audio.ParamDef{Name: "osc_type", Min: 0, Max: 3,

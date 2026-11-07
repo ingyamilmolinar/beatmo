@@ -12,10 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 )
 
-// maxWaveTraceRectHeight returns the tallest single colWaveTrace column rect
-// intersecting `inside`. drawWaveTrace emits one such rect per pixel column,
-// its height proportional to the displayed amplitude — so a louder *displayed*
-// signal (higher gain) yields taller columns.
+// One rect per column, its height proportional to the displayed amplitude.
 func maxWaveTraceRectHeight(rects []drawnRect, inside image.Rectangle) int {
 	want := color.RGBAModel.Convert(colWaveTrace).(color.RGBA)
 	maxH := 0
@@ -33,9 +30,7 @@ func maxWaveTraceRectHeight(rects []drawnRect, inside image.Rectangle) int {
 	return maxH
 }
 
-// TestWaveAutoGainMakesQuietSignalTaller proves the adaptive Y-scale actually
-// magnifies a quiet signal: the same 0.1-amplitude sine renders a strictly
-// taller trace at auto-gain (peak 0.1 -> ~9x) than at unity gain.
+// A 0.1 sine draws strictly taller at auto-gain (~9×) than at unity.
 func TestWaveAutoGainMakesQuietSignalTaller(t *testing.T) {
 	t.Cleanup(SetWaveTraceCacheForTest(false))
 

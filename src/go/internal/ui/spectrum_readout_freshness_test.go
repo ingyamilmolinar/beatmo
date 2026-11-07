@@ -10,20 +10,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// The Spectrum tab smooths three things so the readout is stable while a beat
-// plays: the headline sentence holds for spectrumBannerDwell, each bar falls
-// back to a peak-hold between transients, and the dB axis anchors to the
-// loudest peak seen. All three are right for a signal that is merely moving.
-//
-// None of them is right across a DISCONTINUITY. Muting a row, soloing one, or
-// switching channel does not change the signal — it changes WHAT IS BEING
-// MEASURED. Holding the previous answer then means the tab states something
-// about a mix that no longer exists, for up to 1.2 s in the sentence and the
-// emphasised band, and for the life of the session in the watermark.
+// The sentence hold, the bar peak-hold and the axis anchor suit a moving signal, not a DISCONTINUITY: a mute,
+// solo or channel change changes what is measured, so held answers describe a mix that no longer exists.
 
-// TestBannerHoldResetRetractsTheStaleLineAtOnce — a reset means the claim on
-// screen is about a mix that no longer exists. It must come DOWN on the next
-// frame; nothing is a better answer than something false.
+// Down on the next frame: nothing beats something false.
 func TestBannerHoldResetRetractsTheStaleLineAtOnce(t *testing.T) {
 	var h bannerHold
 	now := time.Now()
@@ -49,12 +39,8 @@ func TestBannerHoldResetRetractsTheStaleLineAtOnce(t *testing.T) {
 	}
 }
 
-// TestBannerDoesNotLatchTheFirstFrameAfterADiscontinuity — the analyser needs
-// a frame or two to reflect a mute (its window still holds the old audio).
-// Measured on a real circuit: the frame right after the mute reported
-// "almost nothing above 4k Hz" and every frame after it reported "nothing
-// fighting". Latching that first frame would replace a stale sentence with a
-// wrong one and then protect IT for the full dwell — worse than the bug.
+// The analyser window still holds the old audio for a frame or two, so latching the first frame would protect a
+// wrong sentence for the full dwell.
 func TestBannerDoesNotLatchTheFirstFrameAfterADiscontinuity(t *testing.T) {
 	var h bannerHold
 	now := time.Now()
@@ -81,9 +67,7 @@ func TestBannerDoesNotLatchTheFirstFrameAfterADiscontinuity(t *testing.T) {
 	}
 }
 
-// spectrumReadoutIsStale reports whether the zone is still carrying a reading
-// taken before the last discontinuity: a held sentence, a held bar level, or
-// a watermark from the previous measurement.
+// A held sentence, bar level or watermark from before the last discontinuity.
 func spectrumReadoutIsStale(z *EQPanelZone) bool {
 	if z.spectrumBannerHold.hasShown {
 		return true
@@ -96,9 +80,7 @@ func spectrumReadoutIsStale(z *EQPanelZone) bool {
 	return z.specMaxDB != spectrumMinDB
 }
 
-// seedStaleSpectrumReadout puts the zone in the state it would be in after a
-// few seconds of playback: a sentence on screen, bars held up by the
-// peak-hold, and an axis anchored to a loud transient.
+// A few seconds into playback: a sentence up, bars held, the axis on a loud transient.
 func seedStaleSpectrumReadout(z *EQPanelZone) {
 	z.spectrumBannerHold.update(spectrumBanner{Text: "kick and snare are fighting", Band: 2}, time.Now())
 	z.spectrumPeaks.PeaksDB[2] = -18
@@ -107,9 +89,7 @@ func seedStaleSpectrumReadout(z *EQPanelZone) {
 	z.eqMaxDB = -6
 }
 
-// TestMutingARowRefreshesTheSpectrumReadout — the row is gone from the mix
-// the instant it is muted. The sentence naming it, the lane emphasising its
-// band and its held bar must all go with it.
+// The sentence naming the row, its lane and its held bar go at once.
 func TestMutingARowRefreshesTheSpectrumReadout(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -127,8 +107,7 @@ func TestMutingARowRefreshesTheSpectrumReadout(t *testing.T) {
 	}
 }
 
-// TestSoloingARowRefreshesTheSpectrumReadout — solo mutes every other row, so
-// it is the largest discontinuity of the three.
+// Solo mutes every other row, the largest discontinuity.
 func TestSoloingARowRefreshesTheSpectrumReadout(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -143,9 +122,7 @@ func TestSoloingARowRefreshesTheSpectrumReadout(t *testing.T) {
 	}
 }
 
-// TestChannelChangeRefreshesTheSpectrumReadout — the axis anchor already
-// re-baselined here; the sentence and the held bars did not, so the tab
-// described the previous channel while showing the new one.
+// The sentence and held bars refresh with the axis.
 func TestChannelChangeRefreshesTheSpectrumReadout(t *testing.T) {
 	z := NewEQPanelZone(EQCallbacks{})
 	seedStaleSpectrumReadout(z)
@@ -157,11 +134,7 @@ func TestChannelChangeRefreshesTheSpectrumReadout(t *testing.T) {
 	}
 }
 
-// TestRealMuteButtonPressRefreshesTheSpectrumReadout drives the actual mute
-// keycap through Game.Update. The tests above call toggleMute directly, which
-// proves the notifier works but not that any button reaches it — a wiring
-// this shallow is exactly the kind that passes unit tests while the feature
-// is dead on screen.
+// The real keycap through Game.Update: calling toggleMute proves the notifier, not that a button reaches it.
 func TestRealMuteButtonPressRefreshesTheSpectrumReadout(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)

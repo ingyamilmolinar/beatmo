@@ -1,30 +1,8 @@
 //go:build !test && !js
 
-// Byte-for-byte export/import synth-audio round-trip suite.
-//
-// Goal: prove that exporting a circuit to JSON and re-importing it reproduces
-// the EXACT same rendered audio (byte-for-byte), even after the user has tweaked
-// synth parameters on every modular-synth stage. This is both a regression
-// harness and a bug finder: if the export delta math (export.go) or the import
-// reconstruction (import.go) drops, clamps, or mis-resolves a synth parameter,
-// the rendered PCM diverges and the offending stage's subtest fails.
-//
-// Why this build tag: byte-for-byte synth audio needs the REAL C DSP renderer,
-// which only compiles under `!test && !js`. The `-tags test` fast path links an
-// audio stub that produces no real samples. This suite therefore runs on the
-// real-Ebiten path: `make test-real` / `xvfb-run -a go test ./internal/ui/...`.
-//
-// What it actually exercises (true end-to-end, not a copy of the logic):
-//
-//	set per-instrument synth params
-//	  -> (*DrumView).exportBytes()        // real export.go delta-vs-shipped
-//	    -> fresh Game.Import(json)         // real import.go shipped⊕delta pin
-//	      -> audio.RenderInstrumentOneShot // real render_modular_p (C DSP)
-//	compare SHA256(LE float32) of original vs imported render.
-//
-// Anti-false-pass: Import calls audio.SetInstrumentParams, which UNCONDITIONALLY
-// invalidates that instrument's voice cache (synth_recipe.go), so the imported
-// render is a genuine recompute and cannot return the original cached buffer.
+// Export → fresh import → render reproduces every tweaked stage's audio byte for byte. Real build only: the -tags
+// test audio stub produces no samples. Import invalidates the voice cache, so the second render is a genuine
+// recompute.
 package ui
 
 import (
@@ -40,9 +18,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// hashFloat32RT mirrors internal/audio's golden-test hash (SHA256 over
-// little-endian float32). Re-declared here because the audio helper is
-// package-private. Equivalent to bytes.Equal over the float32 byte image.
+// The audio package's golden hash is private; equivalent to bytes.Equal over the float32 image.
 func hashFloat32RT(buf []float32) string {
 	h := sha256.New()
 	var b [4]byte
@@ -53,8 +29,7 @@ func hashFloat32RT(buf []float32) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// firstSampleDiff returns the index of the first differing sample (-1 if equal
-// up to the shorter length). Used purely for debuggable failure messages.
+// For readable failure messages.
 func firstSampleDiff(a, b []float32) int {
 	n := len(a)
 	if len(b) < n {
@@ -68,9 +43,6 @@ func firstSampleDiff(a, b []float32) int {
 	return -1
 }
 
-// synthRoundTrip performs the full export→import→render round-trip for one
-// instrument with one synth tweak and asserts the rendered audio is
-// byte-for-byte identical.
 func synthRoundTrip(t *testing.T, instID string, tweak audio.RecipeParams) {
 	t.Helper()
 	if len(tweak) == 0 {
@@ -89,8 +61,7 @@ func synthRoundTrip(t *testing.T, instID string, tweak audio.RecipeParams) {
 	t.Cleanup(func() { audio.ResetInstrumentParams(instrument.ID(instID)) })
 	audio.SetInstrumentParams(instrument.ID(instID), tweak)
 
-	// Pin the global BPM before BOTH renders: g2.Import below sets it from the
-	// file, and a BPM-sized voice would otherwise change its SAMPLE COUNT.
+	// Import sets the BPM from the file; pinned so it cannot change a sample count.
 	const roundTripBPM = 120
 	audio.SetBPM(roundTripBPM)
 	orig, sr := audio.RenderInstrumentOneShot(instrument.ID(instID))
@@ -99,8 +70,7 @@ func synthRoundTrip(t *testing.T, instID string, tweak audio.RecipeParams) {
 	}
 	origHash := hashFloat32RT(orig)
 
-	// Precondition: the tweak actually changed the document, otherwise the
-	// round-trip is trivially identical and proves nothing.
+	// Otherwise the round trip is trivially identical.
 	if !audio.InstrumentDocModified(instrument.ID(instID)) {
 		t.Fatalf("instID=%s: tweak %v did not change its document", instID, tweak)
 	}
@@ -137,15 +107,7 @@ func synthRoundTrip(t *testing.T, instID string, tweak audio.RecipeParams) {
 	}
 }
 
-// TestSynthRoundtripByteIdentical_ModularPerStage tweaks one parameter on every
-// modular synth stage, exports → imports → re-renders, and asserts the audio is
-// byte-for-byte identical. One subtest per stage isolates which stage's
-// export/import path drifts if the suite fails.
-//
-// The stage matrix is the SHARED audio.ParityMatrix() — the same cases the
-// cross-platform desktop reference (cmd/export_audio) renders, so the Go
-// export/import suite and the browser parity suite exercise identical edits
-// (includes the combined "stage-ALL" case).
+// One subtest per stage, from the shared audio.ParityMatrix the cross-platform reference renders too.
 func TestSynthRoundtripByteIdentical_ModularPerStage(t *testing.T) {
 	withDefaultAudio(t)
 	for _, c := range audio.ParityMatrix() {
@@ -156,11 +118,7 @@ func TestSynthRoundtripByteIdentical_ModularPerStage(t *testing.T) {
 	}
 }
 
-// nudgeFirstEffective finds a single value of instID's document that can be
-// moved (surviving SetInstrumentParams' sanitize/clamp) and returns it as a
-// one-key tweak, or nil. Deriving the tweak from the instrument's OWN document
-// avoids the false-pass trap where a key the instrument has no module for is
-// silently skipped.
+// Derived from the instrument's own document, so a key it has no module for is never silently skipped.
 func nudgeFirstEffective(instID string) audio.RecipeParams {
 	owned := audio.GetInstrumentParams(instrument.ID(instID))
 	keys := make([]string, 0, len(owned))
@@ -174,8 +132,7 @@ func nudgeFirstEffective(instID string) audio.RecipeParams {
 		for _, cand := range []float64{base + 1, base - 1, base + 0.5, base - 0.5, base + 5} {
 			audio.SetInstrumentParams(instrument.ID(instID), audio.RecipeParams{k: cand})
 			if v, ok := audio.GetInstrumentParams(instrument.ID(instID))[k]; ok && math.Abs(v-base) > 1e-9 {
-				// Return the STORED (post-sanitize) value so the tweak is
-				// stable under a second SetInstrumentParams.
+				// The stored, post-sanitize value, stable under a second write.
 				return audio.RecipeParams{k: v}
 			}
 		}
@@ -183,10 +140,7 @@ func nudgeFirstEffective(instID string) audio.RecipeParams {
 	return nil
 }
 
-// TestSynthRoundtripByteIdentical_AllInstruments sweeps every registered
-// instrument with a document, nudges one of its values, and asserts the
-// export/import round-trip is byte-identical. This catches instrument-specific
-// export/import plumbing drift the modular-only per-stage cases would miss.
+// Catches per-instrument export/import drift the modular cases would miss.
 func TestSynthRoundtripByteIdentical_AllInstruments(t *testing.T) {
 	withDefaultAudio(t)
 	ids := audio.Instruments()

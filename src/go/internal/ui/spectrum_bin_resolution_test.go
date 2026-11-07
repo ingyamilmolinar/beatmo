@@ -7,28 +7,11 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// The Spectrum tab aggregates FFT bins into display bands. A band that
-// contains no bins is reported at the reference floor — indistinguishable
-// from silence — so the analyser's bin width has to be finer than the
-// NARROWEST display band, on every platform, at every sample rate the
-// product runs at.
-//
-// It was not. The browser bridge delivered 64 linear bins spanning
-// 0..Nyquist (375 Hz apart at 48 kHz) while the narrowest ISO band is 24 Hz
-// wide, so the four lowest bands — 20-355 Hz, where a kick lives — held no
-// bins whatsoever. The Spectrum tab rendered an empty plot for any
-// per-instrument channel in the browser; desktop, at 43 Hz per bin, was
-// correct throughout, so no Go test and no desktop screenshot could see it.
-// The one visible clue was that the lowest thing ever drawn sat near
-// 500 Hz: the 355-710 Hz band, the first one with a bin in it.
-//
-// Every fixture in the Go suite fed a spectrum that decays from bin 0, so
-// the mid and high bands always carried data and the hole at the bottom was
-// invisible. These tests feed a spectrum that is UNIFORMLY LOUD: any band
-// that comes back at the floor did so purely because of resolution.
+// A band holding no FFT bin reads as the floor, the same as silence, so the bin width must be finer than the
+// narrowest display band on every platform at every rate. The spectrum here is UNIFORMLY loud, so a floored band
+// can only be resolution.
 
-// shippedSpectrumShapes enumerates the (bin count, sample rate) pairs the
-// renderer is actually handed in production.
+// The shapes production actually hands the renderer.
 func shippedSpectrumShapes() []struct {
 	name string
 	bins int
@@ -50,8 +33,7 @@ func shippedSpectrumShapes() []struct {
 func TestSpectrumBinsCoverEveryDisplayBand(t *testing.T) {
 	for _, shape := range shippedSpectrumShapes() {
 		t.Run(shape.name, func(t *testing.T) {
-			// Uniformly loud: an unmeasured band is a resolution artefact,
-			// never a property of the signal.
+			// An unmeasured band is then a resolution artefact, never the signal.
 			spec := make([]float64, shape.bins)
 			for i := range spec {
 				spec[i] = 0.5
@@ -70,9 +52,7 @@ func TestSpectrumBinsCoverEveryDisplayBand(t *testing.T) {
 	}
 }
 
-// TestSpectrumBinWidthIsFinerThanTheNarrowestBand states the same invariant
-// as arithmetic rather than as a sampled result, so a future change to the
-// band table is checked too.
+// As arithmetic, so a change to the band table is checked too.
 func TestSpectrumBinWidthIsFinerThanTheNarrowestBand(t *testing.T) {
 	narrowest := isoBands[0][1] - isoBands[0][0]
 	for _, b := range isoBands {

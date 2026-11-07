@@ -2,14 +2,8 @@ package ui
 
 import "testing"
 
-// TestSynthFocusSceneSelectsIntendedControl — the crop_synth_focus_* scenes drive
-// synthTabFocusControlSetup, which walks the selected stage's knobs to select the
-// one whose ParamDef.Name matches the requested param so the focus graph shows
-// that knob's property-native domain. If the name isn't present in the stage,
-// the selection silently falls back to the section's main knob (still renders,
-// wrong domain). TestSceneCropSubjectsResolveToVisibleRect only checks the
-// Subject *bounds*, so it would pass a silent fallback. This pins the actual
-// selected knob for each focus scene (mirrors TestSynthChipSceneSelectsIntendedStage).
+// The focus scenes select their knob by ParamDef.Name and silently fall back to the main knob on a miss, which the
+// bounds test would pass; this pins the selected knob.
 func TestSynthFocusSceneSelectsIntendedControl(t *testing.T) {
 	cases := []struct{ scene, knob string }{
 		{"crop_synth_focus_filter", "filter_cutoff"},

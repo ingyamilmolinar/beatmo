@@ -9,8 +9,6 @@ import (
 	"testing"
 )
 
-// --- Phase 6: EQ Curve Drag Exclusive Tests ---
-
 func TestCurveDragExclusiveDesktop(t *testing.T) {
 	restore := noInputForTest()
 	defer restore()
@@ -462,12 +460,8 @@ func TestCurveAreaZIndex(t *testing.T) {
 		t.Fatal("eq-panel-capture catch-all not found")
 	}
 
-	// The full-panel curve overlay MUST sit strictly above the opaque catch-all,
-	// or the catch-all's InputConsumed swallows every handle press first (the
-	// "EQ/HP-LP handles don't respond" bug). The mute hit area in turn sits ABOVE
-	// the curve overlay AND above the dB readout (zIdx+3): in short panels the mute
-	// button's centre falls inside the taller dB readout cell, so the mute must win
-	// the overlap arbitration (zIdx+4) or the dB editor opens on a mute press.
+	// The curve overlay sits above the catch-all, which would swallow every handle press; the mute sits above the
+	// curve and the dB readout (zIdx+4), since in short panels its centre falls inside the readout.
 	if captureZ != 130 {
 		t.Errorf("expected catch-all z-index 130, got %d", captureZ)
 	}

@@ -22,9 +22,7 @@ func synthTabIndexForTest(t *testing.T) int {
 	return -1
 }
 
-// TestActiveInstrumentHasSynth verifies the per-row synth/WAV classifier that
-// gates the Synth tab selector: a recipe-backed instrument has synth controls;
-// a WAV sample (no bound recipe) does not.
+// A recipe-backed instrument has synth controls; a WAV sample does not.
 func TestActiveInstrumentHasSynth(t *testing.T) {
 	dv := newTestDrumViewWithRows(t, 3)
 	dv.eqPanelZone.SetActiveChannel(channel.Master) // resolve to first row instrument
@@ -43,15 +41,11 @@ func TestActiveInstrumentHasSynth(t *testing.T) {
 	}
 }
 
-// TestSynthTabPillDisabledForWavInstrument verifies the desktop Synth tab pill
-// is greyed/disabled when the active instrument is a WAV sample, and enabled
-// for a synth instrument.
 func TestSynthTabPillDisabledForWavInstrument(t *testing.T) {
 	dv := newTestDrumViewWithRows(t, 3)
 	idx := synthTabIndexForTest(t)
 
-	// Select the concrete instrument (not Master, which independently disables
-	// the pill) so this test isolates the WAV-vs-synth gating.
+	// Not Master, which disables the pill on its own.
 	dv.eqPanelZone.SetActiveChannel(channel.Of(dv.Rows[0].Instrument))
 	dv.eqPanelZone.Layout(dv.eqPanelZone.PanelRect())
 	if pill := dv.eqPanelZone.stickyBar.TabBtn(idx); pill == nil || pill.Disabled {
@@ -69,9 +63,7 @@ func TestSynthTabPillDisabledForWavInstrument(t *testing.T) {
 	}
 }
 
-// TestSegmentedControlDisabledSegmentIgnoresHitTest verifies a disabled segment
-// consumes the tap (so it does not fall through) but neither activates nor fires
-// the click handler, while other segments still work.
+// Consumes the tap, so nothing falls through, but neither activates nor clicks.
 func TestSegmentedControlDisabledSegmentIgnoresHitTest(t *testing.T) {
 	var clicked []int
 	sc := NewSegmentedControl([]string{"A", "B", "C"}, 0, func(i int) { clicked = append(clicked, i) })

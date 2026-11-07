@@ -34,8 +34,7 @@ func TestEQDBInput_CurveDragSyncsText(t *testing.T) {
 	r := image.Rect(0, 400, 600, 580)
 	_ = registerEQZone(z, r)
 
-	// Simulate curve drag on band 3: set gain directly. The readout derives
-	// live from bandGainsDB, so no text-sync step is needed.
+	// The readout derives live from bandGainsDB.
 	z.bandGainsDB[3] = 6.0
 
 	got := formatDB(z.bandGainsDB[3])
@@ -90,9 +89,7 @@ func TestEQDBInput_HitAreaRegistered(t *testing.T) {
 		for i := range eqCenterLabels {
 			if a.Tag == "eq-db-"+eqCenterLabels[i] {
 				found++
-				// dB inputs sit at zIdx+3 (133): above the full-panel curve
-				// overlay (zIdx+1) and the mute/HP-LP controls (zIdx+2), so a
-				// tap on a dB field wins over the curve drag overlay.
+				// Above the curve overlay and the mute/HP-LP controls, so a tap on a dB field wins.
 				if a.ZIndex != 133 {
 					t.Errorf("hit area %q z-index = %d, want 133", a.Tag, a.ZIndex)
 				}
@@ -104,11 +101,8 @@ func TestEQDBInput_HitAreaRegistered(t *testing.T) {
 	}
 }
 
-// TestEQDBInput_DirectBandGainsDBMutationSyncsTexts reproduces the import flow
-// where a circuit writes non-zero gains directly into the shared bandGainsDB
-// backing array, then calls setEQActiveChannel("main") (the "same master, no
-// channel change" branch). The dB readouts now derive live from bandGainsDB, so
-// the displayed values must reflect the written gains with no explicit sync.
+// Gains written straight into the shared array, as import does, show with no explicit sync: the readouts derive
+// live.
 func TestEQDBInput_DirectBandGainsDBMutationSyncsTexts(t *testing.T) {
 	assertDefaultParityState(t)
 	restore := noInputForTest()
@@ -130,14 +124,12 @@ func TestEQDBInput_DirectBandGainsDBMutationSyncsTexts(t *testing.T) {
 		}
 	}
 
-	// Simulate the import path: write non-zero gains directly into the
-	// zone's bandGainsDB via the shared backing array (import.go:178).
+	// As the import path writes them.
 	z.bandGainsDB[0] = 6.0
 	z.bandGainsDB[3] = -4.5
 	z.bandGainsDB[9] = 12.0
 
-	// Now call setEQActiveChannel("main") — same channel, no change.
-	// This is what import.go:203 does after writing the gains.
+	// The same channel, as import calls it.
 	g.drum.setEQActiveChannel(channel.Master)
 
 	// The readouts derive live from bandGainsDB, so they reflect the writes.

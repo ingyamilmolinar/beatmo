@@ -12,13 +12,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/soundview"
 )
 
-// TestNoDialEndSilencesItsInstrument: no dial position may turn an instrument
-// into silence. Drive 0 used to mute ten kicks and both sub-basses (their
-// saturation amount is the voice's gain: softsat(mixed * kSat)), Shimmer 0
-// the hi-hats and the ride (it drove the plate's whole level), Breath 0 the
-// whisper. The audibility contract could not see it — silence is as
-// "different" as a sound gets — so every end of every dial on every shipped
-// instrument is rendered through the played-voice path and must sound.
+// The audibility check cannot see silence (it is as different as a sound gets), so every end of every dial on
+// every shipped instrument is rendered through the played voice and must sound.
 func TestNoDialEndSilencesItsInstrument(t *testing.T) {
 	withPrivateInstrumentLibrary(t)
 	audio.ResetInstrumentDocs()

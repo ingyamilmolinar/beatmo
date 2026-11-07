@@ -11,12 +11,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestSynthTab_ControlTapViaTreeDispatch_Mobile verifies that on mobile the synth
-// knob hit-area is correctly registered (non-empty rect, reachable via the
-// tree dispatcher) and that a tap ARMS the control inline (Task 13: the
-// barrel/wheel popup was retired — Task 9 replaced tap→popup with tap→arm).
-// The old drag path is replaced by the armed editor on mobile; desktop drag
-// is tested separately.
+// Registered and reachable through the tree on mobile, and a tap arms the control inline.
 func TestSynthTab_ControlTapViaTreeDispatch_Mobile(t *testing.T) {
 	assertDefaultParityState(t)
 	restoreProfile := SetRuntimeProfileForTest(browserRuntimeProfile())
@@ -56,8 +51,7 @@ func TestSynthTab_ControlTapViaTreeDispatch_Mobile(t *testing.T) {
 	if decayIdx < 0 {
 		t.Fatal("no decay knob in mobile layout")
 	}
-	// Decay lives in ENVELOPE; open that stage so the knob gets a non-empty,
-	// hit-testable rect under the chip-strip + expand-one-detail-pane layout.
+	// Decay lives in ENVELOPE.
 	selectSectionForKnobIdx(t, g, roster.Snare, decayIdx)
 	g.Update()
 	k := g.drum.SynthTabControls()[decayIdx]
@@ -81,10 +75,7 @@ func TestSynthTab_ControlTapViaTreeDispatch_Mobile(t *testing.T) {
 	)
 	defer restoreInput()
 
-	// On mobile, a tap on the control cell ARMS it — but on RELEASE, not on the
-	// down frame. synthControlHitAdapter.OnPress captures the gesture
-	// (InputCaptured) so a vertical sweep can scroll instead of arming; a
-	// stationary tap arms it when the finger lifts.
+	// Armed on RELEASE: OnPress captures so a vertical sweep can scroll instead.
 	pressed = true
 	g.Update()
 	if _, armed := g.drum.synthControlArmed(roster.Snare); armed {

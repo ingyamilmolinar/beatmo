@@ -54,30 +54,14 @@ func sameVoices(a, b [][2]float64) bool {
 	return true
 }
 
-// TestLaneHeardEqualsLegacyDispatched is the lane's end-to-end oracle: two
-// identical games run the same seeded random edit script on one shared fake
-// audio clock — A through the LEGACY grid-time dispatch (captured at
-// audio.PlayBatch), B through the audio lane (fake sink). Over 20 s the notes
-// A dispatched must equal the notes B's sink actually played (committed and
-// not cancelled before their start), cell by cell, instrument / volume /
-// pitch exact.
-//
-// Excluded: notes whose grid time lies just before an edit — [edit − 100 ms,
-// edit + 20 ms]. There the two are DESIGNED to differ: legacy fixed those
-// notes before the edit (they were decided at grid time and sit in its
-// lookahead), the lane replaces every not-yet-started note. Everything else
-// must match exactly.
+// Two identical games on one fake clock, the same seeded edits: legacy dispatch vs the lane's sink must play
+// the same notes cell by cell. Notes in [edit − 100 ms, edit + 20 ms] differ by design: legacy fixed them
+// before the edit, the lane replaces every unstarted note.
 func TestLaneHeardEqualsLegacyDispatched(t *testing.T) {
 	restore := SetRuntimeProfileForTest(browserRuntimeProfile())
 	t.Cleanup(restore)
-	// The harness drives a FAKE audio clock (20 s) inside ~1 s of wall time,
-	// and Seek / BPM re-anchoring pair time.Now() with audio.Now(): the UI
-	// playhead and the timeline then disagree in a way the real app (two
-	// clocks advancing together) never sees. The legacy game alone trips
-	// parity after a seek with no lane involved. Parity is not this test's
-	// subject — dispatched audio is.
-	// Non-vacuity is judged over all seeds: random deletes / mutes can thin
-	// one seed's circuit down to a few dozen notes.
+	// 20 s of fake clock in ~1 s of wall time trips parity after a seek, which the real app never sees; parity is not
+	// the subject here. Non-vacuity is judged over all seeds.
 	total := 0
 	for seed := int64(1); seed <= 6; seed++ {
 		t.Run(fmt.Sprintf("seed%d", seed), func(t *testing.T) { total += runLaneOracle(t, seed) })
@@ -87,18 +71,8 @@ func TestLaneHeardEqualsLegacyDispatched(t *testing.T) {
 	}
 }
 
-// awaitAudioLoopDrained blocks until g's audioLoop goroutine has taken every
-// queued request off audioCh, then yields so it can finish the batch it holds.
-//
-// Under `go test` the sequencer runs synchronously inside Update(), but
-// audioLoop stays a goroutine on WALL time, while this harness advances a fake
-// audio clock ~10x faster than wall time. Unpaced, a loaded machine (the whole
-// `./...` suite, or GOMAXPROCS=1) let legacy A's audioLoop fall behind: the
-// next edit bumped the row's structural generation under notes still queued,
-// audioLoop dropped them as stale ("legacy: nothing"), and Stage C of the
-// timing gate panicked on an `overdue/absmax` lateness that exists only in the
-// harness. In the real app the two clocks advance together and audioLoop
-// drains within a frame, long before the next edit; this restores that.
+// audioLoop runs on wall time while the harness clock runs ~10× faster; unpaced, a loaded machine let it fall
+// behind and drop notes as stale. The real app drains within a frame; this restores that.
 func awaitAudioLoopDrained(t *testing.T, g *Game) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
@@ -113,9 +87,7 @@ func awaitAudioLoopDrained(t *testing.T, g *Game) {
 	}
 }
 
-// oracleKey identifies a note by row and GRID TIME (0.1 ms buckets), not by
-// abs: a seek restarts abs numbering, so the same abs names different
-// moments in different transport generations.
+// By grid time, not abs: a seek restarts abs numbering.
 func oracleKey(row int, grid float64) [2]int {
 	return [2]int{row, int(math.Round(grid * 1e4))}
 }
@@ -124,13 +96,8 @@ func runLaneOracle(t *testing.T, seed int64) int {
 	a := newLaneCircuitGame(t)
 	b := newLaneCircuitGame(t)
 	a.parityWatch, b.parityWatch = parityWatchLog, parityWatchLog // see TestLaneHeardEqualsLegacyDispatched
-	// A custom-logic node on both: its decision (gain + a position-dependent
-	// transpose) reaches the lane only through the predictor's recorded
-	// DecisionAt — the oracle must see it match legacy. Keyed on
-	// AbsoluteIndex, not TriggerCount: legacy keeps its OWN trigger counter
-	// (nodeLogicTriggerCountsByRow, never reset by a seek) while the lane
-	// follows the predictor's walk — the documented source of truth. No
-	// production writer sets Params.Logic (no UI / JSON / JS path).
+	// Its decision reaches the lane only through the predictor's DecisionAt. Keyed on AbsoluteIndex: legacy keeps
+	// its own trigger counter, never reset by a seek.
 	for _, g := range []*Game{a, b} {
 		n := g.nodeAt(6, 0)
 		if n == nil {

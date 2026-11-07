@@ -27,8 +27,7 @@ func pipePillFor(g *Game, id synthSectionID) (synthPipePill, bool) {
 	return synthPipePill{}, false
 }
 
-// The strip shows only ON stages, in pipeline order, and grows a "+" pill
-// while any stage is off.
+// Only ON stages, in pipeline order, plus a "+" while any stage is off.
 func TestPipelineStrip_SkipsOffStagesKeepsOrder(t *testing.T) {
 	g := newViolinMacroGame(t)
 	layoutSynthFor(t, g, channel.Of(roster.Violin))
@@ -72,9 +71,7 @@ func TestPipelineStrip_SkipsOffStagesKeepsOrder(t *testing.T) {
 	}
 }
 
-// A real tap on a stage pill (through Game.Update + the tree dispatcher)
-// drills into that stage; the drilled view lists the stage's knobs and the
-// strip is gone.
+// Through Game.Update and the tree dispatcher: the drilled view lists the stage's knobs and the strip is gone.
 func TestPipelineStrip_TapDrillsIntoStage(t *testing.T) {
 	g := newViolinMacroGame(t)
 	layoutSynthFor(t, g, channel.Of(roster.Violin))

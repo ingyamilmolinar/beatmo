@@ -8,9 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// The developer view picker (spec 2026-10-24 §4.6): tapping the graph's title
-// cycles the focused control through every view, the legacy picture
-// included; the production UI has no picker at all.
+// Tapping the title cycles every view; production has no picker.
 func TestDeveloperViewPickerCyclesTheFocusedControlsView(t *testing.T) {
 	if !devToolsBuild {
 		t.Skip("release build")

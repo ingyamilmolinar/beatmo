@@ -10,17 +10,13 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// labeledBarrelBinding labels each detent offset distinctly ("L-1", "L0", "L1", …)
-// so a render test can tell exactly which row landed where. It never clamps, so
-// every VisibleRows slot draws.
+// Distinct labels per offset, so a test can tell which row landed where; never clamps.
 type labeledBarrelBinding struct{}
 
 func (labeledBarrelBinding) labelAt(offset int) string { return "L" + strconv.Itoa(offset) }
 func (labeledBarrelBinding) stepBy(int) bool           { return true }
 func (labeledBarrelBinding) canStep(int) bool          { return true }
 
-// drawFakeLaneLabelYs renders one lane of labeledBarrelBinding and returns the draw
-// Y of every label keyed by its text.
 func drawFakeLaneLabelYs(t *testing.T, w *BarrelWheel, rect image.Rectangle) map[string]int {
 	t.Helper()
 	ys := map[string]int{}
@@ -35,10 +31,7 @@ func drawFakeLaneLabelYs(t *testing.T, w *BarrelWheel, rect image.Rectangle) map
 	return ys
 }
 
-// TestBarrelLaneDrawsLargerValuesAbove pins the wheel's orientation: labelAt(+1)
-// is the LARGER value (and the coarser resolution rung), and it must render
-// ABOVE the center label, with labelAt(-1) below it. Fails if drawBarrelLane
-// goes back to placing row i at centerY + i*rowH.
+// labelAt(+1) is the larger value and renders ABOVE centre, labelAt(-1) below.
 func TestBarrelLaneDrawsLargerValuesAbove(t *testing.T) {
 	w := NewBarrelWheel()
 	w.Bind(labeledBarrelBinding{}, 26)
@@ -57,10 +50,7 @@ func TestBarrelLaneDrawsLargerValuesAbove(t *testing.T) {
 	}
 }
 
-// TestBarrelLaneStackFollowsPointer pins the gesture contract: a downward drag
-// accumulates a POSITIVE offsetPx (BarrelWheel.DragTo adds the raw pointer dy),
-// and the label stack must translate DOWN by that same amount — the wheel moves
-// with the finger. Fails if drawBarrelLane subtracts the offset.
+// A downward drag accumulates a positive offset and the stack moves down with the finger.
 func TestBarrelLaneStackFollowsPointer(t *testing.T) {
 	rect := image.Rect(0, 0, 120, 200)
 

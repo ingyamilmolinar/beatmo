@@ -16,8 +16,7 @@ import (
 // laneClocks maps a lane test game to the fake audio clock installed for it.
 var laneClocks sync.Map // *Game → *float64
 
-// laneClockMu guards writes to a Game lane test clock against the engine
-// goroutines (audioLoop, sequencerLoop) reading it through audio.Now.
+// audioLoop and sequencerLoop read the clock through audio.Now.
 var laneClockMu sync.RWMutex
 
 // advanceLaneClock moves a Game lane test clock forward by d seconds.
@@ -33,12 +32,8 @@ func laneTestNow(g *Game) *float64 {
 	return v.(*float64)
 }
 
-// newLaneCircuitGame builds one looping row of 8 regular nodes, playing:
-//
-//	n2: pitch +3, volume 0.5     n3: MUTE node
-//	n5: probability 0.5 (deterministic roll)
-//
-// with a fake audio clock (laneTestNow) starting at 1.0 s.
+// 8 looping nodes: n2 pitch +3 volume 0.5, n3 a mute node, n5 probability 0.5 (deterministic roll); fake clock
+// from 1.0 s.
 func newLaneCircuitGame(t *testing.T) *Game {
 	t.Helper()
 	g := buildTestGame(t)
@@ -78,9 +73,7 @@ func newLaneCircuitGame(t *testing.T) *Game {
 	return g
 }
 
-// captureLegacyDispatch steps the LEGACY sequencer beat by beat through the
-// real scheduleSound → audioCh → audioLoop → audio.PlayBatch path and
-// reports every sequencer note it dispatched with its full parameters.
+// Through the real scheduleSound → audioCh → audioLoop → audio.PlayBatch path.
 func captureLegacyDispatch(t *testing.T, g *Game, steps int, fn func(row, abs int, inst string, vol, pitch float64)) {
 	t.Helper()
 	var mu sync.Mutex
@@ -118,10 +111,8 @@ func captureLegacyDispatch(t *testing.T, g *Game, steps int, fn func(row, abs in
 	}
 }
 
-// laneNoteAt (the audio lane's PURE note function) must agree with what the
-// legacy stateful sequencer actually dispatches: same cells sound, same
-// instrument, volume and pitch — including a mute node, a probability node
-// and per-node params.
+// The pure note function agrees with what the stateful legacy sequencer dispatches: cells, instrument, volume,
+// pitch, mute and probability nodes included.
 func TestLaneNoteAtMatchesLegacyDispatch(t *testing.T) {
 	g := newLaneCircuitGame(t)
 	type got struct {

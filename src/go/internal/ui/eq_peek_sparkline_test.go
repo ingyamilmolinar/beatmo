@@ -9,8 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// newEQPanelZoneForTest constructs an EQPanelZone with empty callbacks for
-// unit tests. The returned zone has flat (0 dB) band gains.
+// Flat (0 dB) band gains.
 func newEQPanelZoneForTest(t *testing.T) *EQPanelZone {
 	t.Helper()
 	return NewEQPanelZone(EQCallbacks{})
@@ -49,12 +48,7 @@ func TestEQPanel_SampleCurveTracksGains(t *testing.T) {
 	}
 }
 
-// TestEQPeek_AlwaysEmptyOnMobile asserts the post-2026-05-10 unified-layout
-// invariant: the EQ peek strip is NEVER allocated. The historical 24-px
-// sparkline-above-the-bar surface rendered as a black band on default boot
-// and the bottom segmented control's "EQ" tab already provides the same
-// expand-EQ affordance, so the peek was retired. Mobile-collapsed,
-// mobile-expanded, and desktop layouts must all leave eqPeekRect empty.
+// Never allocated on any layout: at a flat 0 dB it read as a black band, and the "EQ" tab offers the same thing.
 func TestEQPeek_AlwaysEmptyOnMobile(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)

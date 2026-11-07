@@ -11,15 +11,10 @@ import (
 	"testing"
 )
 
-// The Synth tab draws ONLY rendered audio (spec 2026-10-24 §4.8, reinstated by
-// the user 2026-10-25: "remove the old graphs"). The old graphs modelled the
-// voice in pure Go (audio.RenderInstrumentPreview — it ignored every drum
-// knob), drew concept schematics per param group, swept a playhead whose
-// position was a guess, and thumbnailed every card and pipeline stage. These
-// guards keep them from coming back.
+// The Synth tab draws ONLY rendered audio (user: "remove the old graphs"); these keep the modelled voice, the
+// concept schematics, the guessed playhead and the thumbnails from returning.
 
-// oldGraphIdents are the names of the deleted model and its renderers. Any
-// production identifier spelled like one is the old graph returning.
+// A production identifier spelled like one is the old graph returning.
 var oldGraphIdents = map[string]string{
 	"RenderInstrumentPreview":              "the pure-Go voice model",
 	"RenderInstrumentPreviewWithOverrides": "the pure-Go voice model",
@@ -41,9 +36,7 @@ var oldGraphIdents = map[string]string{
 	"drawSynthFocusGraph":                  "the concept focus graph",
 }
 
-// oldGraphIdentPrefixes catch a whole family: the concept renderers
-// (conceptOsc, conceptDrawFilledCurve, …). The prefix must be followed by an
-// upper-case letter: a bare `concept` is the macro cards' word for a category.
+// Followed by an upper-case letter: a bare `concept` is the cards' word for a category.
 var oldGraphIdentPrefixes = map[string]string{
 	"concept": "a concept renderer",
 }
@@ -104,9 +97,7 @@ func TestOldSynthGraphsAreGone(t *testing.T) {
 	}
 }
 
-// graphAudioAllowed is every audio.* name a Synth graph file may use: the one
-// render entry point and the document / param reads that name what to render.
-// Anything else from package audio is a second source of sound.
+// The one render entry point plus the reads that name what to render; anything else is a second source of sound.
 var graphAudioAllowed = map[string]bool{
 	"RenderDocForGraph":        true, // the only PCM source
 	"GraphRenderKey":           true, // its cache key

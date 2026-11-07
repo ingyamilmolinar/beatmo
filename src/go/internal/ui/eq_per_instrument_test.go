@@ -15,8 +15,7 @@ import (
 func TestEQSliderLinearMapping(t *testing.T) {
 	assertDefaultParityState(t)
 
-	// Test the standard linear slider-to-gain mapping:
-	// 0% = -12 dB, 50% = 0 dB (unity), 100% = +12 dB
+	// 0% = -12 dB, 50% = 0 dB, 100% = +12 dB.
 	tests := []struct {
 		slider  float64
 		minGain float64
@@ -278,8 +277,6 @@ func TestEQChannelMenuBuild(t *testing.T) {
 		t.Errorf("expected 4 total channel items (Master + 3 rows), got %d", scroll.VS.Total)
 	}
 
-	// Portal should be open (the EQ channel dropdown lives in the isolated
-	// audio-panel subtree's portal).
 	if !g.drum.portal().Has("eq-channel-dropdown") {
 		t.Error("expected eq-channel-dropdown portal to be open")
 	}
@@ -348,9 +345,7 @@ func TestEQChannelDropdownButtonsAreVisible(t *testing.T) {
 	}
 }
 
-// TestEQChannelDropdownOpensAndSelects tests that clicking the EQ channel button
-// opens the dropdown, and clicking an option selects it and closes the menu.
-// Uses DrumView.Update() directly.
+// Through DrumView.Update.
 func TestEQChannelDropdownOpensAndSelects(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -406,8 +401,7 @@ func TestEQChannelDropdownOpensAndSelects(t *testing.T) {
 	dv.Update()
 	restore()
 
-	// Click the second item (first instrument row - "Kick").
-	// Portal buttons are positioned at anchor.Max.Y + i*btnH.
+	// Item 2 is the first row; items sit at anchor.Max.Y + i·btnH.
 	anchor := dv.eqChannelBtn().Rect()
 	btnH := 24 // dropdown button height
 	rx := (anchor.Min.X + anchor.Max.X) / 2
@@ -447,8 +441,7 @@ func TestEQChannelDropdownOpensAndSelects(t *testing.T) {
 	}
 }
 
-// TestEQChannelDropdownViaGameUpdate tests the dropdown using the full Game.Update() flow,
-// similar to how TestGameSubdivDropdownAppliesGrid tests the subdiv dropdown.
+// Through the full Game.Update flow.
 func TestEQChannelDropdownViaGameUpdate(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -502,8 +495,7 @@ func TestEQChannelDropdownViaGameUpdate(t *testing.T) {
 		t.Fatalf("EQ channel menu did not open via Game.Update()")
 	}
 
-	// Click the second item (first instrument row - "Kick").
-	// Portal buttons are positioned at anchor.Max.Y + i*btnH.
+	// Item 2 is the first row; items sit at anchor.Max.Y + i·btnH.
 	anchor := dv.eqChannelBtn().Rect()
 	btnH := 24 // dropdown button height
 	rx := (anchor.Min.X + anchor.Max.X) / 2
@@ -543,9 +535,7 @@ func TestEQChannelDropdownViaGameUpdate(t *testing.T) {
 	}
 }
 
-// TestEQChannelDropdownBlocksLayoutHandler verifies that when the EQ channel
-// dropdown is open, Capturing() and BlocksAt() return true to prevent the
-// layout handler from consuming input and causing flickering.
+// So the layout handler cannot consume input and flicker the menu.
 func TestEQChannelDropdownBlocksLayoutHandler(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -577,9 +567,7 @@ func TestEQChannelDropdownBlocksLayoutHandler(t *testing.T) {
 	dv.CloseAllPopups()
 }
 
-// TestEQChannelDropdownNoFlickerOnClick simulates the click flow that was
-// causing flickering: open menu, then verify it stays open for multiple
-// Update() calls while mouse is held down.
+// The menu stays open across Update frames with the button held.
 func TestEQChannelDropdownNoFlickerOnClick(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -613,16 +601,12 @@ func TestEQChannelDropdownNoFlickerOnClick(t *testing.T) {
 	)
 	dv.Update()
 
-	// Check either legacy dv.IsEQChannelOpen() or zone-based channelOpen (Phase 6 portal path).
 	eqChOpen := dv.IsEQChannelOpen() || (dv.eqPanelZone != nil && dv.eqPanelZone.ChannelDropdownOpen())
 	if !eqChOpen {
 		restore()
 		t.Fatalf("EQ channel menu did not open on first Update()")
 	}
 
-	// Run several more Update() cycles with mouse still pressed - menu should stay open
-	// This is the key test: before the fix, layoutHandler.Update() would run and
-	// interfere, potentially closing the menu or causing flicker
 	for i := 0; i < 5; i++ {
 		dv.Update()
 		eqChOpen = dv.IsEQChannelOpen() || (dv.eqPanelZone != nil && dv.eqPanelZone.ChannelDropdownOpen())
@@ -656,8 +640,7 @@ func TestEQChannelDropdownNoFlickerOnClick(t *testing.T) {
 func TestEQBandMuteProducesSilence(t *testing.T) {
 	assertDefaultParityState(t)
 
-	// This test verifies that when a band is muted, the Muted flag is
-	// properly propagated to the audio.EQBand slice.
+	// The Muted flag reaches the audio.EQBand slice.
 
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -807,8 +790,7 @@ func TestPerInstrumentEQBandMute(t *testing.T) {
 	}
 }
 
-// TestEQBandMuteButtonSingleClickToggle verifies that clicking an EQ mute button
-// toggles the mute state exactly once, not per-frame while held.
+// Once, not per held frame.
 func TestEQBandMuteButtonSingleClickToggle(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -840,8 +822,7 @@ func TestEQBandMuteButtonSingleClickToggle(t *testing.T) {
 		t.Fatal("EQ mute button OnClick callback is nil - this is the bug we're fixing")
 	}
 
-	// Simulate clicking the first EQ mute button by calling toggleEQBandMute
-	// (this is what the OnClick callback does)
+	// What OnClick does.
 	dv.toggleEQBandMute(0)
 
 	// Verify mute toggled ON
@@ -858,8 +839,7 @@ func TestEQBandMuteButtonSingleClickToggle(t *testing.T) {
 	}
 }
 
-// TestEQBandMuteHoldNoMultipleToggles verifies that holding the mute button
-// for many frames only toggles once, not per-frame (regression test for the bug).
+// Many held frames toggle once.
 func TestEQBandMuteHoldNoMultipleToggles(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -914,8 +894,7 @@ func TestEQBandMuteHoldNoMultipleToggles(t *testing.T) {
 	}
 	restore()
 
-	// After many frames of holding, the mute should have toggled exactly once
-	// (not 10 times, which would leave it unmuted if it started unmuted)
+	// Exactly once, or an even count would leave it unmuted.
 	if !dv.eqBandMuted()[0] {
 		t.Error("band 0 should be muted after holding button (single toggle, not per-frame)")
 	}
@@ -938,8 +917,6 @@ func TestEQBandMuteHoldNoMultipleToggles(t *testing.T) {
 	}
 }
 
-// TestEQBandMuteUnmutePreservesGain verifies that gain value is preserved
-// through a mute/unmute cycle.
 func TestEQBandMuteUnmutePreservesGain(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -998,8 +975,6 @@ func TestEQBandMuteUnmutePreservesGain(t *testing.T) {
 	}
 }
 
-// TestPerInstrumentEQBandMuteToggle tests the toggleEQBandMute method
-// for per-instrument EQ channels.
 func TestPerInstrumentEQBandMuteToggle(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -1009,8 +984,7 @@ func TestPerInstrumentEQBandMuteToggle(t *testing.T) {
 
 	dv := g.drum
 
-	// Add a row with a UNIQUE instrument (different from existing rows)
-	// The first row already has "snare" as its instrument, so we use "hihat"
+	// Unique: the first row already plays "snare".
 	dv.AddRow()
 	dv.Rows[1].Instrument = roster.Hihat
 	dv.Rows[1].Name = "HiHat"
@@ -1053,10 +1027,7 @@ func TestPerInstrumentEQBandMuteToggle(t *testing.T) {
 	}
 }
 
-// TestEQMuteButtonStateSyncsOnChannelSwitch verifies that when switching EQ channels
-// (Master ↔ per-instrument), the mute button state is synced to reflect the new
-// channel's mute state. This is a regression test for the bug where sliders were
-// correctly synced but mute buttons showed stale state from the previous channel.
+// The mute buttons follow the new channel, as the sliders do.
 func TestEQMuteButtonStateSyncsOnChannelSwitch(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -1135,11 +1106,7 @@ func TestEQMuteButtonStateSyncsOnChannelSwitch(t *testing.T) {
 	}
 }
 
-// TestEQ_MutePressWinsOverDBReadoutOverlap presses INSIDE the short-panel
-// overlap region where a mute button's centre falls inside the taller dB
-// readout cell, and asserts the dispatcher routes the press to the mute toggle
-// (zIdx+4) rather than the dB editor (zIdx+3). Regression for the eqDBOpenAdapter
-// stealing mute presses.
+// Inside the short-panel overlap the mute (zIdx+4) wins over the dB editor (zIdx+3).
 func TestEQ_MutePressWinsOverDBReadoutOverlap(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -1154,8 +1121,7 @@ func TestEQ_MutePressWinsOverDBReadoutOverlap(t *testing.T) {
 	if z == nil {
 		t.Fatal("eqPanelZone nil")
 	}
-	// Find a band whose mute rect centre falls inside its dB readout rect
-	// (the short-panel overlap that makes arbitration matter).
+	// A band whose mute centre falls inside its dB readout.
 	band := -1
 	var cx, cy int
 	btns := dv.eqMuteBtns()

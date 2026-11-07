@@ -1,9 +1,6 @@
 package ui
 
-// Shared helpers for the synth-tab tests. Deliberately UNTAGGED
-// (no //go:build test) because both the fast-path (-tags test) suite and the
-// untagged real-Ebiten test files (synth_modular_toggle_test.go,
-// synth_disabled_stage_interactivity_test.go, …) use them.
+// Untagged: both the -tags test and the real-build synth tests use them.
 
 import (
 	"testing"
@@ -13,11 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// layoutSynthTab switches the EQ panel to TabSynth and forces a layout pass.
-// When the tab is at its ROOT (category cards + pipeline strip) it drills into
-// the default stage — the first knobbed section whose stage is on — so the
-// stage-semantics tests find laid-out controls, exactly as the pre-category
-// layout opened its default stage. Root-specific tests use their own helpers.
+// At the root it drills into the first knobbed, enabled stage, so stage tests find laid-out controls.
 func layoutSynthTab(t *testing.T, g *Game) {
 	t.Helper()
 	dv := g.drum
@@ -33,8 +26,7 @@ func layoutSynthTab(t *testing.T, g *Game) {
 	}
 }
 
-// defaultStageFor picks the stage a fresh drill lands on: the first section in
-// pipeline order that has knobs AND is enabled; else the first knobbed section.
+// The first knobbed, enabled section in pipeline order, else the first knobbed one.
 func defaultStageFor(dv *DrumView, inst string) (synthSectionID, bool) {
 	fallback := synthSectionID(-1)
 	for i := range dv.instEditorSections {
@@ -55,8 +47,7 @@ func defaultStageFor(dv *DrumView, inst string) (synthSectionID, bool) {
 	return -1, false
 }
 
-// newModularSynthTabGame is newSynthTabGame with the row bound to the modular
-// voice (synth-modular prunes VOICE, so its first knobbed section is OSC).
+// The modular voice prunes VOICE, so its first knobbed section is OSC.
 func newModularSynthTabGame(t *testing.T) *Game {
 	t.Helper()
 	g := newSynthTabGame(t)

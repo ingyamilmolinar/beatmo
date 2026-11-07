@@ -24,16 +24,8 @@ func waitPrewarmIdle(t *testing.T, g *Game) {
 	t.Fatalf("prewarm pool never went idle: %+v", g.voicePrewarmer.pool.Stats())
 }
 
-// A dial turned on a playing melodic row must reach the NEXT trigger at every
-// note the row plays, through the real prewarm pool and the real dispatch path
-// (which serves a stale cached voice rather than render on the audio
-// goroutine). Turned at a real frame rate, then left to settle: once the pool
-// has caught up, not one note may still play an older sound.
-//
-// Before the fix a detent wrote its params one at a time and published a
-// half-applied document per param; the prewarm queue filled with renders of
-// sounds nobody would hear and dropped the final one, so the row kept playing
-// stale voices — the dial "did nothing" while the music played.
+// A dial turned on a playing melodic row reaches the next trigger of every note it plays, through the real prewarm
+// pool and dispatch; once settled, no note plays an older sound.
 func TestSynthDialTurnReachesEveryPlayedNote(t *testing.T) {
 	g, inst := openMelodicSynthRoot(t)
 	dv := g.drum

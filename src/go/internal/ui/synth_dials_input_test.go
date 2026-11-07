@@ -16,11 +16,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/synthdial"
 )
 
-// Macro dials through REAL input (SetInputForTest + Game.Update): a drag sets
-// the AUDIO LAYER to exactly Turn(start, target) live and commits once; a tap
-// opens the value wheel; a tap on the card body still drills; and a dial's
-// reading is a pure function of the document. Specs: 2026-10-09 §5.3,
-// 2026-10-13 §6.4.
+// Through real input: a drag sets the audio layer to exactly Turn(start, target) and commits once, a tap opens the
+// wheel, a tap on the card body drills, and the reading is a pure function of the document.
 
 // newDialGame is the violin macro game with the Synth tab open at the root.
 func newDialGame(t *testing.T) *Game {
@@ -79,8 +76,7 @@ func cardRect(t *testing.T, g *Game, card string) image.Rectangle {
 	return image.Rectangle{}
 }
 
-// frameAt runs one Game.Update with the pointer at (x, y), button down or up,
-// and the given keys held.
+// With the given keys held.
 func frameAt(g *Game, x, y int, down bool, keys ...ebiten.Key) {
 	restore := SetInputForTest(
 		func() (int, int) { return x, y },
@@ -131,15 +127,13 @@ func centre(r image.Rectangle) image.Point {
 	return image.Pt(r.Min.X+r.Dx()/2, r.Min.Y+r.Dy()/2)
 }
 
-// keyTap delivers one key press edge through the real shortcut path (claimant
-// dispatch, Esc/Enter portal handlers), then a frame.
+// Through the real shortcut path, then a frame.
 func keyTap(g *Game, k ebiten.Key) {
 	pressKeyThroughShortcuts(g, k)
 	idleFrame(g)
 }
 
-// dialSlotReading is the reading the root SHOWS for card/dial (the laid-out
-// slot, refreshed by the frame that just ran).
+// The laid-out slot the frame just refreshed.
 func dialSlotReading(t *testing.T, g *Game, card, dial string) int {
 	t.Helper()
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
@@ -172,9 +166,7 @@ func dialStart(g *Game, d synthdial.Resolved) map[string]float64 {
 	return out
 }
 
-// A drag sets the AUDIO LAYER to exactly Turn(start, target) — target being the
-// press-time reading plus the drag travel — records ONE undo step for the
-// whole gesture, never drills and never auditions.
+// Target = press reading + drag travel; ONE undo step, never a drill or an audition.
 func TestSynthDialDragAppliesTurnExactlyAndCommitsOnce(t *testing.T) {
 	g := newDialGame(t)
 	dv := g.drum
@@ -215,9 +207,7 @@ func TestSynthDialDragAppliesTurnExactlyAndCommitsOnce(t *testing.T) {
 	}
 }
 
-// Dragging away and back to the press point inside ONE gesture writes the
-// start values back bit for bit and records nothing (the magnet at the
-// press-time reading).
+// The press-reading magnet writes the start values back bit for bit and records nothing.
 func TestSynthDialDragBackRestoresExactly(t *testing.T) {
 	g := newDialGame(t)
 	inst := dialInst(g)
@@ -246,10 +236,8 @@ func TestSynthDialDragBackRestoresExactly(t *testing.T) {
 	}
 }
 
-// A tap opens the shared value wheel (still at the root); arrows move the
-// reading; Esc restores the opening values verbatim and records nothing; Enter
-// after a change commits one step. A tap on the card body (off its dials)
-// drills.
+// Arrows move the reading, Esc restores verbatim with no record, Enter after a change commits once; a tap off the
+// dials drills.
 func TestSynthDialTapOpensTheWheelAndCardTapDrills(t *testing.T) {
 	g := newDialGame(t)
 	dv := g.drum
@@ -296,8 +284,7 @@ func TestSynthDialTapOpensTheWheelAndCardTapDrills(t *testing.T) {
 	}
 }
 
-// A raw knob edit moves the dial: its reading is the projection of the new
-// values, not a remembered position.
+// The reading projects the new values; nothing is remembered.
 func TestRawKnobEditMovesTheReading(t *testing.T) {
 	g := newDialGame(t)
 	inst := dialInst(g)
@@ -311,10 +298,7 @@ func TestRawKnobEditMovesTheReading(t *testing.T) {
 	}
 }
 
-// The headline guarantee: a dial's reading is a pure function of the
-// document. Turn three dials, then (b) undo + redo, (c) leaving the Synth tab
-// and coming back, (a) a fresh Game importing the export — every reading is
-// identical, because there is nothing else it could depend on.
+// Undo + redo, leaving and returning to the tab, and a fresh Game importing the export all show the same readings.
 func TestSynthDialReadingIsAFunctionOfTheDocument(t *testing.T) {
 	g := newDialGame(t)
 	inst := dialInst(g)
@@ -354,9 +338,7 @@ func TestSynthDialReadingIsAFunctionOfTheDocument(t *testing.T) {
 		t.Fatalf("after leaving and reopening the tab the dials read %v, want %v", got, want)
 	}
 
-	// (a) a fresh Game on a clean instrument store — LAST: the instrument
-	// store is process-global, so the second Game resets what the first one
-	// plays.
+	// Last: the instrument store is process-global, so the second Game resets what the first plays.
 	audio.ResetInstrumentParams(instrument.ID(inst))
 	g2 := newDialGame(t)
 	if err := g2.Import(file); err != nil {
@@ -369,8 +351,7 @@ func TestSynthDialReadingIsAFunctionOfTheDocument(t *testing.T) {
 	}
 }
 
-// A dial already at the end being turned to moves nothing: violin Drive reads
-// 0 (clean), so a drag DOWN writes nothing and records no undo step.
+// Violin Drive reads 0, so dragging down writes and records nothing.
 func TestDialAtItsEdgeCommitsNothing(t *testing.T) {
 	g := newDialGame(t)
 	inst := dialInst(g)
@@ -397,9 +378,7 @@ func TestDialAtItsEdgeCommitsNothing(t *testing.T) {
 	}
 }
 
-// While a drag is live the card's dial row does not change, even when the
-// turn flips another dial's liveness: Length up past the voice's length hides
-// Hold (its sustain never sounds), which must wait for the release.
+// Length past the voice hides Hold, which must wait for the release.
 func TestDialRowFrozenDuringGesture(t *testing.T) {
 	inst := ""
 	for _, id := range roster.All {
@@ -450,12 +429,8 @@ func TestDialRowFrozenDuringGesture(t *testing.T) {
 	}
 }
 
-// A drag cancelled by Esc (or anything else that drops the input capture
-// without a release) cancels the dial gesture: the start values come back,
-// nothing is committed, the dial row is no longer frozen, and switching
-// instruments shows the right cards. (Before: the freeze stuck, the violin
-// root showed the kick's cards, and the half-turned values stayed live,
-// uncommitted and not undoable.)
+// Esc (or any capture dropped without a release) cancels: start values back, nothing committed, the row unfrozen,
+// and another instrument shows its own cards.
 func TestEscMidDragCancelsTheDialGesture(t *testing.T) {
 	g := newDialGame(t)
 	dv := g.drum

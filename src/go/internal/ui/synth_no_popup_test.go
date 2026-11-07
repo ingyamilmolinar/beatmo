@@ -4,12 +4,7 @@ package ui
 
 import "testing"
 
-// TestSynthTapDoesNotOpenWheelPopup guards Task 13: the synth barrel/wheel
-// popup was retired from the synth control path (Task 9 replaced tap→popup
-// with tap→arm). A tap-then-release on a synth control must ARM it inline,
-// never open a modal wheel popup. The synthWheelPopup field itself no longer
-// exists on DrumView — its removal is the strongest form of this guarantee —
-// so this test only needs to assert the arm side of the contract.
+// A tap arms the control inline; the synth wheel popup no longer exists.
 func TestSynthTapDoesNotOpenWheelPopup(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	dv := g.drum

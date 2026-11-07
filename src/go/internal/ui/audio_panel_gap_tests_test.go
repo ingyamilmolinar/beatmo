@@ -12,12 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestSynthMobileHeaderRelocatedAtAllDensities — Approach B: on mobile the
-// in-panel synth header (identity banner + Preview/Save/Save As/Reset action
-// row) is gone at EVERY density; the actions live on the sticky bar. This
-// guards against a regression that re-introduces the in-panel header. The
-// positive assertion (the [Preview][Save][⋯] cluster on the sticky bar) lives
-// in TestSynthMobileActionsOnStickyBar.
+// The in-panel header is gone at every density on mobile; its actions live on the sticky bar.
 func TestSynthMobileHeaderRelocatedAtAllDensities(t *testing.T) {
 	for _, d := range []Density{DensityCompact, DensityComfortable, DensitySpacious} {
 		restoreDensity := SetDensityForTest(d)
@@ -41,12 +36,8 @@ func TestSynthMobileHeaderRelocatedAtAllDensities(t *testing.T) {
 	}
 }
 
-// TestChainModeSegmentedOnMobile — Chain-tab redesign: on ScreenMobile
-// (LayoutProfile.ChainModeSegmented=true) the three OVR/SPL/DIF modes render
-// as an always-visible contiguous segmented control on their own row, not a
-// hidden dropdown chip. All three pills must have non-empty touch-min rects,
-// be contiguous (no inter-pill gap), sit outside the trace area, and each
-// have a hit area.
+// On mobile the three modes are an always-visible contiguous segmented row: touch-min, no gaps, outside the
+// trace, each with a hit area.
 func TestChainModeSegmentedOnMobile(t *testing.T) {
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false })
@@ -106,19 +97,13 @@ func TestChainModeSegmentedOnMobile(t *testing.T) {
 	}
 }
 
-// TestLevelsReadoutTooltipSurfacesValues — the long-press tooltip on
-// the Levels icon-row must surface the formatted aggregate value
-// (e.g. "Headroom: 7.3 dB"). Phase 4 audio-panel redesign: pre-Phase-4
-// the icon-row was three text glyphs with no tooltip — long press did
-// nothing. Now HandleLevelsAggregateLongPress resolves the slot at
-// (x, y) and opens a TooltipOverlay with the prose label.
+// A long press on the icon row opens a tooltip with the formatted value ("Headroom: 7.3 dB").
 func TestLevelsReadoutTooltipSurfacesValues(t *testing.T) {
 	z, _ := newTestEQPanelZone(nil)
 	tree := registerEQZone(z, image.Rect(0, 0, 360, 200))
 	z.tabState.SetActiveTab(TabMeters)
 
-	// Inject a synthetic analyzer state with a known master peak and a
-	// loudest channel so the formatted strings are deterministic.
+	// Known values, so the strings are deterministic.
 	state := &analyzer.State{
 		Master: analyzer.ChannelMetrics{PeakDB: -7.3, ClipCount: 12},
 		Instruments: []analyzer.InstrumentMetrics{
@@ -126,10 +111,8 @@ func TestLevelsReadoutTooltipSurfacesValues(t *testing.T) {
 			{ID: channel.Of(roster.Snare), Name: "Snare", PeakDB: -10},
 		},
 	}
-	// Force the icon-row cascade by setting up rects directly — the
-	// width threshold for icon-row mode is computed from density values
-	// so a synthetic snapshot is cleaner than trying to lay out a real
-	// panel at the exact pixel width.
+	// Set directly: the icon-row threshold derives from density, so laying out a real panel at that exact width is
+	// fragile.
 	r := image.Rect(0, 0, 40, 120)
 	z.levelsHeadroomRect, z.levelsClipsRect, z.levelsLoudestRect = levelsAggregateIconRects(r)
 	z.levelsAggSnapshot = levelsAggregatesValues(state, nil, nil)
@@ -173,9 +156,7 @@ func TestLevelsReadoutTooltipSurfacesValues(t *testing.T) {
 	}
 }
 
-// TestDBInputMeetsTouchMinAtSpacious — Phase 5 EQ touch-min: at Spacious
-// density the per-band dB readout/input row must meet MinTarget (it's a
-// tap-to-edit target on mobile, alongside drag-to-slide on the curve).
+// A tap-to-edit target on mobile.
 func TestDBInputMeetsTouchMinAtSpacious(t *testing.T) {
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false })
@@ -200,11 +181,7 @@ func TestDBInputMeetsTouchMinAtSpacious(t *testing.T) {
 	}
 }
 
-// TestEqMuteButtonHitAreaAtComfortablePlus — Phase 5 EQ touch-min: at
-// Comfortable density the mute button hit area must meet BtnHeightMD²;
-// at Spacious the floor rises to BtnHeightLG² (MinTarget²). Mute is
-// a destructive operation in the user's mental model ("did I bypass
-// that band?") — losing it to a sub-thumb hit area is a real bug.
+// BtnHeightMD² at Comfortable, MinTarget² at Spacious: missing a band bypass to a sub-thumb target is a real bug.
 func TestEqMuteButtonHitAreaAtComfortablePlus(t *testing.T) {
 	for _, d := range []Density{DensityComfortable, DensitySpacious} {
 		restoreDensity := SetDensityForTest(d)
@@ -232,8 +209,6 @@ func TestEqMuteButtonHitAreaAtComfortablePlus(t *testing.T) {
 	}
 }
 
-// containsString is a tiny utility — pulled out so the tests above
-// stay readable. The slice argument is always small (≤3 entries).
 func containsString(xs []string, want string) bool {
 	for _, s := range xs {
 		if s == want {

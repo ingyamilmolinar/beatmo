@@ -12,10 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// synth_component_sprite_test.go — the render-caching plan's Synth-tab
-// TraceSprite adopters: the graph sprite's eviction (tab hide, locale change)
-// and the per-param cards' pixel identity + render count. Mirrors
-// eq_curve_sprite_test.go's pattern.
+// The graph sprite's eviction (tab hide, locale) and the per-param cards' pixel identity and render count.
 
 // assertImagesEqual compares two equally-sized images pixel-for-pixel.
 func assertImagesEqual(t *testing.T, a, b *ebiten.Image, w, h int) {
@@ -32,11 +29,7 @@ func assertImagesEqual(t *testing.T, a, b *ebiten.Image, w, h int) {
 
 // ── eviction ─────────────────────────────────────────────────────────────
 
-// TestSynthSpriteEvict_ReleasedOnTabHide mirrors
-// TestTabSwitchReleasesTraceSprites (trace_sprite_eviction_test.go): leaving
-// the Synth tab must release its graph sprite texture immediately via
-// ReleaseSynthSprites (releaseHiddenTabSprites chokepoint), and returning
-// lazily re-allocates on the next Draw.
+// Leaving the tab releases the graph texture at once; returning re-allocates on the next Draw.
 func TestSynthSpriteEvict_ReleasedOnTabHide(t *testing.T) {
 	g := driveScene(t, "crop_synth_tab_modular")
 	dv := g.drum
@@ -46,12 +39,7 @@ func TestSynthSpriteEvict_ReleasedOnTabHide(t *testing.T) {
 	screen := ebiten.NewImage(1280, 720)
 	g.Draw(screen)
 
-	// residentAll re-reads live state from dv.synp().sprites each call — the
-	// struct holds TraceSprite BY VALUE, so a snapshot copy taken before a
-	// Release() would go stale (Release mutates the original via pointer
-	// receiver on the struct field, not a local copy).
-	// The right pane is the rendered-audio graph (synth_graph_pane.go), on
-	// the root and drilled alike.
+	// Re-read each call: the struct holds TraceSprite by value, so a copy taken before Release goes stale.
 	resident := func() bool { return dv.synp().sprites.graph.resident() }
 	inst := dv.resolveSynthInstrument(dv.synthTabActiveInstrument())
 	dv.setSynthStageOpen(inst, dv.instEditorSections[0].id)
@@ -73,11 +61,7 @@ func TestSynthSpriteEvict_ReleasedOnTabHide(t *testing.T) {
 	}
 }
 
-// TestSynthSprites_ReleasedOnLocaleChange guards against cached localized text
-// (focus-graph caption, chip labels) going stale after a language switch: those
-// sprites key on geometry/params, not locale, so OnLocaleChanged must release
-// them (via the whole-DrumView chokepoint) or they blit the previous language
-// until an unrelated edit. Regression for the whole-branch-review finding.
+// Locale-blind keys, so a language switch must release them or they show the old language.
 func TestSynthSprites_ReleasedOnLocaleChange(t *testing.T) {
 	g := driveScene(t, "crop_synth_tab_modular")
 	dv := g.drum
@@ -100,19 +84,10 @@ func TestSynthSprites_ReleasedOnLocaleChange(t *testing.T) {
 	}
 }
 
-// ── per-param cards (Task 3) ────────────────────────────────────────────
-//
-// The Synth detail pane's ParamCard loop (drawSynthDetailPane, synth_panel_
-// zone.go) previously re-rasterized every visible card's keycap chrome +
-// text every frame regardless of whether the param moved. Each card now
-// gets its own TraceSprite keyed by paramID (p.sprites.card(paramID)), so a
-// steady frame blits N cached textures and an edit re-renders exactly the
-// one card whose (name, value, gauge, state) key changed.
+// Each card has its own sprite keyed by paramID: a steady frame blits N textures, an edit re-renders the one card
+// whose key changed.
 
-// newSynthTabForCardSprites builds a DrumView bound to the modular voice and
-// lays out the Synth tab so dv.instEditorControls / dv.instEditorBindings and
-// the selected section's card rects are populated (buildSynthTab +
-// placeKnobsInSection both run inside layoutSynthTab's Layout call).
+// Bound to the modular voice, with the selected section's cards laid out.
 func newSynthTabForCardSprites(t *testing.T) (dv *DrumView, instID string) {
 	t.Helper()
 	g := newModularSynthTabGame(t)
@@ -126,9 +101,7 @@ func newSynthTabForCardSprites(t *testing.T) (dv *DrumView, instID string) {
 	return dv, instID
 }
 
-// cardKeyFor builds the exact sprite key the production loop in
-// drawSynthDetailPane constructs for knob index kIdx, so both tests below
-// exercise the real key shape rather than a hand-rolled stand-in.
+// The exact key the production loop builds, not a stand-in.
 func cardKeyFor(dv *DrumView, instID string, sel *synthSection, kIdx int) (paramID, name, value string, gauge paramCardGauge, st paramCardState, key any) {
 	k := dv.instEditorControls[kIdx]
 	b := dv.instEditorBindings[kIdx]
@@ -147,9 +120,7 @@ func cardKeyFor(dv *DrumView, instID string, sel *synthSection, kIdx int) (param
 	return b.def.Name, name, value, gauge, st, key
 }
 
-// TestSynthParamCardSprite_MatchesDirect pins pixel identity between the
-// cached sprite path and the RENDER_SAFE direct path for one card, mirroring
-// the trace-sprite MatchesDirect tests above.
+// The cached and RENDER_SAFE paths give identical pixels.
 func TestSynthParamCardSprite_MatchesDirect(t *testing.T) {
 	dv, instID := newSynthTabForCardSprites(t)
 	p := dv.synp()
@@ -181,11 +152,7 @@ func TestSynthParamCardSprite_MatchesDirect(t *testing.T) {
 	assertImagesEqual(t, cached, direct, r.Dx(), r.Dy())
 }
 
-// TestSynthParamCards_OnlyEditedCardReRenders pins the per-card caching win:
-// with >=2 visible cards, identical frames re-render nothing after the warm
-// frame, and editing ONE card's value re-renders exactly that card's
-// sprite — its siblings must stay cache hits (proving the cache is keyed
-// per-paramID, not shared/invalidated as a block).
+// Identical frames re-render nothing; editing one card re-renders that card alone, its siblings stay hits.
 func TestSynthParamCards_OnlyEditedCardReRenders(t *testing.T) {
 	dv, instID := newSynthTabForCardSprites(t)
 	p := dv.synp()
@@ -210,11 +177,7 @@ func TestSynthParamCards_OnlyEditedCardReRenders(t *testing.T) {
 
 	dst := ebiten.NewImage(1280, 720)
 
-	// Warm frame drives the REAL production loop (drawSynthDetailPane,
-	// synth_panel_zone.go) — not a hand-rolled re-implementation. This is
-	// the wiring assertion: if the card loop is not routed through
-	// p.sprites.card(id), p.sprites.cards never gets an entry and the
-	// Fatalf below fires (RED before Step 3's wrap, GREEN after).
+	// The real loop: if cards do not go through p.sprites.card, no entry exists and the test fails.
 	p.drawSynthDetailPane(dst, instrument.ID(instID))
 
 	sprites := make([]*TraceSprite, len(visible))
@@ -226,15 +189,8 @@ func TestSynthParamCards_OnlyEditedCardReRenders(t *testing.T) {
 		sprites[i] = s
 	}
 
-	// Deterministic clock, installed on every card sprite AFTER the warm
-	// frame lazily created them, so the 33ms drag throttle never masks a
-	// same-tick re-render in the assertions below. The warm frame's
-	// lastRender was stamped with the REAL wall clock (the sprites didn't
-	// exist yet to receive the override), which sits far in the future of
-	// this Unix-epoch clock — a naive Sub() would go deeply negative and
-	// read as "still within the throttle window". Invalidate + one more
-	// render re-stamps lastRender under the injected clock so every
-	// subsequent Sub() below is a real, comparable duration.
+	// A fixed clock, so the 33 ms throttle never masks a re-render. The warm frame stamped real time, far ahead of it,
+	// so Invalidate and one more render re-stamp lastRender under the injected clock.
 	now := time.Unix(50_000, 0)
 	clock := func() time.Time { return now }
 	for _, s := range sprites {
@@ -263,10 +219,8 @@ func TestSynthParamCards_OnlyEditedCardReRenders(t *testing.T) {
 		}
 	}
 
-	// Flip one visible knob's value — try each until the derived gauge/
-	// label actually changes (an enum's dot index might not move for
-	// every delta), so the "one edited card" scenario below is real. Pure
-	// key derivation, no draw — keeps the render-count trail below clean.
+	// Until the derived key really changes (an enum dot may not move for every delta); no draw, so the render trail
+	// stays clean.
 	editIdx := -1
 	for i, kIdx := range visible {
 		k := dv.instEditorControls[kIdx]

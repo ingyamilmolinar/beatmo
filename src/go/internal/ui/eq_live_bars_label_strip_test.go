@@ -4,12 +4,7 @@ package ui
 
 import "testing"
 
-// TestEQLiveBarsNeverEnterLabelStrip pins the invariant claimed in
-// eq_panel_zone.go: the EQ live spectrum bars (eqLiveBarsRect) must never
-// intersect the bottom label/dB-readout strip (eqLabelStripRect). Pre-fix the
-// bars ran flush to the panel bottom and overpainted the per-band dB readouts.
-// Verified across desktop and mobile viewports so the layout split holds at
-// both densities.
+// The live bars never enter the label/dB-readout strip, on desktop and mobile.
 func TestEQLiveBarsNeverEnterLabelStrip(t *testing.T) {
 	withDefaultAudio(t)
 	withDefaultStart(t, false)

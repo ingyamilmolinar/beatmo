@@ -11,10 +11,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 )
 
-// channelWithFlatFFT returns a ChannelMetrics whose FFT bins are filled with
-// a fixed dB value across the audible range. Useful for cursor-readout tests
-// — every band gets the same averaged dB, so the assertion focuses on the
-// crosshair geometry and label rendering rather than spectrum shape.
+// Every band gets the same dB, so the test is about the crosshair and label.
 func channelWithFlatFFT(constDB float64) *analyzer.ChannelMetrics {
 	const n = 256
 	freq := make([]float64, n)
@@ -32,10 +29,7 @@ func channelWithFlatFFT(constDB float64) *analyzer.ChannelMetrics {
 	}
 }
 
-// TestSpectrumDrawCursorReadout — drawSpectrumCursor must draw a vertical
-// crosshair at cursorX in colTextSecondary and emit a labeled readout box
-// (colSurface2 with AlphaStrong alpha) somewhere along the top of the bar
-// rect.
+// A colTextSecondary crosshair at cursorX and a readout box (surface-2 at AlphaStrong) along the top.
 func TestSpectrumDrawCursorReadout(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -58,8 +52,7 @@ func TestSpectrumDrawCursorReadout(t *testing.T) {
 		if r.Color == wantedLine && r.Rect.Min.X == cursorX && r.Rect.Dx() == 1 && r.Rect.Dy() > 10 {
 			hasLine = true
 		}
-		// Readout backplate (rounded box behind the label): wide enough to
-		// hold the "1.2 kHz · -20 dB" label.
+		// Wide enough for "1.2 kHz · -20 dB".
 		if r.Color == wantedBg && r.Rect.Dx() > 10 && r.Rect.Dy() > 4 {
 			hasBg = true
 		}
@@ -72,12 +65,7 @@ func TestSpectrumDrawCursorReadout(t *testing.T) {
 	}
 }
 
-// TestSpectrumLinearModeBucketsByEqualHz — passing freqScaleLinear to
-// drawAnalyzerSpectrumWithScale must use the linear band table. Drive with a
-// signal concentrated entirely in the highest frequencies. In log mode the
-// top band (11.36-22 kHz) absorbs all energy → one tall bar at the right; in
-// linear mode the equal-Hz partition spreads the same energy across the top
-// half of the bands → multiple visible bars on the right side.
+// Energy only at the top: log puts it in one tall right bar, linear's equal-Hz bands spread it over several.
 func TestSpectrumLinearModeBucketsByEqualHz(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -96,9 +84,7 @@ func TestSpectrumLinearModeBucketsByEqualHz(t *testing.T) {
 	}
 	ch := &analyzer.ChannelMetrics{Active: true, FFTBins: mag, FreqBins: freq}
 
-	// Verify the band tables differ in width at the top band — the proof
-	// that the scale argument flips the lookup. linearBands top band spans
-	// 19802-22000 (≈2198 Hz); isoBands top spans 11360-22000 (10640 Hz).
+	// The top band differs: linear spans 19802-22000, ISO 11360-22000.
 	logTop := isoBands[len(isoBands)-1]
 	linBands := linearBands()
 	linTop := linBands[len(linBands)-1]
@@ -124,9 +110,7 @@ func TestSpectrumLinearModeBucketsByEqualHz(t *testing.T) {
 	})
 	linBars := countBars(linRects)
 
-	// Linear must produce strictly more bars from the same high-frequency
-	// signal because the same energy now spreads across multiple equal-Hz
-	// bands instead of being averaged into the single top ISO band.
+	// Strictly more bars in linear.
 	if !(linBars > logBars) {
 		t.Errorf("linear-mode bar count %d should exceed log-mode bar count %d for high-freq signal",
 			linBars, logBars)
@@ -136,19 +120,14 @@ func TestSpectrumLinearModeBucketsByEqualHz(t *testing.T) {
 	}
 }
 
-// countBars returns the number of distinct vertical "bar" rects emitted by
-// the spectrum renderer. Bars are now drawn as a three-band synthwave
-// gradient (drawSpectrumBarGradient), so we discriminate by ANY of the three
-// gradient colors and group rects by Min.X column so a single bar's three
-// bands count once. dB-grid dashes and peak markers are 1px tall, so they're
-// excluded by the Dy >= 2 floor.
+// Any of the three gradient colours, grouped by column; 1 px grid dashes and peak marks fall under the Dy ≥ 2
+// floor.
 func countBars(rects []drawnRect) int {
 	top := color.RGBAModel.Convert(colSpectrumBarTop).(color.RGBA)
 	mid := color.RGBAModel.Convert(colSpectrumBarMid).(color.RGBA)
 	base := color.RGBAModel.Convert(colSpectrumBarBase).(color.RGBA)
 	isBar := func(c color.RGBA) bool { return c == top || c == mid || c == base }
-	// Each band emits up to three rects (top/mid/base) sharing a Min.X —
-	// group by column so we don't over-count.
+	// A bar's three bands share a Min.X.
 	seen := map[int]bool{}
 	for _, r := range rects {
 		if !isBar(r.Color) {
@@ -159,9 +138,7 @@ func countBars(rects []drawnRect) int {
 		}
 		seen[r.Rect.Min.X] = true
 	}
-	// Guard: at least one bar must exist; if the rough heuristics get out
-	// of sync with the renderer return 0 so the caller surfaces a clear
-	// failure.
+	// 0 when the heuristics drift, so the caller fails clearly.
 	if len(seen) == 0 {
 		for _, r := range rects {
 			if isBar(r.Color) {

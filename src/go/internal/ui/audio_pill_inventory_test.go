@@ -10,23 +10,16 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// The audio panel accumulated one pill per analyser feature. Chain shipped
-// six and Spectrum six, most of them expert controls whose effect is not
-// visible until you already know what they do. These tests pin the pill each
-// tab actually renders, so a future feature has to make the case for its
-// control instead of appending it silently.
+// The pill each tab renders, so a new feature has to make the case for its control instead of appending one.
 
-// renderedPillLabels returns the labels of every pill a renderer paints,
-// captured through the shared drawPillTabAt seam.
+// Through the shared drawPillTabAt seam.
 func renderedPillLabels(t *testing.T, draw func(dst *ebiten.Image)) []string {
 	t.Helper()
 	var got []string
 	orig := drawPillTabAt
 	drawPillTabAt = func(dst *ebiten.Image, btn *Button, active bool) {
 		if btn != nil {
-			// Wave/Spectrum/Levels use the shared ICON freeze pill, which has
-			// no text; it still occupies a slot in the tab's control budget,
-			// so the census must see it.
+			// The icon freeze pill has no text but still takes a slot in the tab's budget.
 			label := btn.Text
 			if label == "" {
 				label = "<icon>"
@@ -54,10 +47,7 @@ func assertSameLabels(t *testing.T, tab string, got, want []string) {
 	}
 }
 
-// TestChainPillInventory — FIT (auto-fit X) and AG (auto-gain Y) are gone:
-// they are how the tab frames its own signal, and a toggle for "use the
-// viewport properly" is a defect, not a feature. What is left is the A/B
-// comparison the tab exists for, plus freeze.
+// A toggle for framing the signal properly is a defect, so only the A/B comparison and freeze remain.
 func TestChainPillInventory(t *testing.T) {
 	z := NewChainPanelZone(ChainCallbacks{})
 	z.Layout(image.Rect(0, 100, 900, 400))
@@ -65,12 +55,8 @@ func TestChainPillInventory(t *testing.T) {
 	assertSameLabels(t, "chain", got, []string{"OVR", "SPL", "DIF", "FRZ"})
 }
 
-// TestSpectrumPillInventory — five of Spectrum's six pills were expert
-// analyser controls whose effect is invisible unless you already know the
-// term: a dB/oct slope tilt, a pre-EQ overlay, a peak-hold reset for marks
-// that were themselves behind another toggle, a linear-frequency mode that
-// no one reading an audio spectrum wants, and DTL, which hid the numbers the
-// tab exists to show. Freeze is the only control left.
+// Freeze only: the other pills were expert controls whose effect is invisible unless you know the term, and one
+// hid the numbers the tab exists to show.
 func TestSpectrumPillInventory(t *testing.T) {
 	c := newSpectrumControls(0, func() bool { return false })
 	c.Layout(image.Rect(0, 0, 900, 40))
@@ -78,12 +64,8 @@ func TestSpectrumPillInventory(t *testing.T) {
 	assertSameLabels(t, "spectrum", got, []string{"<icon>"}) // <icon> = the shared freeze pill
 }
 
-// TestSpectrumDetailIsAlwaysOn — DTL gated the dB numbers, the note anchors
-// and the peak-hold marks behind a toggle because, on the old fixed -80..0
-// axis, those marks crowded a plot whose bars only reached the lower half.
-// The axis is chosen from the signal now, so the marks sit against bars that
-// fill the plot and there is nothing to opt out of. The pill is gone and the
-// detail is unconditional.
+// The axis follows the signal, so the dB numbers, note anchors and peak marks sit against full-height bars and
+// there is nothing to opt out of.
 func TestSpectrumDetailIsAlwaysOn(t *testing.T) {
 	c := newSpectrumControls(0, func() bool { return false })
 	if !c.Detail() {
@@ -94,10 +76,7 @@ func TestSpectrumDetailIsAlwaysOn(t *testing.T) {
 	assertSameLabels(t, "spectrum", got, []string{"<icon>"}) // freeze only
 }
 
-// TestSpectrumMaxWatermarkStillHasAResetPath — DTL's click was where the MAX
-// watermark reset lived after RST was removed. The watermark never decays, so
-// deleting the pill must not strand it a second time: the discontinuity
-// invalidation is now its only reset, and it has to actually clear it.
+// The watermark never decays, so the discontinuity invalidation is its only reset and must clear it.
 func TestSpectrumMaxWatermarkStillHasAResetPath(t *testing.T) {
 	z := NewEQPanelZone(EQCallbacks{})
 	z.spectrumPeaks.MaxPeaksDB[4] = -20

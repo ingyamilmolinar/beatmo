@@ -8,10 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestAnalyzerTapsForTab pins the dispatcher rule: which tab IDs cause
-// which analyzer taps to be enabled. Drift in this map almost always
-// implies an analyzer-blackout regression on one of the audio tabs
-// (the original bug Phase 0 was created to fix).
+// Drift here almost always blacks out an audio tab's analyser.
 func TestAnalyzerTapsForTab(t *testing.T) {
 	cases := []struct {
 		tab  PanelTab
@@ -39,15 +36,8 @@ func TestAnalyzerTapsForTab(t *testing.T) {
 	}
 }
 
-// TestAnalyzerInstrumentTapsForTab pins the per-instrument dispatcher
-// rule (the template-load blackout fix): tabs that render per-instrument
-// data must enable an analyzer tap for EVERY row instrument, not just the
-// master. On WASM each per-instrument AnalyserNode is wired on demand, so
-// a template that ships no per-instrument EQ (and is never channel-
-// selected) otherwise leaves its instrument analysers unwired and the
-// Levels/per-instrument views blank — even though desktop, whose mixer
-// feeds every instrument slot unconditionally, is fine. Synth/Sampler
-// read per-voice caches and need no analyzer tap.
+// Per-instrument tabs tap EVERY row instrument: on WASM each AnalyserNode is wired on demand, so an untouched
+// template leaves Levels blank in the browser while desktop is fine. Synth/Sampler read voice caches instead.
 func TestAnalyzerInstrumentTapsForTab(t *testing.T) {
 	ids := []channel.ID{channel.Of(roster.KickTight), channel.Of(roster.Snare), channel.Of(roster.FmBass)}
 	cases := []struct {
@@ -76,10 +66,7 @@ func TestAnalyzerInstrumentTapsForTab(t *testing.T) {
 	}
 }
 
-// TestEnsureAnalyzersForTab_EnablesPerInstrument covers the live side of
-// the template-load fix: passing the row instrument ids to the dispatcher
-// for a per-instrument tab must enable each instrument's analyzer so the
-// next Draw of the Levels strip has data, with no prior channel select.
+// Each instrument's analyser is live for the next Draw, with no prior channel select.
 func TestEnsureAnalyzersForTab_EnablesPerInstrument(t *testing.T) {
 	ids := []channel.ID{channel.Of("tmpl-kick"), channel.Of("tmpl-snare")}
 	EnsureAnalyzersForTab(TabMeters, channel.ID{}, ids...)
@@ -99,33 +86,22 @@ func TestEnsureAnalyzersForTab_EnablesPerInstrument(t *testing.T) {
 	}
 }
 
-// TestEnsureAnalyzersForTab_EnablesMaster covers the Phase 0 root-cause
-// fix: navigating to Spectrum / Levels / Chain (or Wave / EQ) without
-// touching the channel picker must enable the master analyzer so the
-// next Draw has data. We don't depend on a Game/Oto stack — the
-// dispatcher is exercised directly and the analyzer is fed synthetic
-// samples to verify it produces a non-flat snapshot.
+// Opening Spectrum / Levels / Chain (or Wave / EQ) without touching the channel picker enables the master analyser.
 func TestEnsureAnalyzersForTab_EnablesMaster(t *testing.T) {
 	tabs := []PanelTab{TabWave, TabSpectrum, TabMeters, TabEQ, TabScope}
 	for _, tab := range tabs {
 		EnsureAnalyzersForTab(tab, channel.ID{})
 
-		// The Master analyzer must now be present in the registry — we
-		// confirm by feeding it samples through the channel processor
-		// path and reading the snapshot back. Without the dispatcher
-		// the analyzer wouldn't exist and the registry returns a zero
-		// snapshot.
+		// Fed through the channel processor and read back: without the dispatcher the registry returns a zero snapshot.
 		an := audio.EnableChannelAnalyzer(channel.Master, 512)
 		if an == nil {
 			t.Fatalf("tab=%v: EnableChannelAnalyzer returned nil (stub build)", tab)
 		}
-		// Push enough non-zero samples to fill the analyzer window and
-		// trigger a compute() pass.
+		// Enough to fill the window and trigger a compute().
 		const blockN = 1024
 		samples := make([]float32, blockN)
 		for i := range samples {
-			// Mix of 1 kHz + 4 kHz tones at fs=48 kHz so both Peak and
-			// the spectrum have non-trivial content to verify.
+			// 1 kHz + 4 kHz at 48 kHz, so peak and spectrum both have content.
 			samples[i] = 0.5
 		}
 		an.ProcessBlock(samples, blockN)
@@ -138,10 +114,7 @@ func TestEnsureAnalyzersForTab_EnablesMaster(t *testing.T) {
 	}
 }
 
-// TestEnsureAnalyzersForTab_SynthIsNoop confirms the Synth tab does
-// NOT touch the master analyzer (it reads per-voice caches instead).
-// Pinning this keeps the dispatcher minimal — adding rows to it must
-// be a conscious change.
+// A new row here must be a conscious change.
 func TestEnsureAnalyzersForTab_SynthIsNoop(t *testing.T) {
 	taps := AnalyzerTapsForTab(TabSynth)
 	if len(taps) != 0 {
@@ -149,10 +122,7 @@ func TestEnsureAnalyzersForTab_SynthIsNoop(t *testing.T) {
 	}
 }
 
-// TestEnsureAnalyzersForTab_PerRowChannelAlsoEnabled covers the
-// secondary contract: when the EQ channel picker is on a per-row
-// channel (e.g., "kick") and the user opens an analysis tab, BOTH
-// the master and that row's analyzer should be live.
+// With a per-row channel picked, both the master and that row are live.
 func TestEnsureAnalyzersForTab_PerRowChannelAlsoEnabled(t *testing.T) {
 	EnsureAnalyzersForTab(TabSpectrum, channel.Of("kick-test-row"))
 	an := audio.EnableChannelAnalyzer(channel.Of("kick-test-row"), 512)

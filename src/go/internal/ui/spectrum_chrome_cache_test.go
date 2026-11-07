@@ -14,8 +14,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// setupSpectrumGame drives the Spectrum tab with a synthetic analyzer state
-// through the same override the audio-panel pixel tests use.
 func setupSpectrumGame(t *testing.T) *Game {
 	t.Helper()
 	g := driveScene(t, "crop_eq_tab_spectrum")
@@ -32,18 +30,8 @@ func setupSpectrumGame(t *testing.T) *Game {
 	return g
 }
 
-// TestSpectrumChromeCacheCollapsesStaticChrome pins the reason this cache
-// exists. The Spectrum tab's dB grid is STATIC — it depends on the panel
-// geometry, the palette and the locale, never on audio — yet it was repainted
-// every frame, and its dashed lines cost one blit PER DASH: measured at 832 of
-// the tab's 1032 per-frame blits (82%), 4 dashed lines x ~208 dashes.
-//
-// Unlike the Wave/Chain trace caches, this one is not rate-limited by the
-// ~30 Hz analyzer tick: the chrome key does not change at all during playback,
-// so every frame after the first is a hit. That matters because Spectrum's
-// cost was framerate-INVARIANT — the one data tab that paid full price on
-// every frame — which is what starved the sequencer goroutine on the single
-// WASM thread and made audio lag under this tab.
+// The dB grid depends on geometry, palette and locale, never audio, so every frame after the first is a hit;
+// Spectrum has no data gate and once paid one blit per dash on every frame.
 func TestSpectrumChromeCacheCollapsesStaticChrome(t *testing.T) {
 	defer SetSpectrumChromeCacheForTest(true)()
 	g := setupSpectrumGame(t)
@@ -69,19 +57,14 @@ func TestSpectrumChromeCacheCollapsesStaticChrome(t *testing.T) {
 	if cached >= uncached {
 		t.Fatalf("chrome cache saved nothing: cached=%d uncached=%d", cached, uncached)
 	}
-	// The dashed grid alone was ~832 blits. Anything close to the uncached
-	// cost means the chrome is being repainted per frame again.
+	// Close to the uncached cost means the chrome repaints per frame again.
 	if cached > uncached/3 {
 		t.Errorf("chrome cache ineffective: cached=%d is not well under a third of uncached=%d",
 			cached, uncached)
 	}
 }
 
-// TestSpectrumChromeCacheInvalidatesOnThemeAndLocale guards the two inputs that
-// change the BAKED pixels without changing the geometry. A key missing either
-// one leaves stale chrome on screen after a theme pick or a language switch —
-// the failure mode the runtime-theme work calls out (a cache that bakes a color
-// must be dropped by the theme chokepoint or keyed on the generation).
+// Theme and locale change the baked pixels without moving the geometry, so the key must carry both.
 func TestSpectrumChromeCacheInvalidatesOnThemeAndLocale(t *testing.T) {
 	defer SetSpectrumChromeCacheForTest(true)()
 
@@ -107,13 +90,8 @@ func TestSpectrumChromeCacheInvalidatesOnThemeAndLocale(t *testing.T) {
 	}
 }
 
-// TestSpectrumChromeRenderMatchesDirect proves the cache is pixel-equivalent BY
-// CONSTRUCTION rather than by comparing rasterized output, which Go cannot do
-// here (the chain-cache precedent: an offscreen render is not readable back
-// under -tags test). The cached and uncached paths call the SAME renderer; the
-// only difference is the destination and a translation. So rendering the chrome
-// at the origin must issue an identical multiset of (w, h, color) rects to
-// rendering it on-screen.
+// By construction: one renderer, differing only in destination and translation, so the (w, h, colour) multisets
+// match; offscreen renders cannot be read back under -tags test.
 func TestSpectrumChromeRenderMatchesDirect(t *testing.T) {
 	type shape struct {
 		w, h int
@@ -136,8 +114,7 @@ func TestSpectrumChromeRenderMatchesDirect(t *testing.T) {
 	}
 
 	const w, h = 900, 220
-	// Both detail states: the flag is part of the sprite key, so each renders
-	// into its own cache entry and each must be translation-equivalent.
+	// The flag is part of the key, so each state has its own entry.
 	for _, detail := range []bool{false, true} {
 		atOrigin := collect(image.Rect(0, 0, w, h), detail)
 		onScreen := collect(image.Rect(37, 121, 37+w, 121+h), detail)

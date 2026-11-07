@@ -8,19 +8,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// synth_stage_toggles_test.go pins the "every shown synth stage has a toggle"
-// deliverable:
-//   - an empty VOICE stage (no visible knobs — the plain modular voice, whose
-//     sound is its OSC stage) is PRUNED: nothing for the user to do there;
-//   - a populated VOICE (family/voice knobs, e.g. violin) shows a greyed,
-//     LOCKED toggle — the voice is the instrument and can't be disabled;
-//   - ENSEMBLE and RESONATOR, whose off-state is a value (unison_voices=1 /
-//     body_model=Off) rather than a *_enabled param, get INTERACTIVE toggles
-//     that drive that gate value;
-//   - every shown stage therefore has a pill.
+// An empty VOICE is pruned; a populated VOICE shows a locked toggle (the voice is the instrument); ENSEMBLE and
+// RESONATOR, whose off is a value, get interactive toggles that drive it; every shown stage has a pill.
 
-// setupSynthGameForInst builds a Synth-tab game on instID bound to recipe,
-// mirroring setupModularSynthGame for non-modular instruments.
 func setupSynthGameForInst(t *testing.T, instID instrument.ID) *Game {
 	t.Helper()
 	g := newSynthTabGame(t)
@@ -32,8 +22,7 @@ func setupSynthGameForInst(t *testing.T, instID instrument.ID) *Game {
 	return g
 }
 
-// TestSynthTab_EmptyVoicePruned — the modular voice has no family/voice knobs,
-// so its VOICE stage is empty and must be dropped entirely (nothing to do).
+// Its sound is the OSC stage, so there is nothing to do in VOICE.
 func TestSynthTab_EmptyVoicePruned(t *testing.T) {
 	g := setupModularSynthGame(t)
 	layoutSynthTab(t, g)
@@ -42,9 +31,7 @@ func TestSynthTab_EmptyVoicePruned(t *testing.T) {
 	}
 }
 
-// TestSynthTab_PopulatedVoiceLockedToggle — a voice WITH family knobs (violin)
-// keeps its VOICE stage, and that stage shows a greyed, non-interactive
-// (locked) toggle: the voice is mandatory and can't be disabled.
+// Greyed and inert: the voice cannot be disabled.
 func TestSynthTab_PopulatedVoiceLockedToggle(t *testing.T) {
 	g := setupSynthGameForInst(t, roster.Violin)
 	layoutSynthTab(t, g)
@@ -71,9 +58,7 @@ func TestSynthTab_PopulatedVoiceLockedToggle(t *testing.T) {
 	}
 }
 
-// TestSynthTab_EnsembleToggleDrivesVoices — the ENSEMBLE pill toggles the
-// unison_voices gate value both ways (off = 1, on = an active default >= 2),
-// and publishes an interactive hit area.
+// unison_voices both ways (off = 1, on ≥ 2), with an interactive hit area.
 func TestSynthTab_EnsembleToggleDrivesVoices(t *testing.T) {
 	g := setupModularSynthGame(t)
 	restore := SwapSynthAuditionFnForTest(func(instrument.ID) {})
@@ -115,8 +100,7 @@ func TestSynthTab_EnsembleToggleDrivesVoices(t *testing.T) {
 	}
 }
 
-// TestSynthTab_ResonatorToggleDrivesBodyModel — the RESONATOR pill toggles the
-// body_model gate value both ways (off = 0/Off, on = an active default >= 1).
+// body_model both ways (off = 0, on ≥ 1).
 func TestSynthTab_ResonatorToggleDrivesBodyModel(t *testing.T) {
 	g := setupModularSynthGame(t)
 	restore := SwapSynthAuditionFnForTest(func(instrument.ID) {})
@@ -144,9 +128,7 @@ func TestSynthTab_ResonatorToggleDrivesBodyModel(t *testing.T) {
 	}
 }
 
-// TestSynthTab_EveryShownStageHasPill — after the unification, every stage that
-// survives layout carries an enable pill (interactive or locked). No shown
-// stage is toggle-less.
+// Interactive or locked; no shown stage lacks one.
 func TestSynthTab_EveryShownStageHasPill(t *testing.T) {
 	g := setupModularSynthGame(t)
 	for _, s := range g.drum.SynthTabSections() {

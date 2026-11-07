@@ -9,9 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// TestFXPanelAccentIsInstrumentColor verifies the FX panel reports its owning
-// row's instrument color as its accent — the color the enable-toggle pill and
-// other FX highlights tint to (replacing the fixed azure accent).
+// The colour the enable toggle and FX highlights tint to.
 func TestFXPanelAccentIsInstrumentColor(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {

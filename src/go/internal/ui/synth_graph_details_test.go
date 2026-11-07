@@ -8,9 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/userprefs"
 )
 
-// The Synth graph's readout is WORDS until the user asks for the Details
-// (spec 2026-10-25 §3.3): one toggle on the graph switches it to NUMBERS, and
-// the choice is remembered across sessions.
+// Words until the user asks for Details; one toggle switches to numbers, remembered across sessions.
 
 type fakePanelSink struct {
 	doc   userprefs.AudioPanelStateDoc

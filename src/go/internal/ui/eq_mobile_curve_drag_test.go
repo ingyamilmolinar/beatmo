@@ -63,8 +63,6 @@ func newTestEQPanelZoneWithFilters(rows []*DrumRow) (*EQPanelZone, *eqTestCallba
 	return z, log, fs
 }
 
-// TestMobileCurveHandleHitAreaExists verifies that the "eq-curve-area" hit area
-// exists on mobile (not just desktop).
 func TestMobileCurveHandleHitAreaExists(t *testing.T) {
 	forceSmallScreenForTest = true
 	defer func() { forceSmallScreenForTest = false }()
@@ -89,8 +87,6 @@ func TestMobileCurveHandleHitAreaExists(t *testing.T) {
 	}
 }
 
-// TestMobileCurveHandleDragBandGain verifies that pressing and dragging a
-// band handle on mobile changes the gain.
 func TestMobileCurveHandleDragBandGain(t *testing.T) {
 	forceSmallScreenForTest = true
 	defer func() { forceSmallScreenForTest = false }()
@@ -142,9 +138,7 @@ func TestMobileCurveHandleDragBandGain(t *testing.T) {
 	}
 }
 
-// TestMobileCurveHandleDragUsesLargerHitRadius verifies that a press just
-// outside the desktop radius (12px) but inside the mobile radius (22px)
-// still captures on mobile.
+// Outside the desktop radius (12 px), inside the mobile one (22 px).
 func TestMobileCurveHandleDragUsesLargerHitRadius(t *testing.T) {
 	forceSmallScreenForTest = true
 	defer func() { forceSmallScreenForTest = false }()
@@ -353,12 +347,7 @@ func TestMobileHPFHandleDrag(t *testing.T) {
 
 // --- Integration tests: full DrumView → tree dispatch path ---
 
-// TestMobileEQDragNotBlockedByTouchDeadZone verifies that on mobile with
-// mobileEQMode=true, a touch in the EQ panel area is NOT blocked by the
-// touch dead zone. Before the fix, rowsRect() extended to Bounds.Max.Y
-// (because eqH=0 on mobile), so EQ touches triggered the dead zone,
-// dragBlocked=true, and the eq-curve-area handler at z=130 never received
-// the press.
+// In mobile EQ mode a panel touch must not hit the rows' touch dead zone, which blocked the curve handler.
 func TestMobileEQDragNotBlockedByTouchDeadZone(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -409,12 +398,10 @@ func TestMobileEQDragNotBlockedByTouchDeadZone(t *testing.T) {
 		t.Fatal("expected 'eq-curve-area' hit area in EQ panel zone")
 	}
 
-	// Compute the center of band 5 handle in the curve area (handles map into
-	// the plot region, not the full panel).
+	// Handles map into the plot region, not the whole panel.
 	hx, hy := dv.eqPanelZone.eqBandHandlePos(5)
 
-	// Simulate a real mobile touch press on the EQ band handle.
-	// SetInputForTest resets touchOverride, so set it AFTER.
+	// After SetInputForTest, which resets the touch override.
 	r := SetInputForTest(
 		func() (int, int) { return hx, hy },
 		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
@@ -428,8 +415,7 @@ func TestMobileEQDragNotBlockedByTouchDeadZone(t *testing.T) {
 
 	dv.Update()
 
-	// The audio subtree should have dispatched to the EQ curve handler (the
-	// EQ panel lives in dv.audioTree after the two-subtree split).
+	// The EQ panel lives in the audio tree.
 	if !dv.audioTree.Capturing() {
 		t.Fatal("expected audio tree to be capturing after touch on EQ band handle; " +
 			"touch dead zone likely blocked dispatch")
@@ -440,9 +426,7 @@ func TestMobileEQDragNotBlockedByTouchDeadZone(t *testing.T) {
 
 	// The dead zone should NOT be active in mobileEQMode.
 	if dv.anyDragActive() {
-		// anyDragActive may be true due to eqCurveDragBand being set (which is
-		// correct — the EQ curve handler captured). But it must NOT be true
-		// because of the touch dead zone.
+		// A drag may be active from the captured curve, but never from the dead zone.
 		if dv.eqCurveDragBand < 0 && dv.eqCurveDragFilter == hooks.FilterNone {
 			t.Fatal("anyDragActive is true but no EQ drag is active — " +
 				"touch dead zone is incorrectly blocking in mobileEQMode")
@@ -452,10 +436,7 @@ func TestMobileEQDragNotBlockedByTouchDeadZone(t *testing.T) {
 	r()
 }
 
-// TestMobileEQDragTouchDeadZoneStillBlocksRows verifies that the touch dead
-// zone still works correctly in normal row view (mobileEQMode=false). This is
-// a regression guard: the fix must only disable the dead zone during EQ mode,
-// not during normal row scrolling.
+// The dead zone still applies to normal row scrolling.
 func TestMobileEQDragTouchDeadZoneStillBlocksRows(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)

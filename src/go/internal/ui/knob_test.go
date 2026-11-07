@@ -5,8 +5,6 @@ import (
 	"testing"
 )
 
-// TestKnobInitialState verifies NewKnob clamps to [0,1] and SetRect / Rect
-// round-trip the bounding rectangle.
 func TestKnobInitialState(t *testing.T) {
 	k := NewKnob(0.5)
 	if k.Value != 0.5 {

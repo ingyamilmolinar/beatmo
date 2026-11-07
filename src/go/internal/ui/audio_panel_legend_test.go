@@ -9,8 +9,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestLegendText_CoversEveryTab — every PanelTab must have non-empty
-// legend text. Drift here = missing kid-readable explanation.
 func TestLegendText_CoversEveryTab(t *testing.T) {
 	for _, tab := range AllPanelTabs() {
 		if LegendText(tab) == "" {
@@ -19,9 +17,7 @@ func TestLegendText_CoversEveryTab(t *testing.T) {
 	}
 }
 
-// TestDrawAudioPanelLegend_ProducesSheet — invoking the popover
-// renderer with a populated chip rect must produce filled rects
-// (background + accent border at minimum).
+// At least a background and an accent border.
 func TestDrawAudioPanelLegend_ProducesSheet(t *testing.T) {
 	dst := ebiten.NewImage(800, 200)
 	chipR := image.Rect(700, 4, 720, 22)
@@ -34,8 +30,6 @@ func TestDrawAudioPanelLegend_ProducesSheet(t *testing.T) {
 	}
 }
 
-// TestStickyBar_LegendAlwaysVisible — the ? chip must claim a
-// non-empty rect on every tab (not just one).
 func TestStickyBar_LegendAlwaysVisible(t *testing.T) {
 	for _, tab := range AllPanelTabs() {
 		bar := NewAudioStickyBar(0, func() {}, func(PanelTab) {})
@@ -47,15 +41,11 @@ func TestStickyBar_LegendAlwaysVisible(t *testing.T) {
 	}
 }
 
-// TestWrapTextToWidth_KeepsWordsWhole — the kid-readable popover wrap
-// must never split a word.
 func TestWrapTextToWidth_KeepsWordsWhole(t *testing.T) {
 	out := wrapTextToWidth("the quick brown fox jumped", 60)
 	if len(out) < 2 {
 		t.Errorf("expected ≥2 lines from narrow wrap, got %d (lines=%v)", len(out), out)
 	}
-	// No line should contain a partial word: each word from the original
-	// must appear intact in one of the wrapped lines.
 	words := []string{"the", "quick", "brown", "fox", "jumped"}
 	for _, w := range words {
 		found := false

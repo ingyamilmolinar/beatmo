@@ -10,19 +10,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// The Chn (Channel) tab renders A/B overlay traces from six DSP-stage taps:
-// Synth → AntiPop → FX → EQ → Bus → Master. Each stage is fed by a separate
-// JS-side AnalyserNode (or its stub counterpart); the bridge in
-// wasm_analyzer_bridge.go reads them with SynthAnalyzerSnapshot(id),
-// PreEQAnalyzerSnapshot(id), and ChannelAnalyzerSnapshot(id). If any of
-// the three enables is missing for a per-instrument id, the corresponding
-// stage's snapshot returns empty and the renderer in drawChainOverlay
-// suppresses both the trace AND the legend (state.TapX.Active == false).
-//
-// The original symptom: viewing "Kick-1" with A=Synth, B=FX showed only
-// one trace because EnableSynthAnalyzer was never called for "kick-1" —
-// only for "main". These tests assert the enable contract for the three
-// call sites that touch analysers: applyMasterEQ, applyRowEQ, and
+// Each of the six stage taps is a separate AnalyserNode; an enable missing for an instrument id empties that
+// stage's snapshot and drops its trace and legend. Pins the enables at applyMasterEQ, applyRowEQ and
 // setEQActiveChannel.
 
 func TestChnTab_MasterAppliesAllThreeAnalysers(t *testing.T) {
@@ -64,9 +53,7 @@ func TestChnTab_ApplyRowEQAppliesAllThreeAnalysers(t *testing.T) {
 	if got := audio.PreEQAnalyzerEnableCount(channel.Of(roster.Kick)); got < 1 {
 		t.Errorf("PreEQAnalyzer for \"kick\" enabled %d times; want >= 1", got)
 	}
-	// This is the failing assertion in the original bug: per-instrument
-	// SynthAnalyzer was never enabled, so on WASM the Synth/AntiPop taps
-	// returned empty snapshots and the second trace silently dropped.
+	// Without the per-instrument synth analyser the Synth/AntiPop taps read empty on WASM and the second trace drops.
 	if got := audio.SynthAnalyzerEnableCount(channel.Of(roster.Kick)); got < 1 {
 		t.Errorf("SynthAnalyzer for \"kick\" enabled %d times; want >= 1 — "+
 			"the Chn tab's Synth/AntiPop traces depend on this", got)

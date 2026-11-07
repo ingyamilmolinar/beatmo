@@ -17,10 +17,7 @@ import (
 
 var lastLaneEditName string
 
-// applyRandomLaneEdit performs one random edit through the SAME entry point
-// the UI (or JS bridge) uses, followed by whatever reconciliation that
-// entry point's caller performs. Deliberately includes edits that bypass
-// every invalidation funnel (row volume / instrument written directly).
+// Through the entry point the UI or JS bridge uses, including edits that bypass every invalidation funnel.
 func applyRandomLaneEdit(t *testing.T, g *Game, rng *rand.Rand) {
 	t.Helper()
 	var regular []model.NodeID
@@ -174,17 +171,13 @@ func equalNoteMaps(a, b map[[2]int]uint64) bool {
 	return true
 }
 
-// The lane only reconciles a row when its fingerprint (or the global one)
-// moves. This property test proves the fingerprints never miss a change that
-// alters what would sound: for random edits from every mutation class —
-// including ones that bypass every invalidation funnel — if no key moved,
-// the notes over the next 2 s must be identical.
+// A row reconciles only when a key moves, so for random edits of every class: no key moved, then the next 2 s of
+// notes are identical.
 func TestLaneKeysCoverEveryEditClass(t *testing.T) {
 	var g *Game
 	var src *gameLaneSource
 	fresh := func() {
-		// A fresh circuit every 25 edits: cumulative deletes / mutes would
-		// otherwise degrade it to silence and make the property vacuous.
+		// Cumulative deletes and mutes would degrade it to silence.
 		g = newLaneCircuitGame(t)
 		inst := g.drum.Rows[0].Instrument
 		t.Cleanup(func() { audio.ClearSampleEdit(inst) })
@@ -225,16 +218,13 @@ func TestLaneKeysCoverEveryEditClass(t *testing.T) {
 			t.Fatalf("edit #%d (%s) changed the notes but no lane key moved", i, lastLaneEditName)
 		}
 	}
-	// Non-vacuity: the property only means something if the windows held
-	// notes and the edits really changed them.
+	// Only meaningful if the windows held notes and edits changed them.
 	if compared < 400 || changed < 40 {
 		t.Fatalf("property test is vacuous: %d notes compared, %d edits changed notes", compared, changed)
 	}
 }
 
-// Rows are keyed by INDEX: deleting a row shifts the next one into its
-// index. Every committed future note of the deleted row must go, and every
-// future note left must belong to the row now at its index.
+// Rows are keyed by index: the deleted row's notes go, and every remaining note belongs to the row now at its index.
 func TestLaneRowDeleteShiftsCommittedNotes(t *testing.T) {
 	g := newLaneCircuitGame(t)
 	g.drum.AddRow()
@@ -272,8 +262,7 @@ func TestLaneRowDeleteShiftsCommittedNotes(t *testing.T) {
 	}
 }
 
-// enableAudioLaneForTest installs an audio lane wired to the Game's lane
-// source and the given sink, with the lane switched on for this test only.
+// Switched on for this test only.
 func enableAudioLaneForTest(t *testing.T, g *Game, sink audioSink) *audioLane {
 	t.Helper()
 	p := RuntimeProf()

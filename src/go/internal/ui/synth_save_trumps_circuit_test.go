@@ -11,15 +11,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Synth-tab Save is the user's PERSONAL version of an instrument: it persists
-// to the user library (instruments.json / localStorage) and, on every later
-// circuit open, trumps the document the circuit carries for the same
-// instrument (identity = the document's Origin, the library id). Reset returns
-// the copy to what the CIRCUIT said. All through real input (Game.Update).
+// A Save is the user's own version: it persists and, on every later circuit open, trumps the circuit's document
+// for the same instrument (identity = Origin). Real input throughout.
 
-// newSaveTrumpsGame is the violin dial game on a private library, opened on a
-// circuit whose own violin tone differs from the shipped one. Returns the
-// circuit's bytes and its violin document.
+// A private library and a circuit whose violin differs from the shipped one.
 func newSaveTrumpsGame(t *testing.T) (*Game, *memInstrumentLibrary, []byte, instrument.Doc) {
 	t.Helper()
 	lib := withPrivateInstrumentLibrary(t)
@@ -39,8 +34,7 @@ func newSaveTrumpsGame(t *testing.T) (*Game, *memInstrumentLibrary, []byte, inst
 	return g, lib, circuit, circuitDoc
 }
 
-// sameSound reports the field differences between two documents (Origin and
-// name are identity, not sound).
+// Origin and name are identity, not sound.
 func soundDiff(a, b instrument.Doc) []string {
 	return instrument.Diff(a, b)
 }
@@ -86,9 +80,7 @@ func TestSynthSaveTrumpsTheCircuitOnTheNextOpen(t *testing.T) {
 
 }
 
-// saveOverThroughDialog saves the Synth tab's instrument over itself through
-// real input: the Save As button, then the dialog's confirm ("Save over …",
-// the prefilled name).
+// The Save As button, then the dialog's "Save over …" confirm with the prefilled name.
 func saveOverThroughDialog(t *testing.T, g *Game) {
 	t.Helper()
 	tapAtPoint(g, centre(g.drum.SynthTabHeader().saveAsRect))
@@ -105,8 +97,7 @@ func saveOverThroughDialog(t *testing.T, g *Game) {
 	}
 }
 
-// typeFrame runs one Game.Update delivering runes as typed text (pointer
-// parked off the panel).
+// Pointer parked off the panel.
 func typeFrame(g *Game, s string) {
 	restore := SetInputForTest(
 		func() (int, int) { return 1, 1 },
@@ -120,10 +111,8 @@ func typeFrame(g *Game, s string) {
 	restore()
 }
 
-// Save As through real input: the button opens the name prompt PREFILLED with
-// the instrument's current name (the one the header shows), the typed name
-// becomes the new user instrument's name, it persists, and the row keeps its
-// id while its copy now points at the new library entry.
+// Prefilled with the current name; the typed name becomes the new instrument's, it persists, and the row keeps its id
+// while its copy points at the new entry.
 func TestSynthSaveAsPromptsPrefilledWithTheCurrentName(t *testing.T) {
 	g, lib, _, _ := newSaveTrumpsGame(t)
 	inst := dialInst(g)
@@ -166,8 +155,7 @@ func TestSynthSaveAsPromptsPrefilledWithTheCurrentName(t *testing.T) {
 		t.Error("after Save As the copy must read clean")
 	}
 
-	// The typed name is the instrument's name now: header, row label, and the
-	// next Save As prompt show it.
+	// Header, row label and the next prompt show it.
 	idleFrame(g)
 	if got := audioTabHeaderName(g.drum.SynthTabHeader().instLabel); got != want+" Bright" {
 		t.Errorf("Synth header reads %q after Save As, want the new name", got)
@@ -195,10 +183,7 @@ func onlyIdentity(diff []string) bool {
 	return true
 }
 
-// An undo re-import restores its snapshot VERBATIM: the user's saved entry
-// trumps a circuit only when it is OPENED, never an edit being undone (else
-// undoing an unsaved edit would jump to the saved tone instead of the step
-// before).
+// The saved version trumps only on OPEN, never on an undo, or undoing an unsaved edit would jump to the saved tone.
 func TestUndoNeverReappliesTheSavedVersion(t *testing.T) {
 	g, _, _, _ := newSaveTrumpsGame(t)
 	inst := dialInst(g)
@@ -217,10 +202,7 @@ func TestUndoNeverReappliesTheSavedVersion(t *testing.T) {
 	}
 }
 
-// A Save-As instrument keeps its identity across a reboot: the exported
-// circuit names the new library entry as the copy's origin, and reopening it
-// with the persisted library plays the saved-as tone (the user's version
-// trumps even an older document the circuit carries for it).
+// The exported circuit names the new entry as origin, so after a reboot the saved-as tone still plays.
 func TestSaveAsIdentityTrumpsAfterReopen(t *testing.T) {
 	g, lib, _, _ := newSaveTrumpsGame(t)
 	inst := dialInst(g)

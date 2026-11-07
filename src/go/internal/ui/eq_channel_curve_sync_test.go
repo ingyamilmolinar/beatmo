@@ -12,10 +12,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestEQCurveGainsSyncOnChannelSwitch verifies that switching the EQ channel
-// via setEQActiveChannel() syncs z.bandGainsDB to the new channel's gains.
-// Bug: only slider .Value was updated; z.bandGainsDB stayed stale, so the
-// curve line and band handles showed the previous channel's EQ.
+// The gains, not only the slider values, or the curve shows the previous channel.
 func TestEQCurveGainsSyncOnChannelSwitch(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -65,9 +62,7 @@ func TestEQCurveGainsSyncOnChannelSwitch(t *testing.T) {
 	}
 }
 
-// TestEQCurveDirtySyncOnChannelSwitch verifies that z.curveDirty is set
-// when switching channels so the curve is recomputed.
-// Bug: only dv.eqCurveDirty was set; z.curveDirty was not.
+// The zone's curveDirty too, so the curve is recomputed.
 func TestEQCurveDirtySyncOnChannelSwitch(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -91,8 +86,6 @@ func TestEQCurveDirtySyncOnChannelSwitch(t *testing.T) {
 	}
 }
 
-// TestEQCurveMuteSyncOnChannelSwitch verifies that z.bandMuted is synced
-// to the new channel's mute state on switch.
 func TestEQCurveMuteSyncOnChannelSwitch(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -122,8 +115,7 @@ func TestEQCurveMuteSyncOnChannelSwitch(t *testing.T) {
 	}
 }
 
-// TestEQGainUpdatesBandGainsOnPerInstrument verifies that setting a gain via
-// the curve drag mechanism updates z.bandGainsDB even when activeChannel != "main".
+// For a per-instrument channel too.
 func TestEQGainUpdatesBandGainsOnPerInstrument(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
@@ -147,9 +139,7 @@ func TestEQGainUpdatesBandGainsOnPerInstrument(t *testing.T) {
 	}
 }
 
-// TestEQCurveReflectsChannelAfterSwitch is an end-to-end test: after
-// switching to an instrument with +10 dB on band 5, the recomputed curve
-// cache should show positive gain around that frequency.
+// The recomputed curve shows the new channel's +10 dB on band 5.
 func TestEQCurveReflectsChannelAfterSwitch(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -172,8 +162,7 @@ func TestEQCurveReflectsChannelAfterSwitch(t *testing.T) {
 		t.Fatal("buildCurrentBands returned no bands")
 	}
 
-	// Band 5 should have +10 dB gain in the computed bands.
-	// Bands may include HPF/LPF prepend/append, so find the peaking bands.
+	// HPF/LPF may be prepended/appended, so find the peaking bands.
 	found := false
 	for _, b := range bands {
 		if b.GainDB == 10.0 {
@@ -186,9 +175,7 @@ func TestEQCurveReflectsChannelAfterSwitch(t *testing.T) {
 	}
 }
 
-// TestEQCurveCacheUpdatesViaDropdownClick exercises the full dropdown click
-// path: open dropdown, click an instrument, and verify the zone's curveCache
-// actually reflects the new channel's gains after a draw-like recompute.
+// Through the dropdown's own callback path, the cache reflects the new channel.
 func TestEQCurveCacheUpdatesViaDropdownClick(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -222,8 +209,6 @@ func TestEQCurveCacheUpdatesViaDropdownClick(t *testing.T) {
 		}
 	}
 
-	// --- Simulate dropdown click to switch to kick ---
-	// Use the same callback path as the actual dropdown button onClick.
 	dv.setEQActiveChannel(channel.Of(roster.Kick))
 
 	// The curve should be dirty now; recompute as drawEQCurve would.

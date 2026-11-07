@@ -18,16 +18,13 @@ type drawRectCall struct {
 	filled bool
 }
 
-// sameRGBA compares two colors by their RGBA() output (so RGBA and NRGBA
-// of equivalent appearance compare equal).
+// By RGBA(), so equivalent RGBA and NRGBA compare equal.
 func sameRGBA(a, b color.Color) bool {
 	ar, ag, ab, aa := a.RGBA()
 	br, bg, bb, ba := b.RGBA()
 	return ar == br && ag == bg && ab == bb && aa == ba
 }
 
-// installDrawRectRecorder replaces the package-level drawRect with a
-// recorder for the duration of the test. The caller restores via Cleanup.
 func installDrawRectRecorder(t *testing.T) *[]drawRectCall {
 	t.Helper()
 	var calls []drawRectCall
@@ -49,8 +46,7 @@ func countByColor(calls *[]drawRectCall, want color.Color) int {
 	return n
 }
 
-// TestDrawLevelsDetail_NilChannelDrawsBorderOnly asserts the empty state
-// — nil channel should produce only the panel border, no level bars.
+// The border only, no bars.
 func TestDrawLevelsDetail_NilChannelDrawsBorderOnly(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -67,8 +63,7 @@ func TestDrawLevelsDetail_NilChannelDrawsBorderOnly(t *testing.T) {
 	}
 }
 
-// TestDrawLevelsDetail_LowLevelUsesLowColor asserts the meter color when the
-// peak is well below the mid threshold — must be the low-zone color (golden).
+// The golden low-zone colour, well below the mid threshold.
 func TestDrawLevelsDetail_LowLevelUsesLowColor(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -98,8 +93,6 @@ func TestDrawLevelsDetail_LowLevelUsesLowColor(t *testing.T) {
 	}
 }
 
-// TestDrawLevelsDetail_ClipPaintsRed asserts that a clip event lights up
-// the meter bar in red.
 func TestDrawLevelsDetail_ClipPaintsRed(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -126,8 +119,7 @@ func TestDrawLevelsDetail_ClipPaintsRed(t *testing.T) {
 	}
 }
 
-// TestLevelsLatch_TriggersOnClipIncrease asserts the latch fires when
-// ClipCount goes up, and stays active for ~clipLatchFrames frames after.
+// And stays active for ~clipLatchFrames.
 func TestLevelsLatch_TriggersOnClipIncrease(t *testing.T) {
 	assertDefaultParityState(t)
 

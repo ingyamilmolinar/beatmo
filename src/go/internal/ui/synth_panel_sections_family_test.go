@@ -9,30 +9,13 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestSynthSections_EveryGridControlLandsInVisibleSection is the family-knob
-// visibility discipline for the native-deprecation migration: every grid-knob
-// ParamDef of every registered recipe must map (via sectionForParam) to a
-// section that is present in synthSectionOrderForSchema's order for that
-// recipe's schema. A knob whose section is missing from the order is silently
-// invisible in the Synth tab — buildSynthTab appends knobIdxs only to sections
-// that exist (see the `for j := range sections` loop).
-//
-// Introduced with the FM family knobs (fm_op*_ratio/_depth/_decay route to the
-// FM section, which the legacy bespoke 4-card order lacked); kept general so
-// every future family (kick/tom/snare/cymbal/bass) is covered automatically.
-// TestSynthSections_WaveControlGetsVoiceCard locks the generator-type knob's
-// placement under the Phase-8B unified layout: every recipe with a <family>_wave
-// knob presents it in the leading VOICE card — the per-instrument "what makes
-// this sound" section — labeled "Generator". The standardized OSC stage (the
-// modular oscillator) is a SEPARATE, enable-able stage that sits after VOICE;
-// the family generator picker is the instrument's own voice, so it belongs in
-// VOICE, which always leads the unified order.
+// Every recipe with a <family>_wave knob shows it as "Generator" in the leading VOICE card: it is the instrument's
+// own voice, separate from the enable-able OSC stage after it.
 func TestSynthSections_WaveControlGetsVoiceCard(t *testing.T) {
 	checked := 0
 	for _, id := range roster.All {
 		schema := audio.InstrumentParamDefs(id)
-		// Only a family voice (kick, snare, FM, …) has a generator VOICE card;
-		// the pure modular voice drives its generator from osc_type in OSC.
+		// The pure modular voice drives its generator from osc_type in OSC.
 		if _, ok := activeFamilyStage(schema); !ok {
 			continue
 		}

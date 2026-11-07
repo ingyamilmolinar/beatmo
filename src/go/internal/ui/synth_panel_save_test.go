@@ -12,16 +12,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Synth-tab Save / Save-As coverage over the instrument library (spec
-// 2026-10-04 §6): drives the public SaveActiveRecipe / SaveActiveRecipeAs
-// entry points against a private in-memory library and asserts the library
-// write, the persisted bytes, the project copy's Origin and the hook event.
+// Against a private in-memory library: the library write, the persisted bytes, the copy's Origin and the hook event.
 
-// captureRecipeHooks subscribes to recipe lifecycle events and returns a
-// thread-safe accessor for the captured payloads. Subscribes per-kind
-// because hooks.Subscribe takes a single Kind; the four recipe / kit
-// kinds we care about are enumerated explicitly here so the helper
-// fails closed if a future Kind is added without coverage.
+// One subscription per kind, listed explicitly, so a new kind without coverage fails closed.
 func captureRecipeHooks(t *testing.T) func() []hooks.Event {
 	t.Helper()
 	var mu sync.Mutex
@@ -55,11 +48,7 @@ func captureRecipeHooks(t *testing.T) func() []hooks.Event {
 	}
 }
 
-// waitForKind polls the events accessor briefly until an event of the
-// given kind appears, or the test fails. hooks delivery is async (pool
-// fanout); without this poll the test races the worker. 10ms × 100
-// iterations = 1s max before failing — generous for the hooks.fanout
-// pool's typical sub-millisecond delivery.
+// Hooks deliver asynchronously; up to 1 s.
 func waitForKind(t *testing.T, events func() []hooks.Event, kind hooks.Kind) hooks.Event {
 	t.Helper()
 	for i := 0; i < 100; i++ {
@@ -74,10 +63,7 @@ func waitForKind(t *testing.T, events func() []hooks.Event, kind hooks.Kind) hoo
 	return hooks.Event{}
 }
 
-// setSynthActiveInstrumentForTest installs a DrumView shim whose
-// synthTabActiveInstrument resolves to instID. The Save path's only
-// dependency on a real DrumView is that method; nothing else is touched
-// by the persistence flow, so a bare struct with one row is sufficient.
+// Save's only DrumView dependency is synthTabActiveInstrument.
 func setSynthActiveInstrumentForTest(instID instrument.ID) *DrumView {
 	dv := &DrumView{}
 	dv.Rows = []*DrumRow{{Instrument: instID}}
@@ -111,9 +97,7 @@ func persistedField(t *testing.T, lib *memInstrumentLibrary, id, field string) f
 	return instrument.FieldValues(d, audio.BuiltinModuleRegistry())[field]
 }
 
-// TestSynthSave_PersistsLibraryDocAndPublishesHook: Save writes the project
-// copy into the library under its origin, persists it, and publishes
-// EventRecipeSaved naming the library id and the instrument.
+// Into the library under its origin, persisted, with EventRecipeSaved naming both ids.
 func TestSynthSave_PersistsLibraryDocAndPublishesHook(t *testing.T) {
 	newDocsGame(t, roster.Snare)
 	lib := withPrivateInstrumentLibrary(t)
@@ -147,9 +131,7 @@ func TestSynthSave_PersistsLibraryDocAndPublishesHook(t *testing.T) {
 	}
 }
 
-// TestSynthSaveAs_CreatesUserInstrumentAndRepointsOrigin: Save As writes a new
-// content-addressed user instrument, persists it, keeps the row's id, repoints
-// the project copy at it, and publishes EventRecipeCreated.
+// A new content-addressed user instrument: the row keeps its id, the copy points at it, EventRecipeCreated fires.
 func TestSynthSaveAs_CreatesUserInstrumentAndRepointsOrigin(t *testing.T) {
 	newDocsGame(t, roster.Snare)
 	lib := withPrivateInstrumentLibrary(t)
@@ -187,9 +169,7 @@ func TestSynthSaveAs_CreatesUserInstrumentAndRepointsOrigin(t *testing.T) {
 	}
 }
 
-// TestSynthSaveAs_PersistedDocReloadsCleanly: the bytes the sink received load
-// back through LoadUserInstrumentLibrary (the boot path) with the saved value —
-// the persisted format cannot drift from what the loader accepts.
+// The persisted bytes load back through the boot path, so the format cannot drift from the loader.
 func TestSynthSaveAs_PersistedDocReloadsCleanly(t *testing.T) {
 	newDocsGame(t, roster.Kick)
 	lib := withPrivateInstrumentLibrary(t)
@@ -217,8 +197,7 @@ func TestSynthSaveAs_PersistedDocReloadsCleanly(t *testing.T) {
 	}
 }
 
-// TestSynthSave_NoSinkIsNoOp: with no sink, Save still updates the in-memory
-// library and publishes the hook — persistence alone silently no-ops.
+// The library and the hook still update; only persistence no-ops.
 func TestSynthSave_NoSinkIsNoOp(t *testing.T) {
 	newDocsGame(t, roster.Snare)
 	audio.SetInstrumentLibrarySink(nil)
@@ -233,19 +212,9 @@ func TestSynthSave_NoSinkIsNoOp(t *testing.T) {
 	_ = waitForKind(t, events, hooks.EventRecipeSaved)
 }
 
-// TestHooks_NumNonVerboseUpdated guards the constant in hooks/events.go.
-// If Phase 4 forgot to bump it, KindAll[:NumNonVerbose] would silently
-// truncate the four new recipe / kit kinds and the eventlogger coverage
-// path would emit them anyway — confusing log output.
+// KindAll[:NumNonVerbose] would otherwise mis-slice and log the wrong kinds.
 func TestHooks_NumNonVerboseUpdated(t *testing.T) {
-	// Derive the expected count from the source of truth (KindAll + IsVerbose)
-	// rather than hardcoding a magic number, so adding/removing a Kind doesn't
-	// require editing this test. The invariant the constant must satisfy:
-	// NumNonVerbose equals the number of non-verbose kinds, AND every verbose
-	// kind sits at the tail — i.e. KindAll[:NumNonVerbose] contains zero verbose
-	// kinds and KindAll[NumNonVerbose:] contains only verbose kinds. Otherwise
-	// KindAll[:NumNonVerbose] would mis-slice and the eventlogger coverage path
-	// would emit (or drop) the wrong kinds.
+	// Derived from KindAll + IsVerbose: the count matches and every verbose kind sits at the tail.
 	wantCount := 0
 	for _, k := range hooks.KindAll {
 		if !hooks.IsVerbose(k) {
@@ -263,8 +232,7 @@ func TestHooks_NumNonVerboseUpdated(t *testing.T) {
 			t.Errorf("non-verbose kind %q at index %d is outside the non-verbose prefix KindAll[%d:]", k, i, hooks.NumNonVerbose)
 		}
 	}
-	// Sanity check: the recipe/kit + sampler kinds are present in KindAll and
-	// within the non-verbose prefix.
+	// Present and inside the non-verbose prefix.
 	want := map[hooks.Kind]bool{
 		hooks.EventRecipeSaved:       true,
 		hooks.EventRecipeCreated:     true,

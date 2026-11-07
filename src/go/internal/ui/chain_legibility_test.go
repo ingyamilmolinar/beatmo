@@ -9,16 +9,10 @@ import (
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
-// Chain-tab legibility: the three pure state->string helpers behind the
-// redesign's header strip. All of them are plain functions so the wording can
-// be tested without rendering; the PIXELS are verified by the crop_chain_*
-// screenshot scenes.
+// Pure state→string helpers, so the wording tests without rendering; pixels come from the crop_chain_* scenes.
 
-// ── Next-tap hint ────────────────────────────────────────────────────────
-//
-// The click rule is stateful — a tap sets A, or sets B, or SILENTLY REPLACES B
-// depending on hidden state (handleStageClick). The rule is deliberately
-// unchanged; this hint is what makes its outcome visible BEFORE the click.
+// A tap sets A, sets B or silently replaces B depending on hidden state; the hint shows the outcome before the
+// click.
 
 func TestChainNextTapHint_TracksTheSelectionState(t *testing.T) {
 	const unset = scope.Stage(-1)
@@ -44,9 +38,7 @@ func TestChainNextTapHint_TracksTheSelectionState(t *testing.T) {
 	}
 }
 
-// The forbidden-glyph rule (DESIGN.md) bans raw chrome arrows in UI labels, so
-// the hint must read as words. A regression here would also trip the
-// repo-wide glyph audit, but failing HERE names the reason.
+// DESIGN.md bans raw chrome arrows, so it reads as words; failing here names the reason.
 func TestChainNextTapHint_UsesWordsNotArrowGlyphs(t *testing.T) {
 	for _, s := range []string{
 		chainNextTapHint(-1, -1),
@@ -61,10 +53,7 @@ func TestChainNextTapHint_UsesWordsNotArrowGlyphs(t *testing.T) {
 	}
 }
 
-// ── A/B legend ───────────────────────────────────────────────────────────
-//
-// Nothing on screen said which colour was A and which was B, nor that B
-// existed at all. The legend names both, in their own trace colours.
+// The legend names A and B in their trace colours.
 
 func TestChainLegend_NamesBothTapsWithTheirStage(t *testing.T) {
 	got := chainLegend(scope.StageSynth, scope.StageEQ)
@@ -85,8 +74,7 @@ func TestChainLegend_NamesBothTapsWithTheirStage(t *testing.T) {
 	}
 }
 
-// An unset tap is the case that most needs explaining: the user cannot compare
-// anything yet and nothing previously told them so.
+// The case that most needs explaining: nothing can be compared yet.
 func TestChainLegend_UnsetTapInvitesTheUserToSetIt(t *testing.T) {
 	got := chainLegend(scope.StageSynth, -1)
 	if len(got) != 2 {
@@ -101,9 +89,7 @@ func TestChainLegend_UnsetTapInvitesTheUserToSetIt(t *testing.T) {
 	}
 }
 
-// The legend colours must be the SAME ones the traces are drawn in, or the
-// legend actively lies. Pinning them to the scope palette catches a future
-// refactor that recolours the traces and forgets the legend.
+// The traces' own palette, or the legend lies.
 func TestChainLegend_ColorsMatchTheTracePalette(t *testing.T) {
 	got := chainLegend(scope.StageSynth, scope.StageEQ)
 	if got[0].Color != colScopeA {
@@ -114,11 +100,7 @@ func TestChainLegend_ColorsMatchTheTracePalette(t *testing.T) {
 	}
 }
 
-// ── Mode gloss ───────────────────────────────────────────────────────────
-//
-// OVR / SPL / DIF / FIT / AG were five unexplained codes. Chain was the only
-// audio-panel tab that never used the PlainEnglish convention that Synth, EQ
-// and Sampler all use.
+// Every display-mode code has a PlainEnglish gloss, as on the other tabs.
 
 func TestChainModeGloss_ExplainsEveryDisplayMode(t *testing.T) {
 	seen := map[string]bool{}
@@ -152,8 +134,6 @@ func TestChainModeGloss_DoesNotMerelyRestateTheCode(t *testing.T) {
 	}
 }
 
-// PlainEnglish is the app-wide convention for exactly this. Chain's codes must
-// now answer to it like every other tab's knob labels do.
 func TestPlainEnglish_CoversTheChainPillCodes(t *testing.T) {
 	// FIT and AG are gone: the framing they toggled is unconditional now.
 	for _, code := range []string{"OVR", "SPL", "DIF", "FRZ"} {

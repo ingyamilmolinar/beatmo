@@ -8,8 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
-// Spectrum ISO band brackets follow the active locale (Bass/Mids/Treble →
-// Graves/Medios/Agudos). Numeric ticks ("31", "1k") stay literal.
+// Numeric ticks ("31", "1k") stay literal.
 func TestSpectrumBandGroupLabelsLocalized(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	i18n.SetLocale(i18n.LocaleES)
@@ -101,8 +100,7 @@ func TestChainDisplayModeButtonsLocalized(t *testing.T) {
 	}
 }
 
-// Chain stage names route through i18n but keep their common DAW English form
-// in every locale (per product decision).
+// The common DAW English form in every locale, a product decision.
 func TestChainStageLabelsKeepEnglish(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	want := map[scope.Stage]string{

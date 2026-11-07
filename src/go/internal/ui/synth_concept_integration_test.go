@@ -12,9 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// synthSectionContaining returns the section id that owns a knob whose param
-// def is in the given group, plus the binding index of that knob. Fails when no
-// such knob exists in the laid-out section model.
+// Fails when no such knob exists.
 func synthSectionContaining(t *testing.T, g *Game, group string) (synthSectionID, int) {
 	t.Helper()
 	bindings := g.drum.SynthTabBindings()
@@ -29,15 +27,10 @@ func synthSectionContaining(t *testing.T, g *Game, group string) (synthSectionID
 	return -1, -1
 }
 
-// TestSynthControlCellReservesNoVizBand drives the real Synth-tab layout for the
-// modular instrument and asserts each laid-out knob CELL no longer reserves a
-// concept-viz band below the knob+caption. Post-Task-8 the per-knob mini-picture
-// is gone (the right-pane focus graph explains the selected knob), so the cellH
-// formula drops SynthConceptVizH and the dial+caption fill the cell.
+// Through the real layout, the knob fills its cell with no band beneath.
 func TestSynthControlCellReservesNoVizBand(t *testing.T) {
 	g := setupModularSynthGame(t)
-	// Give the detail pane real vertical room so cells lay out (a degenerate
-	// panel would shrink cellH to nothing and the assertion would be vacuous).
+	// A degenerate panel would shrink cells to nothing and make this vacuous.
 	expandSynthPanelForTest(t, g)
 
 	secID, _ := synthSectionContaining(t, g, "filter")
@@ -52,9 +45,7 @@ func TestSynthControlCellReservesNoVizBand(t *testing.T) {
 		t.Fatalf("first knob cell of section %v is not visible after layout", secID)
 	}
 
-	// The first knob of the section: its laid-out Rect() includes the dial +
-	// caption row. The space between its bottom and the cell bottom must now be
-	// no more than the inter-row gap — there is NO reserved viz band any more.
+	// Its rect spans dial and caption; below it, only the inter-row gap.
 	var knobIdx int = -1
 	for _, s := range g.drum.SynthTabSections() {
 		if s.id == secID && len(s.knobIdxs) > 0 {
@@ -81,13 +72,7 @@ func TestSynthControlCellReservesNoVizBand(t *testing.T) {
 	}
 }
 
-// TestSynthControlDrawsNoConceptBand renders the synth detail pane and asserts
-// the per-knob concept picture is no longer drawn below the knob's caption.
-// Post-Task-8 the right-pane focus graph explains the selected knob, so the
-// in-cell mini-picture (and its reserved band) are gone. The concept RENDERERS
-// themselves still work (see TestEveryKnobHasConceptInk /
-// TestConceptKnobWave_RendersAndMorphs); they're just no longer wired into the
-// per-knob cell. Here we assert the cell reserves no band below the knob.
+// No picture is drawn below a knob's caption.
 func TestSynthControlDrawsNoConceptBand(t *testing.T) {
 	g := setupModularSynthGame(t)
 	expandSynthPanelForTest(t, g)
@@ -130,8 +115,7 @@ func TestSynthControlDrawsNoConceptBand(t *testing.T) {
 	}
 }
 
-// TestSynthControlPurpose_Gloss — the per-knob purpose line resolves a kid-readable
-// gloss from the param Label (or Name), and is empty for unmapped labels.
+// Empty for unmapped labels.
 func TestSynthControlPurpose_Gloss(t *testing.T) {
 	if got := synthControlPurpose(audio.ParamDef{Label: "Cutoff"}); got != "bright or dull" {
 		t.Errorf("Cutoff gloss = %q, want %q", got, "bright or dull")
@@ -148,10 +132,7 @@ func TestSynthControlPurpose_Gloss(t *testing.T) {
 	}
 }
 
-// TestSynthSectionGridFlowsColumnsDesktop — Task 3 removed the desktop 2-column
-// cap: card-sized cells now flow as many columns as the pane width fits (up to
-// synthMaxGridCols), so a knob-rich stage uses more than two columns on a wide
-// desktop pane.
+// As many columns as the pane fits (up to synthMaxGridCols).
 func TestSynthSectionGridFlowsColumnsDesktop(t *testing.T) {
 	g := setupModularSynthGame(t)
 	expandSynthPanelForTest(t, g)

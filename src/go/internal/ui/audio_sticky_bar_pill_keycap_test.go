@@ -8,8 +8,7 @@ import (
 )
 
 func TestPillKeycapEngageAndTravel(t *testing.T) {
-	// drawPillTabAt renders the keycap itself and ignores Button.Style, so the
-	// style passed here is irrelevant to the behavior under test.
+	// drawPillTabAt renders the keycap itself and ignores Button.Style.
 	b := NewButton("EQ", InstButtonStyle, nil)
 	b.SetRect(image.Rect(0, 0, 40, 22))
 	dst := ebiten.NewImage(40, 22)
@@ -38,8 +37,7 @@ func TestPillKeycapEngageAndTravel(t *testing.T) {
 	for i := 0; i < 12; i++ {
 		drawPillTabAt(dst, b, true)
 	}
-	// The flat-tonal restyle retired cap travel; the press SPRING remains as
-	// the settle-to-silence contract, so assert depth rather than pixels.
+	// Cap travel is gone but the press spring remains, so assert depth, not pixels.
 	if b.pressDepth < 0.9 {
 		t.Fatalf("held pill press depth = %v, want ~1", b.pressDepth)
 	}

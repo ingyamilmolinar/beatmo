@@ -45,9 +45,7 @@ func TestSamplerPlayheadFrac_ForwardSweep(t *testing.T) {
 	}
 }
 
-// The playhead always sweeps forward (left→right), even for a reversed sound.
-// Reversal flips the buffer in place (see sampler_reverse_test.go); the highlight
-// has no direction flag, so it can never run right→left.
+// Reversal flips the buffer in place, and the line has no direction, so it never runs right to left.
 func TestSamplerPlayheadFrac_AlwaysSweepsForward(t *testing.T) {
 	assertDefaultParityState(t)
 	if frac, vis := samplerPlayheadFrac(0.0, 1.0, 0.2, 0.8); !vis || !fEq(frac, 0.2) {
@@ -140,8 +138,7 @@ func TestPlayheadTracker_SpawnsOneLinePerNewTrigger(t *testing.T) {
 	if len(tr.lines) != 1 {
 		t.Fatalf("got %d lines, want 1", len(tr.lines))
 	}
-	// Re-observing the SAME trigger (every frame the glue re-passes it) must not
-	// duplicate the line.
+	// The glue re-passes the same trigger every frame.
 	tr.observe(base+ms(100), map[instrument.ID]int64{"a": base}, 1.0)
 	if len(tr.lines) != 1 {
 		t.Errorf("re-observe of same trigger spawned a duplicate: %d", len(tr.lines))
@@ -150,8 +147,7 @@ func TestPlayheadTracker_SpawnsOneLinePerNewTrigger(t *testing.T) {
 
 func TestPlayheadTracker_OverlappingTriggersCoexistWithDistinctColors(t *testing.T) {
 	assertDefaultParityState(t)
-	// The headline feature: when a beat re-fires before the previous sound has
-	// finished, both lines must coexist with different colors.
+	// A beat re-firing before the sound ends gets a second line in another colour.
 	var tr samplerPlayheadTracker
 	base := int64(1e9)
 	tr.observe(base, map[instrument.ID]int64{roster.Kick: base}, 1.0) // line A at t=0
@@ -170,8 +166,7 @@ func TestPlayheadTracker_OverlappingTriggersCoexistWithDistinctColors(t *testing
 
 func TestPlayheadTracker_SameIdRefireSpawnsNewLine(t *testing.T) {
 	assertDefaultParityState(t)
-	// "subdivision of the next beat shorter than the duration": the same node
-	// re-fires mid-sound and gets its own line.
+	// The same node re-firing mid-sound gets its own line.
 	var tr samplerPlayheadTracker
 	base := int64(1e9)
 	tr.observe(base, map[instrument.ID]int64{roster.Kick: base}, 2.0)
@@ -183,8 +178,7 @@ func TestPlayheadTracker_SameIdRefireSpawnsNewLine(t *testing.T) {
 
 func TestPlayheadTracker_SingleLineAdvancesMonotonically(t *testing.T) {
 	assertDefaultParityState(t)
-	// Anti-jitter: a single line's fraction must increase smoothly with time and
-	// never jump backward.
+	// Rises smoothly, never jumping back.
 	var tr samplerPlayheadTracker
 	base := int64(1e9)
 	tr.observe(base, map[instrument.ID]int64{"a": base}, 2.0)
@@ -204,9 +198,7 @@ func TestPlayheadTracker_SingleLineAdvancesMonotonically(t *testing.T) {
 
 func TestPlayheadTracker_RetriggerDoesNotResetInflightLine(t *testing.T) {
 	assertDefaultParityState(t)
-	// Reproduces the pre-fix jitter: when the loaded instrument re-fired during a
-	// preview, the old min()-of-two-clocks design yanked the line back to 0. Now
-	// the in-flight preview line keeps its position and the re-fire adds a 2nd.
+	// A re-fire during a preview adds a second line; the preview's keeps its position.
 	var tr samplerPlayheadTracker
 	pv := int64(1e9)
 	tr.observe(pv, map[instrument.ID]int64{"preview": pv, roster.Kick: 0}, 2.0)
@@ -346,8 +338,7 @@ func TestSamplerWaveform_PlayheadStrokeThickFromDensity(t *testing.T) {
 	restore := SwapSamplerNowFnForTest(func() int64 { return now })
 	defer restore()
 
-	// Stroke is density-driven (not a hardcoded width) and clearly thicker than
-	// the old 2 px so the coloured lines are easy to see.
+	// Density-driven, and clearly thicker than 2 px.
 	want := Profile().DensityValues().SamplerPlayheadStroke
 	if want < 3 {
 		t.Fatalf("playhead stroke token = %d, want >= 3 (thicker for visibility)", want)
@@ -379,12 +370,8 @@ func TestSamplerWaveform_NoPlayheadsWhenIdle(t *testing.T) {
 	calls := installDrawRectRecorder(t)
 	dv.drawSamplerWaveform(nil)
 	for i := 0; i < samplerMaxPlayheads; i++ {
-		// The waveform trace + trim handles always draw in colAccent
-		// (sunset-gold). That accent hex is also a member of the instrument
-		// fallback palette the playhead colours cycle through, so the
-		// accent-coloured index can't be distinguished from a playhead by
-		// colour alone — skip it. Every other palette index is drawn only by
-		// a real playhead line, so it must be absent when idle.
+		// The trace and handles draw in colAccent, which is also a palette entry, so that index cannot tell a playhead
+		// from the trace; every other index draws only for a real line.
 		if sameRGBA(samplerPlayheadColor(i), colAccent) {
 			continue
 		}

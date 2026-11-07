@@ -9,16 +9,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// The reported path through the REAL startup load (buildDemo is a stub under
-// -tags test, so only this build reaches it): the user edits the startup
-// circuit's first instrument and presses Save; on the NEXT launch (a new Game
-// whose startup circuit loads through buildDemo, after the bootstrap loaded the
-// persisted library) that instrument plays the saved tone, not the circuit's,
-// and Reset returns it to the circuit's. buildDemo raises the undo manager's
-// restoring flag to keep the load out of the history; that must not make the
-// open look like an undo restore. Reads whatever instrument the demo's row 0
-// carries — it pins nothing about the demo's contents. The real-input Save /
-// dial / Reset flow is covered by synth_save_trumps_circuit_test.go.
+// Real build only (buildDemo is stubbed under -tags test): a Save on the startup circuit plays on the next launch.
+// buildDemo raises the undo manager's restoring flag, which must not make the open look like an undo. Pins nothing
+// about the demo.
 func TestSynthSaveTrumpsTheStartupCircuitOnNextLaunch(t *testing.T) {
 	lib := withPrivateInstrumentLibrary(t)
 	boot := func() *Game {

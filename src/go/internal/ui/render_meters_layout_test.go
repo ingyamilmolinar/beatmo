@@ -7,18 +7,11 @@ import (
 	"testing"
 )
 
-// aggRowSpan returns the [top, bottom) pixel range a row occupies given its
-// styled role height.
 func aggRowSpan(r levelsAggRow) (int, int) {
 	return r.Y, r.Y + StyledTextHeight(r.Role)
 }
 
-// TestLevelsAggregateColumnRows_NoOverlap pins the aggregate-column
-// layout contract: rows flow sequentially (strictly increasing y),
-// each row's pixel span never overlaps the next, and no rendered row
-// extends past rect.Max.Y. The pre-fix layout used hardcoded absolute
-// offsets from the CLIPS row (LUFS value at +40, LOUDEST label at +36)
-// which physically overlapped.
+// Rows flow strictly downward, never overlap and never pass rect.Max.Y; fixed offsets once overlapped.
 func TestLevelsAggregateColumnRows_NoOverlap(t *testing.T) {
 	rect := image.Rect(0, 0, 160, 400)
 	rows := levelsAggregateColumnRows(rect)
@@ -43,9 +36,7 @@ func TestLevelsAggregateColumnRows_NoOverlap(t *testing.T) {
 	}
 }
 
-// TestLevelsAggregateColumnRows_TruncatesNotOverlaps: when the rect is
-// too short for all eight rows, the layout drops trailing rows instead
-// of overlapping or overflowing. Every returned row must still fit.
+// Too short for all rows, it drops trailing rows rather than overlapping; every returned row fits.
 func TestLevelsAggregateColumnRows_TruncatesNotOverlaps(t *testing.T) {
 	for _, h := range []int{0, 10, 30, 50, 70, 90, 110} {
 		rect := image.Rect(0, 100, 160, 100+h)
@@ -66,8 +57,7 @@ func TestLevelsAggregateColumnRows_TruncatesNotOverlaps(t *testing.T) {
 			}
 		}
 	}
-	// A rect tall enough for only the HEADROOM label + big number must
-	// keep exactly those two rows (label is the first to render).
+	// The label renders first.
 	twoRowH := StyledTextHeight(RoleCaption) + levelsAggRowGap + StyledTextHeight(RolePanelTitle)
 	rect := image.Rect(0, 0, 160, twoRowH)
 	rows := levelsAggregateColumnRows(rect)
@@ -76,12 +66,7 @@ func TestLevelsAggregateColumnRows_TruncatesNotOverlaps(t *testing.T) {
 	}
 }
 
-// TestLevelsAggregateColumnRows_SpaciousDensity exercises the layout
-// under the Spacious density profile (mobile default) to make sure the
-// density override does not reintroduce overlap. Row heights are
-// role-driven (density-independent), but the density-sized readout
-// column width is where Spacious screens render this column, so pin
-// the combination.
+// Row heights are role-driven, but Spacious sizes the readout column, so pin the pair.
 func TestLevelsAggregateColumnRows_SpaciousDensity(t *testing.T) {
 	restore := SetDensityForTest(DensitySpacious)
 	defer restore()
@@ -103,9 +88,7 @@ func TestLevelsAggregateColumnRows_SpaciousDensity(t *testing.T) {
 	}
 }
 
-// TestLevelsChannelStripLabelTruncated: a long channel name must be
-// truncated to its strip width so it cannot bleed into the neighbor
-// strip (the "CowbellFm-epiano-1" collision).
+// Truncated to its strip, so a long name cannot bleed into the neighbour.
 func TestLevelsChannelStripLabelTruncated(t *testing.T) {
 	const stripW = 24
 	long := "fm-epiano-1"

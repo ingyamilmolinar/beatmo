@@ -9,9 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// TestFXPanelSlidersFollowInstrumentColor verifies the insert-FX parameter
-// sliders are tinted with the owning row's instrument color (its FillCol),
-// instead of the fixed light-blue genColorPrimary.
+// The owning row's instrument colour, not the fixed light blue.
 func TestFXPanelSlidersFollowInstrumentColor(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {

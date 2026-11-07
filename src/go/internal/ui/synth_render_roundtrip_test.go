@@ -12,12 +12,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// These tests close the render-level gap in the import/export round trip:
-// JSON fields and store state can round-trip while the tone the next trigger
-// renders does not. A synth voice renders exactly the flattened block of the
-// instrument's project document (spec 2026-10-04 §8: render(Flatten(doc))), so
-// renderedBlock(id) below IS the rendered tone on every path, and is available
-// under -tags test where the C renderers are stubbed.
+// A voice renders exactly the flattened block of its document, so renderedBlock is the rendered tone on every path,
+// even under -tags test where the C is stubbed.
 func renderedBlock(t *testing.T, inst instrument.ID) []float64 {
 	t.Helper()
 	d, ok := audio.InstrumentDoc(inst)
@@ -27,9 +23,7 @@ func renderedBlock(t *testing.T, inst instrument.ID) []float64 {
 	return instrument.Flatten(d, audio.BuiltinModuleRegistry())
 }
 
-// customizeLibraryForTest simulates a session whose user library holds a Saved
-// version of inst (a Synth-tab Save in a previous session): the library entry
-// moves field by v, and the project copy is a fresh pick of it.
+// A library holding a Saved version from a previous session; the project copy is a fresh pick of it.
 func customizeLibraryForTest(t *testing.T, inst, field string, v float64) {
 	t.Helper()
 	lib, ok := audio.LibraryDoc(instrument.ID(inst))
@@ -58,10 +52,7 @@ func importInto(t *testing.T, data []byte) *Game {
 	return g
 }
 
-// assertSavedTrumpsThenResetRestores: after an import into a session whose
-// library holds a Saved version of inst, inst renders the SAVED tone (the
-// user's Save trumps the file's document for the same instrument), and Reset
-// returns it to exactly what the file carried.
+// The user's Save trumps the file's document, and Reset returns exactly what the file carried.
 func assertSavedTrumpsThenResetRestores(t *testing.T, inst instrument.ID, fileTone []float64) {
 	t.Helper()
 	saved, ok := audio.UserLibraryDoc(inst)
@@ -77,10 +68,8 @@ func assertSavedTrumpsThenResetRestores(t *testing.T, inst instrument.ID, fileTo
 	}
 }
 
-// TestImportRender_OverlayEdit_IntoCustomizedSession: an edited instrument,
-// exported, imported into a session whose library holds a DIFFERENT saved
-// version of it, renders the session's Save (the user's version trumps any
-// circuit's), and Reset brings back exactly what was exported.
+// Into a session whose library holds a different saved version: the session's Save plays, and Reset restores the
+// export.
 func TestImportRender_OverlayEdit_IntoCustomizedSession(t *testing.T) {
 	g := newDocsGame(t, roster.Snare)
 	audio.SetInstrumentParam(roster.Snare, "post_decay", 0.42)
@@ -93,9 +82,7 @@ func TestImportRender_OverlayEdit_IntoCustomizedSession(t *testing.T) {
 	assertSavedTrumpsThenResetRestores(t, roster.Snare, want)
 }
 
-// TestImportRender_ShippedProject_IntoCustomizedSession: a project exported
-// with an UNEDITED instrument, imported where the library holds a Saved version
-// of it, plays the Saved version; Reset returns to the file's.
+// An unedited instrument into a session with a Saved version: the Saved version plays; Reset returns to the file's.
 func TestImportRender_ShippedProject_IntoCustomizedSession(t *testing.T) {
 	g := newDocsGame(t, roster.Snare)
 	want := renderedBlock(t, roster.Snare)
@@ -109,10 +96,7 @@ func TestImportRender_ShippedProject_IntoCustomizedSession(t *testing.T) {
 	assertSavedTrumpsThenResetRestores(t, roster.Snare, want)
 }
 
-// TestImportRender_SampleEditPlusParams: a document edit and a non-destructive
-// Sampler edit travel together; both survive an import (into a customized
-// session the Saved document plays and Reset restores the file's, while the
-// Sampler edit — not part of the document — is restored either way).
+// A document edit and a Sampler edit travel together; the Sampler edit, not part of the document, survives either way.
 func TestImportRender_SampleEditPlusParams(t *testing.T) {
 	g := newDocsGame(t, roster.Snare)
 	audio.SetInstrumentParam(roster.Snare, "post_decay", 0.42)
@@ -135,8 +119,7 @@ func TestImportRender_SampleEditPlusParams(t *testing.T) {
 	}
 }
 
-// TestImportRender_Modular_SwitchesAndStages: the modular voice's oscillator
-// switch, a stage turned off and an enum value survive the round trip.
+// The oscillator switch, a stage off and an enum value survive.
 func TestImportRender_Modular_SwitchesAndStages(t *testing.T) {
 	g := newDocsGame(t, roster.Modular)
 	audio.SetInstrumentParam(roster.Modular, "osc_type", 2)
@@ -152,8 +135,7 @@ func TestImportRender_Modular_SwitchesAndStages(t *testing.T) {
 	}
 }
 
-// TestImportRender_PlainOverlay_CleanSession: edit → export → import on a clean
-// machine reproduces the exported tone and re-exports byte-identically.
+// On a clean machine the tone is reproduced and the re-export is byte-identical.
 func TestImportRender_PlainOverlay_CleanSession(t *testing.T) {
 	g := newDocsGame(t, roster.Snare)
 	audio.SetInstrumentParam(roster.Snare, "post_decay", 0.66)

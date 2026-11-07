@@ -8,10 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestSynthSave_KeepsLikedParamsForBridge: Save never changes the project copy
-// it saves, so it pushes nothing to the platform — on WASM the pushed block is
-// the ONLY thing a browser render reads, and an empty or reverted push used to
-// drop the liked tone. After Save the instrument reads clean (Save button off).
+// Save leaves the project copy unchanged, so it pushes nothing to the platform: on WASM the pushed block is all a
+// render reads, and a reverted push lost the liked tone.
 func TestSynthSave_KeepsLikedParamsForBridge(t *testing.T) {
 	newDocsGame(t, roster.Snare)
 	audio.SetInstrumentParam(roster.Snare, "post_decay", 0.5)

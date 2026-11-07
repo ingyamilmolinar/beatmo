@@ -12,10 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/async"
 )
 
-// TestDialogPool_NoGoroutineLeakUnderRepeatedDispatch verifies the
-// migration: the desktop file-picker path now goes through the bounded
-// "ui.dialog" pool instead of spawning a raw goroutine per click. Many
-// dispatches must not grow the goroutine count proportional to N.
+// Through the bounded "ui.dialog" pool: many dispatches must not grow the goroutine count.
 func TestDialogPool_NoGoroutineLeakUnderRepeatedDispatch(t *testing.T) {
 	runtime.GC()
 	before := runtime.NumGoroutine()
@@ -49,7 +46,4 @@ func TestDialogPool_NoGoroutineLeakUnderRepeatedDispatch(t *testing.T) {
 	}
 }
 
-// async.Go's backpressure semantics are covered exhaustively in
-// internal/async/go_test.go::TestGo_BackpressurePropagates. The dialog
-// pool inherits that contract; a duplicate test here only inflates the
-// shared registry's budget consumption without adding signal.
+// Backpressure is async.Go's contract and tested there; a copy here would only spend the shared budget.

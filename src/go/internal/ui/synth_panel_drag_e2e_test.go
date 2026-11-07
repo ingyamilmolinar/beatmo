@@ -13,11 +13,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestSynthTab_ControlDragEndToEndChangesAudioParam reproduces the exact UX
-// the user described: switch to the Synth tab, find a knob, press inside
-// it, drag, release — and verify the audio.SetInstrumentParam was called
-// with a new value. Catches regressions where the hit area is registered
-// but the knob's value isn't propagated to the audio engine.
+// Synth tab, press, drag, release: the new value reaches audio.SetInstrumentParam, not only the knob.
 func TestSynthTab_ControlDragEndToEndChangesAudioParam(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
@@ -32,15 +28,10 @@ func TestSynthTab_ControlDragEndToEndChangesAudioParam(t *testing.T) {
 	_ = audio.InstallInstrumentDocForTest(roster.Snare, roster.Snare)
 	t.Cleanup(func() { audio.ResetInstrumentParams(roster.Snare) })
 
-	// Switch to Synth tab + run layout. The panel claims its expanded synth
-	// height only during a DrumView Layout pass that sees TabSynth active, and
-	// Ebiten's Layout short-circuits when the size is unchanged — so toggle the
-	// size (shrink then grow) after activating the tab to force a real relayout.
-	// Otherwise the detail pane is one knob-row tall and decay scrolls out.
+	// Otherwise the pane is one knob row tall and decay scrolls out.
 	expandSynthPanelForTest(t, g)
 
-	// Find the ENVELOPE-stage decay knob — the modular snare's Synth tab binds one
-	// control per ParamDef of its document.
+	// One control per ParamDef of the document.
 	knobs := g.drum.SynthTabControls()
 	bindings := g.drum.SynthTabBindings()
 	wantKnobs := len(audio.InstrumentParamDefs(roster.Snare))
@@ -57,8 +48,7 @@ func TestSynthTab_ControlDragEndToEndChangesAudioParam(t *testing.T) {
 	if decayIdx < 0 {
 		t.Fatal("no decay knob in bindings")
 	}
-	// amp_decay lives in the ENVELOPE stage; open it so the knob gets a
-	// hit-testable rect under the chip-strip + detail-pane layout.
+	// amp_decay lives in ENVELOPE.
 	selectSectionForKnobIdx(t, g, roster.Snare, decayIdx)
 	knobs = g.drum.SynthTabControls()
 	knob := knobs[decayIdx]
@@ -89,9 +79,7 @@ func TestSynthTab_ControlDragEndToEndChangesAudioParam(t *testing.T) {
 	cx := (rect.Min.X + rect.Max.X) / 2
 	cy := (rect.Min.Y + rect.Max.Y) / 2
 
-	// Armed model (2026-07): a not-armed wheel scrolls the row — value edits
-	// require arming the control first, then spinning the value lane. A stationary
-	// tap arms; the armed wheel then raises the value and propagates it to audio.
+	// Arm with a still tap, then spin the value lane.
 	h := &synthControlHitAdapter{dv: g.drum, idx: decayIdx, instID: roster.Snare}
 	h.OnPress(cx, cy)
 	h.OnRelease(cx, cy)
@@ -138,8 +126,6 @@ func TestSynthTab_ControlDragEndToEndChangesAudioParam(t *testing.T) {
 	}
 }
 
-// TestSynthTab_PressMissingControlIsNoOp verifies a press OUTSIDE every knob
-// rect does not start a drag (negative complement to the success case).
 func TestSynthTab_PressMissingControlIsNoOp(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
@@ -165,10 +151,7 @@ func TestSynthTab_PressMissingControlIsNoOp(t *testing.T) {
 	}
 }
 
-// TestSynthTab_ReleaseFollowingDragPropagatesFinalValue verifies the
-// last drag value is propagated on release (one final SetInstrumentParam
-// call). This is the regression for "I drag to 75 % then release and the
-// audio doesn't pick up the final value".
+// The final value reaches the audio on release.
 func TestSynthTab_ReleaseFollowingDragPropagatesFinalValue(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
@@ -195,10 +178,7 @@ func TestSynthTab_ReleaseFollowingDragPropagatesFinalValue(t *testing.T) {
 
 	knobs := g.drum.SynthTabControls()
 	bindings := g.drum.SynthTabBindings()
-	// Pick the first VISIBLE synth knob. Phase 8B's unified layout shows many
-	// more sections, so a fixed param (the old "drive") may scroll out of its
-	// narrow card in the small test panel — any visible knob exercises the same
-	// drag→propagate path.
+	// Any visible knob exercises the same path; a fixed one may scroll out of the small test panel.
 	var idx = -1
 	for i := range bindings {
 		if !knobs[i].Rect().Empty() {
@@ -235,8 +215,7 @@ func TestSynthTab_ReleaseFollowingDragPropagatesFinalValue(t *testing.T) {
 	def := bindings[idx].def
 	paramName := def.Name
 
-	// Armed model: arm via a stationary tap, then spin the value lane; the final
-	// resolved value propagates to audio via the platform callback.
+	// Arm, spin, and the resolved value reaches audio through the platform callback.
 	h := &synthControlHitAdapter{dv: g.drum, idx: idx, instID: roster.Snare}
 	h.OnPress(cx, cy)
 	h.OnRelease(cx, cy)

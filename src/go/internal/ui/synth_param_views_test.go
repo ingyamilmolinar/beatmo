@@ -8,10 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Every raw knob a developer can drill into resolves to an EXPLICIT graph
-// view — a group row or a name override in synthParamViews — never a silent
-// fallback (the old renderer table's fallback is how ~20 groups ended up
-// drawing a volume picture for knobs that are not volume).
+// A group row or a name override, never a silent fallback, which once drew volume pictures for non-volume knobs.
 func TestEveryVisibleParamHasAnExplicitView(t *testing.T) {
 	missing := map[string][]string{}
 	for _, id := range roster.All {

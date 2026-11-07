@@ -16,10 +16,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/synthdial"
 )
 
-// The schema-aware rules of the macro-dial metadata
-// (docs/superpowers/specs/2026-10-09-synth-macro-dials-design.md §2.4), run
-// over the SHIPPED file and the whole instrument roster. Load already enforces
-// the structural rules; these need the instruments.
+// The rules that need the instruments, over the shipped file and the whole roster; Load enforces the structural
+// ones.
 
 type rosterSchema struct {
 	id      string
@@ -79,9 +77,7 @@ func cardTables() (melodic, percussion map[string]bool) {
 	return melodic, percussion
 }
 
-// Every card a dial names exists, and within one card TABLE no param is driven
-// by two dials — an instrument uses one table, so its dials never share a param
-// (they compose independently and the re-centre self-check cannot ping-pong).
+// Every named card exists, and within one table no param is driven by two dials, so dials compose independently.
 func TestSynthDialsCardsExistAndShareNoParamWithinATable(t *testing.T) {
 	f := shippedDials(t)
 	melodic, percussion := cardTables()
@@ -111,9 +107,7 @@ func TestSynthDialsCardsExistAndShareNoParamWithinATable(t *testing.T) {
 	}
 }
 
-// Every term names a param some shipped instrument declares, and is claimed by
-// one of its dial's cards on at least one of those instruments (a term no card
-// ever claims is dead metadata — resolveCardDials would always drop it).
+// A term no card ever claims is dead metadata.
 func TestEveryDialTermIsDeclaredAndClaimedByItsCard(t *testing.T) {
 	f := shippedDials(t)
 	roster := rosterSchemas(t)
@@ -140,9 +134,7 @@ func TestEveryDialTermIsDeclaredAndClaimedByItsCard(t *testing.T) {
 	}
 }
 
-// Pickers stay pickers and note names stay correct: no term drives an enum, a
-// stepped value, or a tuning param — on ANY instrument that declares it. Log
-// terms need a positive range.
+// No term drives an enum, a stepped value or a tuning param on any instrument; log terms need a positive range.
 func TestNoDialDrivesAPickerOrTuning(t *testing.T) {
 	f := shippedDials(t)
 	roster := rosterSchemas(t)
@@ -172,9 +164,7 @@ func TestNoDialDrivesAPickerOrTuning(t *testing.T) {
 			}
 		}
 	}
-	// A declared span end clips to each instrument's own range (ranges differ
-	// per family), but must lie within the WIDEST range some instrument
-	// declares: an end beyond every range is travel no instrument can reach.
+	// Within the widest declared range: an end beyond every range is unreachable travel.
 	for _, d := range f.Dials {
 		for _, tm := range d.Terms {
 			w, ok := widest[d.ID+"/"+tm.Param]
@@ -194,8 +184,6 @@ func TestNoDialDrivesAPickerOrTuning(t *testing.T) {
 	}
 }
 
-// Label and gloss keys exist in every locale; a metric names a registered
-// fingerprint descriptor.
 func TestSynthDialStringsAndMetricsExist(t *testing.T) {
 	f := shippedDials(t)
 	for _, d := range f.Dials {
@@ -244,10 +232,7 @@ func TestNoInstrumentLosesADialToTheCap(t *testing.T) {
 	}
 }
 
-// Coverage report + a floor: most shipped instruments must get at least one
-// dial on the root, and every dial must be reachable somewhere — on a shipped
-// root, or on a card that appears once the user adds its stage (Flam's dials
-// live on the Burst stage no shipped melodic voice enables).
+// Most instruments get a root dial, and every dial is reachable on a root or once its stage is added.
 func TestSynthDialCoverageAcrossTheRoster(t *testing.T) {
 	f := shippedDials(t)
 	live := map[string]int{}
@@ -266,8 +251,7 @@ func TestSynthDialCoverageAcrossTheRoster(t *testing.T) {
 		if has {
 			withDials++
 		}
-		// Reachable = what the user gets after switching every stage on
-		// ("+ Add" / the stage pill).
+		// Every stage switched on.
 		allOn := audio.RecipeParams{}
 		for k, v := range audio.MergedInstrumentParamsRO(instrument.ID(rs.id)) {
 			allOn[k] = v
@@ -299,8 +283,6 @@ func TestSynthDialCoverageAcrossTheRoster(t *testing.T) {
 	t.Logf("%d/%d instruments show dials; live counts %v", withDials, len(roster), live)
 }
 
-// paramsEqual reports whether two param maps hold exactly the same values
-// (shared by the dial round-trip tests and the real-build identity harness).
 func paramsEqual(a, b audio.RecipeParams) bool {
 	if len(a) != len(b) {
 		return false
@@ -313,9 +295,7 @@ func paramsEqual(a, b audio.RecipeParams) bool {
 	return true
 }
 
-// A term's `when` names a registered engine condition, and its `requires`
-// names a param some shipped instrument declares — a typo in either would
-// silently hide the term everywhere.
+// A typo in either silently hides the term everywhere.
 func TestDialTermGatesNameRealConditionsAndParams(t *testing.T) {
 	f := shippedDials(t)
 	declared := map[string]bool{}
@@ -336,9 +316,7 @@ func TestDialTermGatesNameRealConditionsAndParams(t *testing.T) {
 	}
 }
 
-// A term may not be gated by its own dial: turning would hide the term mid
-// gesture and the reading would jump. Cross-dial gates are fine (Length moving
-// amp_decay may hide Hold; the row is frozen for the gesture).
+// Or turning hides the term mid-gesture and the reading jumps; cross-dial gates are fine (the row is frozen).
 func TestDialGatesNeverReadTheirOwnDial(t *testing.T) {
 	for name := range synthDialConditions {
 		if _, ok := synthDialConditionReads[name]; !ok {
@@ -363,35 +341,26 @@ func TestDialGatesNeverReadTheirOwnDial(t *testing.T) {
 	}
 }
 
-// shippedDialReadings walks every shipped instrument's root and returns, per
-// dial, the live terms whose shipped value lies outside the span, and the
-// shipped readings.
+// Per dial: live terms whose shipped value lies outside the span, and the shipped readings.
 func shippedDialReadings(t *testing.T) (outside map[string][]string, readings map[string][]float64) {
 	outside, readings, _ = shippedDialCalibration(t)
 	return outside, readings
 }
 
-// shippedDialCalibration is shippedDialReadings plus, per dial, how many
-// shipped sounds read within 5 of an end that a WIDER span could still move
-// away from (some term's span end at that side sits inside the param range).
-// A sound pinned at an end its params cannot pass — an organ's sustain of 1 —
-// is the param's truth, not a calibration fault.
+// Plus, per dial, how many read within 5 of an end a wider span could still leave; an end the params cannot pass
+// (an organ's sustain of 1) is the param's truth.
 func shippedDialCalibration(t *testing.T) (outside map[string][]string, readings map[string][]float64, widenable map[string]int) {
 	outside, readings, widenable, _ = shippedDialCalibrationSides(t)
 	return outside, readings, widenable
 }
 
-// shippedDialCalibrationSides adds, per dial, whether a WIDER span could still
-// move its readings off each end: [0] the 0 side (some term's From inside its
-// range), [1] the 100 side (some term's To inside its range).
+// Per side: [0] some term's From is inside its range, [1] some term's To is.
 func shippedDialCalibrationSides(t *testing.T) (outside map[string][]string, readings map[string][]float64, widenable map[string]int, sides map[string][2]bool) {
 	t.Helper()
 	outside, readings, widenable, sides = map[string][]string{}, map[string][]float64{}, map[string]int{}, map[string][2]bool{}
 	for _, rs := range rosterSchemas(t) {
 		m := audio.MergedInstrumentParamsRO(instrument.ID(rs.id))
-		// As the Synth root resolves them at the default tempo: the voice
-		// length feeds the range caps (Tail / Fade-in ≤ half the voice) and the
-		// "settles" gate.
+		// As the root resolves them: the voice length feeds the caps and the "settles" gate.
 		for _, g := range buildMacroGroupsForVoice(rs.schema, m, voiceSecsOf(rs.id)) {
 			for _, d := range g.Dials {
 				r := d.Reading(m)
@@ -417,8 +386,7 @@ func shippedDialCalibrationSides(t *testing.T) (outside map[string][]string, rea
 				}
 				for _, tm := range d.Terms {
 					u := tm.Coord(m[tm.Param])
-					// A resting dial's 0 is OFF: a value at or past the off end
-					// sounds like off and honestly reads 0.
+					// At or past the off end it sounds off and reads 0.
 					if d.Dial.Rest == "start" && u < 0 {
 						continue
 					}
@@ -432,10 +400,7 @@ func shippedDialCalibrationSides(t *testing.T) (outside map[string][]string, rea
 	return outside, readings, widenable, sides
 }
 
-// Every shipped instrument's live term values lie inside their spans, so the
-// reading a shipped sound shows is honest (no term silently clamped). On a
-// resting dial a value at or past the OFF end (a resonance below Butterworth,
-// an attack under 5 ms) sounds like off and reads 0 — that is honest too.
+// So the reading is honest; on a resting dial a value past the OFF end reads 0, which is honest too.
 func TestShippedValuesLieInsideTheirSpans(t *testing.T) {
 	outside, _ := shippedDialReadings(t)
 	for _, id := range sortedStringKeys(outside) {
@@ -443,11 +408,8 @@ func TestShippedValuesLieInsideTheirSpans(t *testing.T) {
 	}
 }
 
-// Calibration: a dial's spans put shipped sounds in the useful middle of its
-// travel — the median reading in [20, 80] and at most a quarter of the
-// instruments within 5 of an end a wider span could leave — unless the dial RESTS at its start (its 0
-// is a natural off: no drive, no extra low end), where each term's 0 must be
-// the param's off edge. Logs the distribution of every dial.
+// Median reading in [20, 80], at most a quarter within 5 of a leavable end, unless the dial rests at a natural off
+// (each 0 then the param's off edge).
 func TestDialCalibrationSpread(t *testing.T) {
 	_, readings, widenable, sides := shippedDialCalibrationSides(t)
 	f := shippedDials(t)
@@ -469,8 +431,7 @@ func TestDialCalibrationSpread(t *testing.T) {
 		if rest[id] {
 			continue
 		}
-		// Only where a span end could still move: Hold's sustain spans its
-		// whole range, Tail already reaches half the voice.
+		// Only where a span end could still move.
 		if (med < 0.20 && sides[id][0]) || (med > 0.80 && sides[id][1]) {
 			t.Errorf("dial %q: median shipped reading %.0f is outside [20, 80] — recentre its spans", id, 100*med)
 		}
@@ -515,7 +476,6 @@ func sortedStringKeys[V any](m map[string]V) []string {
 	return out
 }
 
-// voiceSecsOf is how long a trigger of id sounds: its document's
 // render.seconds, the same at every tempo.
 func voiceSecsOf(id string) float64 {
 	if d, ok := audio.InstrumentDoc(instrument.ID(id)); ok {

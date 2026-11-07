@@ -11,8 +11,6 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// samplerLayoutGame builds a Game with the sampler tab active for direct
-// buildSamplerTab geometry assertions.
 func samplerLayoutGame(t *testing.T) *Game {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -32,9 +30,7 @@ func rectInside(inner, outer image.Rectangle) bool {
 		inner.Max.X <= outer.Max.X && inner.Max.Y <= outer.Max.Y
 }
 
-// assertSamplerNoOverflow checks every laid-out sampler element is inside
-// contentR — the regression guard for the desktop "Rev/Norm/Fade/Preview
-// drawn below the panel" bug.
+// Every element inside contentR, never drawn below the panel.
 func assertSamplerNoOverflow(t *testing.T, dv *DrumView, contentR image.Rectangle) {
 	t.Helper()
 	s := &dv.sampler
@@ -84,8 +80,6 @@ func TestSamplerHeaderTitleClearsButtons(t *testing.T) {
 	g := samplerLayoutGame(t)
 	g.drum.sampler.captureFromSynth(roster.Kick)
 	g.drum.buildSamplerTab(image.Rect(0, 0, 1280, 180), roster.Kick)
-	// The header's right-aligned action buttons must never overlap the SAMPLER
-	// title on the left.
 	titleEnd := g.drum.sampler.headerRect.Min.X + samplerTitlePad + TextWidth("SAMPLER")
 	for _, tag := range []string{"sampler-save-as"} {
 		b := g.drum.samplerButtonByTag(tag)
@@ -128,9 +122,7 @@ func TestSamplerResetMobileRelocatedToStickyBar(t *testing.T) {
 	g.drum.sampler.captureFromSynth(roster.Kick)
 	g.drum.buildSamplerTab(image.Rect(0, 0, 390, 270), roster.Kick)
 
-	// Approach B: on mobile the Preview/Save As actions relocate to the sticky
-	// bar, so the in-panel Save As (and Preview) rects are empty —
-	// only the Rev/Norm/Fade transforms row stays in-panel.
+	// On mobile Preview/Save As live on the sticky bar; only Rev/Norm/Fade stay in-panel.
 	for _, tag := range []string{"sampler-save-as", "sampler-preview"} {
 		if b := g.drum.samplerButtonByTag(tag); b != nil && !b.Rect().Empty() {
 			t.Errorf("%s still laid out in-panel on mobile (should be on the sticky bar)", tag)
@@ -144,8 +136,7 @@ func TestSamplerResetMobileRelocatedToStickyBar(t *testing.T) {
 
 func TestSamplerEmptyStateDisablesActions(t *testing.T) {
 	g := samplerLayoutGame(t)
-	// No instrument selected (instID == "") → nothing to auto-load → empty
-	// buffer. (A selected instrument always auto-loads, so it is never empty.)
+	// A selected instrument always auto-loads, so only no instrument leaves the buffer empty.
 	g.drum.buildSamplerTab(image.Rect(0, 0, 1280, 180), "")
 	dv := g.drum
 
@@ -199,9 +190,7 @@ func TestSamplerKnobCardSizeFromDensity(t *testing.T) {
 	g.drum.sampler.captureFromSynth(roster.Kick)
 	bigR := image.Rect(0, 0, 1280, 320) // ample room so density, not space, governs
 
-	// The card HEIGHT is the density-driven ParamCardH token; its width clamps to
-	// the (narrow) control-column cell, so height is the language-invariant proof
-	// that sizing follows density.
+	// The width clamps to the narrow cell, so the density-driven height is the proof.
 	measure := func(d Density) int {
 		restore := SetDensityForTest(d)
 		defer restore()
@@ -246,10 +235,8 @@ func TestSamplerCaptureEmptyReportsStatus(t *testing.T) {
 	}
 }
 
-// TestSamplerButtonsDoNotOverlapMobile guards the mobile header crowding bug
-// (title + Save + Save As don't all fit one 390-px row, so labels truncated
-// and overlapped). Save / Save As move to the action row on mobile; no two
-// laid-out buttons may intersect.
+// Title, Save and Save As do not fit one 390 px row, so Save / Save As move to the action row; no two buttons
+// intersect.
 func TestSamplerButtonsDoNotOverlapMobile(t *testing.T) {
 	g := samplerLayoutGame(t)
 	withSmallScreen(t, true)
@@ -287,10 +274,7 @@ func TestSamplerKnobsHavePlainEnglish(t *testing.T) {
 	}
 }
 
-// newMobileSamplerTabGameForTestSize builds a *Game on the mobile Sampler tab
-// with the adaptive mobile split applied (forceAutoSize), so the sampler control
-// column is sized by Task 1's audio-panel content floor — the real layout a user
-// sees, not a synthetic buildSamplerTab rect.
+// With the adaptive split applied, so the control column has the audio panel's real content floor.
 func newMobileSamplerTabGameForTestSize(t *testing.T, w, h int) *Game {
 	t.Helper()
 	restoreProfile := SetRuntimeProfileForTest(browserRuntimeProfile())
@@ -305,17 +289,13 @@ func newMobileSamplerTabGameForTestSize(t *testing.T, w, h int) *Game {
 	g.SetForceMobileProfile(true)
 	g.Layout(w, h)
 	mobileSamplerTabSetup(true)(g) // mobile profile + EQ mode + sampler tab + captured buffer
-	// Re-run Layout now that the Sampler tab is active so the adaptive split takes
-	// the audio-tab branch and applies mobileAudioPanelMinContentH.
+	// Now the split takes the audio-tab branch.
 	g.Layout(w, h)
 	g.Update()
 	return g
 }
 
-// TestSamplerControlsClearKnobRowMobile proves the sampler control-button row
-// (Rev/Norm/Fade/Preview) sits at or below the knob row on a real mobile Sampler
-// tab — i.e. Task 1's content floor gives the control column enough height that
-// the buttons never overlap the knob labels.
+// The content floor gives the column enough height that the buttons never overlap the knob labels.
 func TestSamplerControlsClearKnobRowMobile(t *testing.T) {
 	g := newMobileSamplerTabGameForTestSize(t, 390, 844)
 	dv := g.drum
@@ -335,8 +315,7 @@ func TestSamplerControlsClearKnobRowMobile(t *testing.T) {
 	if lowestBtnTop == 1<<30 {
 		t.Skip("no sampler control buttons laid out")
 	}
-	// knobBottom = the lowest laid-out sampler knob cell's Max.Y (the knob rect
-	// spans dial + caption + step-badge band, so its Max.Y is the row bottom).
+	// The lowest knob cell's Max.Y; a cell spans dial, caption and badge band.
 	knobBottom := 0
 	for _, k := range dv.sampler.knobs {
 		if k == nil || k.Rect().Empty() {

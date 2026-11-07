@@ -14,22 +14,8 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestSynthPanelDrawIntercepts records every drawRect / drawRoundedRect
-// call during a single Draw of the synth tab and asserts:
-//
-//  1. The header background rect is painted (a rounded fill inside the
-//     header rect, in TokenSurface1).
-//  2. Each section card is painted (one rounded fill per section rect).
-//  3. The OUT-column card is painted.
-//  4. The reset button is painted.
-//
-// This is the pixel-level discipline test — it does not assert on pixel
-// content (that would require a real font + Ebiten image read which is
-// brittle under the stub), only that the expected rects receive a paint
-// call. The Knob/arc drawing path uses vector.StrokeCircle which doesn't
-// route through drawRect/drawRoundedRect, so this test does not exercise
-// the knob's visual layer (knob_test.go covers Draw() not panicking at
-// realistic sizes).
+// The expected rects receive a paint call during one Draw; pixel content is not checked (stub fonts make it
+// brittle), and the knob arcs use vector strokes outside this interceptor.
 func TestSynthPanelDrawIntercepts(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
@@ -55,10 +41,7 @@ func TestSynthPanelDrawIntercepts(t *testing.T) {
 	rectsCaptured := rects.snapshot()
 
 	header := g.drum.SynthTabHeader()
-	// In tight test panels (640×480) the header collapses to height 0 to
-	// make room for the section row. Skip the header paint assertion in
-	// that case; the section + OUT + reset assertions below still verify
-	// the bulk of the layout.
+	// At 640×480 the header collapses to zero height.
 	if !header.rect.Empty() && header.rect.Dy() > 0 {
 		if !anyRectInside(rectsCaptured, header.rect) {
 			t.Errorf("no draw call landed inside the header rect %v (got %d total rects)", header.rect, len(rectsCaptured))
@@ -84,16 +67,12 @@ func TestSynthPanelDrawIntercepts(t *testing.T) {
 	}
 }
 
-// TestSynthPanelStageSectionRendersCard verifies a standardized stage section
-// (the modular voice's OSC stage) renders its card background — catches
-// accidentally leaving a stage card visually blank. Phase 8B replaced the old
-// collapsed-"not used" hint card with always-populated stage cards.
+// A stage card always paints its background, never blank.
 func TestSynthPanelStageSectionRendersCard(t *testing.T) {
 	g := setupModularSynthGame(t)
 	inst := g.drum.resolveSynthInstrument(g.drum.synthTabActiveInstrument())
 	g.drum.setSynthStageOpen(inst, synthSectionOsc)
-	// A production-height panel: the 640×480 harness leaves the drilled grid a
-	// few px tall (header row + Back row), so the first card is a peek band.
+	// At 640×480 the drilled grid is a few px tall.
 	expandSynthPanelForTest(t, g)
 	order := g.drum.instEditorDrilledOrder
 	if len(order) == 0 {
@@ -104,8 +83,7 @@ func TestSynthPanelStageSectionRendersCard(t *testing.T) {
 		t.Fatal("OSC stage's first ParamCard has an empty rect")
 	}
 
-	// RENDER_SAFE bypass: the cards render through the sprite cache (offscreen,
-	// origin-relative), so draw straight to the screen for absolute rects.
+	// The cards render through an origin-relative sprite; RENDER_SAFE draws them at absolute positions.
 	oldSafe := envRenderSafe
 	envRenderSafe = true
 	t.Cleanup(func() { envRenderSafe = oldSafe })
@@ -114,8 +92,7 @@ func TestSynthPanelStageSectionRendersCard(t *testing.T) {
 	g.drum.eqPanelZone.Draw(scratch)
 	captured := rects.snapshot()
 
-	// The card must render its background (not be blank): at least one
-	// filled rect lying inside the card rect.
+	// At least one filled rect inside the card.
 	foundCard := false
 	for _, r := range captured {
 		if r.In(card) && r.Dx() > 8 && r.Dy() > 8 {
@@ -128,11 +105,7 @@ func TestSynthPanelStageSectionRendersCard(t *testing.T) {
 	}
 }
 
-// TestSynthPanelNoSynthBannerRenders verifies that a sample (no-recipe)
-// instrument renders the single no-synth banner: at least one paint call
-// lands inside the banner rect, and NO section cards are laid out (so the
-// distracting trigger-pulse borders that used to blink around the empty
-// section cards can no longer render).
+// A sample instrument paints its no-synth banner and lays out no section cards.
 func TestSynthPanelNoSynthBannerRenders(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
@@ -191,8 +164,7 @@ func (i *drawRectInterceptor) snapshot() []image.Rectangle {
 	return out
 }
 
-// installDrawRectInterceptor swaps drawRect + drawRoundedRect for
-// pass-through wrappers that record every call. Restored on t.Cleanup.
+// Pass-through recorders, restored on Cleanup.
 func installDrawRectInterceptor(t *testing.T) *drawRectInterceptor {
 	t.Helper()
 	intercept := &drawRectInterceptor{}

@@ -9,12 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// A card lays its dials out in rows of as many cells as fit at the minimum
-// cell width (at most four): a desktop card holds three, a phone-wide card
-// four, so a four-dial card stays one row on a phone. A card too narrow for
-// several cells uses fewer per row (more rows) instead of drawing no dials at
-// all. Every rect is non-empty, inside the card, and no two overlap. Spec
-// 2026-10-13 §3.3 (+ ruling: up to four per row).
+// As many cells per row as fit (≤ 4): desktop cards hold three, phone cards four; too narrow means more rows, never
+// no dials. Every rect non-empty, inside its card, non-overlapping.
 func TestDialsLayOutInRowsOfThreeWithoutOverlap(t *testing.T) {
 	// A desktop root card (~236 px) holds three per row: four dials → two rows.
 	if got := macroDialRows(4, 236); got != 2 {
@@ -23,8 +19,7 @@ func TestDialsLayOutInRowsOfThreeWithoutOverlap(t *testing.T) {
 	if got := macroDialRows(6, 236); got != 2 {
 		t.Errorf("a desktop card lays six dials in %d rows, want 2", got)
 	}
-	// A phone-wide card (mobile density, ~370 px) holds four: a four-dial card
-	// keeps the single-row height, so a phone still shows two cards.
+	// Four on a ~370 px phone card, so a four-dial card stays one row and two cards still show.
 	func() {
 		restore := SetDensityForTest(DensitySpacious)
 		defer restore()
@@ -64,11 +59,8 @@ func TestDialsLayOutInRowsOfThreeWithoutOverlap(t *testing.T) {
 	}
 }
 
-// Scrolling the root must never change a card's height or cost a card its
-// trailing dials: the cell height comes from the grid's cell width, not from
-// the first cell's rect (which is not visible once the root scrolls). Before,
-// at some desktop widths a four-dial card scrolled into view with its fourth
-// dial undrawn and untappable.
+// The cell height comes from the grid's cell width, not the first (scrolled-off) cell, so a card keeps its height
+// and every dial when the root scrolls.
 func TestScrolledRootKeepsEveryDial(t *testing.T) {
 	scrolled, seen := 0, 0
 	defer func() {

@@ -38,9 +38,7 @@ func TestDiscreteKnobWheelStepsOneIndex(t *testing.T) {
 	}
 }
 
-// TestKnobStepValueByWheelIsDebounced verifies the two-finger value wheel is
-// clicky/slow: sub-threshold notches don't move the value, the threshold moves
-// it by exactly one StepMul, and a single large-magnitude event is one notch.
+// Sub-threshold notches do nothing, the threshold moves exactly one StepMul, and one large event is one notch.
 func TestKnobStepValueByWheelIsDebounced(t *testing.T) {
 	k := newEndlessKnob() // Min 20, Max 20000, StepMul 100, Value 0 (real=20)
 	start := k.Value

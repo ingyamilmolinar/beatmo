@@ -7,9 +7,7 @@ import (
 	"testing"
 )
 
-// TestChainLegendStripBelowWaveform — the reserved legend strip must sit
-// entirely below the waveform so the Pk/RMS readout never overlaps the
-// signal (the pre-redesign legend was painted on top of the trace).
+// Below the waveform, so the readout never overlaps the signal.
 func TestChainLegendStripBelowWaveform(t *testing.T) {
 	content := image.Rect(60, 0, 600, 200)
 	waveRect, legendStrip := chainTraceRects(content)
@@ -25,8 +23,7 @@ func TestChainLegendStripBelowWaveform(t *testing.T) {
 	}
 }
 
-// TestChainLegendMarginsGrowWithDensity — the left gutter / bottom margin /
-// legend strip all widen at Spacious so enlarged text fits.
+// So enlarged text fits at Spacious.
 func TestChainLegendMarginsGrowWithDensity(t *testing.T) {
 	content := image.Rect(0, 0, 600, 300)
 	measure := func(d Density) (leftGutter, stripH int) {

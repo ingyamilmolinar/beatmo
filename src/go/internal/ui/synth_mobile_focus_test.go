@@ -26,11 +26,7 @@ func newMobileSynthTabGameForTestSize(t *testing.T, w, h int) *Game {
 	logger := game_log.New(nil, game_log.LevelError)
 	g := New(logger)
 	t.Cleanup(g.CloseForTest)
-	// Restore on the way out. This helper does not go through
-	// assertDefaultParityState, so nothing else resets the global it flips --
-	// and on the real build (where SetForceMobileProfile is not the stub's
-	// no-op) that leak cascaded into every test that ran after these, all of
-	// them failing with "forceSmallScreenForTest=true want false".
+	// Nothing else resets this global here, and on the real build a leak fails every later test.
 	g.SetForceMobileProfile(true)
 	t.Cleanup(func() { g.SetForceMobileProfile(false) })
 	g.Layout(w, h)
@@ -51,8 +47,6 @@ func newMobileSynthTabGameForTestSize(t *testing.T, w, h int) *Game {
 	return g
 }
 
-// drillFirstStageMobile drills the mobile Synth tab into its first pipeline
-// stage and re-lays out, returning the resolved instrument.
 func drillFirstStageMobile(t *testing.T, g *Game) string {
 	t.Helper()
 	dv := g.drum
@@ -66,8 +60,7 @@ func drillFirstStageMobile(t *testing.T, g *Game) string {
 	return string(inst)
 }
 
-// At the ROOT the mobile Synth tab shows the pipeline strip + single-column
-// category cards and reserves NO graph band (the graph is a drilled-view thing).
+// The strip and single-column cards, with no graph band.
 func TestMobileSynthTab_RootShowsStripAndCards(t *testing.T) {
 	g := newMobileSynthTabGameForTest(t)
 	dv := g.drum
@@ -77,8 +70,7 @@ func TestMobileSynthTab_RootShowsStripAndCards(t *testing.T) {
 	if len(dv.instEditorPipePills) == 0 {
 		t.Fatal("root laid out no pipeline pills on mobile")
 	}
-	// The wrapped strip must fit every pill incl. the trailing "+" (the band
-	// height follows the grid's real column count).
+	// Every pill fits, the trailing "+" included.
 	if _, off := dv.synp().activePipelineStages(dv.synthTabActiveInstrument()); len(off) > 0 {
 		if a := dv.instEditorPipeAddBtn; a == nil || a.Rect().Empty() || !a.Rect().In(dv.instEditorPipeRect) {
 			t.Fatalf("+ pill missing or outside the strip band on mobile (band %v)", dv.instEditorPipeRect)
@@ -97,8 +89,7 @@ func TestMobileSynthTab_RootShowsStripAndCards(t *testing.T) {
 	}
 }
 
-// DRILLED, the signal graph band sits ABOVE the controls and the first card
-// renders at its ideal ParamCard height inside a 2..4 column grid.
+// The graph band above the controls, the first card at its ideal height in a 2..4 column grid.
 func TestMobileSynthTab_DrilledGraphAboveControls(t *testing.T) {
 	g := newMobileSynthTabGameForTestSize(t, 390, 844)
 	dv := g.drum

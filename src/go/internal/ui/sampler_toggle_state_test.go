@@ -4,11 +4,7 @@ package ui
 
 import "testing"
 
-// sampler_toggle_state_test.go — every boolean toggle in the Sampler panel
-// (Reverse, Normalize, Fade) must reflect its on/off state via the shared
-// latched-keycap visual (Button.Toggled → amber engaged cap), identically on
-// every platform. Previously Reverse showed no state and Normalize/Fade only
-// swapped a spec fill, so toggled state read inconsistently or not at all.
+// Reverse, Normalize and Fade show their state through the shared latched keycap, on every platform.
 
 func samplerWithBuffer() *DrumView {
 	dv := &DrumView{}
@@ -18,8 +14,6 @@ func samplerWithBuffer() *DrumView {
 	return dv
 }
 
-// TestSamplerTogglesLatchWhenOn pins that each toggle's latched visual follows
-// its live predicate after a refresh.
 func TestSamplerTogglesLatchWhenOn(t *testing.T) {
 	assertDefaultParityState(t)
 	cases := []struct {
@@ -45,8 +39,7 @@ func TestSamplerTogglesLatchWhenOn(t *testing.T) {
 	}
 }
 
-// TestSamplerReverseIsToggle pins that Reverse is now a stateful toggle: it
-// carries an active predicate and latches on after one click, off after two.
+// Latched after one click, released after two.
 func TestSamplerReverseIsToggle(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := samplerWithBuffer()
@@ -77,9 +70,7 @@ func TestSamplerReverseIsToggle(t *testing.T) {
 	}
 }
 
-// TestSamplerTogglesNeverLatchWithoutBuffer pins that with no buffer loaded the
-// toggles never present a latched (active) affordance even if a stale predicate
-// would read true — the empty panel shows no live state.
+// The empty panel shows no live state, whatever a stale predicate reads.
 func TestSamplerTogglesNeverLatchWithoutBuffer(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := &DrumView{}

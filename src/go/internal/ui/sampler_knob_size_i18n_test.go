@@ -10,8 +10,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// samplerGainDiaDesktop returns the Gain knob's dial diameter on the desktop
-// Sampler tab in the given locale.
 func samplerGainDiaDesktop(t *testing.T, loc i18n.Locale) int {
 	t.Helper()
 	g := samplerLayoutGame(t)
@@ -19,17 +17,12 @@ func samplerGainDiaDesktop(t *testing.T, loc i18n.Locale) int {
 	defer restore()
 	i18n.SetLocale(loc)
 	g.drum.sampler.captureFromSynth(roster.Kick)
-	// A realistic desktop audio-panel content height (the 180px rect other
-	// tests use is artificially short — it can't fit a min-diameter dial).
+	// 180 px is too short for a minimum-diameter dial.
 	g.drum.buildSamplerTab(image.Rect(0, 0, 1280, 260), roster.Kick)
 	return g.drum.sampler.knobs[samplerKnobGain].Rect().Dx()
 }
 
-// samplerFirstVisibleKnobDiaMobile returns the first VISIBLE knob's dial
-// diameter on a real mobile Sampler tab in the given locale. On mobile the knobs
-// scroll in a single column, so the last knob (Gain) is usually off-window; the
-// first visible knob is what proves the dial renders at a usable, language-
-// invariant size.
+// Mobile knobs scroll in one column, so Gain is usually off-window; the first visible one shows the size.
 func samplerFirstVisibleKnobDiaMobile(t *testing.T, loc i18n.Locale) int {
 	t.Helper()
 	i18n.SetLocale(loc)
@@ -46,8 +39,7 @@ func samplerFirstVisibleKnobDiaMobile(t *testing.T, loc i18n.Locale) int {
 	return 0
 }
 
-// Knob size must NOT depend on the UI language — a longer Spanish caption may
-// not shrink the dial. Desktop: EN and ES must produce the same diameter.
+// A longer Spanish caption may not shrink the dial.
 func TestSamplerKnobSizeLanguageInvariantDesktop(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	en := samplerGainDiaDesktop(t, i18n.LocaleEN)
@@ -66,9 +58,7 @@ func TestSamplerKnobSizeLanguageInvariantMobile(t *testing.T) {
 	}
 }
 
-// Cards must stay usable (>= half a ParamCardW wide) in every language on every
-// screen — never the tiny fallback the old caption-driven layout produced. The
-// card contract replaces the old dial-diameter floor (SynthControlMin).
+// At least half a ParamCardW wide in every language on every screen.
 func TestSamplerKnobUsableSizeAllLanguages(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	min := Profile().DensityValues().ParamCardW / 2
@@ -89,10 +79,8 @@ func TestSamplerKnobUsableSizeMobileAllLanguages(t *testing.T) {
 		}
 		min := Profile().DensityValues().ParamCardW / 2
 		wantH := Profile().DensityValues().ParamCardH
-		// On mobile the knobs scroll, so only some are laid out — but EVERY
-		// VISIBLE card must be usable: at least half a ParamCardW wide and exactly
-		// ParamCardH tall. Off-window knobs (empty rect) are reachable by scrolling
-		// and intentionally not laid out.
+		// Every visible card is at least half a ParamCardW wide and exactly ParamCardH tall; off-window knobs are
+		// reachable by scrolling.
 		visible := 0
 		for i, k := range g.drum.sampler.knobs {
 			if k == nil || k.Rect().Empty() {

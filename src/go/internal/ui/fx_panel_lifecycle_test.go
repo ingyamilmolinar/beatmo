@@ -137,8 +137,7 @@ func TestFXPanelBuildWithEffects(t *testing.T) {
 		t.Fatal("panel did not open")
 	}
 
-	// Should have buttons: toggle + remove per effect, + Add Effect, close button.
-	// With 2 effects: at minimum 2 toggle + 2 remove + move buttons + add + close.
+	// Toggle + remove per effect, move buttons, add and close.
 	if len(dv.fxPanelBtns) == 0 {
 		t.Fatal("expected buttons to be created")
 	}
@@ -193,9 +192,7 @@ func TestFXPanelBuildWithAddMenu(t *testing.T) {
 	dv.buildFXPanel()
 	suppressClicksUntilRelease = false
 
-	// Ensure at least some effect type buttons are visible in the add menu.
-	// With many effects, some buttons (and Cancel) may be off-screen due to
-	// viewport clipping, so we check that at least the first few are present.
+	// Many effects push some buttons off-screen, so only the first few are checked.
 	regs := audio.EffectRegistrations()
 	foundEffectBtns := 0
 	for _, btn := range dv.fxPanelBtns {
@@ -306,9 +303,7 @@ func TestFXShowParamsMobile(t *testing.T) {
 // --- 6. fxParamLabel formatting ---
 
 func TestFXParamLabel(t *testing.T) {
-	// fxParamLabel composes "Capitalized Name: <fxFormatParam>". The value
-	// rendering itself (precision/units) is pinned by TestFXFormatParam* — here
-	// we only assert the name + colon + value composition with the param def.
+	// Name + colon + value; the value formatting is TestFXFormatParam*'s.
 	cases := []struct {
 		def      audio.EffectParamDef
 		val      float64
@@ -478,8 +473,7 @@ func TestFXPanelInputIgnoresOutsidePanel(t *testing.T) {
 		t.Fatal("panel did not open")
 	}
 
-	// handleFXPanelInput should return false for clicks outside the panel
-	// (click-outside is handled by the tree, not the handler).
+	// The tree handles click-outside, not the handler.
 	outsideX := dv.fxPanelRect.Max.X + 100
 	outsideY := dv.fxPanelRect.Max.Y + 100
 	consumed := dv.handleFXPanelInput(outsideX, outsideY, true)
@@ -564,9 +558,7 @@ func TestFXPanelMoveButtons(t *testing.T) {
 		t.Fatal("panel did not open")
 	}
 
-	// With 3 effects: should have up/down move buttons (IconChevronUp/Down per §5c).
-	// Move buttons are distinguished from the FX-row remove (IconClose) and the
-	// panel-header close button by their icon being a chevron.
+	// Move buttons carry chevron icons, unlike remove and close.
 	upCount := 0
 	downCount := 0
 	for _, btn := range dv.fxPanelBtns {
@@ -578,9 +570,7 @@ func TestFXPanelMoveButtons(t *testing.T) {
 		}
 	}
 
-	// First effect has no up button, last has no down button.
-	// So: up buttons for effects 1 and 2 (2 total).
-	// Down buttons for effects 0 and 1 (2 total).
+	// No up on the first, no down on the last: two of each.
 	if upCount < 2 {
 		t.Errorf("expected at least 2 up buttons with 3 effects, got %d", upCount)
 	}
@@ -602,8 +592,6 @@ func TestFXPanelMoveButtons(t *testing.T) {
 
 	effectsAfter := audio.GetInsertEffects(instID)
 	if effectsAfter[0].Type == firstTypeBefore && effectsAfter[1].Type != firstTypeBefore {
-		// Order didn't change — might be the wrong button.
-		// At least verify it didn't crash.
 	}
 	// The key test is that it didn't panic and the panel rebuilt.
 	if !dv.IsFXPanelOpen() {

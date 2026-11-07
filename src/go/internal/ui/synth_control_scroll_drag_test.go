@@ -8,9 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// firstVisibleFMControlRect returns the global index and centre point of the
-// first on-window FM control in the realistic modular synth tab (a section that
-// overflows, so the ControlGrid scrolls).
+// In a section that overflows, so the grid scrolls.
 func firstVisibleFMControlRect(t *testing.T, g *Game) (idx, cx, cy int) {
 	t.Helper()
 	s := fmSection(t, g)
@@ -25,8 +23,7 @@ func firstVisibleFMControlRect(t *testing.T, g *Game) (idx, cx, cy int) {
 	return -1, 0, 0
 }
 
-// driveDrumInput drives one real DrumView.Update frame with the pointer at
-// (x,y) and the given left-button state, through the production input path.
+// Through the production input path.
 func driveDrumInput(g *Game, x, y int, down bool) {
 	restore := SetInputForTest(
 		func() (int, int) { return x, y },
@@ -40,10 +37,8 @@ func driveDrumInput(g *Game, x, y int, down bool) {
 	restore()
 }
 
-// TestSynthControl_VerticalDragScrollsAndDoesNotArm: a press that begins
-// on a control and sweeps vertically past the tap slop must SCROLL the section
-// grid and must NOT arm the control. This is the mobile "swipe up/down"
-// gesture — currently broken because OnPress opens the popup outright.
+// A press on a control that sweeps vertically past the tap slop scrolls the grid and does not arm: the mobile
+// swipe.
 func TestSynthControl_VerticalDragScrollsAndDoesNotArm(t *testing.T) {
 	g := modularSynthGameRealistic(t)
 	grid := g.drum.SynthSectionGrid(synthSectionFM)
@@ -54,8 +49,7 @@ func TestSynthControl_VerticalDragScrollsAndDoesNotArm(t *testing.T) {
 	before := grid.Scroll().VS.First
 	instID := g.drum.synthTabActiveInstrument()
 
-	// Press on the control, then sweep UP well past the tap slop across a few
-	// frames (content follows the finger → First increases), then release.
+	// Up well past the slop over a few frames: First rises.
 	driveDrumInput(g, cx, cy, true)
 	for dy := 20; dy <= 120; dy += 20 {
 		driveDrumInput(g, cx, cy-dy, true)
@@ -70,13 +64,7 @@ func TestSynthControl_VerticalDragScrollsAndDoesNotArm(t *testing.T) {
 	}
 }
 
-// TestSynthControl_TapArmsOnRelease (Task 9 armed-model rewrite of
-// TestSynthControl_PopupOpensOnReleaseNotPress): a stationary tap on a
-// not-armed control ARMS it on RELEASE, not on the physical press (so the
-// press frame can still become a scroll). The old invariant was "opens the
-// value-wheel popup"; under the armed model there is no popup at all — the
-// control's own card becomes the inline editor. Guards the
-// capture-on-press / decide-on-release model.
+// A still tap arms on RELEASE, not on the press, so the press frame can still become a scroll.
 func TestSynthControl_TapArmsOnRelease(t *testing.T) {
 	g := modularSynthGameRealistic(t)
 	instID := g.drum.synthTabActiveInstrument()

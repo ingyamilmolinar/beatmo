@@ -8,28 +8,13 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// sampler_rendered_signal_match_test.go — the Sampler toggle BUTTONS (Reverse,
-// Normalize, Fade) are the single source of truth for BOTH the audio the user
-// hears AND the waveform the user sees. The displayed/rendered signal
-// (s.waveFloat64(), drawn by drawSamplerWaveform) must therefore reflect every
-// toggle exactly as the baked audio does — WYSIWYG.
-//
-// BUG (reported): toggling Normalize or Fade changes the audio (they are applied
-// in edit() → bake()) but NOT the rendered waveform (drawn straight from the raw
-// working buffer), so the picture lies about what you hear. Reverse is even
-// sneakier: it is baked into the buffer in place, so it usually shows — but a
-// live synth re-capture (recaptureRaw) re-renders the source FORWARD while the
-// Reverse button stays latched ON, leaving the rendered signal forward while the
-// audio (editDescriptor().Reverse) plays reversed.
-//
-// These tests assert the invariant for the full-range / no-pitch case, where the
-// baked buffer is the same length as the displayed one, so the comparison is
-// sample-for-sample (mirrors TestSamplerBakeAfterReverseMatchesDisplayedBuffer).
+// The toggles drive both what is heard and what is drawn: the waveform reflects every toggle as the baked audio
+// does, including Reverse after a forward live re-capture. Full range, no pitch, so the comparison is
+// sample for sample.
 
 func TestSamplerNormalizeRenderedSignalMatchesAudio(t *testing.T) {
 	assertDefaultParityState(t)
-	// A quiet buffer (peak 0.3). With Normalize ON the audio is brought to 0 dBFS,
-	// so the rendered waveform must rise to match — not stay quiet.
+	// Peak 0.3: Normalize brings the audio to 0 dBFS, and the drawing must rise too.
 	s := &samplerState{raw: []float32{0.1, -0.2, 0.3, -0.05}, rawSampleRate: 48000}
 	s.reset()
 	s.normalize = true // the Normalize button latches this
@@ -49,8 +34,7 @@ func TestSamplerNormalizeRenderedSignalMatchesAudio(t *testing.T) {
 
 func TestSamplerFadeRenderedSignalMatchesAudio(t *testing.T) {
 	assertDefaultParityState(t)
-	// A flat buffer. With Fade ON the audio ramps in/out (edges go to ~0), so the
-	// rendered waveform must show the ramp — not stay flat at full amplitude.
+	// Fade ramps the edges to ~0, and the drawing must show it.
 	s := &samplerState{raw: []float32{1, 1, 1, 1, 1, 1, 1, 1}, rawSampleRate: 48000}
 	s.reset()
 	s.fadeOn = true // the Fade button latches this
@@ -70,10 +54,7 @@ func TestSamplerFadeRenderedSignalMatchesAudio(t *testing.T) {
 
 func TestSamplerReverseRenderedSignalMatchesAudioAfterRecapture(t *testing.T) {
 	assertDefaultParityState(t)
-	// Synth source: reverse the buffer (button ON), then a live synth edit arrives
-	// and re-renders the source FORWARD via recaptureRaw. The Reverse button stays
-	// ON, so the audio (editDescriptor().Reverse) plays the fresh render reversed —
-	// the displayed waveform must follow the button and show it reversed too.
+	// The live re-render is forward while Reverse stays on, so the drawing must follow the button.
 	forward := []float32{10, 20, 30, 40} // the fresh synth render (always forward)
 	s := &samplerState{raw: []float32{1, 2, 3, 4}, rawSampleRate: 48000}
 	s.reset()

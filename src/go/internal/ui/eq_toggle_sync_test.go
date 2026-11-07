@@ -9,8 +9,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestEQToggleZoneSyncsDrumViewState verifies that clicking the Wave tab
-// button in the zone tree syncs waveformMode to DrumView.eqWaveformMode.
 func TestEQToggleZoneSyncsDrumViewState(t *testing.T) {
 	assertDefaultParityState(t)
 

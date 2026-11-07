@@ -10,12 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// TestWavePhase2_MSAxisTicksInBottomStrip — Wave tab should expose its
-// time-base the way Chain does. Drawing tick marks at 0/25/50/75/100% of
-// the waveform width in a dedicated bottom strip (~10px tall) makes the
-// signal correlate to time at a glance. Test asserts ≥4 colTextSecondary
-// tick rects in the bottom ~10px band of the wave subject when the wave
-// is alive (snapshotWithSine).
+// Ticks at 0/25/50/75/100% in a ~10 px bottom strip tie the signal to time, as on Chain.
 func TestWavePhase2_MSAxisTicksInBottomStrip(t *testing.T) {
 	g := driveScene(t, "crop_eq_tab_wave")
 	rect, rects := drawWithSnapshot(t, g, SubjectEQTabWave, snapshotWithSine())
@@ -28,10 +23,7 @@ func TestWavePhase2_MSAxisTicksInBottomStrip(t *testing.T) {
 	}
 }
 
-// TestWaveSynthwaveFill — the synthwave "outrun" wash must be painted
-// beneath the waveform trace: at least a handful of colWaveTraceFill rects
-// (the trace color at sub-full AlphaSubtle) inside the wave subject when the
-// wave is alive. The crisp trace (colWaveTrace) still renders on top.
+// A faint wash beneath the trace, with the crisp trace on top.
 func TestWaveSynthwaveFill(t *testing.T) {
 	g := driveScene(t, "crop_eq_tab_wave")
 	rect, rects := drawWithSnapshot(t, g, SubjectEQTabWave, snapshotWithSine())
@@ -46,10 +38,7 @@ func TestWaveSynthwaveFill(t *testing.T) {
 	}
 }
 
-// TestWavePhase2_ClipFlashOnSaturation — when the waveform exceeds ±1.0
-// at any column, the renderer should paint that column in meterClip
-// instead of colWaveTrace. The visual gives instant DAW-style headroom
-// warning. Test feeds a wave that clips on alternating samples.
+// A column past ±1.0 paints in meterClip, a DAW-style headroom warning.
 func TestWavePhase2_ClipFlashOnSaturation(t *testing.T) {
 	g := driveScene(t, "crop_eq_tab_wave")
 
@@ -74,9 +63,7 @@ func TestWavePhase2_ClipFlashOnSaturation(t *testing.T) {
 	}
 }
 
-// TestWavePhase2_NoClipFlashWhenClean — inverse contract: a clean
-// wave (snapshotWithSine peaks at 0.6) must NOT paint any meterClip
-// columns. Otherwise the warning is meaningless (always lit).
+// A clean wave (0.6 peak) paints none, or the warning is always lit.
 func TestWavePhase2_NoClipFlashWhenClean(t *testing.T) {
 	g := driveScene(t, "crop_eq_tab_wave")
 	rect, rects := drawWithSnapshot(t, g, SubjectEQTabWave, snapshotWithSine())
@@ -85,9 +72,7 @@ func TestWavePhase2_NoClipFlashWhenClean(t *testing.T) {
 	}
 }
 
-// TestWavePhase2_AxisTicksScaleWithWindowMs — pure unit test of the
-// helper that decides label positions/text. Five fractions [0, .25,
-// .5, .75, 1] with formatted ms labels.
+// Five fractions with formatted ms labels.
 func TestWavePhase2_AxisTicksScaleWithWindowMs(t *testing.T) {
 	got := waveAxisLabels(20.0)
 	if len(got) != 5 {

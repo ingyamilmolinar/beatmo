@@ -19,10 +19,7 @@ func findChainHandlerByTag(t *testing.T, z *ChainPanelZone, tag string) HitHandl
 	return nil
 }
 
-// TestChainSetAutoGainParityWithButton — invoking SetAutoGain produces the
-// same {autoGain, yGain} state as clicking the AG button. This is the
-// guarantee scenes need: state changes routed through the new setter must
-// be indistinguishable from real user interaction.
+// Scenes need setter changes indistinguishable from real interaction.
 func TestChainSetAutoGainParityWithButton(t *testing.T) {
 	assertDefaultParityState(t)
 	clickZ := NewChainPanelZone(ChainCallbacks{})
@@ -34,9 +31,7 @@ func TestChainSetAutoGainParityWithButton(t *testing.T) {
 	clickZ.SetYGain(2.5)
 	apiZ.SetYGain(2.5)
 
-	// Auto-gain has no pill any more (it is on by default), so the only
-	// surviving path is the API. Both zones must land in the same place:
-	// re-enabling it resets the manual zoom it overrides.
+	// With no pill left, the API is the only path; re-enabling resets the manual zoom it overrides.
 	clickZ.SetAutoGain(true)
 	apiZ.SetAutoGain(true)
 
@@ -48,8 +43,6 @@ func TestChainSetAutoGainParityWithButton(t *testing.T) {
 	}
 }
 
-// TestChainSetTraceVisibleParityWithSwatchClick — toggling trace visibility
-// via SetTraceVisible matches the swatch hit-handler.
 func TestChainSetTraceVisibleParityWithSwatchClick(t *testing.T) {
 	assertDefaultParityState(t)
 	clickZ := NewChainPanelZone(ChainCallbacks{})
@@ -62,8 +55,7 @@ func TestChainSetTraceVisibleParityWithSwatchClick(t *testing.T) {
 		t.Fatal("preconditions: both traces should start visible")
 	}
 
-	// Need the swatch handlers to exist — they're laid out only after a
-	// tap is selected. Drive a tap on each side so swatch hit areas appear.
+	// Swatch hit areas exist only once a tap is selected.
 	clickZ.SetTapA(0)
 	clickZ.SetTapB(1)
 	apiZ.SetTapA(0)
@@ -86,8 +78,7 @@ func TestChainSetTraceVisibleParityWithSwatchClick(t *testing.T) {
 	}
 }
 
-// TestChainSetWindowMsClampsToWheelRange — SetWindowMs enforces the same
-// clamping the wheel handler does.
+// The wheel handler's clamp.
 func TestChainSetWindowMsClamping(t *testing.T) {
 	assertDefaultParityState(t)
 	z := NewChainPanelZone(ChainCallbacks{})
@@ -105,8 +96,7 @@ func TestChainSetWindowMsClamping(t *testing.T) {
 	}
 }
 
-// TestChainSetYGainDisablesAutoGain — SetYGain mirrors the shift-scroll
-// behaviour: setting a manual gain disables auto-gain.
+// Like shift-scroll: a manual gain disables auto-gain.
 func TestChainSetYGainDisablesAutoGain(t *testing.T) {
 	assertDefaultParityState(t)
 	z := NewChainPanelZone(ChainCallbacks{})
@@ -123,8 +113,7 @@ func TestChainSetYGainDisablesAutoGain(t *testing.T) {
 	}
 }
 
-// TestChainSetFrozenInvokesCallback — SetFrozen calls OnFreezeToggle so
-// the audio service stays in lockstep with the UI state.
+// So the audio service stays in step with the UI.
 func TestChainSetFrozenInvokesCallback(t *testing.T) {
 	assertDefaultParityState(t)
 	var audioFrozen bool
@@ -153,8 +142,7 @@ func TestChainSetFrozenInvokesCallback(t *testing.T) {
 	}
 }
 
-// TestChainSetFrozenIdempotent — calling SetFrozen with the current state
-// is a no-op (no callback invoked).
+// No callback for the current state.
 func TestChainSetFrozenIdempotent(t *testing.T) {
 	assertDefaultParityState(t)
 	calls := 0

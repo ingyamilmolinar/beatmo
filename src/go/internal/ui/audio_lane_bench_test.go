@@ -9,10 +9,8 @@ import (
 	"time"
 )
 
-// TestLaneFullReconcileCost (LANE_COST=1): the cost of one FULL reconcile,
-// forced every tick by a global-key change — what a node-param drag (graph
-// version / predictor epoch bumped every frame) or a held BPM repeat costs —
-// on the browser profile (H = 1 s), lane circuit. Measurement, not a gate.
+// A FULL reconcile forced every tick by a global-key change (a node-param drag, a held BPM repeat), on the
+// browser profile. A measurement, not a gate.
 func TestLaneFullReconcileCost(t *testing.T) {
 	if os.Getenv("LANE_COST") == "" {
 		t.Skip("measurement: LANE_COST=1")

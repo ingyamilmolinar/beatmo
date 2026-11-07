@@ -74,10 +74,8 @@ func TestReflowArmed_MiddleArmed(t *testing.T) {
 	}
 }
 
-// In-place anchor: the armed 2×2 block must always COVER the clicked control's
-// resting cell, and its top row must equal the clicked cell's row (never drop to
-// the row below). Checked for every position in a 3-col grid, including the
-// right-edge cells that used to bump the block down a row.
+// The 2×2 block always covers the clicked cell and its top row is the clicked row, for every position of a 3-col
+// grid.
 func TestReflowArmed_BlockContainsClickedCell(t *testing.T) {
 	order := []int{0, 1, 2, 3, 4, 5}
 	cols, spanCols, spanRows := 3, 2, 2
@@ -94,9 +92,7 @@ func TestReflowArmed_BlockContainsClickedCell(t *testing.T) {
 	}
 }
 
-// Right-edge arm (last control in a row): the block clamps left so the clicked
-// cell becomes the block's RIGHT column — its right edge aligns with the clicked
-// cell's right edge and stays in the clicked row.
+// Clamped left, so the clicked cell is the block's right column, in the same row.
 func TestReflowArmed_RightEdgeKeepsClickedCellAsRightColumn(t *testing.T) {
 	order := []int{0, 1, 2, 3, 4, 5}
 	cols, spanCols, spanRows := 3, 2, 2
@@ -112,8 +108,7 @@ func TestReflowArmed_RightEdgeKeepsClickedCellAsRightColumn(t *testing.T) {
 	}
 }
 
-// Right-edge arm pushes the immediate LEFT neighbour to a strictly lower row
-// (never hides it) so the clicked control keeps its slot.
+// The left neighbour moves to a lower row, never hidden.
 func TestReflowArmed_LeftNeighbourPushedBelowOnRightEdgeArm(t *testing.T) {
 	order := []int{0, 1, 2, 3, 4, 5}
 	cols, spanCols, spanRows := 3, 2, 2
@@ -128,8 +123,7 @@ func TestReflowArmed_LeftNeighbourPushedBelowOnRightEdgeArm(t *testing.T) {
 	}
 }
 
-// Functional: arming a drilled macro control reflows (nothing hidden) and the
-// armed control grows to a 2×2-ish block after the animation settles.
+// Nothing hidden, and the armed control a ~2×2 block once settled.
 func TestArmedGrow_ReflowNothingHiddenAfterSettle(t *testing.T) {
 	g := newViolinMacroGame(t)
 	dv := g.drum
@@ -157,12 +151,8 @@ func TestArmedGrow_ReflowNothingHiddenAfterSettle(t *testing.T) {
 	}
 }
 
-// Bottom-edge regression: when the armed control sits on the LAST visible row,
-// the 2×2 block's bottom cells are off the scroll window (cellAt returns an empty
-// rect). reflowArmed must NOT normalize that into a giant rect anchored at the
-// origin (image.Rect(tl, {0,0}) → Rect(0,0,tl…)) — the "Voice Tone2 Freq expands
-// the control above and much larger" bug. The block must stay in the content area
-// and a sane size (it shifts UP so the clicked control is the block's bottom row).
+// On the last visible row the block's lower cells are off-window (empty rects at the origin); normalising them
+// must not make a giant rect anchored at (0,0).
 func TestReflowArmed_BottomEdgeDoesNotProduceGiantRect(t *testing.T) {
 	const visRows = 2 // window shows rows [0,2); row 2+ is off-window
 	cellAt := func(row, col int) image.Rectangle {
@@ -194,10 +184,7 @@ func TestReflowArmed_BottomEdgeDoesNotProduceGiantRect(t *testing.T) {
 	}
 }
 
-// Down-only growth: arming a control on the LAST visible row must anchor the
-// block at the CLICKED row (grow DOWN) — never shift the block UP into the row
-// above, which would move the previous control upward "into nothing". The card's
-// top edge stays where the user clicked.
+// Anchored at the clicked row and growing down, never shifting up into the row above.
 func TestReflowArmed_GrowsDownNotUp(t *testing.T) {
 	const visRows = 2 // rows 0,1 on-window; row 2+ off-window
 	cellAt := func(row, col int) image.Rectangle {
@@ -214,8 +201,7 @@ func TestReflowArmed_GrowsDownNotUp(t *testing.T) {
 	if block.Min.Y != clicked.Min.Y {
 		t.Fatalf("block top must stay at the clicked row (grow DOWN), not shift up: block.Min.Y=%d clicked.Min.Y=%d", block.Min.Y, clicked.Min.Y)
 	}
-	// No control may move UP from its resting row — every displaced control reflows
-	// down or stays put; nothing rises "into nothing" above where it was.
+	// Nothing rises from its resting row.
 	for i, r := range rects {
 		resting := cellAt(i/2, i%2) // cols==2
 		if !r.Empty() && r.Min.Y < resting.Min.Y {
@@ -224,11 +210,8 @@ func TestReflowArmed_GrowsDownNotUp(t *testing.T) {
 	}
 }
 
-// One-visible-row regression ("controls do not expand, just show in-place"):
-// when only the top row is on-window (visRows=1), the armed block's bottom cells
-// are off-window. The card must still grow to its full ON-WINDOW width (the two
-// top-row cells) rather than collapsing to a single cell — otherwise the two
-// barrel lanes have no room and the control looks un-expanded.
+// With one visible row the block's lower cells are off-window, yet the card still spans both top-row cells, or
+// the lanes have no room.
 func TestReflowArmed_OneVisibleRowStillGrowsWidth(t *testing.T) {
 	cellAt := func(row, col int) image.Rectangle {
 		if row != 0 { // only row 0 is on-window
@@ -247,9 +230,7 @@ func TestReflowArmed_OneVisibleRowStillGrowsWidth(t *testing.T) {
 	}
 }
 
-// Functional wiring guard: arming the RIGHTMOST control in the top row must keep
-// it in that row (its top Y unchanged) instead of dropping the grown block to the
-// row below — the reported bad-UX behaviour.
+// The rightmost control keeps its row rather than dropping to the next.
 func TestArmedGrow_LastInRowStaysInItsRow(t *testing.T) {
 	g := newViolinMacroGame(t)
 	dv := g.drum
@@ -280,17 +261,14 @@ func TestArmedGrow_LastInRowStaysInItsRow(t *testing.T) {
 	}
 }
 
-// Functional regression for the "Voice Tone2 Freq expands the control above and
-// much larger" bug: arming the BOTTOM-most visible control of a SCROLLING section
-// (its 2×2 block's lower row is off-window) must not produce a giant rect that
-// escapes above the grid content. Drives the real growArmedCard path.
+// The bottom-most visible control of a scrolling section, whose block's lower row is off-window, through the real
+// growArmedCard path.
 func TestArmedGrow_BottomVisibleControlNoGiantRect(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	audio.SetInstrumentParam("ut-chip-modular", "osc_type", 4) // FM operators exist only on the FM oscillator
 	expandSynthPanelForTest(t, g)
 	dv := g.drum
-	// A narrow layout wraps the FM section to many rows so it overflows into a
-	// scroll window (same setup as TestGridWhitespaceWheelScrollsNotNudges).
+	// A narrow layout wraps FM into a scroll window.
 	idx := synthIdxByParam(t, g, "fm_op1_ratio")
 	selectSectionForKnobIdx(t, g, "ut-chip-modular", idx)
 	g.Layout(420, 720)
@@ -314,8 +292,7 @@ func TestArmedGrow_BottomVisibleControlNoGiantRect(t *testing.T) {
 	if fmSec == nil {
 		t.Skip("no FM section")
 	}
-	// Bottom-most ON-window control (largest Min.Y) — its 2×2 block's lower row is
-	// off-window, the exact condition that produced the giant rect.
+	// The largest Min.Y on-window.
 	bottomK, bottomY := -1, -(1 << 30)
 	for _, k := range fmSec.knobIdxs {
 		if k < 0 || k >= len(dv.instEditorControls) {
@@ -342,15 +319,13 @@ func TestArmedGrow_BottomVisibleControlNoGiantRect(t *testing.T) {
 	if r.Dx()*r.Dy() > content.Dx()*content.Dy() {
 		t.Fatalf("armed block larger than the whole grid content (giant-rect bug): block=%v content=%v", r, content)
 	}
-	// It must actually EXPAND (not just show the lanes in a single cell): the card
-	// grows to at least ~2 columns wide.
+	// It really expands, to about two columns.
 	if r.Dx() <= grid.CellW()+grid.HGap() {
 		t.Fatalf("armed card did not expand — still one cell wide (Dx=%d, cellW=%d): %v", r.Dx(), grid.CellW(), r)
 	}
 }
 
-// Functional down-only guard: arming the lowest visible control must not lift any
-// control above its resting row — the card grows down, neighbours reflow down.
+// The card grows down and neighbours reflow down.
 func TestArmedGrow_NeighboursNeverMoveUp(t *testing.T) {
 	g := newViolinMacroGame(t)
 	dv := g.drum
@@ -384,27 +359,13 @@ func TestArmedGrow_NeighboursNeverMoveUp(t *testing.T) {
 	}
 }
 
-// Functional regression for the "controls fly UPWARDS into nothing" bug: when the
-// reflow pushes a neighbour onto a lattice row that lies BELOW the visible scroll
-// window, ControlGrid.CellAt returns the zero rect (image.Rectangle{}) — an empty
-// rect anchored at the SCREEN ORIGIN, not a "no target" sentinel. growArmedCard
-// discards CellAt's ok flag and lerps the neighbour's resting rect toward that
-// zero rect, so for the whole animation the control travels up-and-left toward
-// (0,0) while shrinking, instead of sliding DOWN into the next (scrollable) row.
-//
-// TestArmedGrow_NeighboursNeverMoveUp cannot catch this: it only inspects the
-// SETTLED frame, where lerpRect(t>=1) returns the empty target exactly and the
-// control is skipped as empty. The flight is only visible mid-animation, which is
-// exactly what the user sees.
-//
-// Invariant asserted every frame of the grow: a neighbour that is still being
-// drawn (non-empty rect) never rises above its resting row, and never escapes
-// above or left of the grid's content rect.
+// CellAt returns a zero rect at the origin for a row below the window; lerping toward it flies a neighbour
+// up-left mid-animation, which the settled-frame test cannot see. Every frame: nothing drawn rises or leaves the
+// content rect.
 func TestArmedGrow_OffWindowNeighbourNeverFliesToOrigin(t *testing.T) {
 	g := newViolinMacroGame(t)
 	dv := g.drum
-	// A short/narrow panel wraps the drilled concept to more rows than fit, so the
-	// 2×2 armed block pushes at least one neighbour onto an OFF-WINDOW row.
+	// Wraps to more rows than fit, so the block pushes a neighbour off-window.
 	g.Layout(700, 900)
 	drillMacro(t, g, "brightness")
 	g.Layout(700, 900)
@@ -433,8 +394,7 @@ func TestArmedGrow_OffWindowNeighbourNeverFliesToOrigin(t *testing.T) {
 		t.Skip("need >=2 on-window controls for a neighbour to be pushed off-window")
 	}
 
-	// Arm the FIRST on-window control: its 2×2 block consumes the row's remaining
-	// cells, so every later neighbour reflows onto a row below the window.
+	// The block takes the row's remaining cells, so later neighbours reflow below the window.
 	dv.armSynthControl(dv.synthTabActiveInstrument(), onWin[0])
 	for f := 0; f < 50 && dv.advanceArmGrow(); f++ {
 		dv.eqPanelZone.Layout(dv.eqPanelZone.PanelRect())
@@ -467,8 +427,7 @@ func grid0Area(dv *DrumView, order []int, except int) int {
 	return 1
 }
 
-// The grow is a brief ANIMATION, not an instant jump: one tick after arming, the
-// armed control's area sits strictly between its resting and fully-grown size.
+// One tick in, strictly between resting and grown.
 func TestArmGrow_MidAnimationRectBetween(t *testing.T) {
 	g := newViolinMacroGame(t)
 	dv := g.drum

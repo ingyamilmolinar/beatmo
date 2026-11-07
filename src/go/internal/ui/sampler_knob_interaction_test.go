@@ -33,8 +33,7 @@ func TestSamplerKnobScalesAndBadges(t *testing.T) {
 		if k.StepMul <= 0 {
 			t.Fatalf("sampler knob %d StepMul not initialised", i)
 		}
-		// Badges still back the value-wheel popup's resolution ladder even though
-		// the on-card step-badge chrome is retired.
+		// The badges still back the wheel's resolution ladder.
 		if i >= len(s.knobStepBadges) || s.knobStepBadges[i] == nil {
 			t.Fatalf("sampler knob %d missing step badge", i)
 		}

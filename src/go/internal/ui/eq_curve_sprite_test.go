@@ -10,16 +10,13 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// expandEQPanelForTest gives the audio panel real height (the test-mode
-// default collapses it, leaving an 8px plot in which drawEQCurve's
-// minimum-size guard rejects rendering entirely).
+// The test default collapses the panel to an 8 px plot that drawEQCurve refuses to render.
 func expandEQPanelForTest(t *testing.T, g *Game) {
 	t.Helper()
 	eqPanelHeightForTest = 400
 	t.Cleanup(func() { eqPanelHeightForTest = 0 })
 	g.Layout(1280, 720)
-	// The override is consumed inside (*DrumView).layout, which runs from
-	// Update — drive a few frames so the taller panel geometry lands.
+	// Consumed in layout, which runs from Update.
 	for i := 0; i < 4; i++ {
 		_ = g.Update()
 	}
@@ -31,9 +28,7 @@ func curveStrokeRGBA() color.RGBA {
 	return color.RGBAModel.Convert(colEQCurve).(color.RGBA)
 }
 
-// countCurveStrokeRects counts drawRect calls carrying the curve stroke
-// color, regardless of destination or coordinate space (cached renders draw
-// in sprite-local coordinates; the interceptor sees them either way).
+// Cached renders draw in sprite-local coordinates; the interceptor sees them either way.
 func countCurveStrokeRects(rects []drawnRect) int {
 	want := curveStrokeRGBA()
 	n := 0
@@ -45,11 +40,7 @@ func countCurveStrokeRects(rects []drawnRect) int {
 	return n
 }
 
-// TestEQCurveSpriteMatchesDirect pins pixel identity between the cached
-// sprite path and the RENDER_SAFE direct path (the
-// TestChainTraceCacheMatchesDirect pattern): same game state, two draws, the
-// EQ plot region must be byte-identical. Exercised across a band edit so the
-// key-change re-render path is covered too.
+// The cached and RENDER_SAFE paths give a byte-identical plot, across a band edit too.
 func TestEQCurveSpriteMatchesDirect(t *testing.T) {
 	g := driveScene(t, "crop_eq_tab_eq")
 	expandEQPanelForTest(t, g)
@@ -92,10 +83,8 @@ func TestEQCurveSpriteMatchesDirect(t *testing.T) {
 	compare("after band edit")
 }
 
-// TestEQCurveSpriteRenderCount pins the caching win at the render level:
-// steady-state frames must NOT re-draw the curve content (zero curve-stroke
-// drawRect calls), a band edit must re-render exactly once (after the drag
-// throttle window), and further steady frames go quiet again.
+// Steady frames draw no curve strokes, a band edit re-renders exactly once after the drag throttle, then quiet
+// again.
 func TestEQCurveSpriteRenderCount(t *testing.T) {
 	g := driveScene(t, "crop_eq_tab_eq")
 	expandEQPanelForTest(t, g)
@@ -123,8 +112,7 @@ func TestEQCurveSpriteRenderCount(t *testing.T) {
 		t.Fatalf("steady-state frames re-drew the curve %d times (want 0 — cached blit only)", n)
 	}
 
-	// Band edit: key changes; with the clock advanced past the throttle the
-	// next frame re-renders exactly one curve pass.
+	// Past the throttle, the next frame renders exactly one curve pass.
 	z.SetBandGainDB(1, -4.0)
 	now = now.Add(time.Second)
 	edited := collectFilledRects(t, func() { g.Draw(screen) })
@@ -139,21 +127,10 @@ func TestEQCurveSpriteRenderCount(t *testing.T) {
 	}
 }
 
-// TestEQTabSteadyStateDrawCallBudget pins the draw-call collapse: a
-// steady-state EQ-tab frame previously issued ~2 filled drawRect calls per
-// plot column for the curve alone (hundreds per frame; drawEQCurve measured
-// 13.8% of process CPU, 8,441 draw calls/frame on WASM before this work).
-// With the curve sprite the whole frame's filled-rect count must stay under
-// the pinned budget. Measured 2026-07-14 post-sprite: see t.Log below —
-// budget = measured + headroom; tighten it if you reduce calls further
-// (ratchet), and justify any increase in a comment here.
+// The curve alone once drew ~2 rects per plot column; a steady EQ frame now stays under the pinned budget.
+// Tighten it when calls drop; justify any increase here.
 func TestEQTabSteadyStateDrawCallBudget(t *testing.T) {
-	// Measured 2026-07-14 with the curve+backdrop+labels sprites and the
-	// production-height panel: 284 filled rects per steady frame FOR THE
-	// WHOLE SCREEN (rows, transport, sliders, live bars — the EQ data
-	// surfaces contribute three cached blits). The curve alone used to add
-	// ~2 rects per plot column (hundreds). Ratchet: tighten when more
-	// surfaces are cached; justify any increase here.
+	// For the whole screen; the EQ data surfaces are three cached blits.
 	const budget = 350
 
 	g := driveScene(t, "crop_eq_tab_eq")

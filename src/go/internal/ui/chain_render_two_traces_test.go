@@ -13,18 +13,11 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
-// Regression guard for the Chn-tab "only one trace renders" bug: feed the
-// renderer DISTINCT per-stage snapshots (Synth ≠ PreEQ) for a per-instrument
-// id, then assert BOTH colScopeA and colScopeB rect fills land inside the
-// chain SubjectRect. The existing audio_panel_render_pixels_test.go feeds
-// the same sine into every stage slot, so even a renderer that silently
-// dropped trace B would pass.
+// DISTINCT per-stage snapshots, so a renderer that drops trace B fails; the same sine in every slot would pass.
 
 func TestChainPanelRendersBothTracesForPerInstrumentSnapshots(t *testing.T) {
 	assertDefaultParityState(t)
-	// This test counts trace rects at their on-screen position via the
-	// drawRect interceptor; the production trace cache renders them at a
-	// (0,0) origin before blitting, so exercise the direct render path.
+	// The cache renders at a (0,0) origin, so exercise the direct path to count rects on screen.
 	defer SetChainTraceCacheForTest(false)()
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -37,9 +30,7 @@ func TestChainPanelRendersBothTracesForPerInstrumentSnapshots(t *testing.T) {
 		_ = g.Update()
 	}
 
-	// Synth snapshot: a 64-period sine. PreEQ snapshot: a 32-period
-	// half-amplitude sine. Distinct enough that even a partial-render
-	// regression (e.g. one slot bleeding into the other) would be caught.
+	// Different period and amplitude, so one slot bleeding into the other is caught.
 	synthSnap := audio.AnalyzerSnapshot{
 		RMS:  0.42,
 		Peak: 0.6,
@@ -65,9 +56,7 @@ func TestChainPanelRendersBothTracesForPerInstrumentSnapshots(t *testing.T) {
 		Spectrum: []float64{0.25, 0.2, 0.15, 0.1, 0.05},
 	}
 
-	// Build a ScopeStateOverride simulating what a fully-wired WASM bridge
-	// would produce for a per-instrument id: only the two selected stages
-	// carry data. All other slots are zero.
+	// As a wired WASM bridge produces for one instrument: only the two selected stages carry data.
 	state := SynthesizeScopeState(channel.Of(roster.Kick), scope.StageSynth, scope.StageInsertFX, ScopeStageSnapshots{
 		Synth:  synthSnap,
 		PreEQ:  preEQSnap,
@@ -110,9 +99,7 @@ func TestChainPanelRendersBothTracesForPerInstrumentSnapshots(t *testing.T) {
 		t.Errorf("trace B (colScopeB) drew %d rects inside chain SubjectRect %v — want > 0", nB, rect)
 	}
 
-	// Synthwave "outrun" fills must be painted beneath each trace (the
-	// per-lane trace color at sub-full AlphaSubtle), one fill rect per
-	// column from the trace to the zero-line — crisp line stays on top.
+	// A fill per column from the trace to the zero line, beneath the crisp line.
 	if fA := rectsWithColorInside(rects, rect, colScopeAFill); fA == 0 {
 		t.Errorf("trace A synthwave fill (colScopeAFill) drew %d rects in %v — want > 0", fA, rect)
 	}

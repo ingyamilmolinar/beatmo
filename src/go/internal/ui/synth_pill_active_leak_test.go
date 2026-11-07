@@ -8,11 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
-// The Synth/Sampler tab pills are disabled under the Master channel to stop
-// the user ENTERING them — but once the tab IS active (programmatic open;
-// content resolves the Rows[0] fallback), the pill must render as the
-// active tab, not as a blocked grey pill under live per-instrument content
-// (the desktop eq_tab_synth screenshot leak, 2026-07-04 critique).
+// Disabled under Master so the user cannot ENTER the tab, but once active (opened programmatically, showing row 0)
+// the pill reads active, not blocked.
 func TestSynthPillNotDisabledWhileSynthTabActive(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)

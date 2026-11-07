@@ -17,11 +17,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// The HONESTY contract of the Synth-tab graphs (spec 2026-10-24 §5 T3/T4),
-// on the real engine: a control that changes the sound moves its graph, and
-// the numbers the graphs print rank sounds the way the analysis descriptors
-// the dial tests already trust do. A graph that does not move then means the
-// sound did not change — which is what makes the graphs a diagnosis tool.
+// On the real engine: a control that changes the sound moves its graph, and the printed numbers rank sounds like the
+// descriptors the dial tests trust, so a still graph means an unchanged sound.
 
 const (
 	honestyW, honestyH = relevanceViewW, relevanceViewH // the reference graph size
@@ -83,9 +80,7 @@ func renderForHonesty(id instrument.ID, fields map[string]float64, ident string)
 	return &graphRender{ident: graphIdent{hash: ident}, sr: sr, voiceSec: voice, an: an}, nil
 }
 
-// graphMove is how far the view the graph shows for this dial on this
-// instrument (chooseDialView: its named view, else the one that moves most)
-// moves between the dial's two ends; and whether its readout changes.
+// The view chooseDialView shows for this dial and instrument.
 func graphMove(v synthView, lo, hi *graphRender) (px float64, readoutDiffers bool) {
 	v, px = chooseDialView(v, lo, hi, honestyW, honestyH)
 	a := buildSynthViewPlot(v, honestyW, honestyH, synthViewInput{now: lo, numbers: true})
@@ -136,8 +131,7 @@ func TestEveryControlMovesItsGraph(t *testing.T) {
 			t.Errorf("%s: %v", r.key, r.err)
 			continue
 		}
-		// The CURVE must move: a readout that changes while the picture stands
-		// still is not a graph that shows the change.
+		// The curve must move; a changing readout over a still picture shows nothing.
 		if r.px < honestyMinPx {
 			failed++
 			t.Errorf("%s: the dial is shown (its sound changes audibly) but turning it end to end moves its graph %.1f px (readout changes: %v) — the view does not show this change", r.key, r.px, r.text)
@@ -146,14 +140,8 @@ func TestEveryControlMovesItsGraph(t *testing.T) {
 	t.Logf("%d shown dials, %d whose graph does not move", len(results), failed)
 }
 
-// TestSoundviewAgreesWithFingerprint: the graph readouts and the analysis
-// descriptors measure the same properties with different definitions
-// (fingerprint: attack to the envelope PEAK, audible length against the noise
-// floor, a magnitude-weighted sustain centroid), so they must RANK the
-// roster's shipped voices alike — Spearman ρ per property. The tone-vs-noise
-// share is ranked against SPECTRAL FLATNESS (noise character): fingerprint's
-// noise.fraction counts every inharmonic partial (a bell, a tom, a detuned
-// supersaw) as noise, while the graph counts any spectral peak as tone.
+// Different definitions of the same properties must rank the roster alike (Spearman ρ). Tone vs noise ranks against
+// spectral flatness: noise.fraction counts every inharmonic partial as noise, the graph any peak as tone.
 func TestSoundviewAgreesWithFingerprint(t *testing.T) {
 	type pair struct{ sv, fp []float64 }
 	props := map[string]*pair{"attack": {}, "audible": {}, "centroid": {}, "noise": {}}
@@ -191,8 +179,7 @@ func TestSoundviewAgreesWithFingerprint(t *testing.T) {
 		add("centroid", an.CentroidHz(), fingerprint.IDCentroid)
 		add("noise", an.Noise().Fraction, fingerprint.IDNoiseFlatness)
 	}
-	// Each floor sits ~0.05 under the 2026-10-25 measurement (attack 0.856,
-	// audible 0.974, centroid 0.850, noise vs flatness 0.554).
+	// Each floor ~0.05 under the measured ρ.
 	floors := map[string]float64{"attack": 0.8, "audible": 0.9, "centroid": 0.8, "noise": 0.5}
 	for name, p := range props {
 		if len(p.sv) < 50 {

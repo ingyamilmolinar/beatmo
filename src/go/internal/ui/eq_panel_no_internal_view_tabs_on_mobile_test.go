@@ -9,10 +9,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestEQPanel_NoRightSideTabsOnMobile (Theme 1) verifies that on mobile
-// the EQ panel suppresses its right-side internal view-tab strip — the
-// bottom-bar segmented switcher owns that role. The left-side
-// Master/HP/LP/Freeze chips remain.
+// The bottom segmented switcher owns that role; the left chips remain.
 func TestEQPanel_NoRightSideTabsOnMobile(t *testing.T) {
 	assertDefaultParityState(t)
 	setupMobileTest(t, true)

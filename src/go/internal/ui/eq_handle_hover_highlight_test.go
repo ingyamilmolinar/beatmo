@@ -12,9 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
-// setEQCursorForTest points the package cursor at (x, y) and leaves every
-// other input source inert. Mirrors noInputForTest but with a live cursor so
-// the EQ panel's per-frame hover detection sees a hovering pointer.
+// A live cursor, everything else inert.
 func setEQCursorForTest(x, y int) func() {
 	return SetInputForTest(
 		func() (int, int) { return x, y },
@@ -32,9 +30,7 @@ type coloredRoundedRect struct {
 	c color.Color
 }
 
-// installColoredRectInterceptor records rect +
-// color of every drawRect call. The migrated hover highlight (drawRectHoverGlow)
-// bottoms out in drawRect, so this captures it.
+// The hover glow bottoms out in drawRect.
 func installColoredRectInterceptor(t *testing.T) *[]coloredRoundedRect {
 	t.Helper()
 	var mu sync.Mutex
@@ -50,21 +46,14 @@ func installColoredRectInterceptor(t *testing.T) *[]coloredRoundedRect {
 	return calls
 }
 
-// rgbEq reports whether c has the same straight (non-premultiplied) 8-bit RGB
-// as want, ignoring alpha. drawNodeBloom paints WithAlphaFromColor(nodeColor,
-// alpha), which returns a color.NRGBA carrying the source RGB verbatim with a
-// varying alpha — so comparing straight RGB (via NRGBAModel, not the
-// alpha-premultiplied .RGBA()) identifies the highlight-colored bloom.
+// Straight RGB, alpha ignored: the bloom is the source RGB at a varying alpha.
 func rgbEq(c color.Color, want color.Color) bool {
 	cn := color.NRGBAModel.Convert(c).(color.NRGBA)
 	wn := color.NRGBAModel.Convert(want).(color.NRGBA)
 	return cn.R == wn.R && cn.G == wn.G && cn.B == wn.B
 }
 
-// TestEQHandleHoverStateTracksCursor verifies the EQ panel tracks which
-// draggable handle the desktop cursor is hovering — band handles via
-// curveHoverBand, HPF/LPF handles via curveHoverFilter — mirroring the
-// press-time hit-test geometry exactly, and staying idle on mobile (no hover).
+// Band and HPF/LPF hover follow the press hit-test geometry exactly, and stay idle on mobile.
 func TestEQHandleHoverStateTracksCursor(t *testing.T) {
 	rect := image.Rect(0, 200, 800, 400)
 
@@ -113,8 +102,7 @@ func TestEQHandleHoverStateTracksCursor(t *testing.T) {
 		z, _ := newTestEQPanelZone(nil)
 		z.Layout(rect)
 
-		// Top-centre of the panel — above the gain-0 handle row, clear of
-		// every handle's hit radius.
+		// Above the gain-0 row, clear of every handle's radius.
 		restore := setEQCursorForTest(rect.Dx()/2, rect.Min.Y+2)
 		defer restore()
 
@@ -150,9 +138,7 @@ func TestEQHandleHoverStateTracksCursor(t *testing.T) {
 	})
 }
 
-// countBloomRingsAt counts filled rounded-rects of the given color (matched on
-// straight RGB, alpha-agnostic) centred on (cx, cy) — the drawNodeBloom
-// signature. Used to detect a hover bloom in a specific color at a handle.
+// The drawNodeBloom signature, matched on straight RGB.
 func countBloomRingsAt(calls []coloredRoundedRect, want color.Color, cx, cy int) int {
 	n := 0
 	for _, call := range calls {
@@ -168,12 +154,8 @@ func countBloomRingsAt(calls []coloredRoundedRect, want color.Color, cx, cy int)
 	return n
 }
 
-// TestEQHandleHoverUsesHandleOwnColor verifies that a hovered EQ handle glows
-// with the handle's OWN color (band handles = colEQHandle amber, HPF/LPF =
-// colEQFilterHandle cyan) rather than the white colHighlight, via the shared
-// shape-agnostic drawRectHoverGlow. Detected differentially: hovering must ADD
-// own-color glow rects (drawRect) over the not-hovered baseline; no white glow
-// must appear at the handle.
+// The handle's own colour (amber band, cyan filter), never white: hovering adds own-colour glow over the
+// baseline and no white.
 func TestEQHandleHoverUsesHandleOwnColor(t *testing.T) {
 	rect := image.Rect(0, 200, 800, 400)
 

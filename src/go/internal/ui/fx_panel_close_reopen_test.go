@@ -9,30 +9,11 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// fx_panel_close_reopen_test.go — "one press belongs to ONE subtree for its
-// whole lifetime" contract.
-//
-// A real mouse click holds the button down for many frames. The RootTree routes
-// each frame's input to exactly one subtree and WITHHOLDS the press from lower
-// subtrees while an upper one is busy — but a withheld subtree must also stay
-// withheld for the REST of that press, not just the frame the upper subtree
-// happened to be busy on.
-//
-// The FX panel is the reported repro: its close "X" is painted directly over the
-// NEXT row's FX button (row 0's panel close sits inside row 1's fxBtn rect). The
-// close button lives in the overlay subtree's portal (z >= 300); the row's FX
-// button lives in the drum-view subtree's row rack (z = 120). Pressing X closes
-// the panel on the press-edge frame; on the FOLLOWING held frame the overlay
-// subtree is no longer busy (its portal is empty and Tick reset inputHandled),
-// so the drum-view subtree — which never latched this press cycle while it was
-// withheld — reads the still-held pointer as a FRESH press edge and dispatches
-// it to the FX button underneath, re-opening the panel for the other row.
+// One press belongs to ONE tree for its whole life. The FX panel's close × sits over the next row's FX chip:
+// closing on the press edge empties the overlay, and the still-held pointer must not then read as a fresh
+// press in the drum tree and reopen the panel for that row.
 
-// injectHeldPressAt holds a LEFT-button press at (x,y) for `frames` consecutive
-// frames through the production input seams, then releases it — i.e. a REAL
-// click, which never lasts a single frame. The existing injectPressAt holds for
-// exactly one frame, which is why no test caught a press leaking to a lower
-// subtree on the SECOND held frame.
+// A real click spans many frames; a one-frame press never shows the leak on the second held frame.
 func injectHeldPressAt(t *testing.T, dv *DrumView, x, y, frames int) {
 	t.Helper()
 	restore := SetInputForTest(
@@ -50,13 +31,8 @@ func injectHeldPressAt(t *testing.T, dv *DrumView, x, y, frames int) {
 	injectRelease(t, dv, x, y)
 }
 
-// fxCloseCenterOverRow opens row 0's FX panel and returns the centre of its
-// close "X" plus the index of the OTHER row whose rack control — its FX chip or
-// its ⋯ kebab, whichever the panel's right edge lands on in the current rack
-// layout — sits underneath that point. It fails the test if the close button
-// does not overlap a different row's control — that overlap is the repro's
-// precondition. (The panel spans the rack column, so its X lands over the
-// right-most control of a row below.)
+// The panel spans the rack column, so its × lands over another row's right-most control (FX chip or ⋯); fails
+// without that overlap, the repro's precondition.
 func fxCloseCenterOverRow(t *testing.T, dv *DrumView) (image.Point, int) {
 	t.Helper()
 
@@ -91,9 +67,6 @@ func fxCloseCenterOverRow(t *testing.T, dv *DrumView) (image.Point, int) {
 	return image.Point{}, -1
 }
 
-// TestFXPanelCloseButtonDoesNotReopenPanelForRowBeneath is the reported bug:
-// clicking the FX panel's "X" closes the panel and IMMEDIATELY re-opens it for
-// the row whose FX button is painted beneath the X.
 func TestFXPanelCloseButtonDoesNotReopenPanelForRowBeneath(t *testing.T) {
 	dv := newTestDrumViewWithRows(t, 6)
 	dv.layoutForTest()
@@ -117,9 +90,7 @@ func TestFXPanelCloseButtonDoesNotReopenPanelForRowBeneath(t *testing.T) {
 	}
 }
 
-// TestFXPanelOpenViaButtonThenCloseViaXStaysClosed drives the user's exact
-// desktop flow end-to-end with REAL held clicks: click row 0's FX button to open
-// the panel, then click the panel's "X" to close it. Nothing may re-open.
+// The desktop flow with real held clicks: open from row 0's FX, close with ×, nothing reopens.
 func TestFXPanelOpenViaButtonThenCloseViaXStaysClosed(t *testing.T) {
 	dv := newTestDrumViewWithRows(t, 6)
 	dv.layoutForTest()
@@ -160,9 +131,7 @@ func TestFXPanelOpenViaButtonThenCloseViaXStaysClosed(t *testing.T) {
 	}
 }
 
-// TestFXPanelCloseButtonClosesOnFirstHeldFrame guards the other half: the close
-// must actually happen on the press edge (and stay closed), so a fix that merely
-// suppresses the re-open cannot regress the close itself.
+// The close happens on the press edge, so a fix that only suppresses the reopen cannot break it.
 func TestFXPanelCloseButtonClosesOnFirstHeldFrame(t *testing.T) {
 	dv := newTestDrumViewWithRows(t, 6)
 	dv.layoutForTest()

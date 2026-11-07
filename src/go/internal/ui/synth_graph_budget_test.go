@@ -9,16 +9,11 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/soundview"
 )
 
-// graphAnalysisBudget is what the analysis behind one graph render may cost
-// per second of note (spec 2026-10-25 §3.4): on desktop it runs on the graph
-// worker; in the browser it runs on the page's one thread in yielded slices,
-// so its total is what a render takes away from the frames around it.
+// Per second of note: on desktop it runs on the worker, in the browser on the one thread in yielded slices, so it is
+// taken from the frames around it.
 const graphAnalysisBudget = 15 * time.Millisecond
 
-// TestGraphAnalysisStaysInBudget: for every view, the analyses it needs on a
-// 1 s note (a decaying, gliding, noisy tone — every analysis has work to do)
-// cost at most graphAnalysisBudget. The fastest of seven runs is judged, so a
-// busy machine does not fail it; a real regression does.
+// A decaying, gliding, noisy 1 s tone gives every analysis work; the fastest of seven is judged.
 func TestGraphAnalysisStaysInBudget(t *testing.T) {
 	if testing.Short() {
 		t.Skip("timing")
@@ -48,11 +43,8 @@ func TestGraphAnalysisStaysInBudget(t *testing.T) {
 	}
 }
 
-// TestViewsReadOnlyTheAnalysesTheyWarm: a view's plot is built on the UI
-// goroutine (the browser's one thread) from analyses warmed on the worker
-// (synthViewNeeds). A view that reads anything else computes it right there,
-// in one unyielded stretch — so building any view, on a pitched note and on
-// noise (where views fall back), must leave every unwarmed analysis unwarmed.
+// Plots build on the UI goroutine from analyses warmed on the worker, so a view reading anything else computes it
+// unyielded; every unwarmed analysis stays unwarmed, on pitched notes and noise.
 func TestViewsReadOnlyTheAnalysesTheyWarm(t *testing.T) {
 	rng := rand.New(rand.NewSource(9))
 	notes := map[string]func(i int) float32{
@@ -75,8 +67,7 @@ func TestViewsReadOnlyTheAnalysesTheyWarm(t *testing.T) {
 				}
 				an := soundview.New(pcm, testViewSR, 0.5)
 				r := &graphRender{ident: graphIdent{hash: name + tag}, sr: testViewSR, voiceSec: 0.5, an: an}
-				// The worker's two rounds: the view's needs, then what this
-				// render turns out to need (an unpitched close-up's colour).
+				// The view's needs, then what this render turns out to need.
 				an.Warm(synthViewNeeds(v), nil)
 				an.Warm(synthRenderNeeds(v, r), nil)
 				return r

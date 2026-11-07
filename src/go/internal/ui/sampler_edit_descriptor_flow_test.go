@@ -10,15 +10,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// sampler_edit_descriptor_flow_test.go — the Sampler-tab Save on a SYNTH
-// source is non-destructive: it stores the edit as a per-instrument
-// descriptor (audio.SetSampleEdit) and KEEPS the synth document, so the synth
-// stays the source of truth and later synth changes always take effect.
-// Only WAV sources bake PCM.
+// A Sampler Save on a synth source stores a descriptor and keeps the synth document, so later synth changes
+// still take effect; only WAV sources bake PCM.
 
-// sampleEditApproxEqual compares two SampleEdits with a tolerance on the float
-// fields (trim fractions, pitch, gain, fades) and exact on the bool flags. Used
-// where the reverse trim-mirror introduces sub-ulp float drift on round-trip.
+// Floats within eps, flags exact: the reverse trim mirror drifts sub-ulp on a round trip.
 func sampleEditApproxEqual(a, b audio.SampleEdit, eps float64) bool {
 	close := func(x, y float64) bool {
 		d := x - y
@@ -33,8 +28,7 @@ func sampleEditApproxEqual(a, b audio.SampleEdit, eps float64) bool {
 		a.Fade == b.Fade && a.Reverse == b.Reverse && a.Normalize == b.Normalize
 }
 
-// cleanupSamplerEditState snapshots and restores the global audio state the
-// sampler Save flow mutates (TEST GOTCHA: save() writes GLOBAL maps).
+// save() writes global maps.
 func cleanupSamplerEditState(t *testing.T, instID instrument.ID) {
 	t.Helper()
 	keepInstrumentDoc(t, instID)
@@ -64,10 +58,7 @@ func TestSamplerEnsureLoadedRestoresDescriptorIntoEditor(t *testing.T) {
 	if s.source != samplerSourceSynth {
 		t.Fatalf("source=%v, want synth (descriptor keeps the synth source of truth)", s.source)
 	}
-	// Tolerance compare: a reversed descriptor's trim is mirrored to the display
-	// frame on load and back to the source frame on save (editDescriptor), and the
-	// 1-x mirror is not exactly self-inverse in float64 (1-(1-0.2) ≈ 0.2 to ~1e-16).
-	// The round-trip is faithful well below a single sample, so compare with eps.
+	// The 1-x trim mirror is not exactly self-inverse in float64, though far below a sample.
 	if got := s.editDescriptor(); !sampleEditApproxEqual(got, want, 1e-9) {
 		t.Errorf("editor state after load = %+v, want the saved descriptor %+v", got, want)
 	}

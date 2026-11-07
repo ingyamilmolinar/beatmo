@@ -10,11 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 )
 
-// TestLevelsPhase5_StereoSplitWhenStereoData — when ChannelMetrics has
-// stereo data (PeakDBL/R set), drawLevelsDetail must split the Peak
-// bar into two visually-distinct sub-bars (L on top, R on bottom).
-// We detect "split" by checking that the Peak band area contains
-// rect fills at two distinct vertical positions.
+// With stereo data the Peak bar splits into L (top) and R (bottom): fills at two distinct heights.
 func TestLevelsPhase5_StereoSplitWhenStereoData(t *testing.T) {
 	rect := image.Rect(0, 0, 400, 120)
 	dst := ebiten.NewImage(rect.Dx(), rect.Dy())
@@ -49,9 +45,7 @@ func TestLevelsPhase5_StereoSplitWhenStereoData(t *testing.T) {
 	}
 }
 
-// TestLevelsPhase5_MonoFallbackWhenNoStereo — when no stereo data is
-// present, drawLevelsDetail must keep the single-bar mono render
-// path. (Backward compatibility — most playback today is mono.)
+// Most playback is mono.
 func TestLevelsPhase5_MonoFallbackWhenNoStereo(t *testing.T) {
 	rect := image.Rect(0, 0, 400, 120)
 	dst := ebiten.NewImage(rect.Dx(), rect.Dy())

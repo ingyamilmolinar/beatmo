@@ -11,17 +11,12 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/soundview"
 )
 
-// The Synth-tab graph views (spec 2026-10-24 §4.4) are GEOMETRY built from
-// rendered audio: these pin that every view draws NOW from a render, shows a
-// ghost only when its render exists, keeps its axes while the control moves,
-// shades the difference only against a BEFORE, and says so when there is no
-// picture yet.
+// Every view draws NOW from a render, shows a ghost only when its render exists, keeps its axes while the control
+// moves, shades only against a BEFORE, and says so when there is no picture yet.
 
 const testViewSR = 48000
 
-// synthRender is a synthetic analysed note: a saw at hz decaying with tau,
-// noise mixed at noise (0..1), dropping from drop×hz to hz over the first
-// 40 ms when drop > 1.
+// A saw decaying with tau, noise mixed in, dropping from drop×hz to hz over 40 ms when drop > 1.
 func synthRender(name string, hz, tau, noise, drop float64) *graphRender {
 	rng := rand.New(rand.NewSource(int64(len(name))))
 	n := testViewSR
@@ -113,8 +108,7 @@ func TestGhostsAppearOnlyWhenTheirRenderExists(t *testing.T) {
 	}
 }
 
-// While a control moves between its ends, the axes stay put: they come from
-// the renders on screen (the ends bracket NOW), not from the control's value.
+// From the renders on screen (the ends bracket NOW), not from the control's value.
 func TestAxesHoldStillWhileTheControlMoves(t *testing.T) {
 	lo := synthRender("lo", 220, 0.05, 0, 1)
 	hi := synthRender("hi", 220, 0.4, 0, 1)

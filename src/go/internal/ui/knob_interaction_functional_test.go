@@ -9,8 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// sectionHasEndlessKnob returns true if at least one knob in the section is
-// backed by a non-nil KnobStepBadge (i.e. it is a continuous/endless knob).
+// Endless: backed by a KnobStepBadge.
 func sectionHasEndlessKnob(g *Game, sec synthSectionID) bool {
 	dv := g.drum
 	for _, s := range dv.instEditorSections {
@@ -72,11 +71,7 @@ func TestSynthDiscreteControlIsClicky(t *testing.T) {
 	}
 }
 
-// TestSynthBadgeRectsNeverOverlapOtherControls asserts that after a draw pass for
-// any section, no badge's rect overlaps a DIFFERENT knob's rect. This is the
-// layout-agnostic guard for BUG 1 (cross-row tap stealing): if the badge is
-// clamped within its own cell slot it cannot physically reach another knob's
-// rect.
+// A badge clamped to its own cell can never reach another knob, so it cannot steal a tap across rows.
 func TestSynthBadgeRectsNeverOverlapOtherControls(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
@@ -111,15 +106,7 @@ func TestSynthBadgeRectsNeverOverlapOtherControls(t *testing.T) {
 	}
 }
 
-// TestSynthReadoutTapOpensEditorViaTreeDispatch verifies the FULL production
-// input path for readout taps: mouse→SetInputForTest→g.Update()→HitIndex→
-// synthControlHitAdapter.OnPress→openSynthParamEditor. Replaces the isolation-test
-// (direct handleSynthTabInput call) that never exercised the real tree dispatch.
-// TestSynthControlCaptionIsDisplayOnly pins the simplified knob title: the value
-// caption is a SIMPLE display label, so tapping it must NOT open the numeric
-// text-input editor (values change via the dial). Was
-// TestSynthReadoutTapOpensEditorViaTreeDispatch before the caption was made
-// display-only.
+// The caption is a display label: tapping it never opens a numeric editor; values change through the dial.
 func TestSynthControlCaptionIsDisplayOnly(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
@@ -135,8 +122,7 @@ func TestSynthControlCaptionIsDisplayOnly(t *testing.T) {
 	if r.Empty() {
 		t.Fatalf("knob %d has no rect after draw", idx)
 	}
-	// Tap the lower band of the card — where the old caption/readout used to
-	// live — and confirm it still does not open the numeric text editor.
+	// The lower band, where a readout once lived.
 	tx, ty := r.Min.X+r.Dx()/2, r.Max.Y-4
 	g.drum.eqPanelZone.Invalidate()
 
@@ -162,11 +148,7 @@ func TestSynthControlCaptionIsDisplayOnly(t *testing.T) {
 	}
 }
 
-// TestSynthBadgeStaleRectClearedOnSectionSwitch guards BUG 2 (stale badge
-// rects across section switches). After switching from Filter to Osc and
-// redrawing, only the badges belonging to the Osc section's endless knobs
-// should have non-empty rects. A large count of non-empty rects signals that
-// the clear-before-draw step is missing.
+// After a section switch only the new section's endless knobs have badge rects.
 func TestSynthBadgeStaleRectClearedOnSectionSwitch(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
@@ -184,9 +166,7 @@ func TestSynthBadgeStaleRectClearedOnSectionSwitch(t *testing.T) {
 	screen.Clear()
 	g.drum.eqPanelZone.Draw(screen)
 
-	// Count non-empty badge rects. Only the Osc section's endless knobs
-	// can contribute; the total must be small (< 12 is a generous upper
-	// bound — a section has at most a handful of knobs).
+	// A section has at most a handful of knobs.
 	nonEmpty := 0
 	for _, b := range g.drum.instEditorStepBadges {
 		if b != nil && !b.Rect().Empty() {
@@ -198,25 +178,11 @@ func TestSynthBadgeStaleRectClearedOnSectionSwitch(t *testing.T) {
 	}
 }
 
-// ---- No-auto-audition invariant tests (Task 18) -------------------------
-//
-// These tests pin the contract that the NEW knob features (endless drag,
-// step-badge cycle, numeric-entry commit) are CONFIG-ONLY and never trigger
-// an immediate audition. The production audition fires ONLY from the explicit
-// Preview button (previewActiveSynth / samplerPreview); all other edit paths
-// must propagate the param change and leave synthAuditionFn / samplerAuditionFn
-// uncalled.
-//
-// If any test below fails, a knob path is auditioning — that is a REAL BUG
-// (the crackle regression). Investigate the offending path and remove the
-// synthAuditionFn / samplerAuditionFn call from it; do NOT silence the test.
+// Knob gestures are config-only: only the Preview button auditions. A failure here is a real bug (a knob path
+// auditioning); remove the audition call, never silence the test.
 
-// TestSynthEndlessDragDoesNotAudition drives the production
-// synthControlHitAdapter drag path (OnPress → OnDrag → OnRelease) and asserts
-// no audition fires. A 40-px horizontal drag is used so the direction-lock
-// resolves to knobDragKnob (dx=40 >> dy=0 > knobDragDirLockPx=6). The test
-// asserts the knob value CHANGED after the drag to prove the path was
-// non-vacuous.
+// 40 px right locks the direction to the knob (past the 6 px threshold); the value must change, so the path is
+// not vacuous.
 func TestSynthEndlessDragDoesNotAudition(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
@@ -236,8 +202,7 @@ func TestSynthEndlessDragDoesNotAudition(t *testing.T) {
 
 	before := k.Value
 	cx := r.Min.X + r.Dx()/2
-	// Tap the dial region (top of rect), not the caption/badge band at the
-	// bottom. r.Min.Y+5 lands on the dial for typical knob heights (≥30px).
+	// The dial, not the caption/badge band.
 	cy := r.Min.Y + 5
 
 	adapter := &synthControlHitAdapter{dv: g.drum, idx: idx, instID: "ut-chip-modular"}
@@ -250,8 +215,6 @@ func TestSynthEndlessDragDoesNotAudition(t *testing.T) {
 			t.Fatalf("OnPress on the dial returned InputIgnored at both y=%d and y=%d (rect=%v); knob not hittable", r.Min.Y+5, cy, r)
 		}
 	}
-	// Drag 40px to the right; dx=40 >> dy=0, so the direction-lock resolves
-	// to knobDragKnob after the 6-px threshold.
 	adapter.OnDrag(cx+40, cy)
 	adapter.OnRelease(cx+40, cy)
 
@@ -261,9 +224,7 @@ func TestSynthEndlessDragDoesNotAudition(t *testing.T) {
 	}
 }
 
-// TestSynthControlDialWheelDoesNotChangeResolution confirms the knob itself is
-// left alone: scrolling over the DIAL (not the badge) does not move the
-// resolution rung.
+// Scrolling over the dial leaves the resolution alone.
 func TestSynthControlDialWheelDoesNotChangeResolution(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
@@ -300,19 +261,8 @@ func TestSynthControlDialWheelDoesNotChangeResolution(t *testing.T) {
 	}
 }
 
-// TestSynthControlHorizontalDragChangesValueViaTreeDispatch is the regression
-// guard for "left/right drag on a knob stopped working". It drives the FULL
-// production input path (SetInputForTest → g.Update → HitIndex →
-// synthControlHitAdapter.OnPress/OnDrag) for several continuous knobs across
-// sections, pressing the DIAL (above the caption/badge row) and asserting a
-// rightward drag increases the value and a leftward drag decreases it — never
-// opening the numeric editor or cycling the resolution badge.
-// TestP4_AdvancedDividerOrdersKnobs is the P4 tiering guard for the always-visible
-// in-grid divider: an Advanced-tier knob's stage owns a divider band laid out
-// AFTER its Essential rows, and its Advanced knobs are always placed (never
-// structurally hidden). There is no expander / hidden state anymore. The detail
-// pane is short, so the tiers are verified by scroll progression rather than by
-// simultaneous on-screen visibility.
+// An Advanced knob's stage lays its divider band after the Essential rows, and Advanced knobs are always placed;
+// the pane is short, so tiers are checked by scrolling.
 func TestP4_AdvancedDividerOrdersKnobs(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
@@ -334,8 +284,7 @@ func TestP4_AdvancedDividerOrdersKnobs(t *testing.T) {
 	if g.drum.synthAdvDividerCount != len(adv) {
 		t.Fatalf("synthAdvDividerCount = %d, want %d", g.drum.synthAdvDividerCount, len(adv))
 	}
-	// selectSectionForKnobIdx scrolled to the Advanced knob; scroll back to the
-	// top so we can confirm the essentials occupy the first row(s).
+	// Back to the top, so the essentials can be seen in the first rows.
 	grid := g.drum.sectionGrid(sel.id)
 	cols := grid.Cols()
 	if cols < 1 {
@@ -360,8 +309,7 @@ func TestP4_AdvancedDividerOrdersKnobs(t *testing.T) {
 	if g.drum.synthAdvDividerRect.Empty() {
 		t.Fatal("OSC stage has advanced knobs but no divider band was laid out once scrolled into view")
 	}
-	// Open More, then scroll to the end: osc_detune (Advanced) acquires a rect
-	// — it is placed below the divider, not structurally hidden.
+	// Below the divider, not hidden.
 	g.drum.setSynthMoreOpen(g.drum.resolveSynthInstrument(g.drum.synthTabActiveInstrument()), true)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 	grid.ScrollToIndex(dividerStartIdx + cols + len(adv))
@@ -371,9 +319,7 @@ func TestP4_AdvancedDividerOrdersKnobs(t *testing.T) {
 	}
 }
 
-// TestP4_PhysicalModelParamsContextual pins the contextual exposure: the
-// physical-model OSC knobs appear only when their oscillator is selected — bow
-// knobs on the Bowed String (osc_type 7), reed knobs on the Sax (osc_type 11).
+// Bow knobs on the bowed string (osc_type 7), reed knobs on the sax (11).
 func TestP4_PhysicalModelParamsContextual(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -395,13 +341,8 @@ func TestP4_PhysicalModelParamsContextual(t *testing.T) {
 	}
 }
 
-// TestCymbalModalKnobsOnlyWherePlateRuns pins the cymbal modal-plate knobs'
-// exposure against the SHIPPED instruments: the hi-hat and the ride (plate on) show
-// the plate knobs, but only the hi-hat — two cymbals clamped together — shows
-// the Rattle knobs; the crash (plate-capable, plate off) shows only the Plate
-// Modes switch; the cowbell (not a plate) shows none. The knobs only exist where
-// they move the sound. It walks the same macro categories the Synth tab root
-// builds, so a knob hidden here has no card to appear on.
+// Knobs only where they move the sound: hi-hat and ride show the plate, only the hi-hat the Rattle; the crash
+// shows only Plate Modes; the cowbell none. Walked through the same categories the Synth tab builds.
 func TestCymbalModalKnobsOnlyWherePlateRuns(t *testing.T) {
 	claimed := func(id instrument.ID) map[string]bool {
 		defs, merged := instSchemaForTest(t, id)
@@ -443,10 +384,7 @@ func TestCymbalModalKnobsOnlyWherePlateRuns(t *testing.T) {
 	}
 }
 
-// TestPhysicalKickKnobsOnlyOnPhysicalKicks pins Body Hold / Air (the Phase-19
-// kick_hold / kick_hiss columns) to the variant-8 Physical kicks that read them:
-// a Physical kick offers both on its category cards, a base kick and an 808
-// (other kick variants) offer neither — they would be dead knobs there.
+// Body Hold / Air only on the variant-8 Physical kicks that read them; elsewhere they would be dead.
 func TestPhysicalKickKnobsOnlyOnPhysicalKicks(t *testing.T) {
 	claimed := func(id instrument.ID) map[string]bool {
 		defs, merged := instSchemaForTest(t, id)
@@ -472,8 +410,7 @@ func TestPhysicalKickKnobsOnlyOnPhysicalKicks(t *testing.T) {
 	}
 }
 
-// wheelOverPoint dispatches one two-axis wheel event (dx,dy) at (mx,my) through
-// the real tree, mirroring a two-finger trackpad drag.
+// A two-finger trackpad drag through the real tree.
 func wheelOverPoint(t *testing.T, g *Game, mx, my, dx, dy int) {
 	t.Helper()
 	wx, wy := float64(dx), float64(dy)
@@ -497,8 +434,7 @@ func wheelOverPoint(t *testing.T, g *Game, mx, my, dx, dy int) {
 	g.Update() // settle (no wheel)
 }
 
-// TestSubBassKnobsAreEditable: the analytic dual-osc voice (gen source 4) has a
-// Synth-tab stage — every sound-shaping field the seed sets is a visible knob.
+// Every field the seed sets is a visible knob.
 func TestSubBassKnobsAreEditable(t *testing.T) {
 	defs, merged := instSchemaForTest(t, roster.SubBass)
 	claimed := map[string]bool{}
@@ -514,9 +450,7 @@ func TestSubBassKnobsAreEditable(t *testing.T) {
 	}
 }
 
-// TestHihatAndRideAlwaysShowThePlate: the hi-hat (variant 0) and ride (variant
-// 4) have no voice except the modal plate, so dialing Plate Modes to 0 (which
-// the engine clamps to 1) must not hide the plate knobs.
+// They have no voice but the plate, and Plate Modes 0 clamps to 1, so the knobs stay.
 func TestHihatAndRideAlwaysShowThePlate(t *testing.T) {
 	for _, id := range []instrument.ID{roster.Hihat, roster.Ride} {
 		defs, merged := instSchemaForTest(t, id)
@@ -535,11 +469,8 @@ func TestHihatAndRideAlwaysShowThePlate(t *testing.T) {
 	}
 }
 
-// TestBasePitchKnobIsUsableAndStable: on an instrument that seeds a base
-// pitch (sub-bass 45 Hz), the Pitch knob spans a musical range on a log curve
-// (one step can't reach 0 Hz, which would switch the voice to note-derived
-// pitch), and it stays visible whatever the live value is (gating on the live
-// value made the knob delete itself mid-edit).
+// A log curve over a musical range (one step must not reach 0 Hz, which switches to note pitch), visible
+// whatever its live value, or it hides itself mid-edit.
 func TestBasePitchKnobIsUsableAndStable(t *testing.T) {
 	const id = roster.SubBass
 	defs, merged := instSchemaForTest(t, id)
@@ -576,12 +507,8 @@ func TestBasePitchKnobIsUsableAndStable(t *testing.T) {
 	}
 }
 
-// TestSubBassKnobsHaveMusicalRanges: the analytic voice's knobs span ranges a
-// person can actually dial (the engine accepts 0..2000 for a decay RATE whose
-// seed is 2 — the whole useful range sat in the first 0.1% of the knob). The
-// body decay rate spans the Length dial's whole span (0.02..40 /s on a log
-// curve, the seed mid-knob): a knob means the same values on every instrument
-// (TestDialSpansAreTheSameOnEveryInstrument).
+// Ranges a person can dial: the body decay rate spans the Length dial's whole span (0.02..40 /s, log, the seed
+// mid-knob), since a knob means the same values everywhere.
 func TestSubBassKnobsHaveMusicalRanges(t *testing.T) {
 	const id = roster.SubBass
 	defs, _ := instSchemaForTest(t, id)

@@ -57,8 +57,7 @@ func TestArmGrow_EasesInThenOut(t *testing.T) {
 	}
 }
 
-// A fresh/zero DrumView (armGrowIdx default) must not report an active subject
-// for any instrument.
+// A zero DrumView (armGrowIdx default) reports no active subject.
 func TestArmGrowControl_InertWhenIdle(t *testing.T) {
 	dv := &DrumView{armGrowIdx: -1}
 	if _, active := dv.armGrowControl(armedScopeSynth, ""); active {

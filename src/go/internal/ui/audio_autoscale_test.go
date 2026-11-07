@@ -7,16 +7,11 @@ import (
 	"testing"
 )
 
-// The dB tabs (Spectrum, EQ backdrop) map a dB value to a bar height. With a
-// FIXED -80..0 window a normal mix never reaches the top of the plot, so the
-// data band is a fraction of the viewport it was given. These pin the adaptive
-// window that replaces it: the ceiling rides the signal's smoothed peak, the
-// floor sits a fixed span below, and both snap to a grid so the axis labels
-// step instead of jittering every frame.
+// A fixed -80..0 window leaves a normal mix filling a fraction of the plot, so the ceiling rides the smoothed
+// peak, the floor sits a fixed span below, and both snap to a grid so the axis labels step instead of jittering.
 
 func TestAudioDBWindow_SilencePinsToTheFixedReference(t *testing.T) {
-	// Below the silence threshold there is nothing to frame, and zooming into
-	// the noise floor would render silence as a full-height spectrum.
+	// Zooming into the noise floor would draw silence as a full-height spectrum.
 	floor, ceil := audioDBWindow(-95)
 	if floor != spectrumMinDB || ceil != spectrumMaxDB {
 		t.Errorf("silence window = (%.1f, %.1f), want the fixed reference (%.1f, %.1f)",
@@ -43,19 +38,15 @@ func TestAudioDBWindow_CeilingTracksThePeak(t *testing.T) {
 }
 
 func TestAudioDBWindow_NeverRisesAboveFullScale(t *testing.T) {
-	// A clipping signal must not push the ceiling above 0 dBFS — the axis
-	// would then claim headroom that cannot exist.
+	// Above 0 dBFS the axis would claim headroom that cannot exist.
 	if _, ceil := audioDBWindow(+4); ceil != spectrumMaxDB {
 		t.Errorf("ceiling = %.1f for a +4 dB peak, want %.1f", ceil, spectrumMaxDB)
 	}
 }
 
 func TestAudioDBWindow_SnapsToAGridSoLabelsDoNotJitter(t *testing.T) {
-	// The window must be a STEP function of the peak, not a continuous one:
-	// a continuous ceiling renumbers the axis labels on every analyser
-	// refresh (~30 Hz), which reads as flicker rather than as scale. Any
-	// snapping has boundaries, so the property is not "small changes never
-	// move it" — it is "a whole sweep produces only a handful of windows".
+	// A step function, not a continuous one, or the labels renumber on every ~30 Hz refresh: a whole sweep yields
+	// only a handful of windows.
 	seen := map[spectrumDBWindow]bool{}
 	const from, to = -36.0, -12.0
 	for db := from; db <= to; db += 0.1 {
@@ -71,24 +62,8 @@ func TestAudioDBWindow_SnapsToAGridSoLabelsDoNotJitter(t *testing.T) {
 	}
 }
 
-// TestAudioDBWindow_StaysInsideTheReferenceRange — BOTH edges are bounded,
-// and both bounds come from the data rather than from taste.
-//
-// Ceiling: nothing exists above full scale.
-//
-// Floor: every bin reaching a renderer has already been clamped at
-// analyzerDBFloor (-80) by LinearToDBSafe, and spectrumBandDB clamps the
-// band levels there again. A window below -80 therefore spends plot height
-// on a region no bin can ever occupy and maps every quiet band onto one
-// constant row of pixels.
-//
-// The floor clamp was deleted on 2026-09-18 to chase a browser-only empty
-// Spectrum plot, on the theory that WASM bins run ~25 dB below desktop's.
-// They do not — both platforms divide the FFT magnitude by fftSize — and
-// the real defect was on the FREQUENCY axis (analyzer.SpectrumFFTSize,
-// guarded by spectrum_bin_resolution_test.go). Under this clamp a -55 dB
-// peak still fills 60%% of the plot, so it could never have produced the
-// empty plot it was blamed for.
+// Nothing exists above full scale, and every bin is already clamped at analyzerDBFloor (-80): a window below
+// it spends plot height no bin can reach.
 func TestAudioDBWindow_StaysInsideTheReferenceRange(t *testing.T) {
 	for _, peak := range []float64{-40, -55, -69, -20, 0} {
 		floor, ceil := audioDBWindow(peak)
@@ -125,9 +100,7 @@ func TestRaiseDBMax_OnlyEverRises(t *testing.T) {
 	if got := raiseDBMax(-40, -10); got != -10 {
 		t.Errorf("attack: got %.2f, want -10", got)
 	}
-	// No release: this is the whole difference from the amplitude family.
-	// A decaying anchor slid the axis down between transients, which read as
-	// the bars jumping.
+	// No release, unlike the amplitude family: a decaying anchor slid the axis between transients.
 	held := -10.0
 	for i := 0; i < 500; i++ {
 		held = raiseDBMax(held, -40)
@@ -137,14 +110,9 @@ func TestRaiseDBMax_OnlyEverRises(t *testing.T) {
 	}
 }
 
-// TestAudioDBWindow_LeavesHeadroomAboveThePeak — a bar drawn flush against
-// the top edge of the plot reads as clipping, not as "loudest". The same
-// reasoning already governs the 0 dB reference line, which is suppressed when
-// it would land flush under the sticky bar. The window must therefore always
-// sit strictly above the peak it frames.
+// A bar flush against the top reads as clipping, so the window always sits strictly above its peak.
 func TestAudioDBWindow_LeavesHeadroomAboveThePeak(t *testing.T) {
-	// Walk across a grid boundary: the worst case is a peak sitting exactly
-	// ON a grid multiple, where a naive ceil() returns the peak itself.
+	// A peak exactly ON a grid multiple is where a naive ceil() returns the peak itself.
 	for _, peak := range []float64{-24.0, -23.9, -18.0, -12.0, -30.0, -26.3} {
 		floor, ceil := audioDBWindow(peak)
 		if ceil <= peak {

@@ -8,10 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// TestStepLadderIncludesUnitaryResolution guards that the resolution strip can
-// ALWAYS be set to a human "unitary" resolution — a power-of-ten step such as 1%
-// or 0.1% (…0.1, 1, 10…). The bug: for a percentage control the ladder was
-// {0.05, 0.5, 2, 10}%, jumping 0.5% → 2% and skipping the natural 1% tick.
+// Always a power-of-ten rung (1%, 0.1%), never jumping from 0.5% to 2%.
 func TestStepLadderIncludesUnitaryResolution(t *testing.T) {
 	cases := []struct {
 		def  audio.ParamDef
@@ -38,10 +35,7 @@ func TestStepLadderIncludesUnitaryResolution(t *testing.T) {
 	}
 }
 
-// TestStepLadderRungsAreConsecutiveNiceSteps guards that the ticks make sense for
-// humans: every adjacent pair is a CONSECUTIVE step in the 1/2/5×10^k sequence,
-// so the ratio is exactly 2 (1→2, 5→10) or 2.5 (2→5). A larger ratio means a
-// human-meaningful rung (like the unitary 1×10^k) was skipped.
+// Consecutive 1/2/5·10^k steps (ratio 2 or 2.5); anything larger skipped a human rung.
 func TestStepLadderRungsAreConsecutiveNiceSteps(t *testing.T) {
 	defs := []audio.ParamDef{
 		{Name: "amount", Min: 0, Max: 1},
@@ -66,16 +60,7 @@ func TestStepLadderRungsAreConsecutiveNiceSteps(t *testing.T) {
 }
 
 func TestNiceStepRounds(t *testing.T) {
-	// niceStep rounds x UP to the nearest value in the 1/2/5 × 10^k sequence.
-	// Examples:
-	//   0.011 → the sequence near 0.01 is 0.01, 0.02, 0.05, 0.1 → first ≥ 0.011 is 0.02
-	//   0.04  → first ≥ 0.04 in sequence is 0.05
-	//   0.4   → first ≥ 0.4 in sequence is 0.5
-	//   1.1   → first ≥ 1.1 in sequence is 2
-	//   3     → first ≥ 3 in sequence is 5
-	//   7     → first ≥ 7 in sequence is 10
-	//   9     → first ≥ 9 in sequence is 10
-	//   90    → first ≥ 90 in sequence is 100
+	// Rounds UP to the next value in 1/2/5·10^k.
 	cases := map[float64]float64{
 		0.011: 0.02,
 		0.04:  0.05,
@@ -126,11 +111,7 @@ func TestStepLadderDegenerateRange(t *testing.T) {
 	}
 }
 
-// Unit-carrying steps render with a "±" prefix so the badge/wheel chip
-// reads as a STEP SIZE, not a second value readout ("50 Hz" under a knob
-// showing "8.00 kHz" read as another value — 2026-07-04 critique D-item).
-// Unit-less steps keep the "x" multiplier prefix, which already signals
-// "not a value".
+// A unit step reads "±50 Hz", a step size rather than a second value; unit-less steps keep the "x" prefix.
 func TestFormatStepValue(t *testing.T) {
 	if got := formatStepValue(audio.ParamDef{Unit: "Hz"}, 100); got != "±100 Hz" {
 		t.Fatalf("got %q want \"±100 Hz\"", got)

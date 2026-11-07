@@ -8,10 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// TestDefaultStepIsRoundDecadeRung pins the rule that decides which resolution
-// a control STARTS on: the round decade rung (…0.01, 0.1, 1, 10, 100…) nearest
-// span/200, so the wheel's default step is a number a human would choose to
-// count by — not whichever rung happened to land near a detent-count target.
+// The round decade rung nearest span/200: a number a human would count by.
 func TestDefaultStepIsRoundDecadeRung(t *testing.T) {
 	cases := []struct {
 		name string
@@ -35,9 +32,7 @@ func TestDefaultStepIsRoundDecadeRung(t *testing.T) {
 	}
 }
 
-// TestDefaultStepFallsBackWhenLadderHasNoDecade proves the rule degrades
-// gracefully: a ladder whose rungs are all 2/5-mantissa still gets a sensible
-// default (nearest rung to span/200) instead of silently returning index 0.
+// With no decade rung, the nearest rung to span/200, never index 0.
 func TestDefaultStepFallsBackWhenLadderHasNoDecade(t *testing.T) {
 	def := audio.ParamDef{Name: "x", Min: 0, Max: 1000}
 	ladder := []float64{2, 5, 20, 50} // deliberately decade-free
@@ -50,8 +45,7 @@ func TestDefaultStepFallsBackWhenLadderHasNoDecade(t *testing.T) {
 	}
 }
 
-// TestDefaultStepIndexHandlesDegenerateInput keeps the existing safety contract:
-// no panic and a valid index for an empty ladder or a zero-width range.
+// No panic and a valid index for an empty ladder or a zero-width range.
 func TestDefaultStepIndexHandlesDegenerateInput(t *testing.T) {
 	if got := defaultStepIndex(audio.ParamDef{Min: 1, Max: 1}, []float64{1}); got != 0 {
 		t.Fatalf("zero span: got %d, want 0", got)

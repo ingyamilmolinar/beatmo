@@ -10,9 +10,7 @@ import (
 
 // --- Task B1: AudioStickyBar in isolation ---
 
-// newTestAudioStickyBar constructs a sticky bar with no-op callbacks and lays
-// it out into the supplied rect. Returns the bar plus a count of invocations
-// for each callback channel so tests can assert routing.
+// Counts each callback so tests can assert routing.
 func newTestAudioStickyBar(t *testing.T, rect image.Rectangle) (*AudioStickyBar, *stickyBarCallbackLog) {
 	t.Helper()
 	log := &stickyBarCallbackLog{}
@@ -30,8 +28,6 @@ type stickyBarCallbackLog struct {
 	tabs    []PanelTab
 }
 
-// TestStickyBarLayoutFitsWithinRect verifies every visible button stays inside
-// the bar's rect after Layout.
 func TestStickyBarLayoutFitsWithinRect(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -67,8 +63,7 @@ func TestStickyBarLayoutFitsWithinRect(t *testing.T) {
 	check("legend", bar.LegendBtn())
 }
 
-// TestStickyBarHitAreasUseParentZIndex verifies all hit areas register at the
-// parent's z-index + 1.
+// At the parent's z + 1.
 func TestStickyBarHitAreasUseParentZIndex(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -84,8 +79,6 @@ func TestStickyBarHitAreasUseParentZIndex(t *testing.T) {
 	}
 }
 
-// TestStickyBarTabButtonsAreCount6 verifies TabBtn(0..5) are non-nil
-// (EQ, Wave, Spectrum, Levels, Chain, Synth) and TabBtn(6) is nil.
 func TestStickyBarTabButtonsMatchAllPanelTabs(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -104,8 +97,6 @@ func TestStickyBarTabButtonsMatchAllPanelTabs(t *testing.T) {
 	}
 }
 
-// TestStickyBarChannelClickInvokesCallback verifies clicking the channel
-// button invokes the onChannel callback.
 func TestStickyBarChannelClickInvokesCallback(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -119,17 +110,7 @@ func TestStickyBarChannelClickInvokesCallback(t *testing.T) {
 	}
 }
 
-// NOTE: the freeze toggle, the close button, and the freq-scale (log/lin) chip
-// were removed from the sticky bar in the slim-bar phase. Freeze + freq-scale
-// moved into the per-tab control components (audio_tab_controls.go) — covered
-// by TestWaveControls* / TestLevelsControls* / TestSpectrumControls*. The X
-// close button was deleted entirely (TestCloseButtonGone in
-// audio_tab_controls_test.go pins its absence).
-
-// TestStickyBarRectMatchesLastLayout exercises (*AudioStickyBar).Rect(),
-// the public bounds accessor used by the screenshot harness (subject
-// SubjectAudioStickyBar) to crop captures without reaching into private
-// fields. Layout() must persist the rect verbatim; Rect() must return it.
+// The screenshot harness crops by this accessor; Layout's rect comes back verbatim.
 func TestStickyBarRectMatchesLastLayout(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -147,10 +128,7 @@ func TestStickyBarRectMatchesLastLayout(t *testing.T) {
 
 // --- Task B2: integration with EQPanelZone ---
 
-// TestEQStickyBarOwnsAllChromeHits verifies that every chrome-prefixed hit
-// area (channel/tab-N) on the panel is present in the sticky bar's hit-area
-// list (set membership by tag). Freeze + close are no longer bar chrome
-// (slim-bar phase).
+// Every channel/tab chrome hit area belongs to the sticky bar.
 func TestEQStickyBarOwnsAllChromeHits(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -180,8 +158,7 @@ func TestEQStickyBarOwnsAllChromeHits(t *testing.T) {
 			}
 		}
 		if !matched {
-			// The channel pill must always be present (it's the persistent
-			// left-anchored selector on every tab).
+			// The persistent selector on every tab.
 			if prefix == "eq-channel-btn" {
 				t.Errorf("expected chrome hit %q present on panel", prefix)
 			}
@@ -200,13 +177,7 @@ func TestEQStickyBarOwnsAllChromeHits(t *testing.T) {
 	}
 }
 
-// NOTE: TestEQHasCloseButton was deleted in the slim-bar phase — the X close
-// button and EQCallbacks.OnClose were removed entirely. TestCloseButtonGone in
-// audio_tab_controls_test.go now pins the button's absence on every tab.
-
-// TestEQHPFLPFInsideContentRectOnEQTab verifies that on TabEQ the HPF and LPF
-// buttons sit inside the panel's content rect (below the sticky bar) and not
-// in the chrome strip.
+// Inside the content rect, below the sticky bar.
 func TestEQHPFLPFInsideContentRectOnEQTab(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -237,8 +208,6 @@ func TestEQHPFLPFInsideContentRectOnEQTab(t *testing.T) {
 		if !c.r.In(content) && !c.r.Overlaps(content) {
 			t.Errorf("%s rect %v not inside content rect %v", c.name, c.r, content)
 		}
-		// Sticky bar occupies [rect.Min.Y, rect.Min.Y+stickyBarH); HPF/LPF
-		// must sit below that strip.
 		if c.r.Min.Y < z.rect.Min.Y+stickyBarH {
 			t.Errorf("%s Min.Y=%d should be >= stickyBar bottom %d",
 				c.name, c.r.Min.Y, z.rect.Min.Y+stickyBarH)

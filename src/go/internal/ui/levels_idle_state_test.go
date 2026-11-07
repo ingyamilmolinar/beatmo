@@ -12,11 +12,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// The Levels tab must render its full strip chrome even before the analyzer
-// service has ticked (native desktop at boot) — the browser build shows
-// per-channel strips at -inf from frame one, while native drew a dead
-// border-only rect (A5 leftover, 2026-07-04 critique). The zone synthesizes
-// a silent state from the live row set.
+// Full strip chrome before the analyser has ticked, synthesised as silence from the live rows, as the browser shows
+// from frame one.
 func TestLevelsIdleStateSynthesizedFromRows(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -35,8 +32,7 @@ func TestLevelsIdleStateSynthesizedFromRows(t *testing.T) {
 	if st.Instruments[0].ID != channel.Of(roster.Kick) || st.Instruments[0].Name != "Kick" {
 		t.Fatalf("idle channel = %+v, want the live row's id/name", st.Instruments[0])
 	}
-	// Silence must read as -inf (matching the real analyzer's 20*log10(0)),
-	// never as a zero-value 0 dB — which would render full-scale meters.
+	// -inf like the analyser's 20·log10(0), never 0 dB, which draws full-scale meters.
 	if !math.IsInf(st.Instruments[0].PeakDB, -1) || !math.IsInf(st.Master.PeakDB, -1) {
 		t.Fatalf("idle peaks must be -Inf, got inst=%v master=%v", st.Instruments[0].PeakDB, st.Master.PeakDB)
 	}

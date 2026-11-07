@@ -13,20 +13,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestSynthUnified_EverySynthInstrumentUsesStandardOrder is the Phase-8B
-// unification discipline: every shipped synth (non-WAV) instrument lays out as a
-// PREFIX-preserving subsequence of the standardized pipeline order
-//
-//	VOICE · OSC · ENSEMBLE · FM · PITCH · LFO · BURST · ENVELOPE · FILTER ·
-//	FILTER ENV · FORMANT · RESONATOR · POST
-//
-// (PITCH/LFO/BURST are the Phase-8C modulator stages — the spec-§1 gap
-// closure; ENSEMBLE/FORMANT/RESONATOR are the Phase-15 voice/choir stages —
-// Task 8.) Sections may be pruned (an instrument with no FM stage has no FM card),
-// but the surviving sections must always appear in this exact relative order,
-// and POST must always be present (every synth carries gain + a post toggle,
-// or a generic post knob). This is the user-facing deliverable: the same
-// sections, in the same order, for every synth instrument.
+// Every shipped synth instrument lays out a subsequence of the standard order (VOICE · OSC · ENSEMBLE · FM · PITCH ·
+// LFO · BURST · ENVELOPE · FILTER · FILTER ENV · FORMANT · RESONATOR · POST): sections may be pruned but never
+// reordered, and POST is always present.
 func TestSynthUnified_EverySynthInstrumentUsesStandardOrder(t *testing.T) {
 	rank := map[synthSectionID]int{
 		synthSectionVoice:     0,
@@ -74,10 +63,7 @@ func TestSynthUnified_EverySynthInstrumentUsesStandardOrder(t *testing.T) {
 	}
 }
 
-// TestVoiceStagesRouting is the Task 8 routing guard: the Phase-15 voice/choir
-// param Groups (formant, unison, resonator — carried verbatim from
-// ModularSynthParamDefs) route to their standardized ENSEMBLE/FORMANT/RESONATOR
-// sections, and the FORMANT enable toggle owns the FORMANT section.
+// The formant, unison and resonator groups route to their sections, and the FORMANT toggle owns its section.
 func TestVoiceStagesRouting(t *testing.T) {
 	if sec, ok := modularStageGroupSection("unison"); !ok || sec != synthSectionEnsemble {
 		t.Fatalf("unison group must route to ENSEMBLE, got %v ok=%v", sec, ok)
@@ -93,21 +79,8 @@ func TestVoiceStagesRouting(t *testing.T) {
 	}
 }
 
-// TestSynthUnified_EveryStageSectionHasEnablePill — the "enable/disable any
-// stage on any synth instrument" deliverable, in the chip-strip redesign: for
-// every shipped synth instrument, each standardized STAGE section the instrument
-// appended (OSC/FM/PITCH/LFO/BURST/ENVELOPE/FILTER + the POST stage)
-//
-//	(a) is part of the pipeline strip model — an OFF stage is listed under
-//	    the "+" pill, so the full pipeline never disappears; and
-//	(b) when SELECTED at production panel height, surfaces its enable pill in
-//	    the detail-pane header (dv.synthDetailEnablePillRect() is non-empty).
-//
-// The VOICE section never carries an enable pill (the voice IS the instrument).
-// The per-section expectation keys off whether the instrument actually declares
-// that stage's enable toggle — an instrument whose voice IS the FM stage (the fm-*
-// family) has the FM stage collision-excluded, so it shows no FM chip and is
-// not required to carry an fm_enabled pill.
+// Each stage an instrument has stays in the strip model (off under "+") and shows its enable pill when selected at
+// production height; VOICE never has one, and a stage the instrument declares no toggle for needs none.
 func TestSynthUnified_EveryStageSectionHasEnablePill(t *testing.T) {
 	// section → the *_enabled toggle that gates it.
 	stageToggle := map[synthSectionID][]string{
@@ -122,8 +95,7 @@ func TestSynthUnified_EveryStageSectionHasEnablePill(t *testing.T) {
 		synthSectionFilterEnv: {"filtenv_enabled"},
 		synthSectionPost:      {"drive_enabled"},
 	}
-	// stageInPipeline reports whether the strip model knows the stage (on or
-	// off — an off stage lives under the "+" pill, never disappears).
+	// On or off: an off stage lives under "+".
 	stageInPipeline := func(dv *DrumView, id synthSectionID) bool {
 		on, off := dv.synp().activePipelineStages(dv.synthTabActiveInstrument())
 		for _, i := range append(on, off...) {
@@ -141,9 +113,7 @@ func TestSynthUnified_EveryStageSectionHasEnablePill(t *testing.T) {
 		t.Cleanup(func() { audio.RemoveInstrumentDocForTest(instID) })
 		g := newSynthTabGame(t)
 		g.drum.Rows[0].Instrument = instID
-		// Production-like panel height so the detail-pane enable pill is laid
-		// out (the 640×480 harness degenerates the detail header). Activate the
-		// tab, resize, re-activate.
+		// The 640×480 harness degenerates the detail header.
 		layoutSynthTab(t, g)
 		g.Layout(1280, 720)
 		layoutSynthTab(t, g)
@@ -161,10 +131,7 @@ func TestSynthUnified_EveryStageSectionHasEnablePill(t *testing.T) {
 			if !isStage {
 				continue
 			}
-			// Does the instrument actually own this stage's enable toggle in its
-			// schema? (A collision-excluded stage section is never shown, and a
-			// plugin recipe that only wires generic knobs into ENVELOPE/POST
-			// carries no toggle there — legitimately no pill.)
+			// A collision-excluded stage is never shown, and a recipe wiring only generic knobs into ENVELOPE/POST has no toggle.
 			ownsToggle := false
 			for _, tg := range toggles {
 				if instHasVisibleParam(string(libID), tg) {
@@ -197,10 +164,7 @@ func TestSynthUnified_EveryStageSectionHasEnablePill(t *testing.T) {
 	}
 }
 
-// TestSynthUnified_NoCollapsedHintInSource is the repo-wide discipline that the
-// removed "not used by this sound" collapsed-section hint never reappears in
-// the UI source. Phase 8B replaced it with always-populated stage cards + an
-// enable pill, and prunes empty sections instead.
+// The "not used by this sound" hint never returns: empty sections are pruned instead.
 func TestSynthUnified_NoCollapsedHintInSource(t *testing.T) {
 	const forbidden = "not used by this sound"
 	root := "."
@@ -232,8 +196,7 @@ func TestSynthUnified_NoCollapsedHintInSource(t *testing.T) {
 	}
 }
 
-// instHasVisibleParam reports whether id's schema carries a non-hidden param
-// named name (so the Synth tab would render it as a knob or pill).
+// Non-hidden, so it would render as a knob or pill.
 func instHasVisibleParam(id, name string) bool {
 	for _, d := range audio.InstrumentParamDefs(instrument.ID(id)) {
 		if d.Name == name {
