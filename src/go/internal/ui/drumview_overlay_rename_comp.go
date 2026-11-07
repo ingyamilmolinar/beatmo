@@ -18,21 +18,14 @@ type RenameProps struct {
 	OnCommit func(newName string)
 	// OnCancel is called when the rename is cancelled (Escape or click outside).
 	OnCancel func()
-	// MobileInputID is the mobile native input ID for this rename (e.g., "rename-0").
-	// When set on mobile, Open() will use the native HTML input instead of TextInput.
+	// When set on mobile, Open() uses the native HTML input instead of TextInput.
 	MobileInputID string
-	// TextFields is the owning DrumView's text-field registry (desktop
-	// soft-keyboard wiring for the rename box).
-	TextFields *textFieldRegistry
+	TextFields    *textFieldRegistry
 }
 
-// renameBoxMobileInputID is the soft-keyboard id of the DESKTOP rename box.
-// (Mobile renames type into a per-row native input, "rename-<row>", armed from
-// the row context menu's Rename trigger — see nativeInputCandidates.)
+// The desktop box's id; mobile renames type into per-row "rename-<row>" inputs.
 const renameBoxMobileInputID = "rename"
 
-// renameTextFieldSpec is the rename box's native identity. The rename box has
-// always focused the soft-keyboard proxy on every platform.
 var renameTextFieldSpec = TextFieldSpec{ID: renameBoxMobileInputID, Owner: "rename", ProxyOnMobile: true}
 
 // RenameState contains the internal state for the rename component.
@@ -66,17 +59,13 @@ func (r *RenameComponent) SetProps(p RenameProps) {
 // Props returns the current props.
 func (r *RenameComponent) Props() RenameProps { return r.props }
 
-// Open opens the rename dialog with the current props.
-// Note: hold is NOT set here because the portal tree's capture system
-// prevents double-dispatch of the opening press.
+// No hold: the portal's capture already prevents double dispatch of the opening press.
 func (r *RenameComponent) Open() {
 	rect := r.props.AnchorRect
 	if rect.Empty() {
 		return
 	}
 
-	// Mobile mode: if a native mobile input is active for this rename ID,
-	// use it instead of creating a TextInput.
 	if Profile().IsMobile() && r.props.MobileInputID != "" && mobileInputActive(r.props.MobileInputID) {
 		r.state.open = true
 		r.state.mobile = true
@@ -116,9 +105,7 @@ func (r *RenameComponent) Close() {
 	softKeyboardHide()
 }
 
-// HandleEscape runs the rename's cancel cleanup (so the edit is discarded and
-// renameRow is reset), then returns false so the universal handler closes the
-// portal. Reuses the component's existing OnCancel + Close.
+// Discards the edit and resets renameRow, then false so the universal handler closes the portal.
 func (r *RenameComponent) HandleEscape() bool {
 	if r.props.OnCancel != nil {
 		r.props.OnCancel()
@@ -135,10 +122,7 @@ func (r *RenameComponent) IsOpen() bool {
 	return r.state.open && r.textBox != nil
 }
 
-// ClaimsKeyboard reports whether this rename field currently owns the keyboard.
-// While open, all keys (typed name, caret moves) belong to the rename box, so
-// the grid must not act on them. Part of the keyboard-ownership contract
-// (keyboard_focus.go).
+// While open, every key belongs to the rename box.
 func (r *RenameComponent) ClaimsKeyboard() bool {
 	return r != nil && r.IsOpen()
 }
@@ -151,9 +135,7 @@ func (r *RenameComponent) Value() string {
 	return r.textBox.Value()
 }
 
-// TextBox returns the internal desktop TextInput, or nil in mobile mode
-// (where native text entry is used instead). The ctor wires the returned
-// box to dv.renameBox so the rename portal shares one input widget.
+// nil on mobile, which uses native text entry.
 func (r *RenameComponent) TextBox() *TextInput {
 	return r.textBox
 }
@@ -195,8 +177,7 @@ func (r *RenameComponent) HandleInput(x, y int, pressed bool) InputResult {
 		return InputIgnored
 	}
 
-	// Check for Enter/Escape BEFORE the hold phase so keyboard commits work
-	// even immediately after opening (e.g., in tests that open programmatically).
+	// Before the hold phase, so Enter works right after a programmatic open.
 	if isKeyPressed(ebiten.KeyEnter) {
 		if r.props.OnCommit != nil {
 			r.props.OnCommit(r.textBox.Value())
@@ -220,8 +201,7 @@ func (r *RenameComponent) HandleInput(x, y int, pressed bool) InputResult {
 		return InputCaptured
 	}
 
-	// On small screens, also poll mobile input even if Open() started in
-	// desktop mode (native HTML input may not have been active yet).
+	// The native input may not have been active yet when Open() ran.
 	if Profile().IsMobile() && r.props.MobileInputID != "" {
 		if val, committed, ok := mobileInputPollResult(r.props.MobileInputID); ok {
 			if committed && val != "" {
@@ -240,12 +220,9 @@ func (r *RenameComponent) HandleInput(x, y int, pressed bool) InputResult {
 
 	pt := image.Pt(x, y)
 
-	// Handle keyboard input via TextInput.Update()
-	// Note: TextInput.Update() checks ebiten keyboard state internally
 	wasFocused := r.textBox.Focused()
 	if r.textBox.Update() {
-		// Soft keyboard sends Enter as '\n' char → TextInput defocuses but
-		// isKeyPressed(Enter) at line 169 doesn't fire. Detect focus loss as commit.
+		// A soft keyboard sends Enter as '\n', which defocuses without a key press: treat focus loss as commit.
 		if wasFocused && !r.textBox.Focused() {
 			if r.props.OnCommit != nil {
 				r.props.OnCommit(r.textBox.Value())
@@ -280,8 +257,6 @@ func (r *RenameComponent) Draw(dst *ebiten.Image) {
 	r.textBox.Draw(dst)
 }
 
-// ClearHold clears the hold state (for portal-based opening where the tree
-// prevents double-dispatch and hold is unnecessary).
 func (r *RenameComponent) ClearHold() {
 	r.state.hold = false
 }
@@ -305,9 +280,7 @@ func (r *RenameComponent) InputBounds() image.Rectangle {
 	return r.textBox.Rect
 }
 
-// PollKeyboard checks for Enter/Escape keys and runs TextInput.Update().
-// It is called by the portal's updateFn to handle keyboard input per-frame
-// without routing through HandleInput's mouse/hold logic.
+// Called per frame by the portal's updateFn, outside HandleInput's mouse/hold logic.
 func (r *RenameComponent) PollKeyboard() {
 	if !r.state.open || r.state.mobile || r.textBox == nil {
 		return

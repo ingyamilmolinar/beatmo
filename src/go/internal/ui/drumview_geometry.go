@@ -9,27 +9,14 @@ import (
 
 /* ─── geometry helpers ─────────────────────────────────────── */
 
-// rowHeight returns the per-row pixel height — the fixed profile value
-// on both desktop and mobile. The row size is *not* scaled by any
-// per-instance zoom factor: per-row dimensions are the user's contract
-// for stable touch targets, and the historical row-zoom chip / pinch
-// gesture have been repurposed to resize the entire drum-view pane
-// (see `Game.adjustDrumViewHeight`). Per-row scaling would also break
-// the "tight layout" invariant — the splitter Y is computed assuming
-// `rh = TouchRowHeight()`.
+// Fixed, never zoomed: rows are the user's stable touch targets, and the splitter math assumes
+// rh = TouchRowHeight(). The zoom chips resize the whole pane instead.
 func (dv *DrumView) rowHeight() int {
 	return TouchRowHeight()
 }
 
-// mobileTransportMinH returns the minimum transport header height.
-// On mobile it targets the compact bar; on desktop a two-row transport.
 func mobileTransportMinH() int { return Profile().HeaderMinH }
 
-// HeaderRect returns the rectangle covering the top header strip of the
-// drum pane (from `dv.Bounds.Min.Y` to `dv.Bounds.Min.Y+dv.headerH`),
-// spanning the full pane width. This is the "toolbar" the user sees:
-// transport cluster + BPM + length controls + master volume + overflow
-// + lock — all the chrome above the row labels.
 func (dv *DrumView) HeaderRect() image.Rectangle {
 	return image.Rect(
 		dv.Bounds.Min.X,
@@ -39,13 +26,8 @@ func (dv *DrumView) HeaderRect() image.Rectangle {
 	)
 }
 
-// BelowHeaderRect returns dv.Bounds with the header strip (HeaderRect)
-// sliced off the top — the surface directly below the transport/BPM/lock
-// row: row rack on Pads, the EQ/Wave/Spectrum/… panel on every other mobile
-// view mode. Used as the mobile toast fallback host (toastHostRect,
-// DrumToastLayer) so the sticky progress toast lands on the panel content
-// instead of covering the Play/Stop/Record cluster it's supposed to be
-// explaining the state of.
+// The mobile toast's fallback host, so the toast lands on the panel instead of covering the
+// transport it describes.
 func (dv *DrumView) BelowHeaderRect() image.Rectangle {
 	r := dv.Bounds
 	r.Min.Y = dv.HeaderRect().Max.Y
@@ -55,21 +37,11 @@ func (dv *DrumView) BelowHeaderRect() image.Rectangle {
 	return r
 }
 
-// minSynthPanelH is the hard minimum painted height (px) of the bottom audio
-// panel while the Synth tab is active — header + stage sections + knob chrome
-// need this even when the runtime-profile multiplier resolves smaller. Shared
-// by dv.eqRect (drumview_layout.go) and dv.eqH (via audioPanelFloorHeight) so
-// the two never drift.
+// Header, sections and knob chrome need this even when the profile multiplier resolves smaller.
 const minSynthPanelH = 240
 
-// audioPanelFloorHeight returns the minimum painted height (px) of the bottom
-// audio panel for the current tab and bounds. It is the SINGLE floor shared by
-// dv.eqRect (the panel's drawn rect) and dv.eqH (which drives rowsBottom() —
-// the row-rack bottom and the add-row "+" anchor). Deriving both from this one
-// function is what guarantees the row rack never renders underneath the panel
-// (the add-row "+" occlusion regression). Returns the unclamped floor; callers
-// clamp the panel top to dv.Bounds.Min.Y (i.e. the height to dv.Bounds.Dy()).
-// Returns 0 when no panel/tab state is present.
+// The ONE floor shared by eqRect and eqH (which drives rowsBottom): deriving both from it is what
+// keeps the row rack from rendering under the panel. 0 without a panel.
 func (dv *DrumView) audioPanelFloorHeight() int {
 	if dv.eqPanelZone == nil || dv.eqPanelZone.tabState == nil {
 		return 0
@@ -81,20 +53,8 @@ func (dv *DrumView) audioPanelFloorHeight() int {
 	return h
 }
 
-// reconcileEQHeightToPanelFloor bumps dv.eqH up to the panel's actual painted
-// floor so rowsBottom() (the row-rack bottom and the add-row "+" anchor) lines
-// up with dv.eqRect.Min.Y. drumview_layout.go floors dv.eqRect to
-// audioPanelFloorHeight() (Synth tab: >= 240 px) and clamps its top to
-// dv.Bounds.Min.Y, so the panel can fill the whole pane when the floor exceeds
-// the available height. If dv.eqH lags that floored height — e.g. it was
-// computed for a shorter tab in refreshWidgetLayout, then the user switched to
-// Synth (which does NOT re-run refreshWidgetLayout) — the row rack and the
-// add-row "+" pinned to its bottom render UNDERNEATH the panel (the screenshot
-// regression). Called per-frame from recalcButtons (before the rack is laid
-// out) and from refreshWidgetLayout (after the safety guard). Idempotent —
-// only ever raises eqH. Skipped for the user drag-resize (honored separately)
-// and mobile (its EQ panel uses a different, bar-clamped rect that already
-// sits above the rows area).
+// A tab switch to Synth does not re-run refreshWidgetLayout, so eqH can lag the panel's floored
+// height and the rack would render under it. Only ever raises eqH; skipped for a user drag and mobile.
 func (dv *DrumView) reconcileEQHeightToPanelFloor() {
 	if dv.userEqH != 0 || Profile().IsMobile() {
 		return
@@ -117,12 +77,7 @@ func (dv *DrumView) reconcileEQHeightToPanelFloor() {
 // RowsRect is the public alias for the rows scroll area; see rowsRect.
 func (dv *DrumView) RowsRect() image.Rectangle { return dv.rowsRect() }
 
-// rowsRect returns the rectangle covering the row scroll area (between
-// the header and the EQ panel / mobile bottom action bar). Used to scope
-// the mobile touch dead zone so that only touches in this area are
-// blocked during scroll disambiguation. Routes through dv.rowsBottom()
-// — the single source of truth for the rows-area floor — so the bar's
-// vertical band is correctly excluded on mobile.
+// Through rowsBottom(), so the mobile bottom bar is excluded from the touch dead zone.
 func (dv *DrumView) rowsRect() image.Rectangle {
 	return image.Rect(
 		dv.Bounds.Min.X,
@@ -140,8 +95,6 @@ func (dv *DrumView) rowsAreaHeight() int {
 	return h
 }
 
-// refreshWidgetLayout synchronises cached widget rectangles and derived
-// measurements (header height, EQ height, control widths) from the board.
 func (dv *DrumView) refreshWidgetLayout() {
 	if dv.widgets == nil {
 		dv.headerH = timelineHeight
@@ -156,10 +109,8 @@ func (dv *DrumView) refreshWidgetLayout() {
 	dv.widgetRects[WidgetTimeline] = dv.widgets.Rect(WidgetTimeline)
 	dv.widgetRects[WidgetWave] = dv.widgets.Rect(WidgetWave)
 
-	// When wave widget is hidden (mobile EQ collapsed), extend rack and timeline
-	// to fill the space the widget board still allocates to row 2. This prevents
-	// a grey gap below the last row, fixes FAB positioning, and corrects the
-	// scrollbar track height.
+	// Mobile with the EQ collapsed: stretch the rack and timeline over the row the board still
+	// allocates, or a grey gap shows below the last row.
 	if Profile().IsMobile() && dv.mobileEQCollapsed && dv.widgetRects[WidgetWave].Empty() {
 		if r := dv.widgetRects[WidgetRack]; !r.Empty() {
 			r.Max.Y = dv.Bounds.Max.Y
@@ -171,8 +122,7 @@ func (dv *DrumView) refreshWidgetLayout() {
 		}
 	}
 
-	// Note: rack/timeline rect-extension when EQ collapses runs below,
-	// AFTER dv.eqH is computed (so we can detect "EQ collapsed" robustly).
+	// The collapse extension runs below, after eqH is known.
 
 	// Row/column derived sizes
 	if h := dv.widgets.RowHeight(0); h > 0 {
@@ -189,14 +139,9 @@ func (dv *DrumView) refreshWidgetLayout() {
 	if dv.headerH < minH {
 		dv.headerH = minH
 	}
-	// Cap header height: locked-in via TopBarSpec.Height (sourced from
-	// DESIGN.md profileOverrides.headerMaxH; equal to MinH so the bar is
-	// fixed-height on both desktop and mobile).
 	maxH := spec.Height
 	if dv.headerH > maxH {
 		dv.headerH = maxH
-		// Adjust widget rects so the rack/timeline start at the capped headerH,
-		// not the widget board's uncapped row 0 height.
 		capY := dv.Bounds.Min.Y + dv.headerH
 		if r := dv.widgetRects[WidgetRack]; r.Min.Y > capY {
 			dv.widgetRects[WidgetRack] = image.Rect(r.Min.X, capY, r.Max.X, r.Max.Y)
@@ -210,26 +155,11 @@ func (dv *DrumView) refreshWidgetLayout() {
 	} else {
 		dv.eqH = eqPanelHeight * 2
 	}
-	// Phase 0a of audio-panel redesign: enforce a tall default for every
-	// analysis tab. RuntimeProfile.AudioPanelHeightMultiplier (default 3×
-	// eqPanelHeight ≈ 570 px) clamped by AudioPanelHeightScreenFrac of
-	// the framebuffer so the panel never crowds the grid. The widget-
-	// board row weights compute too short by default for analysis-tab
-	// chrome (Spectrum dB grid, Levels segmented strips, Chain stage
-	// cards, Synth knob cards), so we lift the floor here.
-	//
-	// A user drag-resize is still respected when it asks for MORE — the
-	// floor never shrinks an explicitly-enlarged panel — but it cannot
-	// shrink the panel below the analysis-tab minimum. (Earlier
-	// behaviour where the widget-board could collapse the panel to
-	// ~130 px is what produced the "panel mostly empty during playback"
-	// screenshots that drove this redesign.)
+	// The board's row weights leave the analysis tabs too short, so lift the floor; a user drag may
+	// enlarge the panel but never shrink it below the tab minimum.
 	if dv.userEqH > 0 && !p.IsMobile() {
-		// The user explicitly dragged the EQ divider: honor that height
-		// (clamped to the pane) and OVERRIDE the analysis-tab floor in both
-		// directions. Without this the floor (PanelHeightAt) always wins in a
-		// short drum pane — the widget-board row can't grow past it — so the
-		// divider drag would have no visible effect (the "unusable" bug).
+		// A user divider drag overrides the floor in both directions, or in a short pane it has no
+		// visible effect.
 		dv.eqH = clampUserEqH(dv, dv.userEqH)
 	} else if dv.eqPanelZone != nil && dv.eqPanelZone.tabState != nil {
 		desired := dv.eqPanelZone.tabState.PanelHeightAt(dv.Bounds.Dy())
@@ -263,19 +193,11 @@ func (dv *DrumView) refreshWidgetLayout() {
 		}
 	}
 
-	// Reconcile eqH with the panel's ACTUAL painted floor — the FINAL word,
-	// after every clamp above (including the safety guard). See
-	// reconcileEQHeightToPanelFloor.
+	// Last, after every clamp above.
 	dv.reconcileEQHeightToPanelFloor()
 
-	// Invariant: when dv.eqH is forced to 0 (test-mode eqPanelHeight=0,
-	// mobile EQ collapsed, safety guard, or any other collapse path),
-	// the row rack should span the full available rows-area so per-row
-	// widgets don't end up positioned at Y bands past the rack's
-	// painted area (the screenshot bug's "phantom row + misplaced
-	// add-row button"). We extend only as far as the wave widget's top
-	// edge — when wave is non-empty it owns those pixels, even if
-	// dv.eqH is forced to 0 in tests; rack and wave must NOT overlap.
+	// With eqH forced to 0 the rack spans the whole rows area, but only down to the wave widget's
+	// top: the two must never overlap.
 	if dv.eqH == 0 {
 		desiredBottom := dv.Bounds.Max.Y
 		if waveR := dv.widgetRects[WidgetWave]; !waveR.Empty() {
@@ -294,10 +216,8 @@ func (dv *DrumView) refreshWidgetLayout() {
 	if leftW <= 0 {
 		leftW = dv.labelW + dv.controlsW
 	}
-	// controlsW is the rack row's REAL fixed cluster (volume + M/S/FX/⋯ +
-	// gutters + scrollbar lane), not "whatever the column has left after the
-	// label" — that circular definition is what let the label bar grow to
-	// fill a 30%-of-screen column with empty space.
+	// The real fixed cluster, not "what the column leaves after the label": that circular definition
+	// let the label bar grow into empty space.
 	dv.controlsW = dv.rackControlsWidth()
 	// On narrow screens, cap controls so label+controls fits in the column.
 	if leftW > 0 && dv.labelW+dv.controlsW > leftW {
@@ -307,11 +227,7 @@ func (dv *DrumView) refreshWidgetLayout() {
 		}
 	}
 
-	// Size the rack column to its content: labelW + controlsW, never more than
-	// the profile's default share of the pane. The rack bed (RackMaskLayer)
-	// paints exactly labelW + controlsW, so a column wider than that showed a
-	// background-colored lane between the rack and the timeline (it used to be
-	// sized to content + SpaceMD — a 10 px dark strip on wide windows).
+	// The rack bed paints exactly labelW + controlsW, so a wider column shows a background lane.
 	needW := dv.labelW + dv.rackControlsWidth()
 	if dv.widgets != nil && len(dv.widgets.cols) >= 2 && dv.Bounds.Dx() > 0 {
 		col0W := dv.widgets.ColWidth(0)
@@ -329,10 +245,7 @@ func (dv *DrumView) refreshWidgetLayout() {
 			dv.widgets.cols[0] = newCol0
 			dv.widgets.cols[1] = totalWeight - newCol0
 			dv.widgets.recalc()
-			// Only the column split moved: take the new X edges from the
-			// board but keep every Y adjustment made above (header cap, EQ
-			// collapse, mobile wave extension) — re-reading whole rects
-			// here undid them, so a second refresh moved the rack.
+			// Take only the new X edges: re-reading whole rects undoes the Y adjustments made above.
 			for _, kind := range []WidgetKind{WidgetTransport, WidgetRack, WidgetTimeline, WidgetWave} {
 				r, ok := dv.widgetRects[kind]
 				if !ok || r.Empty() {
@@ -343,9 +256,7 @@ func (dv *DrumView) refreshWidgetLayout() {
 				dv.widgetRects[kind] = r
 			}
 		}
-		// The rack bed must span the WHOLE column: the board can hold the
-		// column above target (its minimum column width), and whatever the
-		// bed leaves unpainted is a background-colored lane.
+		// The board can hold the column above target, and anything the bed leaves unpainted shows as a lane.
 		if c := dv.widgets.ColWidth(0); c > 0 {
 			dv.controlsW = c - dv.labelW
 			if dv.controlsW < 0 {
@@ -364,9 +275,6 @@ func (dv *DrumView) refreshWidgetLayout() {
 	}
 }
 
-// handleLayoutEdit enables lightweight widget resizing when layout edit mode
-// is active. Toggle with the "L" key. Drags near column/row boundaries adjust
-// weights and trigger a layout rebuild.
 func (dv *DrumView) handleLayoutResize() {
 	if dv.widgets == nil {
 		return
@@ -437,10 +345,8 @@ func (dv *DrumView) handleLayoutResize() {
 	}
 }
 
-// clampUserEqH bounds an explicit user-dragged audio-panel height so the panel
-// stays usable: never shorter than two sticky-bar rows (tabs + a sliver of
-// content always visible), never so tall it hides the transport header and
-// every drum row. Re-applied every layout so the height tracks window resizes.
+// Never shorter than two sticky-bar rows, never tall enough to hide the transport and every row;
+// re-applied every layout so it tracks window resizes.
 func clampUserEqH(dv *DrumView, h int) int {
 	minH := 2 * stickyBarHeight()
 	maxH := dv.Bounds.Dy() - dv.headerH - dv.rowHeight()
@@ -499,29 +405,14 @@ func (dv *DrumView) visibleRows() int {
 		h = 0
 	}
 	n := h / rh
-	// Guarantee at least 1 visible row when the area fits a full row,
-	// even if there isn't extra space for the "+" footer.
 	if n == 0 && dv.rowsAreaHeight() >= rh {
 		n = 1
 	}
 	return n
 }
 
-// rackVisibleRows returns the number of rows that fit inside the rack
-// widget rect (the actual region the row rack zone draws into), reserving
-// space for the "+" add-row button on desktop. This is the authoritative
-// row-count source for the row rack zone — it never over-estimates beyond
-// the panel's true height. Falls back to dv.visibleRows() when the rack
-// rect is empty (early init / tests without a realised widget board).
-//
-// Clamps the rack height to rowsBottom() so the count does NOT include
-// rows that would draw on top of the mobile bottom action bar / EQ peek
-// strip — the WidgetBoard's rect extends to dv.Bounds.Max.Y by default
-// but the addRowBtn is anchored to rowsBottom() (which excludes those
-// surfaces). Without this clamp, with many rows the over-counted
-// "visible" rows would render UNDER the anchored addRowBtn band
-// (regression caught by TestMobileAddRowButton_AlwaysVisible_ManyRows
-// after the rack-bottom anchor fix).
+// The rack zone's row count, clamped to rowsBottom(): the board's rect reaches the pane bottom,
+// and over-counted rows would render under the anchored add-row band.
 func (dv *DrumView) rackVisibleRows() int {
 	rh := dv.rowHeight()
 	if rh <= 0 {
@@ -563,9 +454,7 @@ func (dv *DrumView) scrollThumbRect() image.Rectangle {
 	return dv.rowScroll().ThumbRect()
 }
 
-// syncRowScroll copies the current row state into rowScroll so its geometry
-// and clamping are up to date. Call before reading BarRect/ThumbRect or
-// invoking any ScrollBehavior input handler.
+// Call before reading BarRect/ThumbRect or any ScrollBehavior input handler.
 func (dv *DrumView) syncRowScroll() {
 	if dv.rowScroll() == nil {
 		return
@@ -574,9 +463,7 @@ func (dv *DrumView) syncRowScroll() {
 	dv.rowScroll().VS.Visible = dv.visibleRows()
 	dv.rowScroll().VS.First = dv.rowOffset
 	dv.rowScroll().ItemHeight = dv.rowHeight()
-	// Set View for BarRect/ThumbRect calculations.
-	// Constrain the scrollbar track to the actual visible rows area so it
-	// does not extend into leftover space (e.g., the FAB overlay region).
+	// The track spans only the visible rows area.
 	rowsTop := dv.Bounds.Min.Y + dv.headerH
 	vis := dv.visibleRows()
 	y1 := rowsTop + vis*dv.rowHeight()
@@ -590,8 +477,6 @@ func (dv *DrumView) syncRowScroll() {
 	dv.rowScroll().VS.View = image.Rect(x1-dv.rowScroll().Style.Width, rowsTop, x1, y1)
 }
 
-// flushRowScroll writes rowScroll.VS.First back to rowOffset and recalculates
-// layout if the value changed.
 func (dv *DrumView) flushRowScroll() {
 	if dv.rowScroll() == nil {
 		return
@@ -605,9 +490,7 @@ func (dv *DrumView) flushRowScroll() {
 	}
 }
 
-// rackControlsWidth is the width of a rack row's fixed control cluster —
-// everything right of the label — as the row rack lays it out. 180 px is the
-// historical fallback before the rack zone exists.
+// 180 px until the rack zone exists.
 func (dv *DrumView) rackControlsWidth() int {
 	if dv.rowRackZone == nil {
 		return 180

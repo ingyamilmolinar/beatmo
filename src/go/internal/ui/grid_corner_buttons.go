@@ -2,22 +2,10 @@ package ui
 
 import "image"
 
-// The top-right grid-pane button cluster (settings gear, folder, logs, theme)
-// is ONE component: one table, one input handler, one hit geometry.
-//
-// It used to be four copy-pasted input handlers plus four parallel per-button
-// lists (layout, draw, toggle-reconcile, reserved zone). They drifted: the
-// theme button never made it into the toggle-reconcile list (its press stayed
-// latched after opening the editor, so the second tap was swallowed), and every
-// handler routed presses by the 30px DRAWN rect while Button hit-tests its 44px
-// TOUCH target — a press on a button's lower edge was never delivered, fell
-// into the grid, and created a node under the button. Adding a corner button is
-// now one row in gridCornerButtons.
+// ONE component: one table, one handler, one hit geometry. Separate handlers and lists drifted
+// (a latched theme button; presses routed by the drawn rect, not the touch target, created nodes).
 
-// gridCornerButtonsInputZ is the z of the cluster's handler in the grid pane's
-// inputDispatcher: above every content handler (drum=100, splitter=150,
-// sidebar=200, group menu=210, the tap-outside-a-menu owner=250 —
-// popup_outside_press.go), so a press in the cluster always wins.
+// Above every content handler, so a press in the cluster always wins.
 const gridCornerButtonsInputZ = 300
 
 // gridCornerButton is one button of the top-right cluster.
@@ -25,14 +13,11 @@ type gridCornerButton struct {
 	btn *Button
 	// rect is the button's drawn rect (empty when the button does not exist).
 	rect func(*Game) image.Rectangle
-	// menuID is the portal entry the button toggles; its open state drives the
-	// button's toggled look (reconcileGridButtonToggles).
+	// Its open state drives the button's toggled look.
 	menuID string
 }
 
-// gridCornerButtons is THE table of top-right grid buttons, right to left.
-// Every per-button concern (layout, draw, input, toggle reconcile, the menus'
-// mutual exclusion, the reserved zone) iterates it.
+// THE table, right to left; every per-button concern iterates it.
 func (g *Game) gridCornerButtons() []gridCornerButton {
 	return []gridCornerButton{
 		{g.gridHelpBtn, (*Game).gridHelpButtonRect, settingsOverlayID},
@@ -42,8 +27,6 @@ func (g *Game) gridCornerButtons() []gridCornerButton {
 	}
 }
 
-// syncGridCornerButtonRects pushes the live layout into each button so its hit
-// test and its draw agree with the current splitter geometry.
 func (g *Game) syncGridCornerButtonRects() {
 	for _, c := range g.gridCornerButtons() {
 		if c.btn != nil {
@@ -52,11 +35,7 @@ func (g *Game) syncGridCornerButtonRects() {
 	}
 }
 
-// gridTopButtonsInputRect is the cluster's whole interactive area: the reserved
-// zone (buttons + gaps + margin) grown to cover every button's TOUCH target.
-// It is the cluster handler's InputBounds and the no-create zone of the grid
-// gesture paths, so "the press hit a button" and "the grid may act here" can
-// never disagree. Empty when the buttons are absent.
+// Both the cluster's InputBounds and the grid's no-create zone, so the two can never disagree.
 func (g *Game) gridTopButtonsInputRect() image.Rectangle {
 	zone := g.gridTopButtonsReservedRect()
 	for _, c := range g.gridCornerButtons() {
@@ -75,15 +54,8 @@ func (g *Game) gridTopButtonsInputRect() image.Rectangle {
 	return zone
 }
 
-// gridCornerButtonsHandler routes pointer input for the whole cluster through
-// the grid pane's z-ordered inputDispatcher. One path serves desktop mouse,
-// mobile touch and mobile pointer/click.
-//
-// It is OPAQUE: a press anywhere in gridTopButtonsInputRect is consumed —
-// on a button it fires that button; in a gap or the margin it is inert — so
-// the press edge is owned by the cluster and the dispatcher's gesture latch
-// (GestureOwnedByHandler) keeps the release-time grid tap off the canvas
-// beneath, wherever the finger lifts.
+// OPAQUE: a press anywhere in the cluster is consumed (inert in gaps), so the cluster owns the
+// gesture and the release-time grid tap never reaches the canvas, wherever the finger lifts.
 type gridCornerButtonsHandler struct{ g *Game }
 
 func (h gridCornerButtonsHandler) InputBounds() image.Rectangle {
@@ -105,14 +77,11 @@ func (h gridCornerButtonsHandler) HandleInput(x, y int, pressed bool) InputResul
 			res = c.btn.HandleInputResult(x, y, pressed)
 			continue
 		}
-		// Not the target: a pointer-outside update, so a neighbour whose touch
-		// target overlaps this point never fires and drops its hover.
+		// Not the target: a neighbour whose touch target overlaps this point must not fire.
 		c.btn.applyPress(false, pressed)
 	}
 	if res == InputConsumed {
-		// Defer the DrumViewTree for this frame so its click-outside logic
-		// doesn't immediately close the menu the button just opened (the
-		// cluster lies outside every tree hit area).
+		// Defer the tree this frame so its click-outside does not close the menu just opened.
 		g.gridHelpCapturing = true
 	}
 	if pressed {
@@ -122,10 +91,7 @@ func (h gridCornerButtonsHandler) HandleInput(x, y int, pressed bool) InputResul
 	return res
 }
 
-// gridCornerButtonAt picks the button a point targets. Touch targets of
-// neighbouring buttons overlap (44px targets, 30px buttons, 6px gaps), so the
-// point goes to the button whose DRAWN rect is nearest — the one the user aimed
-// at — among those whose touch target contains it. Nil in a gap / the margin.
+// Touch targets overlap, so the point goes to the button whose drawn rect is nearest; nil in a gap.
 func (g *Game) gridCornerButtonAt(x, y int) *Button {
 	pt := image.Pt(x, y)
 	var best *Button

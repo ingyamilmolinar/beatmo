@@ -11,19 +11,12 @@ import (
 
 const rowCachePatchMax = 12
 
-// drawDrumCell renders a single drum cell into the row sprite: a FLAT fill in
-// the instrument color (or the off / mute fill) with the 1 px cell border
-// that separates adjacent hits. DESIGN.md Rule 2 — nothing is 3D: the ON
-// cells used to carry a 4-band "backlit 808" vertical gradient (plus a lighter
-// top strip), which read as banding stripes and a bevel at row height.
+// Flat fill only: nothing in the design is 3D.
 func drawDrumCell(dst *ebiten.Image, rect image.Rectangle, on bool, fillCol color.Color, isMute bool) {
 	DrumCellUI.Draw(dst, rect, on, false, fillCol)
 }
 
-// drawDrumCellTyped is drawDrumCell plus the cell type's own mark: a
-// sounding CHORD cell carries three stacked ticks (the voice stack), so
-// chords read at a glance on the timeline — past cells included, since the
-// played tier freezes the type.
+// A chord cell carries three stacked ticks, past cells included (the played tier freezes the type).
 func drawDrumCellTyped(dst *ebiten.Image, rect image.Rectangle, on bool, fillCol color.Color, typ model.NodeType) {
 	drawDrumCell(dst, rect, on, fillCol, typ == model.NodeTypeMute)
 	if !on || typ != model.NodeTypeChord || rect.Dx() < 5 || rect.Dy() < 9 {
@@ -38,9 +31,7 @@ func drawDrumCellTyped(dst *ebiten.Image, rect image.Rectangle, on bool, fillCol
 	}
 }
 
-// drawBeatGroupSeparators bakes faint vertical lines at every per-beat group
-// boundary into the row sprite so the rack reads as an 808 step row rather
-// than a flat CSV heatmap. group is the subdivisions-per-beat; <=1 disables.
+// group = subdivisions per beat; <= 1 draws nothing.
 func drawBeatGroupSeparators(dst *ebiten.Image, w, h, n, group int) {
 	if group <= 1 || n <= group || w <= 0 || h <= 0 {
 		return
@@ -207,9 +198,7 @@ func (dv *DrumView) buildRowSprite(i int) int {
 							fillCol = colMuteCell
 						}
 						drawDrumCellTyped(dv.rowCache[i], rect, step, fillCol, typ)
-						// A patched cell starts exactly on its group-boundary
-						// separator column; re-draw the line so the 808 grouping
-						// survives in-place cell edits.
+						// A patched cell starts on its separator column, so redraw the line.
 						if g := dv.timelineUnitsPerBeat; g > 1 && j%g == 0 && j > 0 && x0 > 0 && x0 < w {
 							drawRect(dv.rowCache[i], image.Rect(x0, 0, x0+1, h), WithAlpha(genColorOnSurface, AlphaFaint), true)
 						}
@@ -263,14 +252,11 @@ func (dv *DrumView) buildRowSprite(i int) int {
 			}
 			drawDrumCellTyped(img, rect, on, fillCol, cellType)
 		}
-		// Bake faint per-beat group separators so the rack reads as an 808
-		// step row. Drawn after cells so ON-cell gradients don't overpaint
-		// the boundary lines (the patch path re-draws them per-cell below).
+		// After the cells so they never overpaint the lines.
 		drawBeatGroupSeparators(img, w, h, n, dv.timelineUnitsPerBeat)
 	}
 
-	// When zoomed out (more steps than pixels), bake decimated marker ticks
-	// into the row sprite to avoid per-frame draws.
+	// Zoomed out (more steps than pixels): bake decimated ticks instead of drawing per frame.
 	if n > w && n > 0 {
 		step := int(math.Ceil(float64(n) / float64(w)))
 		if step < 1 {
@@ -306,9 +292,6 @@ func (dv *DrumView) buildRowSprite(i int) int {
 	return rowRebuildFull
 }
 
-// rowHasContent samples the composed rows image (stripes or single layer)
-// at several x positions on the centerline of the given visible row.
-// Returns true if any sampled pixel has non-zero alpha.
 func (dv *DrumView) rowHasContent(row int) bool {
 	if row < dv.rowOffset || row >= dv.rowOffset+dv.visibleRows() {
 		return false

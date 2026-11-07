@@ -1,8 +1,6 @@
 package ui
 
-// touchMinTargetPx is the minimum touch target size per Apple HIG (44px).
-// Used directly by code paths that need a compile-time constant; runtime
-// callers should prefer Profile().MinTarget which returns 0 on desktop.
+// Runtime callers should prefer Profile().MinTarget, which is 0 on desktop.
 const touchMinTargetPx = 44
 
 // Splitter handle sizing (pill indicator on divider lines)
@@ -19,20 +17,13 @@ func SplitterHandleLen() int { return Profile().SplitterHandleLen }
 // SplitterHandleThick returns the pill thickness for the current platform.
 func SplitterHandleThick() int { return Profile().SplitterHandleThk }
 
-// desktopRowHeightPx is the desktop row height (matches Profile().RowHeight).
-// Retained as a compile-time constant for font_size_test.go which asserts
-// font fits within this height.
 const desktopRowHeightPx = 36
 
-// touchMinCellWidthPx is the mobile minimum cell width (matches
-// Profile().MinCellWidth). Retained for adaptive_cell_count_test.go.
 const touchMinCellWidthPx = 2
 
 // Threshold for considering a screen "small" (phone/tablet in landscape)
 const smallScreenWidthPx = 900
 
-// touchScreenWidth stores the current screen width for touch detection.
-// Updated by the game loop when window size changes.
 var touchScreenWidth int
 
 //nolint:unused // used in js_exports_harness.go (WASM build tag)
@@ -41,8 +32,6 @@ var touchScreenHeight int
 // forceSmallScreenForTest overrides isSmallScreen() in tests.
 var forceSmallScreenForTest bool
 
-// SetTouchScreenSize updates the screen dimensions used for touch detection.
-// Call this from the game loop when window size changes.
 func SetTouchScreenSize(width, height int) {
 	touchScreenWidth = width
 	touchScreenHeight = height
@@ -53,9 +42,7 @@ func detectSmallScreen() bool {
 	if forceSmallScreenForTest {
 		return true
 	}
-	// Only consider touch mode when the runtime profile enables small-screen
-	// detection (browser builds by default; tests can opt in by overriding
-	// the profile).
+	// Only when the runtime profile enables small-screen detection.
 	if !RuntimeProf().EnableTouchSmallScreen {
 		return false
 	}
@@ -63,9 +50,7 @@ func detectSmallScreen() bool {
 	return touchScreenWidth > 0 && touchScreenWidth < smallScreenWidthPx
 }
 
-// isSmallScreen reports whether the UI should use touch-friendly sizing.
-// All production call sites have been migrated to Profile().IsMobile();
-// this function remains for test code and backward compatibility.
+// Production uses Profile().IsMobile(); kept for tests.
 func isSmallScreen() bool {
 	return Profile().IsMobile()
 }
@@ -79,8 +64,7 @@ func TouchRowHeight() int { return Profile().RowHeight }
 // TouchMinTarget returns the minimum touch target size.
 func TouchMinTarget() int { return Profile().MinTarget }
 
-// ExpandHitArea expands a button/control size to meet minimum touch targets.
-// Returns the original size if already large enough or on desktop.
+// Unchanged when already large enough or on desktop.
 func ExpandHitArea(size int) int {
 	min := TouchMinTarget()
 	if min > 0 && size < min {
@@ -92,12 +76,7 @@ func ExpandHitArea(size int) int {
 // MinCellWidth returns the minimum cell width (in pixels) for drum-view cells.
 func MinCellWidth() int { return Profile().MinCellWidth }
 
-// ─── Design Token System ───────────────────────────────────
-// Standardized spacing and sizing scale used throughout the UI.
-//
-// All values below are aliased from design_tokens.gen.go, which is
-// generated from DESIGN.md's `spacing:` and `rounded:` blocks. To change
-// a value, edit DESIGN.md and run `make gen-design-tokens`.
+// Aliased from design_tokens.gen.go: edit DESIGN.md and run `make gen-design-tokens`.
 
 // Spacing scale (px)
 const (
@@ -109,8 +88,6 @@ const (
 	SpaceXXL     = genSpacingXxl
 	SpaceCluster = genSpacingCluster // inter-cluster gap on the transport bar
 
-	// Instrument-identity swatch scale: SM = menu-title swatch, MD = list-row
-	// swatch (see DESIGN.md "Menu anatomy").
 	SwatchSizeSM = genSpacingSwatchSm
 	SwatchSizeMD = genSpacingSwatchMd
 )
@@ -122,10 +99,7 @@ const (
 	BtnHeightLG = genSpacingBtnLg
 )
 
-// labelButtonWidth sizes a text button to comfortably fit its label
-// (label width + a SpaceMD pad on each side). Shared by the audio-panel
-// header rows (Synth, Sampler) so no button truncates its label and the
-// width tracks the font rather than a hand-tuned magic number.
+// From the font, never a magic number, so no button truncates its label.
 func labelButtonWidth(label string) int {
 	return TextWidth(label) + 2*SpaceMD
 }
@@ -137,25 +111,17 @@ const (
 	IconSizeLG = genSpacingIconLg
 )
 
-// Icon-system primitives (logical 24-unit grid). Every IconID renders onto
-// this canvas; pixel sizes are derived per-call from the bounding rect.
-// IconStrokeWeight is a fractional logical-unit width (Lucide-style 1.75)
-// converted to pixels at render time as `weight * (size / grid)`.
+// A 24-unit logical grid; stroke weight converts to pixels as weight * (size / grid).
 const (
 	IconGrid         = genIconGrid    // logical units per icon canvas side
 	IconPadding      = genIconPadding // empty band inside the canvas
 	IconCornerRadius = genIconRadius  // default radius for rectangular elements
 )
 
-// IconStrokeWeight is float32 to preserve the 1.75 fraction at small
-// rendered sizes. var (not const) so future profile overrides can swap it
-// without touching every call site.
+// float32 keeps the 1.75 fraction at small sizes.
 var IconStrokeWeight float32 = genIconStroke
 
-// Corner radius — ROLE layer. Reach for these. Which step a surface takes is
-// decided by what it IS, not by how big it is: every interactive control is
-// RadiusControl regardless of size, so a toolbar reads as one system rather
-// than a pile of unrelated widgets. See DESIGN.md "Shapes".
+// Chosen by ROLE, not size: every interactive control is RadiusControl, so a toolbar reads as one system.
 const (
 	RadiusNone      = genRoundedNone      // tiling surfaces: grid cells, meter segments, track fills
 	RadiusControl   = genRoundedControl   // EVERY interactive control — buttons, chips, tabs, inputs, keycaps
@@ -163,9 +129,7 @@ const (
 	RadiusSheet     = genRoundedSheet     // mobile bottom sheet, full-width overlays
 )
 
-// Corner radius — RAW scale. These fix the available values that the role
-// tokens above resolve to. Prefer a role token at call sites; a raw step is
-// how controls drifted into pill territory in the first place.
+// Prefer a role token: raw steps are how controls drifted into pills.
 const (
 	RadiusXXS = genRoundedXxs // 4
 	RadiusXS  = genRoundedXs  // 6

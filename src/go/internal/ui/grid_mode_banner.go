@@ -9,11 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// gridModeBannerText returns the localized banner string for the currently
-// active armed grid mode (move / copy / connect), or "" when idle
-// (GridModeNone). Single source of truth shared by the draw path and tests —
-// pure, and deliberately excludes the Esc-hint suffix, which is the draw
-// path's job (drawGridModeBanner) since it depends on Profile().ShowEscHint.
+// Pure; the Esc hint is the draw path's job because it depends on the profile.
 func (g *Game) gridModeBannerText() string {
 	s := g.modes.Subject()
 	switch g.modes.Active() {
@@ -33,12 +29,7 @@ func (g *Game) gridModeBannerText() string {
 	return ""
 }
 
-// drawGridModeBanner renders the armed-mode helper banner centered at the top
-// of the grid pane: RoleBody chrome text on a panel, sized from the role's
-// metrics and spacing tokens per DESIGN.md's typography roles (no bitmap
-// font, no magic paddings). Returns early when idle. Single shared draw site
-// for Move, Copy and Connect — replaces the three former bespoke banners
-// (Task 9).
+// The one draw site for Move, Copy and Connect.
 func (g *Game) drawGridModeBanner(dst *ebiten.Image) {
 	text := g.gridModeBannerText()
 	if text == "" {
@@ -54,9 +45,7 @@ func (g *Game) drawGridModeBanner(dst *ebiten.Image) {
 		x = 0
 	}
 	rect := image.Rect(x, SpaceXS, x+w, SpaceXS+StyledTextHeight(RoleBody)+2*SpaceXS)
-	// Keep clear of the settings gear's protected top-right zone (same
-	// no-invade contract as the long-press popup — see
-	// feedback_settings_gear_protected_zone).
+	// Never invades the top-right button zone.
 	rect = avoidReservedRect(rect, g.gridTopButtonsReservedRect(), gridW, g.split.GridH(g.winH))
 	drawPanel(dst, rect)
 	DrawTextStyled(dst, text, rect.Min.X+SpaceMD, rect.Min.Y+SpaceXS, RoleBody, colTextPrimary)

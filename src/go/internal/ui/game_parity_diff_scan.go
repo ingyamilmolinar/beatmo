@@ -10,9 +10,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
-// diffPredictorTimeline reports positions where timeline commits disagree with
-// predictor truth within the provided window. It is meant for diagnostics and
-// parity logging; it does not mutate timeline state.
 func (g *Game) diffPredictorTimeline(row, offset, length int, freezeLimit int) []mismatchEntry {
 	if g == nil || g.drum == nil || row < 0 || row >= len(g.drum.Rows) || length <= 0 {
 		return nil
@@ -22,9 +19,7 @@ func (g *Game) diffPredictorTimeline(row, offset, length int, freezeLimit int) [
 		return nil
 	}
 
-	// Past boundary for this specific row. Timeline playback/import commits are
-	// allowed to diverge from the current predictor after edits, so we never
-	// treat abs < pastExclusive as a mismatch.
+	// Commits before this boundary may legitimately diverge after an edit.
 	pastExclusive := g.rowPastExclusive(row)
 	var pred *engine.Predictor
 	if g.engine != nil {
@@ -50,13 +45,10 @@ func (g *Game) diffPredictorTimeline(row, offset, length int, freezeLimit int) [
 
 	var mismatches []mismatchEntry
 	for abs := offset; abs < end; abs++ {
-		// Past playback history can diverge from the current predictor after edits.
-		// Ignore indices already traversed by playback for this row.
 		if pastExclusive > 0 && abs < pastExclusive {
 			continue
 		}
-		// When the playhead boundary is unknown (e.g., stopped), fall back to the
-		// frozen ceiling so we don't flag stale immutable history as a mismatch.
+		// With no playhead (stopped), the frozen ceiling keeps stale history from being flagged.
 		if pastExclusive <= 0 && freezeLimit >= 0 && abs <= freezeLimit {
 			continue
 		}
@@ -64,8 +56,7 @@ func (g *Game) diffPredictorTimeline(row, offset, length int, freezeLimit int) [
 		if !hasCommit {
 			continue
 		}
-		// Mutable/speculative commits are expected to diverge; only surface
-		// immutable playback/import mismatches.
+		// Only immutable playback/import commits are compared; speculative ones are expected to diverge.
 		if kind != timeline.CommitKindPlayback && kind != timeline.CommitKindImport {
 			continue
 		}
@@ -91,12 +82,8 @@ func (g *Game) diffPredictorTimeline(row, offset, length int, freezeLimit int) [
 	return mismatches
 }
 
-// reconcileMutableTimeline aligns non-immutable timeline commits (seeded / gap-pad)
-// with the current predictor snapshot so live edits while paused do not leave
-// stale masks that trigger parity mismatches once logging is enabled.
-//
-// Released commits are treated as bookkeeping and are intentionally not rewritten
-// so demoted immutable leaks remain debuggable.
+// So live edits while paused leave no stale masks. Released commits are left alone so demoted
+// immutable leaks stay debuggable.
 func (g *Game) reconcileMutableTimeline(row, offset, length int, predictAt func(int, model.BeatInfo) bool) {
 	if g == nil || predictAt == nil || row < 0 || row >= len(g.beatInfosByRow) {
 		return
@@ -120,8 +107,6 @@ func (g *Game) reconcileMutableTimeline(row, offset, length int, predictAt func(
 	}
 }
 
-// parityScan inspects view, predictor, audio events, and graph/timeline to
-// detect mismatches in real time.
 func (g *Game) parityScan(reason string) {
 	if g == nil {
 		return
@@ -131,22 +116,14 @@ func (g *Game) parityScan(reason string) {
 		g.parityScanReturnsForTest[0]++
 		return
 	}
-	// Retention runs regardless of the comparator early-returns below: the
-	// comparator can be silenced for legitimate UI-state reasons (origin
-	// selection mask, import in progress, render not yet ready) without
-	// stopping unbounded growth of paritySeqDecisions / parityAudio. Without
-	// this, programmatic origin assignments (import, scene-build flows that
-	// don't go through click-to-set-origin) leave pendingStartRow >= 0
-	// indefinitely, the comparator skips, and the maps fill until WASM OOMs
-	// (production crash stack: RowRackZone.drawRowControlsToCache → vector
-	// path tessellation can no longer allocate at the 2 GB ceiling).
+	// Retention runs even when the comparator returns early: the maps would otherwise grow without
+	// bound (an import that leaves pendingStartRow set ran WASM out of memory).
 	defer g.parityPruneAroundPlayhead()
 	if g.importDialog || g.importing || (g.drum != nil && (g.drum.importing || g.drum.lengthChanging)) {
 		g.parityScanReturnsForTest[1]++
 		return
 	}
-	// During origin selection the UI intentionally greys/overlays circuits; skip parity
-	// to avoid flagging those transient masks.
+	// Origin selection masks circuits on purpose.
 	if g.pendingStartRow >= 0 {
 		g.parityScanReturnsForTest[2]++
 		return
@@ -157,9 +134,7 @@ func (g *Game) parityScan(reason string) {
 			g.parityScanReturnsForTest[3]++
 			return
 		}
-		// Skip when stopped — under go test too, so an armed test checks
-		// exactly what production checks (a stopped-state scan ran only
-		// under go test before, and flagged state production never looks at).
+		// Skipped when stopped under go test too, so a test checks exactly what production checks.
 		if !g.parityScanStoppedForTest {
 			g.parityScanReturnsForTest[5]++
 			return
@@ -218,9 +193,7 @@ func (g *Game) parityScan(reason string) {
 		}
 	}
 
-	// Scan view/predictor parity near the rendered window, but scan audio/seq
-	// parity around the global playhead so panning the DrumView doesn't silence
-	// audio mismatch detection.
+	// Audio/seq parity centres on the playhead, so panning the drum view never silences it.
 	playhead := g.globalPastExclusive() - 1
 	if playhead < 0 {
 		playhead = 0
@@ -244,14 +217,8 @@ func (g *Game) parityScan(reason string) {
 			if k < audioStart || k >= audioEnd {
 				continue
 			}
-			// Generation filter (SYMMETRIC with the audio side below): a
-			// decision recorded before the latest structural mutation belongs
-			// to a prior parity generation and must never be compared against
-			// the post-mutation predictor — that comparison is the live-edit
-			// false positive. Dropping it here (and the matching audio event
-			// below) keeps both sides of every comparison in the same
-			// generation. The sequencer re-records current/future beats under
-			// the new generation, so detection resumes within a frame.
+			// A decision from an earlier generation is never compared with the post-mutation predictor (the
+			// live-edit false positive); the audio side filters the same way, so both sides always match.
 			if v.ParityGen != curParityGen {
 				continue
 			}
@@ -266,10 +233,7 @@ func (g *Game) parityScan(reason string) {
 	eventsByRow := make(map[int]map[int]parityAudioEvent)
 	curGen := g.audioGen.Load()
 	for _, ev := range audioEvents {
-		// audioGen filter: drop in-flight notes from a prior audio run
-		// (stop/replay). parityGen filter: drop events from a prior structural
-		// generation (live edit), symmetric with the seq-decision filter above.
-		// Both sides of every comparison are now guaranteed same-generation.
+		// audioGen drops a previous run's notes, parityGen a previous structural generation.
 		if ev.Gen != curGen || ev.ParityGen != curParityGen {
 			continue
 		}
@@ -287,8 +251,7 @@ func (g *Game) parityScan(reason string) {
 		pred = g.engine.Predictor
 	}
 	for row := range g.drum.Rows {
-		// True past boundary is row-specific but must never exceed the global
-		// wall-clock playhead; otherwise stale commits can mask future edits.
+		// Never past the global playhead, or stale commits mask future edits.
 		pastExclusive := g.rowPastExclusive(row)
 		rowEvents := eventsByRow[row]
 		decRow := seqCopy[row]
@@ -370,9 +333,7 @@ func (g *Game) parityScan(reason string) {
 			inPast := abs < pastExclusive
 			info := g.beatInfoAtRow(row, abs)
 			typ := info.NodeType
-			// Compute view truth (what DrumView renders) from the engine predictor.
-			// This differs from audio truth for some policies (e.g., mute nodes),
-			// so keep view parity separate from audio parity checks.
+			// View truth differs from audio truth for some policies (mute nodes), so they are checked apart.
 			viewExpected := false
 			if pred != nil {
 				if info.NodeType == model.NodeTypeMute {
@@ -397,12 +358,9 @@ func (g *Game) parityScan(reason string) {
 					Detail:   slateDetail,
 				})
 			}
-			// Skip cell-type parity for now; view_vs_truth already covers functional mismatches.
-			// Detect immutable timeline commits that disagree with predictor truth.
+			// Cell types are not compared: view_vs_truth covers functional mismatches.
 			if v, ctyp, kind, ok := g.timelineCommittedWithKind(row, abs); ok && (kind == timeline.CommitKindPlayback || kind == timeline.CommitKindImport) {
-				// Past playback/import entries are allowed to diverge from the current
-				// predictor after edits; only check for "leaked" immutable commits
-				// at/after the current past boundary.
+				// Only commits at or after the past boundary can be leaks.
 				if abs < pastExclusive {
 					continue
 				}
@@ -424,8 +382,6 @@ func (g *Game) parityScan(reason string) {
 			}
 		}
 
-		// Audio/seq/highlight parity: anchored near the playhead so it fires even
-		// when DrumView is panned away.
 		if !hasSeq && !hasAudioEvents {
 			continue
 		}
@@ -449,9 +405,7 @@ func (g *Game) parityScan(reason string) {
 				}
 			}
 			slate, inWindow := slateAt(abs)
-			// Audio/seq/highlight parity only makes sense near the current playhead.
-			// For missing-audio checks we keep one beat of slack behind the current
-			// beat so the 120ms grace window can't "age out" before we check.
+			// One beat of slack behind the current beat, so the 120 ms grace cannot age out first.
 			if abs < missingFloor {
 				continue
 			}
@@ -461,21 +415,10 @@ func (g *Game) parityScan(reason string) {
 				ev, hasAudio = rowEvents[abs]
 			}
 			if dec, ok2 := decRow[abs]; ok2 {
-				// dec.Enqueued gates this check: a decision whose audio the
-				// scheduler already handed to the audio pipeline is NOT a
-				// missing-audio violation even when no parityAudio event has
-				// been recorded yet — the audio is simply still in-flight in
-				// audioCh (audioLoop briefly behind), or was dropped by the
-				// audio thread under backpressure / a transport transition.
-				// audio_missing only flags the genuine scheduler bug: an
-				// audible decision whose audio was never enqueued at all
-				// (Enqueued=false). Production couples decision-record and
-				// enqueue in one seqMu critical section, so Audible⟹Enqueued
-				// and this check never false-positives on pipeline latency.
+				// A decision already handed to the pipeline is not missing audio, only in flight or dropped
+				// downstream. Record and enqueue share one seqMu section, so this never fires on latency.
 				if dec.Audible && !dec.Missing && !dec.Enqueued && !hasAudio && typ.Fires() {
-					// Avoid racey false-positives: if the sequencer just
-					// recorded the decision but hasn't yet logged the audio
-					// event into parityAudio, allow a small grace window.
+					// The event may not be logged yet.
 					if parityRecordNow().Sub(dec.RecordedAt) < 120*time.Millisecond {
 						continue
 					}
@@ -493,10 +436,7 @@ func (g *Game) parityScan(reason string) {
 					})
 				}
 			}
-			// Skip the remaining audio/seq/highlight checks for beats strictly older
-			// than the current beat (abs < pastExclusive-1). The current beat
-			// (abs == pastExclusive-1) is where audio↔predictor/view mismatches must
-			// be caught.
+			// The current beat (pastExclusive-1) is where audio mismatches must be caught.
 			if abs < audioFloor {
 				continue
 			}
@@ -555,11 +495,7 @@ func (g *Game) parityScan(reason string) {
 	// Prune handled by deferred parityPruneAroundPlayhead at function entry.
 }
 
-// parityPruneAroundPlayhead computes the playhead-relative window used by
-// parityScan and calls parityPrune to bound paritySeqDecisions / parityAudio.
-// It is called as a deferred function from parityScan so retention runs even
-// when the comparator early-returns (origin selection, import in progress,
-// renderReady=false, etc).
+// Deferred from parityScan, so retention runs even when the comparator returns early.
 func (g *Game) parityPruneAroundPlayhead() {
 	if g == nil || g.grid == nil {
 		return
@@ -580,11 +516,6 @@ func (g *Game) parityPruneAroundPlayhead() {
 	g.parityPrune(audioStart)
 }
 
-// parityCheckSeqVsView reports a seq_vs_view mismatch when the sequencer's
-// view-truth decision for (row, abs) disagrees with the rendered slate. It is
-// the extracted body of the innermost in-window check in parityScan; the
-// guard-clause early returns are the exact negation of the original nested
-// conditions, so behaviour is unchanged.
 func (g *Game) parityCheckSeqVsView(row, abs int, decRow map[int]paritySeqDecision, slate, inWindow, rowMuted, soloGated, anySolo bool, reason, slateDetail string, rowViewOffset, rowViewLength int) {
 	if !inWindow {
 		return
@@ -593,17 +524,11 @@ func (g *Game) parityCheckSeqVsView(row, abs int, decRow map[int]paritySeqDecisi
 	if !ok {
 		return
 	}
-	// Use dec.Visible (view truth) for seq_vs_view comparison, not dec.Audible
-	// (audio truth). Mute gates make nodes inaudible but still visible in the UI.
+	// dec.Visible, not dec.Audible: mute gates make nodes silent but still visible.
 	if dec.Missing || rowMuted || soloGated {
 		return
 	}
-	// The `abs == seqNextIdxs[row]-1` clause is the just-scheduled-beat grace:
-	// that beat's slate will be rendered on the next refresh, so a
-	// visible-decision / not-yet-slated disagreement there is a one-frame
-	// pipeline lag, not a desync. This grace holds in EVERY mode (including
-	// fatal) — previously a leading `fatalNow ||` bypassed it exactly in the
-	// panic mode, crashing on the benign lag.
+	// The just-scheduled beat is a one-frame lag in every mode, fatal included.
 	if dec.Visible && !slate && row >= 0 && row < len(g.seqNextIdxs) && abs == g.seqNextIdxs[row]-1 {
 		return
 	}
@@ -630,11 +555,6 @@ func (g *Game) parityCheckSeqVsView(row, abs int, decRow map[int]paritySeqDecisi
 	})
 }
 
-// parityCheckHighlightVsAudio reports a highlight_vs_audio mismatch when a
-// recorded audio event at (row, abs) has no live UI highlight. It is the
-// extracted body of the `hasAudio && inWindow` highlight block in parityScan;
-// each skip condition becomes a guard-clause early return, preserving the
-// original control flow exactly.
 func (g *Game) parityCheckHighlightVsAudio(row, abs int, typ model.NodeType, ev parityAudioEvent, hasAudio, inWindow bool, reason string, rowViewOffset, rowViewLength int) {
 	if !hasAudio || !inWindow {
 		return
@@ -642,32 +562,18 @@ func (g *Game) parityCheckHighlightVsAudio(row, abs int, typ model.NodeType, ev 
 	if !g.rowIsAudible(row) {
 		return
 	}
-	// Beats the UI playhead has already advanced past are not highlight-parity
-	// violations — applySequencerHighlight (and the syncUIToTime catch-up / seek
-	// paths) set nextBeatIdxs[row] = abs+1 when they process beat abs, and the
-	// highlight then expires by design (highlightedBeats entries carry a frame
-	// deadline). Comparing a recorded audio event against a naturally-expired
-	// highlight is a false positive; this can happen even at abs == audioFloor
-	// (the "current" beat per the global wall-clock clamp) when the beat
-	// outlasts the highlight window. A genuine violation — audio fired but the
-	// UI never highlighted the beat — leaves nextBeatIdxs[row] <= abs.
+	// A beat the UI playhead has passed had its highlight expire by design; a real violation leaves
+	// nextBeatIdxs[row] <= abs.
 	if row < len(g.nextBeatIdxs) && g.nextBeatIdxs[row] > abs {
 		return
 	}
-	// Freshly-recorded audio events get a grace window before the highlight is
-	// required: the sequencer goroutine records the event and emits the matching
-	// highlight to hlCh, but the UI only applies it on the next Update drain. A
-	// scan landing in that gap is a pipeline-latency artifact, not a violation —
-	// mirrors the audio_missing RecordedAt grace. The When-now > 0.5 future skip
-	// below does not cover this: tight-lead scheduling (fast-forward drives,
-	// small lookahead) records When ≈ now.
+	// The UI applies the highlight on the next Update drain, so a scan in that gap is latency.
+	// Tight-lead scheduling records When ≈ now, which the future skip below does not cover.
 	if parityRecordNow().Sub(ev.RecordedAt) < 120*time.Millisecond {
 		return
 	}
 	now := audio.Now()
 	if ev.When > 0 {
-		// Scheduled sufficiently in the future; allow the highlight to be
-		// applied closer to playback.
 		if now > 0 && ev.When-now > 0.5 {
 			return
 		}
@@ -676,9 +582,7 @@ func (g *Game) parityCheckHighlightVsAudio(row, abs int, typ model.NodeType, ev 
 			return
 		}
 	}
-	// A highlight the sequencer dropped (hlCh full under load) is never painted
-	// by the UI, so "audio fired but no highlight" is an expected cosmetic loss,
-	// not an audio/UI desync. Exempt it.
+	// A highlight dropped because hlCh was full is an expected cosmetic loss.
 	if g.highlightWasDropped(row, abs) {
 		return
 	}

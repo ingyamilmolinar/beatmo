@@ -9,30 +9,22 @@ import (
 )
 
 func (dv *DrumView) Update() {
-	// Advance the shared mobile tap-debounce clock once per frame, before the
-	// early-out so the window keeps ticking even with no rows.
+	// Before the early-out, so the debounce window keeps ticking with no rows.
 	dv.tapGate.advance()
-	// A dial drag whose capture was dropped without a release (Esc, a view
-	// switch) is cancelled even when the Synth tab is not rebuilt.
+	// A dial drag whose capture was dropped without a release is cancelled even off the Synth tab.
 	dv.healSynthDialGesture()
 
 	if len(dv.Rows) == 0 {
 		return
 	}
 
-	// Synth-tab Save As dialog poll. Runs ahead of the tree so the
-	// TextInput can claim Enter/Escape before the tree's portal-close
-	// shortcut sees them.
+	// Ahead of the tree, so the TextInput claims Enter/Escape before the portal-close shortcut.
 	dv.updateSaveAsDialog()
 
 	dv.updateSeq++
 	dv.refreshInstruments()
 
-	// Sync DrumView → TransportZone state before tree runs.
-	// Tests may set dv.bpmDelta directly; push those to the zone. (The previous
-	// "prev BPM before editing" mirror is gone: BPM editing now happens in the
-	// shared editor, which keeps its own pre-edit value, so there is nothing to
-	// mirror through the zone.)
+	// Tests may set dv.bpmDelta directly.
 	if dv.transportZone != nil {
 		if dv.bpmDelta != 0 {
 			dv.transportZone.SetBPMDelta(dv.transportZone.BPMDelta() + dv.bpmDelta)
@@ -40,26 +32,19 @@ func (dv *DrumView) Update() {
 		}
 	}
 
-	// Ensure zone rects are current BEFORE the tree runs its Layout phase.
-	// calcLayout sets zone rects via tree.SetZoneRect; the tree's Phase 1
-	// detects rect changes and rebuilds hit areas. Without this, the first
-	// tree.Update after construction would run with zero rects, producing
-	// hit areas without proper ClipRects (touch expansion leaks).
+	// Before the tree's layout: the first Update after construction would otherwise publish hit areas
+	// from zero rects, without ClipRects.
 	dv.recalcButtons()
 	if dv.bgDirty {
 		dv.calcLayout()
 		dv.bgDirty = false
 	}
 
-	// Run the zone-based component tree (runs in parallel with existing
-	// code during incremental migration; zones are added one at a time).
 	if dv.rootTree != nil {
 		dv.rootTree.SetBounds(dv.Bounds)
 
 		dv.rootTree.Update()
 
-		// Sync zone → DrumView state that the tree may have changed:
-		// EQ toggle: sync zone state → DrumView.
 		if dv.eqPanelZone != nil {
 			dv.eqWaveformMode = dv.eqPanelZone.ActiveTab() == TabWave
 		}
@@ -70,9 +55,7 @@ func (dv *DrumView) Update() {
 			dv.bpmErrorAnim = dv.transportZone.BPMErrorAnim()
 			dv.secPerBeat = 60.0 / float64(dv.bpm)
 		}
-		// Row scroll sync: when a zone callback changed the scroll,
-		// zone's rowOffset is authoritative → copy to dv.
-		// Otherwise, legacy code may have changed dv.rowOffset → push to zone.
+		// A zone callback's scroll wins; otherwise push dv.rowOffset to the zone.
 		if dv.rowRackZone != nil {
 			if dv.rowScrollFromZone {
 				dv.rowOffset = dv.rowRackZone.RowOffset()
@@ -99,21 +82,16 @@ func (dv *DrumView) Update() {
 			} else if len(res.data) == 0 {
 				dv.logger.Debugf("[drumview] import canceled (no data)")
 			} else if dv.onImport != nil {
-				// When wired to Game, onImport queues data for deferred processing
-				// and returns nil; notifications are handled by game.Update().
-				// For standalone use (tests with mock handlers), onImport may
-				// return an error directly, which we handle here.
+				// Wired to Game, onImport defers and returns nil; standalone mocks may return an error here.
 				if err := dv.onImport(res.data, importSourceName(res.name)); err != nil {
 					dv.logger.Errorf("[drumview] import error: %v", err)
 					dv.notifyErrorKey(i18n.KeyNotifErrLoadJSON, err.Error())
 				}
-				// Note: success notifications are handled by Game.Update() after
-				// the deferred import completes, not here.
+				// Game reports success once the deferred import completes.
 			}
 		default:
 		}
-		// Safety: if the browser cancel does not trigger a change event,
-		// ensure we eventually release the guard.
+		// A cancelled browser picker may send no change event, so release the guard eventually.
 		if int(dv.frame)-dv.importAttemptFrame > 600 || dv.updateSeq-dv.importAttemptUpdate > 600 { // ~10s at 60fps
 			dv.importing = false
 			if dv.onImportDialogEnd != nil {
@@ -123,8 +101,6 @@ func (dv *DrumView) Update() {
 		}
 	}
 
-	// Portable single-instrument import (*.beatmo-inst.json), applied on the UI
-	// goroutine.
 	dv.drainInstrumentImport()
 
 	if dv.uploading {
@@ -165,12 +141,7 @@ func (dv *DrumView) Update() {
 
 	// Layout resize hover/drag is now handled by layoutResizeZone in the tree.
 
-	// BPM text input (focus/blur/commit, mobile polling) is now handled by
-	// TransportZone.Update() in the tree. No legacy BPM handling needed here.
-
-	// Process one-frame flags set by tree-dispatched button callbacks.
-	// These must run before the popup/suppress guard because the tree's
-	// capture (e.g., len button hold-to-repeat) sets suppress=true.
+	// Before the popup guard: a hold-to-repeat capture sets suppress.
 	if dv.lenIncPressed {
 		inc := max1(dv.timelineUnitsPerBeat)
 		dv.changeLength(dv.Length + inc)
@@ -187,23 +158,13 @@ func (dv *DrumView) Update() {
 	mx, my := cursorPosition()
 	left := isMouseButtonPressed(ebiten.MouseButtonLeft)
 
-	// Read wheel delta once at start of frame. The tree dispatches wheel
-	// events to portal overlays; this value is used by the row scroll fallback.
+	// Read once per frame; the tree sends wheel to portals, this is the row-scroll fallback.
 	wheelSteps := wheelScrollSteps()
 
-	// The NAVIGATION panel's go-to-beat/go-to-time editor is now owned by the
-	// nav-menu portal component and ticked via that portal's per-frame update
-	// hook (compPortalOverlay.updateFn → navMenuComp.Update), so no
-	// DrumView-level tick is needed here.
-
-	// ─── POPUP INPUT GUARD ───
-	// All popup/overlay input is now dispatched through the portal/tree system.
-	// Block remaining handlers when any portal overlay is open.
+	// Block the remaining handlers while any portal is open.
 	if dv.portal().IsOpen() {
-		// Ensure touch scroll is cleaned up even when the portal blocks
-		// further processing. Without this, TouchActive() stays true if a
-		// portal opened while a touch scroll was active, causing
-		// Capturing() to return true permanently and blocking grid panning.
+		// Clean up the touch scroll even here, or a portal opened mid-scroll leaves Capturing() true and
+		// blocks grid panning forever.
 		if dv.rowScroll().TouchActive() && !left {
 			dv.rowScroll().HandleTouchEnd()
 		}
@@ -216,8 +177,6 @@ func (dv *DrumView) Update() {
 
 	mobileEQActive := dv.MobileEQMode()
 
-	// ─── ROW SCROLLING (after popups) ───
-	// When RowRackZone exists, sync rowOffset/selRow from zone state.
 	if dv.rowRackZone != nil {
 		dv.rowOffset = dv.rowRackZone.RowOffset()
 		dv.selRow = dv.rowRackZone.SelRow()
@@ -227,26 +186,19 @@ func (dv *DrumView) Update() {
 		totalRows := len(dv.Rows)
 		visRows := dv.visibleRows()
 		if totalRows > visRows {
-			// Only consume wheel for row scrolling when the cursor is over
-			// the drum pane (including the scrollbar). This prevents wheel
-			// events from being eaten while the cursor is over the grid pane.
-			// Skip if wheel was already consumed by the tree (zone hit handler).
+			// Only over the drum pane, so the grid pane's wheel is never eaten; skip when the tree consumed it.
 			treeHandled := (dv.tree != nil && dv.tree.WheelHandled()) ||
 				(dv.audioTree != nil && dv.audioTree.WheelHandled())
 			overBar := image.Pt(mx, my).In(dv.scrollBarRect())
 			overDrum := image.Pt(mx, my).In(dv.Bounds)
 			if !treeHandled && (overBar || overDrum) && wheelSteps != 0 {
 				dv.logger.Debugf("[drumview] row wheel steps=%d at (%d,%d) rowOffset=%d", wheelSteps, mx, my, dv.rowOffset)
-				// Step-by-step: one row per notch, cooldown-throttled (the
-				// cooldown is ticked once per frame in RowRackZone.Update).
 				if dv.rowScroll().WheelStep(wheelSteps, controlGridScrollCooldownFrames) {
 					dv.flushRowScroll()
 				}
 			}
 
-			// Scrollbar thumb drag — stepped: one row per controlGridDragStepPx
-			// of pointer travel, anchored at the grab point (matches the synth
-			// section scrollbars) so it never flies through the list.
+			// Stepped and anchored at the grab point, so it never flies through the list.
 			if dv.rowScroll().StepDragging() {
 				if left {
 					if dv.rowScroll().StepDragTo(my, controlGridDragStepPx) {
@@ -287,10 +239,4 @@ func (dv *DrumView) Update() {
 		}
 	}
 
-	// All button/slider input is now routed through the zone tree's HitAreas:
-	// - EQ sliders/buttons → EQPanelZone
-	// - Transport buttons → TransportZone
-	// - Row buttons/sliders → RowRackZone
-	// - Track/Len+/- buttons → TimelineZone
-	// - EQ curve drag → EQPanelZone
 }

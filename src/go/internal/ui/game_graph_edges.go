@@ -4,8 +4,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// addEdgeNoRefresh records an orthogonal edge without triggering expensive
-// rebuilds. It returns true when a new edge was added.
 func (g *Game) addEdgeNoRefresh(a, b *uiNode) bool {
 	if a.I != b.I && a.J != b.J { // only orthogonal
 		return false
@@ -39,8 +37,6 @@ func (g *Game) addEdge(a, b *uiNode) {
 	g.computeSelNeighbors()
 }
 
-// deleteEdgeNoRefresh removes an edge without rebuilding paths. Returns true
-// when an edge was removed.
 func (g *Game) deleteEdgeNoRefresh(a, b *uiNode) bool {
 	removed := false
 	for i := 0; i < len(g.edges); {

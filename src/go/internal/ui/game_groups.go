@@ -2,8 +2,7 @@ package ui
 
 import "github.com/ingyamilmolinar/beatmo/core/model"
 
-// refreshGroupIndex rebuilds the immutable group-rule index from the graph.
-// Called from the graph's group-changed hook (UI thread) and after import.
+// UI thread only: from the group-changed hook and after import.
 func (g *Game) refreshGroupIndex() {
 	idx := model.BuildGroupIndex(g.graph.Groups)
 	g.groupIdxMu.Lock()
@@ -18,11 +17,7 @@ func (g *Game) groupIndexSnapshot() *model.GroupIndex {
 	return g.groupIdx
 }
 
-// rowLoopSpan maps a row to its (loopStart, loopLen) pair for GroupRound/
-// GroupEffect. Non-loop rows (or out-of-range rows) return (0, 0), which
-// GroupRound treats as "always round 0" (loopLen<=0 guard). Mirrors
-// game_graph_beat_index.go's loop math; callers hold seqMu (sequencer
-// schedule / Update), matching how isLoopByRow is read elsewhere.
+// (0, 0) for non-loop or out-of-range rows, which GroupRound treats as round 0. Callers hold seqMu.
 func (g *Game) rowLoopSpan(row int) (loopStart, loopLen int) {
 	if row < 0 || row >= len(g.isLoopByRow) || !g.isLoopByRow[row] {
 		return 0, 0
@@ -34,14 +29,8 @@ func (g *Game) rowLoopSpan(row int) (loopStart, loopLen int) {
 	return start, len(g.beatInfosByRow[row]) - start
 }
 
-// ruleAnchorIdxNow is the single capture point for "the absolute subdivision
-// index a group rule is anchored to right now": the canonical playhead
-// (playheadAbsSubdiv, game_seek.go — the same clock the mini-timeline cursor
-// and drum-view auto-scroll derive from) while playing, 0 (the timeline
-// origin) otherwise. Every UI/JS path that enables or rewrites a group rule
-// must stamp GroupRule.AnchorIdx via this accessor so the rule's step count
-// starts from the moment it was set, not from the timeline origin (see
-// GroupEffect's doc comment for the root-cause bug this fixes).
+// Every path that enables or rewrites a rule stamps AnchorIdx through this, so the rule counts
+// steps from when it was set, not from the timeline origin.
 func (g *Game) ruleAnchorIdxNow() int {
 	if !g.Playing() {
 		return 0
@@ -49,10 +38,8 @@ func (g *Game) ruleAnchorIdxNow() int {
 	return g.playheadAbsSubdiv()
 }
 
-// onGroupsChanged reacts to any group mutation: rebuild the index and, while
-// playing, drop in-flight audio + advance the parity generation so the new
-// rule takes effect from the next re-predicted trigger (same mechanism as the
-// node-param-change hook in game_new.go).
+// While playing, drop in-flight audio and advance parity so the new rule applies from the next
+// re-predicted trigger.
 func (g *Game) onGroupsChanged() {
 	g.refreshGroupIndex()
 	g.laneGraphVersion.Add(1) // group rules change note params: re-fingerprint the audio lane
@@ -65,8 +52,7 @@ func (g *Game) onGroupsChanged() {
 		}
 	}
 	if g.Playing() {
-		// Lane mode reconciles group-rule changes through laneGraphVersion
-		// (bumped above); a transport-generation bump would cancel-all and
+		// The lane reconciles through laneGraphVersion; a transport-generation bump would cancel-all and
 		// re-commit, doubling a note inside the cancel guard.
 		if !g.audioLaneOn() {
 			g.audioGen.Add(1)

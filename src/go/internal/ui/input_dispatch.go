@@ -5,34 +5,20 @@ import (
 	"sort"
 )
 
-// InputDispatcher manages z-ordered input dispatch to UI components.
-//
-// It also decides who OWNS each press cycle (press edge → release). The handler
-// that consumes or captures the press EDGE owns the whole gesture: the
-// release-time gestures the grid pane recognises separately (GestureTap and
-// GestureLongPress, routed by Game.Update outside this dispatcher) must not
-// also act on the canvas beneath it. See GestureOwnedByHandler.
+// The handler that takes the press EDGE owns the whole gesture, so the grid's release-time
+// tap and long-press must not also act beneath it.
 type InputDispatcher struct {
 	handlers []InputHandler
 	capture  InputHandler
 
-	// wasPressed is the pointer state of the previous frame (Dispatch or
-	// SkipFrame), so a press EDGE can be told from a held frame.
 	wasPressed bool
-	// edge reports whether the frame being dispatched is a press edge, for
-	// handlers that act only on the press that STARTS a gesture (PressEdge).
-	edge bool
-	// pressOwner is the handler that consumed/captured the current press
-	// cycle's edge; nil when the edge fell through every handler (the canvas
-	// owns the gesture) or no press cycle has started.
+	edge       bool
+	// nil when the edge fell through every handler (the canvas owns the gesture).
 	pressOwner InputHandler
 }
 
-// GesturePassthrough is implemented by a handler that consumes its press edge
-// but still wants the release-time grid gestures (GestureTap / long-press)
-// delivered through Game's grid gesture path — the node sidebar resolves its
-// deferred tap and scroll there. Swallowing is the default; passthrough is the
-// explicit opt-in.
+// The opt-in for a handler that consumes its edge but still wants the grid's release gestures
+// (the node sidebar resolves its deferred tap there).
 type GesturePassthrough interface {
 	PassesGesturesThrough() bool
 }
@@ -54,13 +40,9 @@ func (d *InputDispatcher) Sort() {
 	})
 }
 
-// Dispatch sends input to handlers in z-order. Returns true if any handler
-// consumed or captured the input.
 func (d *InputDispatcher) Dispatch(x, y int, pressed bool) bool {
 	edge := d.notePress(pressed)
 
-	// If a handler has captured input (e.g., during a drag), it receives
-	// all input until it releases capture.
 	var declined InputHandler
 	if d.capture != nil {
 		h := d.capture
@@ -74,12 +56,8 @@ func (d *InputDispatcher) Dispatch(x, y int, pressed bool) bool {
 			}
 			return result != InputIgnored
 		}
-		// A capture holder that declines a NEW press does not own it: the
-		// capture outlived its gesture (DrumView keeps one while a dropdown is
-		// open, grabbed on a mere hover over the drum pane). Release it and
-		// dispatch the press normally — otherwise a press elsewhere (the grid,
-		// outside an open menu) reached no handler, had no owner, and its
-		// release-time grid tap created a node.
+		// A capture holder that declines a NEW press has outlived its gesture (DrumView grabs one on a mere
+		// hover while a dropdown is open): release it and dispatch normally, or the press has no owner.
 		d.capture = nil
 		declined = h
 	}
@@ -104,8 +82,6 @@ func (d *InputDispatcher) Dispatch(x, y int, pressed bool) bool {
 	return false
 }
 
-// notePress tracks the pointer across frames and reports a press EDGE, which
-// starts a new press cycle with no owner yet.
 func (d *InputDispatcher) notePress(pressed bool) (edge bool) {
 	edge = pressed && !d.wasPressed
 	d.wasPressed = pressed
@@ -116,28 +92,19 @@ func (d *InputDispatcher) notePress(pressed bool) (edge bool) {
 	return edge
 }
 
-// SkipFrame records the pointer state on a frame whose input is routed around
-// the dispatcher (a touch gesture handled directly, an exclusive popup). It keeps
-// the press-edge tracking honest: a press cycle that starts on such a frame has
-// no dispatcher owner, so a stale owner from an earlier gesture cannot swallow it.
+// Keeps edge tracking honest on frames routed around the dispatcher, so a stale owner from an
+// earlier gesture cannot swallow a new one.
 func (d *InputDispatcher) SkipFrame(pressed bool) {
 	d.notePress(pressed)
 }
 
-// PressEdge reports whether the frame currently being dispatched starts a new
-// press cycle. Valid inside HandleInput.
+// Valid inside HandleInput.
 func (d *InputDispatcher) PressEdge() bool { return d.edge }
 
-// PressOwner returns the handler that owns the current press cycle (it consumed
-// or captured the press edge), or nil when the press fell through to the canvas.
 func (d *InputDispatcher) PressOwner() InputHandler { return d.pressOwner }
 
-// GestureOwnedByHandler reports whether the current press cycle belongs to a
-// dispatcher handler that swallows its whole gesture, i.e. the release-time
-// tap / long-press must NOT reach the canvas beneath. This is what makes a
-// control drawn on top of the grid opaque for a whole gesture: the press edge
-// decides the owner once, wherever the finger later lifts — without it a press
-// on a button that drifts off it before lifting is ALSO a tap on the grid.
+// The press edge decides the owner once, wherever the finger lifts: otherwise a press that drifts
+// off a button is also a tap on the grid.
 func (d *InputDispatcher) GestureOwnedByHandler() bool {
 	if d.pressOwner == nil {
 		return false
@@ -148,10 +115,6 @@ func (d *InputDispatcher) GestureOwnedByHandler() bool {
 	return true
 }
 
-// DispatchWheel sends a wheel event to handlers in z-order. If a handler
-// has captured input, the wheel is routed to it. Otherwise, dispatch to the
-// first handler whose InputBounds contains the point. Returns true if any
-// handler consumed the wheel.
 func (d *InputDispatcher) DispatchWheel(x, y, steps int) bool {
 	if d.capture != nil {
 		result := d.capture.HandleWheel(x, y, steps)
@@ -170,8 +133,7 @@ func (d *InputDispatcher) DispatchWheel(x, y, steps int) bool {
 	return false
 }
 
-// Clear removes all registered handlers but preserves capture state.
-// Use ClearAll to also release capture.
+// Keeps capture; ClearAll releases it too.
 func (d *InputDispatcher) Clear() {
 	d.handlers = nil
 	// Note: capture is preserved so ongoing drags continue across frames
@@ -184,9 +146,6 @@ func (d *InputDispatcher) ClearAll() {
 	d.pressOwner = nil
 }
 
-// HasCaptureOtherThan reports whether a handler other than h currently holds
-// the dispatcher's capture. This lets components avoid starting new
-// interactions when another component owns the input.
 func (d *InputDispatcher) HasCaptureOtherThan(h InputHandler) bool {
 	return d.capture != nil && d.capture != h
 }

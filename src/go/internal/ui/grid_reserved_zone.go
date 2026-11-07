@@ -2,19 +2,11 @@ package ui
 
 import "image"
 
-// gridHelpReservedMargin is the breathing room added around the settings-gear
-// button when reserving its protected zone: popups clear the gear by this much
-// so their borders never touch it.
+// Popups clear the gear by this much so their borders never touch it.
 const gridHelpReservedMargin = SpaceSM
 
-// gridHelpReservedRect is the protected "no-invade" zone around the settings
-// gear in the grid pane's top-right corner: the gear button rect inflated by
-// gridHelpReservedMargin on every side. No grid-pane popup may render its
-// panel inside this rect. Empty (returned as-is) when the gear does not exist.
-//
-// Because the grid pane's origin is always screen (0,0) (Splitter.GridRect),
-// this rect is directly comparable to every popup's grid-local geometry — no
-// coordinate translation is needed at the call sites.
+// No grid-pane popup may render inside it. The grid pane's origin is screen (0,0), so it compares
+// directly with popup geometry.
 func (g *Game) gridHelpReservedRect() image.Rectangle {
 	gear := g.gridHelpButtonRect()
 	if gear.Empty() {
@@ -27,12 +19,8 @@ func (g *Game) gridHelpReservedRect() image.Rectangle {
 	return zone.Inset(-gridHelpReservedMargin)
 }
 
-// gridTopButtonsReservedRect is the WHOLE top-right button cluster (gear + file +
-// logs + theme), inflated by the reserved margin. A grid-pane popup's own controls (e.g.
-// its close button) must clear this whole cluster, or a higher-z grid button
-// under them swallows the click. gridHelpReservedRect covers only gear+file — it
-// is kept narrower for the group menu's tiny-window placement spec, so the
-// sidebar and the top-right button menus (Settings, Logs) use THIS instead.
+// The WHOLE cluster: a popup's own close button must clear it, or a higher-z grid button swallows
+// the click. gridHelpReservedRect stays narrower for the group menu's tiny-window placement.
 func (g *Game) gridTopButtonsReservedRect() image.Rectangle {
 	zone := g.gridHelpReservedRect() // gear+file, already inset
 	if logs := g.gridLogsButtonRect(); !logs.Empty() {
@@ -54,14 +42,8 @@ func (g *Game) gridTopButtonsReservedRect() image.Rectangle {
 	return zone
 }
 
-// inTopRightButtonZone reports whether (x,y) lies inside the protected top-right
-// grid-button cluster (settings gear + folder + logs + theme), including the reserved
-// margin, the gaps BETWEEN the buttons and every button's touch target.
-// Node/component creation is barred here: a tap that misses a button by a few
-// pixels must be inert, never fall through to the grid and spawn a node between
-// or around the buttons. Uses gridTopButtonsInputRect — the cluster handler's
-// own InputBounds — so "a button took the press" and "the grid may act here"
-// can never disagree. False when the buttons are absent.
+// Nothing is created here: a near miss must be inert. Uses the cluster handler's own bounds, so
+// "a button took the press" and "the grid may act" never disagree.
 func (g *Game) inTopRightButtonZone(x, y int) bool {
 	zone := g.gridTopButtonsInputRect()
 	if zone.Empty() {
@@ -70,20 +52,8 @@ func (g *Game) inTopRightButtonZone(x, y int) bool {
 	return image.Pt(x, y).In(zone)
 }
 
-// avoidReservedRect nudges panel out of reserved — a top-right-corner exclusion
-// zone — while keeping it inside the grid pane [0,gridW]×[0,gridH]. It returns
-// the adjusted panel:
-//
-//  1. reserved empty or no overlap → panel unchanged.
-//  2. the panel fits below the zone → pushed straight down so its top sits at
-//     reserved.Max.Y (the natural escape for the top-right corner).
-//  3. otherwise, if it fits to the left → pushed left so its right edge sits at
-//     reserved.Min.X.
-//  4. otherwise (pane too small to avoid) → best-effort pane clamp; the gear
-//     still paints on top by z-order.
-//
-// The push directions match the gear's fixed top-right position: escaping down
-// or left always moves toward more open space.
+// No overlap: unchanged. Else push down below the zone, else left of it, else clamp to the pane
+// (the gear still paints on top). Down and left always lead toward open space.
 func avoidReservedRect(panel, reserved image.Rectangle, gridW, gridH int) image.Rectangle {
 	if reserved.Empty() || !panel.Overlaps(reserved) {
 		return panel
@@ -101,43 +71,13 @@ func avoidReservedRect(panel, reserved image.Rectangle, gridW, gridH int) image.
 		return clampRectToPane(image.Rect(reserved.Min.X-w, panel.Min.Y, reserved.Min.X, panel.Min.Y+h), gridW, gridH)
 	}
 
-	// Pane too small to avoid the zone: best-effort clamp. The gear's top
-	// z-order keeps it painted on top regardless.
+	// The gear's z keeps it on top regardless.
 	return clampRectToPane(panel, gridW, gridH)
 }
 
-// placeGroupMenu is the deterministic, label-proximal panel-placement
-// chooser for GroupMenu (task-placement-v2; replaces the old avoidRect-based
-// obstacle-relative chain, whose bugs are documented in
-// task-placement-v2-report.md — H1: the old avoidRect's obstacle-relative
-// candidates could ALL fail to fit a wide/tall member bbox, falling back to
-// the already-overlapping panel even when an anchor-adjacent gap existed;
-// H2: the trailing avoidReservedRect re-application could push an
-// avoidRect-cleared panel straight back onto a member, since avoidRect had no
-// way to know its own answer would be invalidated).
-//
-// Candidates are positioned relative to the ANCHOR point (not the obstacle),
-// in fixed priority order — right of anchor, left of anchor (panel's right
-// edge at the anchor), below anchor (centered under it), above anchor
-// (centered over it) — because the menu must stay visually adjacent to the
-// label/badge that opened it in every outcome, never jump to some
-// bbox-relative position that could be far away. Each candidate is pane-
-// clamped, then gear-adjusted (avoidReservedRect) — the adjustment can slide
-// the candidate down/left but never teleport it, so adjacency is preserved.
-//
-// The first candidate whose FINAL rect (post clamp, post gear-adjust)
-// overlaps NO entry in members wins — tested per-member, not against a
-// coarse union bbox: an L-shaped group's bbox is over-conservative and can
-// mask a real gap between members (this is what fixes H1). Because the
-// per-member check runs AFTER the gear adjustment, a gear-push that
-// reintroduces a member overlap is rejected and the next candidate is tried
-// instead of being returned regardless (this is what fixes H2).
-//
-// If every candidate still overlaps at least one member after gear-
-// adjustment, falls back to the candidate with the smallest total overlap
-// area (sum of intersection areas across members) — the only case the
-// product spec allows the panel to cover a member, and even then it's one of
-// the four anchor-adjacent candidates, never a bbox-relative position.
+// Candidates adjacent to the ANCHOR (right, left, below, above), each clamped and gear-adjusted,
+// so the menu always stays next to what opened it. The first whose final rect overlaps NO member wins
+// (per member, not a union bbox); otherwise the least total overlap.
 func placeGroupMenu(anchor image.Point, size image.Point, members []image.Rectangle, gearZone image.Rectangle, gridW, gridH int) image.Rectangle {
 	w, h := size.X, size.Y
 	ax, ay := anchor.X, anchor.Y
@@ -169,8 +109,6 @@ func placeGroupMenu(anchor image.Point, size image.Point, members []image.Rectan
 	return bestRect
 }
 
-// rectIntersectArea returns the pixel area of a's intersection with b (0 when
-// disjoint). Shared by placeGroupMenu's min-overlap fallback scoring.
 func rectIntersectArea(a, b image.Rectangle) int {
 	r := a.Intersect(b)
 	if r.Empty() {

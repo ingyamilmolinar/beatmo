@@ -85,8 +85,6 @@ func (s *playbackSlate) lastTriggered(row int, id model.NodeID) (bool, bool) {
 	return false, false
 }
 
-// Test-only helpers to interact with lastTriggeredByRow without racing the
-// sequencer goroutines. They simply wrap the locked versions above.
 func (s *playbackSlate) setLastTriggeredForTest(row int, id model.NodeID, v bool) {
 	g := s.g
 	g.setLastTriggered(row, id, v)

@@ -24,11 +24,8 @@ func (o *mobileWheelPopupPortalOverlay) HitAreas() []HitArea {
 	areas := []HitArea{
 		{Rect: r, Handler: &mobileWheelHitHandler{popup: o.popup}, Tag: o.tag, Touch: true},
 	}
-	// Anchor tap-to-close: a second press on the icon that opened the popup
-	// closes it. Exact-rect (no Touch expansion) so it outranks the popup's
-	// touch-expanded hit at overlapping pixels (HitIndex sorts exact matches
-	// first), and it belongs to the same modal overlay so it survives the
-	// modal filter.
+	// Exact rect (no touch expansion) so it outranks the popup's expanded hit at overlapping pixels;
+	// in the same modal overlay, so it survives the modal filter.
 	if anchor := o.popup.Anchor(); !anchor.Empty() {
 		areas = append(areas, HitArea{
 			Rect:    anchor,
@@ -42,22 +39,15 @@ func (o *mobileWheelPopupPortalOverlay) HitAreas() []HitArea {
 func (o *mobileWheelPopupPortalOverlay) Draw(screen *ebiten.Image) { o.popup.Draw(screen) }
 func (o *mobileWheelPopupPortalOverlay) ShouldClose() bool         { return !o.popup.IsOpen() }
 
-// HoverAt implements portalHoverer: forwards the plain cursor position so the
-// ladder rung / center grip hover tint shows on desktop (portal input
-// handlers only run on press edges — see OverlayPortal.Update).
 func (o *mobileWheelPopupPortalOverlay) HoverAt(mx, my int) { o.popup.HoverAt(mx, my) }
 
-// HandleEscape (portalEscapeHandler) cancels the edit — reverting the value to
-// the snapshot taken at Open — then returns false so handleEscape's universal
-// CloseTop still removes the portal entry (and fires OnClose). Esc discards.
+// Cancels, then returns false so the universal CloseTop still removes the entry. Esc discards.
 func (o *mobileWheelPopupPortalOverlay) HandleEscape() bool {
 	o.popup.Cancel()
 	return false
 }
 
-// HandleEnter (portalEnterHandler) accepts the edit — persisting it with one
-// undo step — and closes. Returns true (consumed); the now-closed popup is
-// removed by OverlayPortal.CleanupClosed next frame (ShouldClose()==true).
+// Accepts (one undo step); the closed popup is cleaned up next frame.
 func (o *mobileWheelPopupPortalOverlay) HandleEnter() bool {
 	o.popup.Accept()
 	return true
@@ -83,11 +73,8 @@ func (h *mobileWheelHitHandler) OnWheel(x, y, steps int) InputResult {
 	return InputConsumed             // also prevents scroll-through to rows beneath
 }
 
-// mobileWheelAnchorCloseHandler closes the popup on press at the anchor icon
-// rect. The icon's own (zone-owned) hit area is blocked by the modal filter
-// while the popup is open; this handler lives inside the modal overlay's hit
-// set so it survives that filter and gives the icon press a chance to toggle
-// the popup closed.
+// The icon's own hit area is filtered out while the modal is open, so this lives inside the modal
+// overlay to let a second press on the icon close it.
 type mobileWheelAnchorCloseHandler struct{ popup *MobileWheelPopup }
 
 func (h *mobileWheelAnchorCloseHandler) OnPress(x, y int) InputResult {
@@ -104,9 +91,7 @@ func (h *mobileWheelAnchorCloseHandler) OnWheel(x, y, steps int) InputResult {
 	return InputIgnored
 }
 
-// ClaimedKeys / HandleClaimedKeys implement KeyboardKeyClaimant by forwarding to
-// the popup, so the arrows it handles are masked for the grid's arrow-pan while
-// it is open (keyboard_key_claim.go).
+// Forwarded, so the arrows the popup handles are masked for the grid while it is open.
 func (o *mobileWheelPopupPortalOverlay) ClaimedKeys() []ebiten.Key {
 	return o.popup.ClaimedKeys()
 }

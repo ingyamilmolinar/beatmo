@@ -11,37 +11,23 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// SetScreenshot configures the game to capture a screenshot after the UI
-// has settled (90 draw frames ≈ 1.5s at 60fps) and save it to path.
-// The game exits cleanly via ebiten.Termination after saving.
+// Exits through ebiten.Termination after saving.
 func (g *Game) SetScreenshot(path string) {
 	g.screenshotPath = path
 	g.demoScheduled = true
 }
 
-// screenshotReady reports whether the game should terminate after a screenshot.
-// It is gated on the capture having actually fired (screenshotCaptured, set by
-// Draw at screenshotThreshold) rather than on the draw count directly, so the
-// game can never exit before the capture frame — the root cause of the
-// SettleFrames<90 "no PNG" bug.
+// Gated on the capture having fired, never the draw count, so the game cannot exit before it.
 func (g *Game) screenshotReady() bool {
 	return g.screenshotPath != "" && g.screenshotCaptured
 }
 
-// SetScreenshotSettleFrames overrides the default 90-frame wait before
-// captureScreen fires. Used by scenes whose overlays/caches need extra time.
 func (g *Game) SetScreenshotSettleFrames(n int) { g.screenshotSettleFrames = n }
 
-// SetScreenshotSubject configures captureScreen to crop the PNG to the
-// requested subject's on-screen bounds. Pass SubjectFullScreen (the empty
-// Subject) to disable cropping. Resolved via (*Game).SubjectRect.
+// SubjectFullScreen disables cropping.
 func (g *Game) SetScreenshotSubject(s Subject) { g.screenshotSubject = s }
 
-// captureScreen reads pixels from the Ebiten screen and saves as PNG.
-// When a non-empty screenshotSubject is set, the encoded image is cropped
-// to that subject's bounds (resolved via SubjectRect). If the subject is
-// not currently visible, captureScreen returns an error so the harness
-// fails fast instead of writing a misleading full-screen PNG.
+// An invisible subject is an error, never a misleading full-screen PNG.
 func (g *Game) captureScreen(screen *ebiten.Image) error {
 	b := screen.Bounds()
 	w, h := b.Dx(), b.Dy()

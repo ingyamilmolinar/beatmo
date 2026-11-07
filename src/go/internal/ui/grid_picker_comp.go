@@ -6,17 +6,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// GridPickerComponent is the shared machinery behind the node sidebar's grid
-// pickers — the note matrix (NoteMatrixComponent) and the chord matrix
-// (ChordMatrixComponent). It owns an anchored panel solved by solveSwatchGrid
-// (the colour picker's geometry), a header with the title and close button,
-// a left gutter of row labels, an optional page bar (SegmentedControl) and a
-// ROW-scrolling cell grid that keeps every cell at the touch minimum.
-//
-// What a cell MEANS lives in a gridPickerModel; the hosting sidebar turns the
-// visible cells into real Buttons (so they share hover, press animation and
-// deferred-tap dispatch with every other node-menu control) and maps a cell
-// to its action.
+// The note and chord pickers' shared machinery. Cell meaning lives in a gridPickerModel; the sidebar
+// turns visible cells into real Buttons, so they share hover, press and deferred taps.
 type GridPickerComponent struct {
 	overlayBase
 
@@ -32,8 +23,7 @@ type GridPickerComponent struct {
 	closeBtn *Button
 	pages    *SegmentedControl // nil: no page bar
 
-	// scroll pages the ROWS when the container is too short to show them all
-	// at a touch-sized height. Columns always stay fully visible.
+	// Rows scroll so cells stay touch-sized; columns always stay visible.
 	scroll  *ScrollBehavior
 	visRows int
 	rowH    int
@@ -67,16 +57,12 @@ type gridPickerSpec struct {
 }
 
 const (
-	gridPickerGap    = 4
-	gridPickerPad    = 10
-	gridPickerHeader = 32
-	// gridPickerDragSlopPx is how far a press may travel before it counts as
-	// a scroll rather than a pick.
+	gridPickerGap        = 4
+	gridPickerPad        = 10
+	gridPickerHeader     = 32
 	gridPickerDragSlopPx = 6
 )
 
-// gridPickerCell is one visible cell, published for the host to wire as a
-// Button.
 type gridPickerCell struct {
 	Col, Row   int
 	Rect       image.Rectangle
@@ -164,19 +150,15 @@ func (c *GridPickerComponent) rebuild() {
 	if c.pages != nil {
 		band := c.lay.Band
 		if band.Empty() && c.spec.BandH > 0 {
-			// solveSwatchGrid drops the band when the container is short (the
-			// grid pane often is). The page bar is not optional chrome — it is
-			// how three of the four pages are reached — so carve it out of the
-			// top of the cell region instead; the rows scroll in what is left.
+			// The page bar is how most pages are reached, so when solveSwatchGrid drops the band, carve it
+			// out of the cell region instead.
 			band = image.Rect(c.lay.Cells.Min.X, c.lay.Cells.Min.Y, c.lay.Cells.Max.X, c.lay.Cells.Min.Y+c.spec.BandH)
 			c.lay.Cells.Min.Y = band.Max.Y
 		}
 		c.pages.SetRect(image.Rect(band.Min.X, band.Min.Y, band.Max.X, band.Max.Y-gridPickerGap))
 	}
 
-	// Row window. A cell must stay at least touch-min tall; when the solved
-	// cell region cannot hold every row at that height, show as many as fit
-	// and scroll the rest.
+	// Cells stay at least touch-min tall; rows that do not fit scroll.
 	minRowH := c.spec.CellMin
 	if tm := TouchMinTarget(); Profile().IsMobile() && tm > minRowH {
 		minRowH = tm
@@ -206,8 +188,7 @@ func (c *GridPickerComponent) rebuild() {
 	}
 }
 
-// revealSelected keeps the current value in view, so opening the picker
-// never hides what the user is about to change.
+// So opening never hides what the user is about to change.
 func (c *GridPickerComponent) revealSelected() {
 	if c.model == nil {
 		return
@@ -242,8 +223,7 @@ func (c *GridPickerComponent) visibleCells() []gridPickerCell {
 	return out
 }
 
-// cellRect is the on-screen rect of a MODEL row, or ok=false when that row is
-// scrolled out of the window.
+// ok=false when the row is scrolled out.
 func (c *GridPickerComponent) cellRect(col, row int) (image.Rectangle, bool) {
 	vrow := row - c.scroll.VS.First
 	if vrow < 0 || vrow >= c.visRows {
@@ -252,8 +232,7 @@ func (c *GridPickerComponent) cellRect(col, row int) (image.Rectangle, bool) {
 	return c.lay.CellRect(col, vrow, gridPickerGap), true
 }
 
-// RevealRow scrolls the row window so row is visible. Used by the keyboard
-// cursor, whose index counts CELLS while this scroller counts ROWS.
+// The keyboard cursor counts cells while this scroller counts rows.
 func (c *GridPickerComponent) RevealRow(row int) {
 	if c.visRows <= 0 {
 		return
@@ -281,16 +260,8 @@ func (c *GridPickerComponent) InputBounds() image.Rectangle { return c.bounds }
 // Capturing reports whether the component holds pointer capture.
 func (c *GridPickerComponent) Capturing() bool { return c.open && c.pressing }
 
-// HandleInput handles only the PANEL-level gestures: the close button, the
-// page bar, a drag that scrolls the rows, and a press outside that dismisses
-// the picker.
-//
-// Cells are NOT handled here. They are real Buttons owned by the sidebar, so
-// they inherit hover styling, the press animation and the deferred-tap
-// resolution every other node-menu control uses. An earlier version
-// hit-tested cells inside the component and was completely DEAD in the app:
-// the sidebar resolves taps through buttonOrder(), so a control that is not a
-// registered Button never fires.
+// Panel gestures only. Cells are real Buttons owned by the sidebar, because the sidebar resolves
+// taps through buttonOrder(): a control that is not a registered Button never fires.
 func (c *GridPickerComponent) HandleInput(x, y int, pressed bool) InputResult {
 	if !c.open {
 		return InputIgnored
@@ -326,13 +297,10 @@ func (c *GridPickerComponent) HandleInput(x, y int, pressed bool) InputResult {
 	}
 
 	if pt.In(c.bounds) {
-		// The page bar switches pages on the press edge (like every other
-		// SegmentedControl).
 		if c.pages != nil && c.pages.HitTest(x, y) {
 			return InputConsumed
 		}
-		// Only arm a drag over the cells; chrome presses are absorbed so they
-		// neither pick nor dismiss.
+		// Chrome presses are absorbed: they neither pick nor dismiss.
 		if pt.In(c.lay.Cells) && c.scroll.HasScroll() {
 			c.pressing = true
 			c.pressY = y
@@ -355,9 +323,7 @@ func (c *GridPickerComponent) HandleWheel(x, y, steps int) InputResult {
 	return InputConsumed
 }
 
-// DrawChrome paints everything EXCEPT the cells: panel, header, page bar and
-// gutter labels. The sidebar draws the cell Buttons between the chrome and
-// DrawOverlay so they get the shared keycap look.
+// The sidebar draws the cell Buttons between the chrome and DrawOverlay.
 func (c *GridPickerComponent) DrawChrome(dst *ebiten.Image) {
 	if !c.open || c.bounds.Empty() || c.model == nil {
 		return
@@ -385,8 +351,6 @@ func (c *GridPickerComponent) DrawChrome(dst *ebiten.Image) {
 	}
 }
 
-// DrawOverlay paints what must sit ABOVE the cell buttons: the scrollbar and
-// the close button.
 func (c *GridPickerComponent) DrawOverlay(dst *ebiten.Image) {
 	if !c.open || c.bounds.Empty() {
 		return

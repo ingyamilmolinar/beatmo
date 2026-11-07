@@ -14,9 +14,7 @@ func (g *Game) enqueueUI(fn func()) {
 
 // blocksAt reports whether any UI overlay blocks interaction at (x,y).
 func (g *Game) blocksAt(x, y int) bool {
-	// The whole top-right button cluster (gear + folder + logs, plus the gaps
-	// between them and the reserved margin) — not just the gear — so a near-miss
-	// tap never creates a node between or around the buttons.
+	// The whole button cluster with its gaps and margin, so a near miss never creates a node.
 	if g.inTopRightButtonZone(x, y) {
 		return true
 	}
@@ -65,38 +63,26 @@ func (g *Game) handleLinkDrag(left, right bool, gx, gy float64, i, j int) {
 	}
 }
 
-// menuHit reports whether a screen-space point lies within the node sidebar
-// or the group menu.
 func (g *Game) menuHit(x, y int) bool {
 	return g.sidebar.Hit(x, y) || g.groupMenu.Hit(x, y) || g.inTopRightButtonZone(x, y)
 }
 
-// gridMenuDragging reports whether either grid-pane menu card is being dragged
-// by its grip. menuHit (above) is cursor-POSITION based, so once a grip drag
-// pulls the pointer off the card it stops suppressing the camera — the grid
-// would then pan under the moving menu. The camera gate consults this instead.
+// menuHit is position-based, so a grip drag that pulls the pointer off the card would let the grid
+// pan under the moving menu.
 func (g *Game) gridMenuDragging() bool {
 	return (g.sidebar != nil && g.sidebar.drag.Dragging()) ||
 		(g.groupMenu != nil && g.groupMenu.drag.Dragging())
 }
 
-// cursorLabelOccluded reports whether (x,y) sits over a surface that renders
-// or handles input above the grid (sidebar, group menu, settings gear, drum
-// overlays, long-press popup, modal overlays). The cursor coordinate label is
-// an unclipped z=70 layer — above the sidebar and group menu — so it must
-// gate itself on this or it paints over them.
+// The cursor label is an unclipped z=70 layer above the sidebar and group menu, so it gates
+// itself on this or paints over them.
 func (g *Game) cursorLabelOccluded(x, y int) bool {
 	return g.menuHit(x, y) || g.blocksAt(x, y) || g.longPressPopup ||
 		g.modalOverlayActive()
 }
 
-// modalOverlayActive reports whether an INTERACTIVE overlay — a blocking
-// modal/scrim menu/popup (mobile synth-control wheel, volume popup) OR a
-// non-blocking docked panel / dropdown (FX panel, EQ channel dropdown) — is open
-// in the drum view's input trees. The out-of-tree Game-level gesture/camera
-// handlers consult this so a press outside the overlay never leaks to the grid,
-// camera, or timeline beneath; the overlay closes via the tree's click-outside /
-// Esc path instead. Passive tooltips are excluded (they never own input).
+// Blocking or docked: the Game-level gesture and camera handlers consult it so an outside press
+// never reaches the grid; the overlay closes through the tree. Passive tooltips are excluded.
 func (g *Game) modalOverlayActive() bool {
 	return g.drum != nil && g.drum.PortalOwnsInput()
 }

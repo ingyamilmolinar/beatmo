@@ -7,45 +7,20 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Windowed rows-layer scroll cache.
-//
-// During steady follow-scroll playback the drum-row CONTENT does not change —
-// the visible window merely translates as the playhead advances. The legacy
-// composite path (drumview_cache_rows_layer.go) recomposited the whole layer (a
-// full-layer shift-copy into a scratch buffer + double-buffer swap, which churns
-// Ebiten's image-dependency graph via makeStaleIfDependingOn/mapiternext) on
-// essentially every recenter (~every 2 cells). On the single cooperatively-
-// scheduled WASM thread that per-scroll work steals time from the sequencer
-// goroutine and shows up as audio jitter (bench-results/choppy_audio_revisit_
-// 2026-06-13.md).
-//
-// This path renders cells into a buffer WIDER than the visible window
-// (Length + rowsWinPadCells cells), fills the leading edge incrementally as the
-// playhead scrolls, and blits a moving sub-rectangle each frame. It recomposites
-// (rebakes the wide buffer) only when the playhead scrolls past the pad or when
-// content/size changes — turning ~every-scroll full-layer copies into one cheap
-// sub-rect blit per frame. Regression guard:
-// rows_layer_scroll_recompose_test.go.
-//
-// Scope/safety: engaged only during scrolled follow playback (Offset>0 &&
-// FollowPlayback), desktop (non DirectDrawRows), and the full-resolution case
-// (Length <= rowWidth). Every other situation falls back to the legacy path, so
-// the static/edit rowsLayer tests are unaffected. Gated by the
-// rowsLayerWindowingEnabled flag (SetRowsLayerWindowingForTest).
+// During follow-scroll the row content only translates, so render a buffer wider than the
+// window and blit a moving sub-rect; recompositing the layer every scroll steals the single
+// WASM thread from the sequencer. Only for scrolled desktop follow playback at full resolution.
 
 // rowsLayerWindowingEnabled toggles the windowed scroll cache (default on).
 var rowsLayerWindowingEnabled = true
 
-// SetRowsLayerWindowingForTest flips the windowed-scroll-cache flag and returns
-// a restore func. Test/bench seam only.
 func SetRowsLayerWindowingForTest(v bool) func() {
 	prev := rowsLayerWindowingEnabled
 	rowsLayerWindowingEnabled = v
 	return func() { rowsLayerWindowingEnabled = prev }
 }
 
-// rowsWinPadCells returns the lookahead pad (in cells) the wide buffer carries
-// on the scroll-ahead side. Larger pad → fewer rebakes but a bigger buffer.
+// A larger pad means fewer rebakes but a bigger buffer.
 func rowsWinPadCells(length int) int {
 	p := length / 2
 	if p < 8 {
@@ -57,16 +32,12 @@ func rowsWinPadCells(length int) int {
 	return p
 }
 
-// drawRowCompositeWindowed renders the row composite via the windowed scroll
-// cache. Returns true if it handled the draw; false if the caller should fall
-// back to the legacy rowsLayerMaybeRebuild path.
+// false: the caller falls back to rowsLayerMaybeRebuild.
 func (dv *DrumView) drawRowCompositeWindowed(dst *ebiten.Image) bool {
 	if !rowsLayerWindowingEnabled || Profile().DirectDrawRows {
 		return false
 	}
 	if !dv.FollowPlayback() || dv.Offset <= 0 {
-		// Static / non-scrolling: legacy path keeps the many rowsLayer tests
-		// and edit flows unchanged.
 		return false
 	}
 	w, h := dv.Bounds.Dx(), dv.Bounds.Dy()
@@ -103,10 +74,7 @@ func (dv *DrumView) drawRowCompositeWindowed(dst *ebiten.Image) bool {
 		dv.rowsWinLength = n
 		dv.rowsWinBaseX = baseX
 		dv.rowsWinRowOff = dv.rowOffset
-		// Keep the legacy per-row sprite cache coherent on a rebake so any
-		// sprite-based consumer (and the live-edit-during-shift guards) still
-		// sees rebuilt sprites — the windowed buffer renders from Steps, but the
-		// sprite cache must not silently go stale across a content edit.
+		// Keep the per-row sprite cache coherent on a rebake: sprite consumers must not go stale.
 		vis := dv.visibleRows()
 		for i := dv.rowOffset; i < dv.rowOffset+vis && i < len(dv.Rows); i++ {
 			if dv.needsRowRebuild(i) {
@@ -146,9 +114,7 @@ func (dv *DrumView) drawRowCompositeWindowed(dst *ebiten.Image) bool {
 	dst.DrawImage(sub, &op)
 	dv.rowsLayerBytes += int64((srcX1 - srcX0) * bufH * 4)
 
-	// Beat-group separators are drawn per-frame (window-relative, matching
-	// drawBeatGroupSeparators in the sprite path) so they stay locked to the
-	// visible grid rather than scrolling with the cached content.
+	// Per frame and window-relative, so they stay on the visible grid instead of scrolling.
 	dv.drawWinBeatSeparators(dst, baseX, rowWidth, n, rh)
 
 	vis := dv.visibleRows()
@@ -160,11 +126,7 @@ func (dv *DrumView) drawRowCompositeWindowed(dst *ebiten.Image) bool {
 	return true
 }
 
-// renderRowsWinRange renders buffer cells [kStart,kEnd) for every visible row
-// into the wide buffer, matching the sprite path's cell rendering (stripe
-// background + drawDrumCell). Buffer cell k holds absolute cell
-// (rowsWinBakeOffset+k); its content comes from the current row window at index
-// k-drift.
+// Buffer cell k is absolute cell rowsWinBakeOffset+k, read from the row window at k-drift.
 func (dv *DrumView) renderRowsWinRange(kStart, kEnd int) {
 	if kEnd <= kStart || dv.rowsWinBuf == nil {
 		return
@@ -217,10 +179,6 @@ func (dv *DrumView) renderRowsWinRange(kStart, kEnd int) {
 	}
 }
 
-// drawWinBeatSeparators draws the faint per-beat group separators directly to
-// the screen, window-relative, matching drawBeatGroupSeparators in the sprite
-// path. They are NOT baked into the wide buffer so they stay aligned to the
-// visible grid as the cached content scrolls underneath.
 func (dv *DrumView) drawWinBeatSeparators(dst *ebiten.Image, baseX, rowWidth, n, rh int) {
 	g := dv.timelineUnitsPerBeat
 	if g <= 1 || n <= g {

@@ -18,10 +18,8 @@ func notifyMediaSessionState() {
 	}
 }
 
-// initMediaSessionExports registers mediaSessionPause and mediaSessionPlay as
-// JS globals. These are called directly from the browser's media session action
-// handlers and must change game state immediately (not via flags) because
-// requestAnimationFrame does not fire when the browser is backgrounded.
+// These change state directly, not via flags: requestAnimationFrame does not fire while the
+// browser is backgrounded.
 func (g *Game) initMediaSessionExports() {
 	js.Global().Set("mediaSessionPause", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		if !g.Playing() {
@@ -62,12 +60,8 @@ func (g *Game) initMediaSessionExports() {
 		if g.Playing() || g.start == nil {
 			return nil
 		}
-		// The readiness gate applies to EVERY user-initiated play, including
-		// the ones that never touch the on-screen transport: lock-screen play,
-		// hardware media keys, Bluetooth transport buttons. This handler
-		// deliberately bypasses the playPressed chokepoint (see the
-		// re-anchor comment below), so the gate has to be re-asserted here or
-		// a headset button starts playback on a cold voice cache.
+		// The readiness gate covers every play, including media keys and headset buttons, which bypass
+		// the playPressed chokepoint; otherwise they start on a cold voice cache.
 		if !g.playbackReady() {
 			return nil
 		}
@@ -127,12 +121,8 @@ func (g *Game) initMediaSessionExports() {
 			g.syncUIToTime()
 		}
 
-		// Session-relative group-rule ramps: this path bypasses the
-		// playPressed → handlePlaybackTransition chokepoint, so mirror its
-		// `!prevPaused` re-anchor here. ResumeKindResume == continuing a
-		// paused session (ramps preserved); any other kind is a fresh or
-		// seek start and must re-anchor so saved rules ramp from this
-		// session's origin. No emits/undo — runtime ramp state only.
+		// This bypasses handlePlaybackTransition, so mirror its re-anchor: anything but a resume ramps
+		// saved rules from this session's origin.
 		if resumeKind != gamestate.ResumeKindResume {
 			g.graph.ReanchorAllGroupRules(g.playheadAbsSubdiv())
 		}

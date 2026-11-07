@@ -10,9 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// renameInstrumentTo sets a metadata-only display-name override for the
-// instrument in the given row. The instrument ID is never changed — this is
-// the entire rename operation. Empty/whitespace names are ignored.
+// Metadata only: the id never changes. Blank names are ignored.
 func (dv *DrumView) renameInstrumentTo(row int, name string) {
 	name = strings.TrimSpace(name)
 	if name == "" || row < 0 || row >= len(dv.Rows) {
@@ -23,16 +21,11 @@ func (dv *DrumView) renameInstrumentTo(row int, name string) {
 		return
 	}
 	dv.applyInstrumentDisplayName(id, name)
-	// The id is unchanged, so this is NOT an instrument swap — do NOT call
-	// onRowInstrumentChanged. Emit the rename event (publishes
-	// EventInstrumentRenamed + records undo via recordUndo). For a
-	// metadata-only rename old==new id.
+	// Same id, so not an instrument swap: no onRowInstrumentChanged.
 	emitInstrumentRenamed(id, id)
 }
 
-// applyInstrumentDisplayName sets id's display-name override and refreshes
-// every row playing id (label, caches, open menu). Metadata only: the id
-// never changes. Shared by rename and Save As (which names the instrument).
+// Metadata only: the id never changes. Shared by rename and Save As.
 func (dv *DrumView) applyInstrumentDisplayName(id instrument.ID, name string) {
 	audio.SetInstrumentDisplayName(id, name)
 	dv.invalidateLabelCaches()
@@ -87,8 +80,6 @@ func (dv *DrumView) refreshInstruments() {
 		}
 	}
 
-	// Canonical category per instrument, plus the ordered taxonomy filtered to
-	// categories that actually have at least one instrument.
 	dv.instCatByID = map[instrument.ID]audio.Category{}
 	usedCats := map[audio.Category]bool{}
 	for _, id := range opts {
@@ -187,9 +178,7 @@ func (dv *DrumView) IsInstrumentAvailable(id instrument.ID) bool {
 	return ok
 }
 
-// EnsureInstrumentKnown records an instrument id so it appears in menus even
-// when not currently available (e.g., imported from another machine). Once the
-// instrument becomes available, it will be removed from the missing list.
+// Keeps an unavailable id (from another machine) in the menus until it becomes available.
 func (dv *DrumView) EnsureInstrumentKnown(id instrument.ID) {
 	if id == "" {
 		return
@@ -208,8 +197,6 @@ func (dv *DrumView) EnsureInstrumentKnown(id instrument.ID) {
 	dv.refreshInstruments()
 }
 
-// SetInstrumentSearch sets a case-insensitive substring filter applied to the
-// instrument list (IDs, names, or relative paths). It rebuilds the menu if open.
 func (dv *DrumView) SetInstrumentSearch(q string) {
 	dv.instSearch = q
 	if dv.IsInstMenuOpen() {
@@ -217,9 +204,6 @@ func (dv *DrumView) SetInstrumentSearch(q string) {
 	}
 }
 
-// refreshInstMenuComponent rebuilds the open instrument menu after a
-// catalog mutation (rename, registration, search filter, refresh).
-// No-op when the menu is closed or the component isn't constructed.
 func (dv *DrumView) refreshInstMenuComponent() {
 	if dv == nil || dv.instMenuComp == nil {
 		return

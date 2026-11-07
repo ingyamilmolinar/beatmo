@@ -7,11 +7,9 @@ import (
 	"time"
 )
 
-// sequencerLoop listens to engine tick events and schedules audio playback
-// strictly on the engine timeline, decoupled from UI rendering.
+// On the engine timeline, decoupled from rendering.
 func (g *Game) sequencerLoop() {
-	// Browser uses a longer tick (~4ms) to reduce main-thread pressure;
-	// audio lookahead keeps scheduling safe. Desktop uses a tight 1ms tick.
+	// The browser ticks slower to spare the main thread; the lookahead keeps it safe.
 	tick := time.Duration(RuntimeProf().SequencerTickMS) * time.Millisecond
 	if tick <= 0 {
 		tick = time.Millisecond

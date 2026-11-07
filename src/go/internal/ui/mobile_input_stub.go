@@ -25,9 +25,7 @@ var testMobileInputTriggerRegistered map[string]bool
 // testMobileInputRect records the registered rect for direct registrations.
 var testMobileInputRect map[string]image.Rectangle
 
-// testMobileInputTriggerRect records the registered TRIGGER rect (the tap
-// target that activates the native input), so tests can assert a trigger lands
-// on the intended control and not an adjacent one.
+// So tests can assert a trigger lands on the intended control, not its neighbour.
 var testMobileInputTriggerRect map[string]image.Rectangle
 
 //nolint:unused // cross-build-tag stub matching mobile_input_wasm.go
@@ -73,15 +71,10 @@ func mobileInputActive(id string) bool {
 	return false
 }
 
-// lastPointerWasTouchForTest overrides lastPointerWasTouch() under the stub.
-// Defaults to true so existing mobile tests (which force the mobile profile and
-// drive the native <input> path) keep exercising that path without change. A
-// test simulating "mobile layout driven with a MOUSE" (touch-capable device or
-// narrow desktop, pointer=mouse) sets this to false.
+// true by default so mobile tests keep driving the native-input path; false simulates a mobile
+// layout driven with a mouse.
 var lastPointerWasTouchForTest = true
 
-// lastPointerWasTouch reports whether the most recent pointer interaction was a
-// touch/pen. See the WASM implementation in mobile_input_wasm.go.
 func lastPointerWasTouch() bool { return lastPointerWasTouchForTest }
 
 //nolint:unused // cross-build-tag stub matching mobile_input_wasm.go

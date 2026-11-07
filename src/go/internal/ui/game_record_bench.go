@@ -11,10 +11,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// startBenchRecording is invoked from the bench lifecycle once playback
-// has actually started. It assembles a RecordingOptions from the current
-// drum rows and starts a streaming session whose WAV files land in
-// g.benchOutDir.
 func (g *Game) startBenchRecording() {
 	if g.drum == nil {
 		return
@@ -44,9 +40,7 @@ func (g *Game) startBenchRecording() {
 	g.logger.Infof("[bench] Recording started -> %s", g.benchOutDir)
 }
 
-// finishBenchRecording stops the recording, writes a perfStats snapshot
-// next to the WAVs, and logs the per-channel drop counter so the run is
-// self-documenting.
+// The stats snapshot and drop counter make each run self-documenting.
 func (g *Game) finishBenchRecording(stats PerfStats) {
 	if !audio.IsRecording() {
 		return

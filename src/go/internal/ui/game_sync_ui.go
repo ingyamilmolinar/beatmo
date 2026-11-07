@@ -10,8 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
-// syncUIToTime aligns UI pulses and counters to the current engine timeline
-// so that the visual state matches playback even after heavy UI work.
+// So the visuals match playback even after heavy UI work.
 func (g *Game) syncUIToTime() {
 	if !g.Playing() {
 		return
@@ -20,8 +19,7 @@ func (g *Game) syncUIToTime() {
 	if div <= 0 {
 		return
 	}
-	// If playback was enabled programmatically (tests) without going through
-	// the Play button path, initialize the timebase so visuals can advance.
+	// Playback enabled programmatically (tests) never set a timebase.
 	if g.state.PlayStart().IsZero() {
 		if runningUnderGoTest() {
 			return
@@ -120,17 +118,9 @@ func (g *Game) syncUIToTime() {
 		}
 		if freezeTarget > upTo {
 			need := target + 1
-			// Window the predictor actually has values for. The sliding window
-			// only ever advances (Ensure does not rewind), so after a backward
-			// seek/replay the playhead can land BELOW windowStart: indices there
-			// have been evicted and AudibleAt/VisibleAt/TriggeredAt return false
-			// meaning "not computed", NOT "no hit". Freezing that false as an
-			// immutable playback commit permanently masks real hits — most
-			// visibly the start node at abs=0 — which then trips the
-			// scheduler-vs-DrumView parity watchdog on the next playback. We stop
-			// freezing at the first index outside the window and let a later
-			// frame freeze it once refreshDrumRow has re-anchored the window over
-			// the playhead. Regression: TestSwitchInstrumentAfterStopReplayParity.
+			// The predictor window only advances, so after a backward seek the playhead can sit below it,
+			// where queries return "not computed" false, not "no hit". Freezing that would mask real hits
+			// permanently, so stop at the window edge and freeze later.
 			predWinStart, predWinEnd := 0, need
 			if g.engine != nil && g.engine.Predictor != nil {
 				g.engine.Predictor.Ensure(need)
@@ -152,17 +142,13 @@ func (g *Game) syncUIToTime() {
 						on = g.engine.Predictor.VisibleAt(row, j)
 					}
 				}
-				// Once an index has been passed by the playhead it should be
-				// immutable in the UI, regardless of whether the engine has
-				// produced an audible sample yet. Treat all frozen entries as
-				// playback commits so later edits cannot mutate the past.
+				// Passed means immutable, whether or not the engine produced audio yet.
 				g.recordTimelineCommitKind(row, j, on, bi.NodeType, timeline.CommitKindPlayback)
 				frozeUpTo = j
 			}
 			g.frozenUpToByRow[row] = frozeUpTo
 		}
-		// Set animation progress precisely to current fraction within segment.
-		// absDivF and lastIdx are in subdivisions; convert to beats first.
+		// absDivF and lastIdx are in subdivisions.
 		prevT := p.t
 		delta := (absDivF - float64(p.lastIdx)) / float64(div)
 		if delta < 0 {
@@ -177,8 +163,7 @@ func (g *Game) syncUIToTime() {
 		} else if t > 0.999 {
 			t = 0.999
 		}
-		// Clamp to keep animation monotonic within a segment unless we wrapped
-		// very near the end (t ~1 -> 0).
+		// Monotonic within a segment, except a wrap near the end.
 		if prevT > 0 && t < prevT && !(prevT > 0.9 && t < 0.2) {
 			t = prevT
 		}
@@ -238,9 +223,7 @@ func (g *Game) advancePulse(p *pulse) bool {
 		g.nextBeatIdxs = make([]int, len(g.drum.Rows))
 	}
 	idx := g.nextBeatIdxs[p.row]
-	// When beat paths are not initialized (some unit tests construct pulses
-	// directly), avoid calling highlightBeat which depends on prediction
-	// buffers and graph paths. Still advance counters/pulse state.
+	// Some tests build pulses without paths; still advance the counters.
 	if p.row < len(g.beatInfosByRow) && len(g.beatInfosByRow[p.row]) > 0 {
 		g.setLastTriggered(p.row, arrivalBeatInfo.NodeID, true)
 		g.highlightBeat(p.row, idx, arrivalBeatInfo, beatDuration)
@@ -278,8 +261,7 @@ func (g *Game) advancePulse(p *pulse) bool {
 	}
 	p.fromBeatInfo = path[prevIdx]
 	p.toBeatInfo = path[p.pathIdx]
-	// Seam fix: if wrapping to loop start lands on an invisible marker,
-	// jump to the first regular node inside the loop.
+	// A wrap that lands on an invisible marker jumps to the loop's first regular node.
 	if g.isLoopByRow[p.row] && p.pathIdx == g.loopStartByRow[p.row] && p.toBeatInfo.NodeType == model.NodeTypeInvisible {
 		j := p.pathIdx
 		for j < len(path) && path[j].NodeType == model.NodeTypeInvisible {

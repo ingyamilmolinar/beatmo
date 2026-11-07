@@ -1,8 +1,5 @@
 package ui
 
-// CancelAllDeferredTaps cancels any pending deferred taps without firing
-// them. Called when a long press or other gesture should abort in-progress
-// tap tracking.
 func (dv *DrumView) CancelAllDeferredTaps() {
 	dv.contextMenuDeferredTap.Cancel()
 	if dv.overflowMenuScroll != nil {
@@ -39,12 +36,8 @@ func (dv *DrumView) closeNaming() {
 	dv.closeNamingPortal()
 }
 
-// CloseAllPopups closes all open DrumView popups and overlays.
-// Portal CloseTop invokes OnClose callbacks that handle component teardown,
-// boolean clears, and deferred tap cancellation.
 func (dv *DrumView) CloseAllPopups() {
-	// Every popup (menus, pickers, FX panel, channel dropdown, wheel popups,
-	// dialogs) lives in the single global overlay portal — drain it fully.
+	// Every popup lives in the one global portal.
 	for dv.portal().IsOpen() {
 		dv.portal().CloseTop()
 	}
@@ -57,38 +50,12 @@ func (dv *DrumView) CloseAllPopups() {
 	dv.closeEQKnobWheelPopup()
 	dv.closeRename()
 	dv.closeNaming()
-	// The navigation menu (and its owned go-to editor) is a portal component;
-	// closing the nav-menu portal cancels the editor via navMenuComp.Close.
 	dv.closeNavMenuPortal()
 	dv.CancelAllDeferredTaps()
 }
 
-// resetTransientTabState tears down EVERY piece of transient, tab-local
-// interaction state that must not survive a view-mode switch. It runs
-// unconditionally at the single setViewMode chokepoint so every tab
-// transition — toolbar button, segmented control, EQ peek tap — leaves no
-// departing tab able to capture, block, or steal input destined for the
-// next view, regardless of which view we are entering.
-//
-// This is the COMPLETE teardown chokepoint. Previously CloseAllPopups was
-// only invoked from setViewMode when entering an audio tab (gated on
-// MobileEQMode), so switching *into Pads* leaked any open portal/popup. A
-// full-screen modal portal (e.g. the WAV-naming overlay, openNamingPortal)
-// then filters the HitIndex to itself and blocks ALL input — the reported
-// "Sampler->Pads makes input stop working" bug.
-//
-// Pins (every transient overlay/state an departing tab can hold):
-//   - all portal overlays + row/master volume popups + rename + naming
-//     (CloseAllPopups) — including any modal portal that would trap input.
-//   - the Sampler/Synth Save-As dialog (a focused TextInput; NOT a portal,
-//     so CloseAllPopups does not reach it — cancel it explicitly).
-//   - the audio panel's channel dropdown (its `channelOpen` flag lives on the
-//     zone, so reset it via the zone's own accessor — single source of truth).
-//   - in-flight pointer capture (a live drag, e.g. holding a knob).
-//   - keyboard/IME focus held by a departing tab's text field.
-//
-// New transient-overlay openers MUST be torn down here; the discipline test
-// TestResetTransientTabState_TearsDownEveryOpener enforces it.
+// Runs on EVERY view-mode switch, so no departing tab can keep capture, focus or a modal portal
+// that blocks input for the next view. Every new transient overlay must be torn down here.
 func (dv *DrumView) resetTransientTabState() {
 	dv.CloseAllPopups()
 	dv.CancelSaveAsDialog()
