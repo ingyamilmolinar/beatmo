@@ -64,8 +64,7 @@ func TestSetInstrumentParamEditsTheDocument(t *testing.T) {
 	}
 }
 
-// A knob range widens to the shipped value, so editing a neighbouring knob
-// never clamps a tuned value (A10 decision: tuned values stand).
+// Editing a neighbouring knob never clamps a tuned value.
 func TestShippedOutOfRangeValueSurvivesAnEdit(t *testing.T) {
 	resetLibraryForTest(t)
 	SetInstrumentParam(roster.KickAcoustic, "gen1_kick_click", 0.3)

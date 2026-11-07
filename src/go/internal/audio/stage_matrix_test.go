@@ -10,8 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// stageMatrixChecksum is the same order-sensitive bit checksum the golden net
-// uses (synth_golden_identity_test.go) — a single changed sample flips it.
+// Order-sensitive: a single changed sample flips it.
 func stageMatrixChecksum(buf []float32) uint64 {
 	var bits uint64
 	for i, v := range buf {
@@ -20,39 +19,13 @@ func stageMatrixChecksum(buf []float32) uint64 {
 	return bits
 }
 
-// stageMatrixNeutralFlips lists (instrumentID, toggle) pairs where flipping
-// the toggle is legitimately inaudible for reasons stageEffectivelyActive
-// cannot express from the merged params alone (would require replicating
-// per-sample DSP, e.g. a stateful biquad's transfer function at a specific
-// (type,cutoff,Q)). Every entry needs a non-empty, verified rationale;
-// enforced by TestStageMatrixResidualExemptionsHaveRationale below. Kept
-// deliberately as small as possible — prefer teaching stageEffectivelyActive
-// a new rule over adding an entry here.
+// Flips that are legitimately inaudible for a reason stageEffectivelyActive cannot express without simulating DSP; each
+// needs a verified rationale. Prefer teaching the predicate a new rule over adding one.
 var stageMatrixNeutralFlips = map[[2]string]string{}
 
-// stageEffectivelyActive answers "given this instrument's MERGED params
-// (defaults overlaid with its recipe seed), does the named *_enabled stage
-// actually do something to the signal right now?" — a static readable
-// predicate over config, never a DSP simulation. It mirrors the C gating
-// conditions in src/c/modular.c (line citations in each case) so the test
-// can tell "stage is wired but inert" (needs a stageMatrixNeutralFlips entry
-// with a rationale) from "stage genuinely has nothing to act on" (silently
-// OK — flipping it is expected to be a no-op).
-//
-// Two documented pipeline gaps live here, not in a hand-table:
-//   - pitchenv_enabled and the lfo_enabled pitch-vibrato target (lfo_target
-//     1) are structurally unreachable for osc_type 5/6 (noise) and 7-11
-//     (physical-model waveguides: bowed string/brass/reed/flute/sax) — those
-//     types have dedicated render branches (modular.c ~512-586) that run
-//     BEFORE the generic pitch-env/vibrato wavetable branch (modular.c:587)
-//     in the if/else chain, so the modulation code is simply never reached.
-//     See project memory config_declarative_pipeline for the wider context
-//     (physical models still take hardcoded synthesis args).
-//   - lfo_enabled's OTHER two targets are NOT subject to that gap: target 0
-//     (post-mix amplitude wobble, modular.c:690-699) runs unconditionally
-//     after the oscillator/gen-bank stage regardless of osc_type; target 2
-//     (filter cutoff sweep, modular.c:752,754-771) runs whenever the filter
-//     stage itself is enabled, also regardless of osc_type.
+// A static predicate over the params mirroring the C gates, never a DSP simulation, so the test tells "wired but inert"
+// from "nothing to act on". Pitch env and vibrato are unreachable for the noise and physical-model osc types, whose
+// render branches run first; the LFO's amp and cutoff targets are not.
 func stageEffectivelyActive(toggle string, merged RecipeParams) bool {
 	get := func(name string, def float64) float64 {
 		if v, ok := merged[name]; ok {
@@ -66,22 +39,12 @@ func stageEffectivelyActive(toggle string, merged RecipeParams) bool {
 
 	switch toggle {
 	case "osc_enabled":
-		// modular.c:443,509-676 — osc_on gates the ENTIRE oscillator/generator
-		// if/else chain, including the physical-model branches (osc_type
-		// 7-11 run INSIDE this gate — the physical model IS the osc, so
-		// disabling it silences that voice too, same as any other osc_type).
+		// Gates the whole generator chain, physical models included: the model IS the osc.
 		return get("osc_enabled", 1) >= 0.5
 
 	case "fm_enabled":
-		// modular.c:444,521-528 gates whether build_fm_preset's mod_matrix
-		// (modular.c:76-125) survives (fm_on false ⇒ memset to zero ⇒
-		// carrier-only). Only reachable when osc_enabled and osc_type==4.
-		// A mod_matrix edge only contributes when BOTH the source op's own
-		// level (its output amplitude, fmsynth.c op_out=amplitude*env*wave)
-		// AND that edge's depth are non-zero — matches fm_render's
-		// mod_input[dst] += op_out[src]*depth (fmsynth.c:137-139). op1's
-		// self-feedback (mod_matrix[0][0]=depth[0]) is wired for every
-		// algorithm; the chain edges depend on fm_algorithm (modular.c:106-124).
+		// Only with osc_type 4. An edge contributes only when the source op's level AND the edge's depth are non-zero; op1's
+		// self-feedback exists in every algorithm.
 		if !oscOn || oscType != 4 {
 			return false
 		}
@@ -104,11 +67,7 @@ func stageEffectivelyActive(toggle string, merged RecipeParams) bool {
 		}
 
 	case "pitchenv_enabled":
-		// modular.c:454-456 (pe_on/pe_amt/pe_decay), consumed at 529-537
-		// (FM branch; the actual gate is fmsynth.c:127 pitch_env_amount!=0 &&
-		// pitch_env_decay>0) and 587,597 (wavetable branch, same condition).
-		// Structurally unreached for noise/physical-model osc_types (the
-		// documented pipeline gap — see doc comment above).
+		// The engine gate is amount ≠ 0 && decay > 0, and never for noise/physical-model osc types.
 		if !oscOn || isNoiseOrPhysical {
 			return false
 		}
@@ -116,13 +75,7 @@ func stageEffectivelyActive(toggle string, merged RecipeParams) bool {
 		return peOn && get("pitchenv_amt", 0) != 0 && get("pitchenv_decay", 0) > 0
 
 	case "lfo_enabled":
-		// modular.c:457-461 (lfo_on/rate/depth/target/delay). Three
-		// independent consumers keyed by lfo_target:
-		//   0 — post-mix amp wobble (690-699), unconditional on osc_type.
-		//   1 — pitch vibrato (vib_on, line 506), consumed only inside the
-		//       same wavetable branch as pitchenv (587) — same physical-
-		//       model/noise pipeline gap as pitchenv_enabled.
-		//   2 — filter cutoff sweep (752,754-771), gated by filt_on only.
+		// Target 0 (amp) runs for every osc type; 1 (vibrato) has the same gap as pitch env; 2 (cutoff) needs the filter on.
 		lfoOn := get("lfo_enabled", 0) >= 0.5
 		if !lfoOn {
 			return false
@@ -142,12 +95,7 @@ func stageEffectivelyActive(toggle string, merged RecipeParams) bool {
 		}
 
 	case "filtenv_enabled":
-		// modular.c:463-466 (filtenv_on/amt/decay/attack), consumed at
-		// 750-804 INSIDE `if (filt_on)`. The cut_sweep branch (752,
-		// lfo_target==2, 754-771) takes priority over filt_env_on in the
-		// if/else-if chain (772), so a simultaneous LFO cutoff-sweep would
-		// starve this stage — checked here even though no shipped instrument
-		// currently configures both simultaneously.
+		// Inside the filter stage, and an LFO cutoff sweep takes priority over it.
 		if get("filter_enabled", 1) < 0.5 {
 			return false
 		}
@@ -161,36 +109,21 @@ func stageEffectivelyActive(toggle string, merged RecipeParams) bool {
 		return filtenvOn && get("filtenv_amt", 0) > 0 && get("filtenv_decay", 0) > 0
 
 	case "filter_enabled":
-		// modular.c:446,750-804: filt_on gates the entire biquad stage. No
-		// shipped (filter_type,cutoff,Q) combination reduces to a true
-		// identity transform, so this reduces to the raw gate. If a genuine
-		// fully-open-and-inert filter config is ever found, exempt THAT
-		// (instrument,toggle) pair in stageMatrixNeutralFlips rather than
-		// complicating this predicate.
+		// No shipped filter configuration is a true identity, so this is the raw gate; exempt a genuinely inert pair instead
+		// of complicating it.
 		return get("filter_enabled", 1) >= 0.5
 
 	case "drive_enabled":
-		// modular.c:447,935-941: drive_on && drive>0 gates the tanh
-		// waveshaper — drive<=0 leaves the stage entirely unexecuted.
+		// drive ≤ 0 leaves the waveshaper unexecuted.
 		return get("drive_enabled", 1) >= 0.5 && get("drive", 0) > 0
 
 	case "burst_enabled":
-		// modular.c:462,707-727: burst_on multiplies the FULL mix by a
-		// summed multi-burst envelope: env(t) = Σ amp_j·e^(-sharp·(t-off_j))
-		// for t>=off_j, accumulated ONLY when amp_j!=0. With all four amps
-		// at 0 the envelope never accumulates anything and stays exactly
-		// 0.0 for the whole buffer, so an ENABLED burst stage silences a
-		// real signal outright — there is no configuration where burst_on
-		// is a true no-op against a non-silent voice. Unconditionally active.
+		// An enabled burst multiplies the mix by Σ amp_j·e^(-sharp·(t-off_j)); with every amp at 0 that is 0, so it is never a
+		// no-op against a sounding voice.
 		return true
 
 	case "env_enabled":
-		// modular.c:445,730-746: env_on applies the amp ADSR. The only
-		// configuration where toggling it is inaudible is a fully-unity
-		// envelope for the whole buffer: zero attack, zero decay, full
-		// sustain, zero release (adsr_tick never leaves 1.0 and the release
-		// trigger — rel_start = samples-rel_samples — never fires inside the
-		// loop when rel_samples==0).
+		// Inaudible only for a fully unity envelope: zero attack, zero decay, full sustain, zero release.
 		a := get("amp_attack", 0.005)
 		d := get("amp_decay", 0.300)
 		sus := get("amp_sustain", 0.600)
@@ -198,10 +131,7 @@ func stageEffectivelyActive(toggle string, merged RecipeParams) bool {
 		return a > 0 || d > 0 || sus < 1 || rel > 0
 
 	case "kick_enabled":
-		// modular.h:443 + modular_stages.c:390,2354: kick_enabled<0.5
-		// silences every gen-slot voice configured with source==5 (the
-		// harmonic-bank kick voice); the toggle is a no-op unless at least
-		// one of the (up to modularGenSlots) gen slots selects it.
+		// A no-op unless some gen slot plays the kick voice (source 5).
 		for k := 1; k <= modularGenSlots; k++ {
 			name := fmt.Sprintf("gen%d_source", k)
 			if int(math.Round(get(name, 0))) == 5 {
@@ -211,11 +141,7 @@ func stageEffectivelyActive(toggle string, merged RecipeParams) bool {
 		return false
 
 	case "snare_enabled":
-		// modular.h (Phase-17) + modular_gen_slot_snare: snare_enabled<0.5
-		// silences every gen-slot voice configured with source==7 (the
-		// snare-ish voice); the toggle is a no-op unless at least one of the
-		// (up to modularGenSlots) gen slots selects it. Exact mirror of the
-		// kick_enabled rule above.
+		// A no-op unless some gen slot plays the snare voice (source 7).
 		for k := 1; k <= modularGenSlots; k++ {
 			name := fmt.Sprintf("gen%d_source", k)
 			if int(math.Round(get(name, 0))) == 7 {
@@ -225,23 +151,15 @@ func stageEffectivelyActive(toggle string, merged RecipeParams) bool {
 		return false
 
 	case "formant_enabled":
-		// modular.c (Phase-15): formant_on gates two consumers — the breath
-		// noise injection (runs only when formant_breath > 0) and the vowel-
-		// bank stage (modular_formant_process returns immediately when
-		// formant_mix <= 0, an exact bypass). With both mix and breath at
-		// their identity 0 the toggle is a structural no-op in either
-		// direction.
+		// Gates the breath noise (breath > 0) and the vowel bank (mix > 0); with both 0 it is a no-op either way.
 		return get("formant_mix", 0) > 0 || get("formant_breath", 0) > 0
 
 	case "modal_enabled":
-		// modal_bank.c: the MODAL stage renders its table rows; with no rows
-		// (modal_count 0) or modal_keep 0 there is nothing to ring.
+		// No rows, or keep 0, leaves nothing to ring.
 		return get("modal_count", 0) > 0 && get("modal_keep", 128) > 0
 
 	case "strike_enabled":
-		// modal_bank.c: STRIKE only reweights the modal rows (and adds its
-		// click to them) — inert without a playing MODAL stage, and an exact
-		// identity at tc 0 / hardness 0 / click 0.
+		// STRIKE only reweights the modal rows: inert without them, identity at tc 0 / hardness 0 / click 0.
 		modal := get("modal_enabled", 0) >= 0.5 && get("modal_count", 0) > 0 && get("modal_keep", 128) > 0
 		return modal && (get("strike_tc", 0) > 0 || get("strike_hardness", 0) != 0 || get("strike_click", 0) > 0)
 
@@ -250,28 +168,14 @@ func stageEffectivelyActive(toggle string, merged RecipeParams) bool {
 		return get("noiseband_count", 0) > 0
 
 	default:
-		// An *_enabled toggle with no modeled predicate: fail loud (treat as
-		// active) rather than silently accepting a neutral flip we can't
-		// justify — forces a deliberate rule addition above instead of a
-		// quiet false-negative.
+		// An unmodelled toggle fails loud (active) rather than quietly accepting a flip nobody justified.
 		return true
 	}
 }
 
-// TestP5_EveryStageToggleablePerInstrument is the composability audit (spec P5:
-// "every stage toggleable"): for every builtin instrument and every *_enabled
-// stage toggle its recipe schema exposes, flipping the toggle must produce a
-// finite render, and must audibly change the render (checksum) unless
-// stageEffectivelyActive says the stage has nothing to act on given this
-// instrument's merged params. Two possible outcomes on a checksum match:
-//   - stage was NOT effectively active → OK, expected no-op.
-//   - stage WAS effectively active → FAIL (inert gate) unless the pair is a
-//     residual stageMatrixNeutralFlips entry with a verified rationale for why
-//     the rule can't express this case.
-//
-// A checksum MISMATCH (audible change) always passes UNLESS the pair sits in
-// stageMatrixNeutralFlips — that's a stale exemption (the gate is no longer
-// inert) and must be removed from the table.
+// Every *_enabled toggle on every built-in renders finite and audibly changes the render, unless the predicate says
+// the stage has nothing to act on. A neutral flip of an active stage fails unless exempted; an audible flip of an
+// exempted pair fails as a stale exemption.
 func TestP5_EveryStageToggleablePerInstrument(t *testing.T) {
 	Reset()
 	ResetInstruments()
@@ -301,9 +205,7 @@ func TestP5_EveryStageToggleablePerInstrument(t *testing.T) {
 			if len(name) < 9 || name[len(name)-8:] != "_enabled" {
 				continue
 			}
-			// kick_enabled / snare_enabled are constants of the kick / snare
-			// voice MODULE TYPE (spec 2026-10-04 §4), not user switches: the
-			// voice IS the instrument, and the Synth tab never offered them.
+			// Constants of the voice's module type, not switches: the voice IS the instrument.
 			if IsFamilyEnableParam(name) {
 				continue
 			}
@@ -330,10 +232,7 @@ func TestP5_EveryStageToggleablePerInstrument(t *testing.T) {
 			why, exempt := stageMatrixNeutralFlips[key]
 
 			if stageMatrixChecksum(buf) != baseSum {
-				// Audible change. Good — unless this pair was exempted as a
-				// documented neutral flip, in which case the exemption is
-				// now stale (the gate became audible, e.g. after a seed or
-				// engine change) and must be removed.
+				// An exempted pair that is now audible is a stale exemption.
 				if exempt {
 					t.Errorf("%s: flipping %s (%v -> %v) DID change the render — stale stageMatrixNeutralFlips entry (rationale: %q); remove the stale entry", id, name, cur, flipped, why)
 				}
@@ -342,13 +241,9 @@ func TestP5_EveryStageToggleablePerInstrument(t *testing.T) {
 
 			// No audible change.
 			if !stageEffectivelyActive(name, merged) {
-				// Expected: the stage had nothing to act on given this
-				// instrument's merged params. No exemption needed.
 				continue
 			}
-			// The rule says this stage SHOULD have been audible but wasn't —
-			// either a genuine inert gate (regression) or a documented
-			// residual case the rule can't express.
+			// An inert gate, or a residual case the predicate cannot express.
 			if !exempt {
 				t.Errorf("%s: flipping %s (%v -> %v) did not change the render — stage gate inert per stageEffectivelyActive (add a stageMatrixNeutralFlips entry ONLY with a verified rationale, or teach stageEffectivelyActive the missing rule)", id, name, cur, flipped)
 			}
@@ -356,10 +251,7 @@ func TestP5_EveryStageToggleablePerInstrument(t *testing.T) {
 	}
 }
 
-// TestStageMatrixResidualExemptionsHaveRationale enforces Finding 3: every
-// surviving entry in stageMatrixNeutralFlips (ideally none) must carry a
-// non-empty rationale string — an empty string would defeat the point of the
-// residual table (a silent, unexplained exemption).
+// An empty rationale would be a silent, unexplained exemption.
 func TestStageMatrixResidualExemptionsHaveRationale(t *testing.T) {
 	for key, why := range stageMatrixNeutralFlips {
 		if why == "" {

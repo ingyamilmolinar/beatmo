@@ -7,9 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// bundleTone builds a steady sine for bundle/track tests. Deliberately local
-// to the registry test files so it cannot drift with the older analyzers'
-// fixtures.
+// Local to these tests, so it cannot drift with the older analyzers' fixtures.
 func bundleTone(sr int, hz, secs float64) wave.Wave {
 	n := int(float64(sr) * secs)
 	s := make([]float64, n)

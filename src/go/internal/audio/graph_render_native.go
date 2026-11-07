@@ -4,12 +4,8 @@ package audio
 
 import "github.com/ingyamilmolinar/beatmo/internal/instrument"
 
-// RenderDocForGraph renders d the way a trigger of id plays it on desktop: the
-// voice cache's render (renderDocVoice: C → document FX → gate tail →
-// peak-normalise × amplitude) plus id's Sampler edit, at pitch (melodic
-// documents render AT pitch; the rest are resampled after the edit, as
-// playback does). Pure: writes no cache or global, so it may run on any
-// goroutine. Guard: TestGraphRenderIsThePlayedVoice.
+// Melodic documents render AT pitch; the rest are resampled after the Sampler edit, as playback does. Pure: writes
+// no cache or global, so it may run on any goroutine.
 func RenderDocForGraph(id instrument.ID, d instrument.Doc, pitch float64) ([]float32, int, error) {
 	sr := SampleRate()
 	melodic := d.Render.Melodic

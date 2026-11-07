@@ -16,10 +16,7 @@ extern void beatmo_gcov_flush(void);
 */
 import "C"
 
-// FlushCCoverage writes gcov .gcda counter files when the C DSP library was
-// built with --coverage (make coverage-c). No-op otherwise. Called from
-// TestMain in main_native_test.go because the Go runtime never runs C
-// exit handlers.
+// The Go runtime never runs C exit handlers, so TestMain flushes the gcov counters (make coverage-c).
 func FlushCCoverage() {
 	C.beatmo_gcov_flush()
 }

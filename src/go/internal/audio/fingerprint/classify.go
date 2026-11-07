@@ -2,19 +2,10 @@ package fingerprint
 
 import "math"
 
-// classify.go — the verdict classifiers, moved VERBATIM out of
-// cmd/refs/diagnose.go so the registry can own classification.
-//
-// Bodies are unchanged apart from the axisVerdict -> Verdict rename and
-// taking thresholds as parameters instead of reading package-level constants
-// in cmd/refs. That verbatim-ness is deliberate and load-bearing: it is what
-// guarantees cmd/refs/diagnose_acceptance_test.go's ten-instrument gate keeps
-// producing identical verdicts across the refactor. Do not "clean up" the
-// logic here without re-running that gate.
+// Moved verbatim so the registry owns classification; only thresholds became parameters. Keep the logic as is
+// unless the diagnose acceptance gate is re-run.
 
-// classifyFraction returns the verdict and direction for a fraction-style
-// axis, using the (driftTh, mismatchTh) pair appropriate to that axis's
-// natural scale — see Kind.Thresholds.
+// Thresholds on the axis's natural scale (Kind.Thresholds).
 func classifyFraction(ref, synth, driftTh, mismatchTh float64) (Verdict, string) {
 	d := synth - ref
 	a := math.Abs(d)
@@ -36,9 +27,7 @@ func classifyFraction(ref, synth, driftTh, mismatchTh float64) (Verdict, string)
 	return v, dir
 }
 
-// classifySeconds returns the verdict and direction for a duration-style
-// axis. Handles the degenerate ref==0 or synth==0 case (silence / no event on
-// one side) as an automatic MISMATCH rather than a divide-by-zero.
+// ref==0 or synth==0 (no event on one side) is an automatic MISMATCH, not a divide by zero.
 func classifySeconds(ref, synth, driftRatio, mismatchRatio float64) (Verdict, string) {
 	if ref <= 0 && synth <= 0 {
 		return VerdictOK, ""
@@ -73,8 +62,7 @@ func classifySeconds(ref, synth, driftRatio, mismatchRatio float64) (Verdict, st
 	return v, dir
 }
 
-// classifyHz returns the verdict and direction for a frequency-style axis,
-// compared as a signed percentage of the reference.
+// A signed percentage of the reference.
 func classifyHz(ref, synth, driftPct, mismatchPct float64) (Verdict, string) {
 	if ref <= 0 {
 		if synth <= 0 {
@@ -102,34 +90,22 @@ func classifyHz(ref, synth, driftPct, mismatchPct float64) (Verdict, string) {
 	return v, dir
 }
 
-// decayRateFlatEps: a |dB/s| below this is treated as "no measurable decay
-// trend at all" (a perfectly flat/sustained envelope) rather than a tiny but
-// real slope, since the OLS fit over RMS-envelope hops carries measurement
-// noise at this scale.
+// Below this a slope is "no measurable trend": the OLS fit over envelope hops carries noise at this scale.
 const decayRateFlatEps = 1e-6
 
-// ClassifyDecayRate is the escalation classifier for the
-// both-sides-RingT60-extrapolated case: it compares ref/synth
-// EnvelopeSegments.OverallDecayRateDBPerSec via the RATIO OF IMPLIED T60s
-// each rate predicts. A constant rate r implies T60 = 60/|r| seconds, so the
-// ratio of implied T60s (synth/ref) equals |ref|/|synth| — the same
-// seconds thresholds therefore apply directly to the rate magnitudes, just
-// inverted (a bigger decay-rate magnitude implies a SHORTER T60).
-//
-// Exported because the ring-T60 descriptor uses it as a custom Compare
-// override rather than the renderer special-casing it.
+// For two extrapolated ring T60s, compares the decay RATES through the T60s they imply: T60 = 60/|r|, so the
+// seconds thresholds apply to |ref|/|synth| directly (a larger rate means a SHORTER T60). Exported for the ring-T60
+// descriptor's Compare override.
 func ClassifyDecayRate(refRate, synthRate, driftRatio, mismatchRatio float64) (Verdict, string) {
 	refAbs, synthAbs := math.Abs(refRate), math.Abs(synthRate)
 	switch {
 	case refAbs < decayRateFlatEps && synthAbs < decayRateFlatEps:
 		return VerdictOK, ""
 	case synthAbs < decayRateFlatEps:
-		// synth shows literally no decay trend while ref does — synth's
-		// implied ring never fades, i.e. far too long/sustained.
+		// Synth never fades while ref does: far too long.
 		return VerdictMismatch, "high"
 	case refAbs < decayRateFlatEps:
-		// ref shows no decay trend but synth does — synth is, relatively,
-		// the one that fades (too short).
+		// Ref never fades while synth does: synth is the short one.
 		return VerdictMismatch, "low"
 	}
 	t60Ratio := refAbs / synthAbs // == impliedSynthT60 / impliedRefT60

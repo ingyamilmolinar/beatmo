@@ -48,11 +48,7 @@ func init() {
 				sum += math.Abs(ref.Values[i] - synth.Values[i])
 			}
 			d := sum / float64(n)
-			// Declared thresholds are already in this comparator's units
-			// (dB/s), so they pass straight through.
-			// The display already carries the value in dB/s; passing it
-			// through verbatim avoids appending a second rendering of the
-			// same number.
+			// Declared thresholds are already in dB/s; the display already carries the value.
 			return reducedDeltaDisplay(d, fmt.Sprintf("mean|Δ| %.1f dB/s", d), drift, mismatch)
 		},
 	})
@@ -135,16 +131,10 @@ func init() {
 			}
 			mean := sum / float64(n)
 			label := fmt.Sprintf("mean %.2fx (worst %s %.2fx)", math.Pow(2, mean), worstLabel, math.Pow(2, worstAbs))
-			// This descriptor DECLARES its thresholds as T60 RATIOS (1.4x
-			// drift, 2.0x mismatch -- readable, and the unit the scale
-			// harness perturbs in) but COMPARES mean|log2 ratio|, so the
-			// pair is converted into the working domain here. The literals
-			// 0.5 / 1.0 that used to sit in this call were exactly
-			// log2(1.4) / log2(2.0); spelling the conversion out is what
-			// lets calibration reach this row at all.
+			// DECLARED as T60 ratios (1.4×, 2.0×) but COMPARED as mean|log2|, so the pair is converted here, which is what lets
+			// calibration reach this row.
 			d := reducedDeltaDisplay(mean, label, math.Log2(drift), math.Log2(mismatch))
-			// Report the magnitude back in the DECLARED units so calibration
-			// and this comparator agree on what a threshold means.
+			// Back in the DECLARED units, so calibration and comparator agree.
 			d.Mag, d.MagOK = math.Pow(2, mean), true
 			if signed/float64(n) > 0 {
 				d.Direction = "high"

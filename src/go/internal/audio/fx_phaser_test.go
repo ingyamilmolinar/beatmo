@@ -56,8 +56,7 @@ func TestPhaserSetParam(t *testing.T) {
 }
 
 func TestPhaserStagesAffectOutput(t *testing.T) {
-	// stages=2 vs stages=12 should produce different RMS due to different
-	// numbers of notches in the frequency response.
+	// More stages, more notches, different RMS.
 	p2 := newPhaser(44100, map[string]float64{
 		"stages": 2, "rate": 0.5, "depth": 0.7, "feedback": 0.5, "mix": 1,
 	})

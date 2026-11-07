@@ -16,8 +16,7 @@ func main() {
 	js.Global().Set("__wasmReady", false)
 	js.Global().Get("document").Call("addEventListener", "mousedown", js.FuncOf(func(js.Value, []js.Value) interface{} {
 		audio.Resume()
-		// The browser has no instrument until Go pushes its document (the full
-		// app does it at boot): push the two this harness plays.
+		// The browser has no instrument until Go pushes its document.
 		for _, id := range []instrument.ID{roster.Snare, roster.Kick} {
 			audio.EnsureInstrumentDoc(id)
 		}

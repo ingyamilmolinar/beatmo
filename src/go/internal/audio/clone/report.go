@@ -73,8 +73,6 @@ func (a Analysis) Markdown() string {
 	return b.String()
 }
 
-// CandidateReport is what the CLI did with an Analysis: the inverted
-// document, the refinement and the timings (report.json; spec §6a).
 type CandidateReport struct {
 	DocID     instrument.ID `json:"doc_id"`
 	DocSHA    string        `json:"doc_sha"`

@@ -10,22 +10,15 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Kit is the Phase-6 "instrument set / drum kit" abstraction. A kit
-// declares which instrument id each role maps to (kick → "kick-808",
-// snare → "snare-fat", …); applying the kit reassigns every row whose
-// resolved role matches a kit entry, preserving the row's mix (volume,
-// EQ, insert effects). The data model lands now per the "code infra, no
-// UI" scope; the Synth-tab / Mixer surfaces follow in a later round.
+// Maps each role to an instrument id (kick → "kick-808", …); applying it rebinds every row whose role matches, keeping
+// the row's mix.
 type Kit struct {
 	ID          string                            `json:"id"`
 	DisplayName string                            `json:"display_name"`
 	Members     map[instrument.Role]instrument.ID `json:"members"` // role → instrument id
 }
 
-// KitRowBinder is the minimal contract Kit.Apply needs from the UI layer.
-// internal/ui.DrumView satisfies it; tests pass a stub. Keeping the
-// surface to the two methods Apply actually calls means the audio package
-// stays free of any UI-domain type dependency.
+// Only the two methods Apply calls, so the audio package depends on no UI type.
 type KitRowBinder interface {
 	RowCount() int
 	RowInstrument(idx int) instrument.ID
@@ -33,17 +26,13 @@ type KitRowBinder interface {
 	SetRowInstrument(idx int, newInstID instrument.ID)
 }
 
-// Kit registry — process-global; mirrors the recipe registry shape so
-// kit lifecycle events can flow through the same hooks bus.
 var (
 	kitRegMu sync.RWMutex
 	kitReg   = map[string]Kit{}
 	kitOrder []string
 )
 
-// RegisterKit upserts a kit. Empty ID is a no-op. Replacing an existing
-// id preserves insertion order. Safe to call concurrently with
-// ApplyKit / KitsForExport (mutual exclusion via kitRegMu).
+// An empty ID is a no-op; replacing an id keeps its position.
 func RegisterKit(k Kit) {
 	if k.ID == "" {
 		return
@@ -92,8 +81,7 @@ func KitForID(id string) (Kit, bool) {
 	}, true
 }
 
-// KitsForExport returns every registered kit in registration order.
-// Used by internal/ui/export.go to embed kits in the project file.
+// In registration order.
 func KitsForExport() []Kit {
 	kitRegMu.RLock()
 	defer kitRegMu.RUnlock()
@@ -117,15 +105,7 @@ func ResetKitsForTest() {
 	kitOrder = nil
 }
 
-// ApplyKit walks the binder's rows and, for each row whose role
-// resolves to a kit member, calls SetRowInstrument with the kit's
-// instrument id for that role. Row volume / EQ / insert
-// effects are untouched — only the row's instrument binding changes.
-//
-// After the walk, publishes hooks.EventKitApplied with the kit id +
-// the members map snapshot so external subscribers (eventlogger,
-// scripting) see the change. Returns the number of rows actually
-// rebound (zero is valid: a kit with no matching roles is a no-op).
+// Only the row's instrument binding changes. Returns the rows actually rebound (zero is valid).
 func ApplyKit(k Kit, binder KitRowBinder) int {
 	if binder == nil || len(k.Members) == 0 {
 		return 0
@@ -143,9 +123,7 @@ func ApplyKit(k Kit, binder KitRowBinder) int {
 	return rebound
 }
 
-// KitPlan is what applying k changes, without changing it: row index → the
-// kit member that row will play (rows whose role the kit does not fill, or
-// that already play its member, are absent).
+// Without changing anything. Rows the kit does not fill, or already on its member, are absent.
 func KitPlan(k Kit, binder KitRowBinder) map[int]instrument.ID {
 	plan := map[int]instrument.ID{}
 	for i := 0; i < binder.RowCount(); i++ {
@@ -164,10 +142,7 @@ func KitPlan(k Kit, binder KitRowBinder) map[int]instrument.ID {
 	return plan
 }
 
-// RoleForInstrument returns the kit role an instrument plays: a shipped
-// instrument's own role (builtinProperties; an instance "x--N" has x's),
-// else the role its name suggests for an instrument the user named, else ""
-// (the kit walk skips it). An explicit per-row Role overrides this.
+// A per-row Role overrides this; "" makes the kit walk skip the row.
 func RoleForInstrument(instID instrument.ID) instrument.Role {
 	if instID == "" {
 		return instrument.RoleNone
@@ -178,9 +153,7 @@ func RoleForInstrument(instID instrument.ID) instrument.Role {
 	return roleFromName(InstrumentDisplayName(instID))
 }
 
-// roleFromName infers the kit role of an instrument the user named, by
-// case-insensitive substring. Order matters: "open-hihat" must hit the hat
-// rule before any other.
+// Order matters: "open-hihat" must hit the hat rule first.
 func roleFromName(name string) instrument.Role {
 	lc := strings.ToLower(name)
 	switch {

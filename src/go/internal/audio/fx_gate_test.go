@@ -66,8 +66,7 @@ func TestGateNoNaN(t *testing.T) {
 }
 
 func TestGateSetParam(t *testing.T) {
-	// With threshold=-30 dB, a 0.01 amplitude signal (~-40 dB) is gated.
-	// After lowering threshold to -60, it should pass.
+	// 0.01 (~-40 dB) is gated at -30 dB and passes at -60.
 	g := newGate(44100, DefaultParams(EffectGate))
 	// Set range to a moderate value so we can distinguish gated vs open.
 	g.SetParam("range", -60)
@@ -103,8 +102,7 @@ func TestGateSetParam(t *testing.T) {
 }
 
 func TestGateTimingRelease(t *testing.T) {
-	// Feed loud signal to open the gate, then silence to close it.
-	// Verify the gate transitions smoothly (envelope decays).
+	// The envelope decays smoothly rather than closing instantly.
 	g := newGate(44100, map[string]float64{
 		"threshold": -30,
 		"attack":    1,
@@ -119,9 +117,7 @@ func TestGateTimingRelease(t *testing.T) {
 		g.ProcessSample(0.5 * math.Sin(2*math.Pi*440*float64(i)/float64(sr)))
 	}
 
-	// Now feed silence and track when gate closes.
-	// The release time is 50 ms = ~2205 samples at 44100 Hz.
-	// Envelope should decay smoothly, not instantly.
+	// 50 ms release is ~2205 samples.
 	var samplesUntilClosed int
 	for i := 0; i < 10000; i++ {
 		out := g.ProcessSample(0)

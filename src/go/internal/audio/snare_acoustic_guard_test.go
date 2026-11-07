@@ -10,27 +10,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// snare_acoustic_guard_test.go is the REGRESSION + ANTI-WATERING-DOWN net for
-// the modal (variant 3) snare-acoustic, mirroring zgump_kick_guard_test.go's
-// role for the modal kick. It renders the SHIPPED instrument through the real
-// playback dispatch and asserts the structural invariants measured from the
-// reference recording (soundreality-snare-drum-acoustic-sample-455287):
-//
-//	mode  freq    ratio  peak   decay(100-400ms)
-//	1     225 Hz  1.00   1.00   two-stage: ~35/s then a PLATEAU
-//	2     355 Hz  1.57   0.25   7.2 /s
-//	3     520 Hz  2.31   0.29   4.5 /s
-//	4     673 Hz  2.99   0.24   5.4 /s
-//	5     838 Hz  3.72   0.29   7.2 /s
-//	6    1015 Hz  4.50   0.07   7.1 /s
-//	wires 2-16kHz        0.13   ~17 /s, gone by ~300 ms
-//
-// Assertion 3 is the one that matters most: the reference's fundamental loses
-// only 0.4 dB between 200 ms and 400 ms, and that low hum carries 60% of all
-// energy in the 400-900 ms window. A single-exponential mode 1 sounds correct
-// for ~150 ms and hollow after, and is EXACTLY what a later "simplify the
-// envelope" change would reintroduce. Bounds carry margin so honest tuning
-// passes; only a character change trips them.
+// The anti-watering-down net for the modal snare, measured from its reference. The plateau matters most: the
+// reference's fundamental loses 0.4 dB from 200 to 400 ms; a single-exponential mode sounds right for 150 ms and
+// hollow after, which a "simplify the envelope" change would bring back.
 func TestSnareAcousticIsRingingModalSnare(t *testing.T) {
 	buf, sr := RenderInstrumentOneShotRaw(roster.SnareAcoustic)
 	if len(buf) == 0 {
@@ -48,8 +30,7 @@ func TestSnareAcousticIsRingingModalSnare(t *testing.T) {
 		t.Fatalf("snare-acoustic too quiet: peak=%.4f", peak)
 	}
 
-	// modeEnv returns the amplitude envelope of one mode via narrowband complex
-	// demodulation (the same method the design's measurements used).
+	// Narrowband complex demodulation, as the design's measurements used.
 	modeEnv := func(fq float64) []float64 {
 		w := int(float64(sr) / 25.0) // ~25 Hz analysis bandwidth
 		if w < 8 || w > len(x) {
@@ -108,30 +89,24 @@ func TestSnareAcousticIsRingingModalSnare(t *testing.T) {
 		t.Errorf("fundamental peaks at %d ms, want <=30 ms (struck, no swell)", ms)
 	}
 
-	// 2. Fast first stage: the struck head damps quickly (reference -24 dB by
-	//    100 ms). Without this the snare reads as a tom.
+	// Without the fast first stage the snare reads as a tom.
 	if d := db(at(e1, 100)); d > -14 {
 		t.Errorf("fundamental at 100ms = %.1f dB, want <=-14 dB (fast struck-head stage)", d)
 	}
 
-	// 3. THE PLATEAU (see the file comment). The shell/air resonance holds the
-	//    fundamental nearly level from 200 ms to 400 ms — reference drops just
-	//    0.4 dB. Allow 8 dB of slack; a single exponential drops ~15-20 dB here
-	//    and fails.
+	// A single exponential drops 15-20 dB here.
 	d200, d400 := db(at(e1, 200)), db(at(e1, 400))
 	if drop := d200 - d400; drop > 8 {
 		t.Errorf("fundamental fell %.1f dB from 200ms (%.1f) to 400ms (%.1f); want <=8 dB "+
 			"— the two-stage shell/air term is gone, which is the whole instrument", drop, d200, d400)
 	}
 
-	// 4. ...but it does end: the hum must be well down by 1.2 s, or the voice
-	//    rings past its own buffer.
+	// Or the voice rings past its own buffer.
 	if d := db(at(e1, 1200)); d > -40 {
 		t.Errorf("fundamental at 1200ms = %.1f dB, want <=-40 dB (hum must collapse)", d)
 	}
 
-	// 5. The INHARMONIC ring is present and outlives the struck stage: every
-	//    upper mode still audible at 300 ms, and none of them a harmonic of f0.
+	// Every upper mode audible at 300 ms, none a harmonic of f0.
 	for _, m := range []struct {
 		fq    float64
 		ratio float64
@@ -156,8 +131,7 @@ func TestSnareAcousticIsRingingModalSnare(t *testing.T) {
 		}
 	}
 
-	// 6. Wires: real HF content at the attack, and gone by the tail. A snare
-	//    without wires is a tom; wires that never die are a cymbal.
+	// A snare without wires is a tom; wires that never die are a cymbal.
 	band := func(a, b float64, lo, hi float64) float64 {
 		i0, i1 := int(a*float64(sr)), int(b*float64(sr))
 		if i1 > len(x) {

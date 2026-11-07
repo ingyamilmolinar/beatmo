@@ -102,8 +102,7 @@ func TestTremoloShapes(t *testing.T) {
 		rmsValues[shape] = rmsEnergy(out)
 	}
 
-	// At least one pair should differ (sine vs triangle vs square have different
-	// modulation envelopes).
+	// The three shapes have different modulation envelopes.
 	allSame := math.Abs(rmsValues[0]-rmsValues[1]) < 1e-6 &&
 		math.Abs(rmsValues[1]-rmsValues[2]) < 1e-6
 	if allSame {

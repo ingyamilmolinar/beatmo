@@ -4,11 +4,9 @@ package audio
 
 import "github.com/ingyamilmolinar/beatmo/internal/instrument"
 
-// Audio-lane engine operations are no-ops in the stub build: UI tests drive
-// the lane through a fake audioSink.
+// UI tests drive the lane through a fake audioSink.
 
-// LaneEngineHooks let -tags test code observe (and answer) the lane's engine
-// calls: Cancel returns the vids the "engine" refuses as already started.
+// Cancel returns the vids the "engine" refuses as already started.
 type LaneEngineHooks struct {
 	Cancel    func(ids []uint64) (started []uint64)
 	StopAt    func(inst instrument.ID, t float64)

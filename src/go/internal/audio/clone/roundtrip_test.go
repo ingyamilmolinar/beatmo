@@ -9,10 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// TestCloneRoundTripThroughTheEngine: a known modal document → the REAL
-// render (C engine, document FX, normalisation) → Prepare → Analyze → Invert
-// → render again. The second document must recover the first's modes and
-// sound like it.
+// Through the REAL render: the second document must recover the first's modes and sound like it.
 func TestCloneRoundTripThroughTheEngine(t *testing.T) {
 	const rate = 48000
 	truth := eightModes()

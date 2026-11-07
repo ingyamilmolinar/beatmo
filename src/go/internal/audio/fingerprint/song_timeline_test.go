@@ -27,9 +27,7 @@ func TestSongTimelineOf_NonPow2FrameFFTBandConsistency(t *testing.T) {
 	cfg.HopSec = 0.1
 	cfg.FrameFFTSize = 3000 // NON power-of-two → MagnitudeSpectrum rounds up to 4096
 	sr := 44100
-	// A 1600 Hz tone is in the "mid" band (250–2000). With the binHz bug
-	// (binHz computed as sr/3000 instead of sr/4096), the peak is mis-attributed
-	// to the "high" band (2000–6000). This asserts correct band scaling.
+	// Computing binHz from FrameFFTSize instead of the rounded FFT size would put this mid-band tone in the high band.
 	w := wave.Sine(1600, 0.9, 2.0, sr)
 	tl := SongTimelineOf(w, cfg)
 	if len(tl.Frames) == 0 {

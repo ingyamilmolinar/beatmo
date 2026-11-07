@@ -20,9 +20,7 @@ func renderBlockForTest(b []float64, n int) []float32 {
 	return buf
 }
 
-// TestDeclaredModuleValuesAreLive: every declared value changes the render of
-// at least one shipped document of its type, or is listed (with a reason) in
-// testdata/dead_module_values.txt. Ratchet: a listed entry that is live fails.
+// Or is listed with a reason in testdata/dead_module_values.txt; a listed entry that is live fails (ratchet).
 func TestDeclaredModuleValuesAreLive(t *testing.T) {
 	reg := BuiltinModuleRegistry()
 	defs := map[string]ParamDef{}
@@ -120,15 +118,13 @@ func loadDeadModuleValues(t *testing.T) map[string]string {
 	return out
 }
 
-// perturbFor returns a legal value different from cur, using the param's own
-// declared range so the probe can never leave the schema.
+// Within the param's own declared range, so the probe never leaves the schema.
 func perturbFor(d ParamDef, cur float64) (float64, bool) {
 	const eps = 1e-9
 	if d.Max-d.Min < eps {
 		return 0, false // a fixed param cannot be perturbed
 	}
-	// Prefer the far end of the range from the current value, so the change is
-	// as large as the schema allows and a subtle-but-real effect still shows.
+	// The far end, so a subtle-but-real effect still shows.
 	lo, hi := d.Min, d.Max
 	if cur-lo > hi-cur {
 		return lo, true

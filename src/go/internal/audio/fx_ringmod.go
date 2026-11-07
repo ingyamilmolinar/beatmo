@@ -4,9 +4,7 @@ package audio
 
 import "math"
 
-// ringMod implements a ring modulator effect. It multiplies the input signal
-// by an internal carrier oscillator (sine or square wave), producing sum and
-// difference frequency components that create metallic, bell-like timbres.
+// Sum and difference frequencies: metallic, bell-like.
 type ringMod struct {
 	frequency float64 // carrier frequency Hz (20-5000)
 	shape     float64 // 0=sine, 1=square

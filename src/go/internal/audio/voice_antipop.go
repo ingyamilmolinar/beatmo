@@ -2,16 +2,8 @@
 
 package audio
 
-// antiPopVoice wraps any Voice, applying a linear fade-in over the first
-// fadeInSamples and a linear fade-out over fadeOutSamples once stopped
-// (RequestStop now, or RequestStopAt a sample of the voice). This prevents
-// audible clicks/pops from abrupt signal transitions (non-zero → zero). The
-// browser bakes the same fade-in into the buffer it plays and ramps its gain
-// to zero over the same frames (audio.js), so a stop sounds the same on both.
-//
-// The wrapper is transparent: it delegates Sample() to the inner voice and
-// multiplies by an envelope. The voice reports done=true only after the
-// fade-out completes, so the mixer naturally removes it.
+// Linear fade-in and fade-out against clicks from abrupt transitions; the browser bakes the same fade-in and ramps its
+// gain over the same frames, so a stop sounds the same on both. Done only after the fade-out, so the mixer removes it.
 type antiPopVoice struct {
 	inner          Voice
 	pos            int
@@ -46,8 +38,7 @@ func newAntiPopVoice(inner Voice, sr int) *antiPopVoice {
 	}
 }
 
-// RequestStop begins the fade-out. The voice will report done after
-// fadeOutSamples have been produced.
+// Done after fadeOutSamples.
 func (a *antiPopVoice) RequestStop() {
 	if !a.stopping {
 		a.stopping = true
@@ -55,9 +46,7 @@ func (a *antiPopVoice) RequestStop() {
 	}
 }
 
-// RequestStopAt begins the fade-out when the voice reaches its own sample pos
-// (counted from its first sample) — a lane stop lands on its exact sample, not
-// on the mixer block that contains it. A pos already reached stops now.
+// On the voice's own sample, so a lane stop lands exactly, not on the containing mixer block. A past pos stops now.
 func (a *antiPopVoice) RequestStopAt(pos int) {
 	if a.stopping {
 		return
@@ -76,8 +65,6 @@ func (a *antiPopVoice) IsStopping() bool {
 	return a.stopping
 }
 
-// SampleBlock implements BlockVoice for antiPopVoice. If the inner voice
-// supports BlockVoice, it uses the bulk path and applies envelope in-place.
 func (a *antiPopVoice) SampleBlock(dst []float64) (int, bool) {
 	if a.done {
 		return 0, true
@@ -113,8 +100,7 @@ func (a *antiPopVoice) SampleBlock(dst []float64) (int, bool) {
 		return n, a.done
 	}
 
-	// Fallback: sample-by-sample. Never "probe" for the end with an extra
-	// Sample: that consumes (drops) a sample; the next block reports done.
+	// Never probe for the end with an extra Sample: that drops a sample; the next block reports done.
 	for i := range dst {
 		val, done := a.Sample()
 		if done {
@@ -132,9 +118,7 @@ func (a *antiPopVoice) Sample() (float64, bool) {
 
 	val, innerDone := a.inner.Sample()
 
-	// If inner voice finished naturally, apply a quick micro-fade on the
-	// last sample to avoid a pop (the inner voice already decayed, but
-	// just in case).
+	// A micro-fade on the last sample in case the inner voice ends above zero.
 	if innerDone {
 		a.done = true
 		return 0, true
@@ -151,8 +135,7 @@ func (a *antiPopVoice) Sample() (float64, bool) {
 	}
 	a.pos++
 
-	// Fade-out envelope: linear 1→0 over fadeOutSamples (the browser's gain
-	// ramp is the same line).
+	// The browser's gain ramp is the same line.
 	if a.stopping {
 		if a.fadeOutPos >= a.fadeOutSamples {
 			a.done = true

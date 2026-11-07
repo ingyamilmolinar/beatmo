@@ -117,14 +117,8 @@ func TestApplySavedSamplesReRegisters(t *testing.T) {
 	}
 }
 
-// TestApplySavedSamplesSkipsFactorySynths — "synths remain synths": a
-// persisted sample whose id is a factory-recipe-bound builtin (e.g. "snare")
-// is a legacy artifact of the old destructive Sampler-Save. Re-registering it
-// at startup overrides the synth's playback registration — on WASM that
-// deletes RENDER[id] and freezes the instrument so every Synth-tab edit is
-// audibly a no-op (the user-reported "knobs/stages/Save do nothing in the
-// browser" bug). Startup must skip those entries; pure user samples
-// (user.sample.*, no factory binding) still load.
+// A stale sample on a shipped id would freeze the browser's synth so every Synth-tab edit did nothing; pure user
+// samples still load.
 func TestApplySavedSamplesSkipsFactorySynths(t *testing.T) {
 	resetUserSamplesForTest()
 	restoreGate := SetUseSampleStore(true)

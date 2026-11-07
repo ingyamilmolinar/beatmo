@@ -11,8 +11,7 @@ import (
 
 var errTooShort = errors.New("clone: too few samples for ESPRIT")
 
-// espritResult is one band's pole estimate. Poles are per decimated sample;
-// Amps are the complex amplitudes at y[0].
+// Poles per decimated sample; amplitudes at y[0].
 type espritResult struct {
 	Poles    []complex128
 	Amps     []complex128
@@ -28,11 +27,8 @@ const (
 	ompMinGain         = 20 // a kept pole must explain ≥ 20σ² (13 dB over chance)
 )
 
-// esprit estimates the damped exponentials in y (spec §2b): L × L sample
-// covariance → Hermitian eigendecomposition → candidate order = eigenvalues
-// ≥ 6 dB above the noise median (≤ maxOrder) → candidate poles = eig(Φ) →
-// orthogonal matching pursuit keeps the ones that explain y → least squares
-// for their amplitudes.
+// Candidate order = eigenvalues ≥ 6 dB above the noise median, candidate poles = eig(Φ), then matching pursuit keeps
+// the ones that explain y.
 func esprit(y []complex128, maxOrder int) (espritResult, error) {
 	n := len(y)
 	L := min(n/3, espritMaxRows)
@@ -90,19 +86,9 @@ func esprit(y []complex128, maxOrder int) (espritResult, error) {
 	return res, nil
 }
 
-// selectPoles keeps the candidate poles that actually explain y: orthogonal
-// matching pursuit over strided rows — repeatedly add the candidate whose
-// component orthogonal to those already chosen removes the most residual
-// energy, while that removal is ≥ ompMinGain·σ² (a column fits ~σ² of white
-// noise by chance). Then one least-squares fit over the chosen poles.
-//
-// Order selection on recorded audio, measured on the VCSL corpus: the
-// noise-threshold count saturates (a real recording has no clean eigenvalue
-// floor), ESTER at a fixed bar (‖W↑ − W↓Φ‖_F ≤ 0.3) trimmed real tubular-bell
-// partials away (E(1) is already 0.3–0.6 in long high bands full of strike
-// noise), and the untrimmed order handed the joint refit clusters of
-// cancelling poles that blew up outside the window. A pursuit never keeps a
-// cancelling phantom: on its own it explains nothing.
+// A candidate is kept while it removes ≥ ompMinGain·σ² (a column fits ~σ² of white noise by chance). On recorded
+// audio a noise-threshold count saturates, a fixed ESTER bar trims real partials, and an untrimmed order hands the
+// refit cancelling poles; a pursuit never keeps a phantom that explains nothing on its own.
 func selectPoles(y, cand []complex128, noiseVar float64) ([]complex128, []complex128, error) {
 	n := len(y)
 	stride := (n + espritMaxLSRows - 1) / espritMaxLSRows
@@ -123,8 +109,7 @@ func selectPoles(y, cand []complex128, noiseVar float64) ([]complex128, []comple
 		cols[k] = col
 	}
 	res := append([]complex128(nil), b...)
-	// Each candidate's component orthogonal to the chosen basis, updated
-	// incrementally as the basis grows (O(candidates·rows) per step).
+	// Updated incrementally as the basis grows.
 	perp := make([][]complex128, len(cols))
 	norm0 := make([]float64, len(cols))
 	for k, col := range cols {
@@ -191,8 +176,7 @@ func selectPoles(y, cand []complex128, noiseVar float64) ([]complex128, []comple
 	return chosen, amps, nil
 }
 
-// rotation solves W↓·Φ = W↑ in the least-squares sense for the first p
-// eigenvectors (W↓ = rows 0..L−2, W↑ = rows 1..L−1).
+// Least squares over the first p eigenvectors (W↓ = rows 0..L−2, W↑ = rows 1..L−1).
 func rotation(vecs *linalg.Matrix, L, p int) (*linalg.Matrix, error) {
 	down := linalg.New(L-1, p)
 	for i := 0; i < L-1; i++ {
@@ -218,8 +202,7 @@ func rotation(vecs *linalg.Matrix, L, p int) (*linalg.Matrix, error) {
 	return phi, nil
 }
 
-// dedupePoles drops a pole numerically identical to an earlier one (it would
-// make the Vandermonde matrix singular).
+// A duplicate would make the Vandermonde matrix singular.
 func dedupePoles(p []complex128) []complex128 {
 	var out []complex128
 	for _, z := range p {
@@ -237,8 +220,7 @@ func dedupePoles(p []complex128) []complex128 {
 	return out
 }
 
-// vandermonde fits y[m] ≈ Σ_k c_k z_k^m by least squares over at most
-// espritMaxLSRows uniformly strided samples.
+// Over at most espritMaxLSRows uniformly strided samples.
 func vandermonde(y []complex128, poles []complex128) ([]complex128, error) {
 	n := len(y)
 	stride := (n + espritMaxLSRows - 1) / espritMaxLSRows

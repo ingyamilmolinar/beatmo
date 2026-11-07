@@ -13,22 +13,13 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio/fingerprint"
 )
 
-// drumRattleCeiling is the most late-tail rattle (fingerprint.TailRattle,
-// ticks/s over 2-16 kHz) a shipped drum may have. Calibrated 2026-09-30 at
-// 44.1 kHz: three real snare recordings and a real closed hat score 0; the
-// clean shipped drums 0-23 (hats 21.7, snare-acoustic 22.7 — a fused buzz, heard
-// as fine); every take the listener called rattly scored 150-720 (snare-deep
-// 608 and tom-high-acoustic 663 as first shipped). The ceiling sits between.
+// Between the clean drums (real recordings score 0) and every take the listener called rattly; measured at 44.1 kHz.
 const drumRattleCeiling = 50.0
 
-// knownRattlyDrums are shipped drums still over the ceiling, with the reason.
-// A ratchet: an entry may only be removed (when the instrument is fixed), and a
-// NEW rattly drum fails.
+// A ratchet: entries may only be removed when fixed, and a new rattly drum fails.
 var knownRattlyDrums = map[string]string{}
 
-// TestShippedDrumsDoNotRattle renders every table drum (gen sources 5-9: kick,
-// tom, snare, clap, cymbal) at its own length and fails when its late tail
-// rattles. BEATMO_RATTLE_REPORT=1 prints every score (for recalibrating).
+// Each at its own length; BEATMO_RATTLE_REPORT=1 prints every score for recalibration.
 func TestShippedDrumsDoNotRattle(t *testing.T) {
 	const sr = 44100
 	type score struct {

@@ -8,21 +8,13 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestSaxParamsConfigurable is the TDD driver for P2 (physical-model config): the
-// sax's previously-hardcoded render_sax args (blow position, reed offset/slope,
-// bell reflection, breath, loss) become declarative config params. Each must
-// (a) be a registered, settable param and (b) actually change the render when
-// moved off its default. The AT-DEFAULT byte-identity is covered by
-// TestSynthGoldenByteIdentity (the golden net); this test covers MUTATION.
+// Each sax arg must be a settable param that changes the render off its default; at-default identity is the golden
+// net's job.
 func TestSaxParamsConfigurable(t *testing.T) {
 	Reset()
 	ResetInstruments()
 
-	// Render the sax with one param set to `val`, FORCING the render_sax physical
-	// model (osc_type 11): the shipped "sax" instrument is now an additive voice
-	// (osc_enabled 0), so we override osc_type/osc_enabled to exercise the
-	// config-driven render_sax path that P2 wired. Comparing two of these isolates
-	// the PARAM from any baked→recipe path switch.
+	// The shipped sax is additive, so the physical model is forced; comparing two such renders isolates the param.
 	render := func(name string, val float64) []float32 {
 		ResetInstrumentParams(roster.Sax)
 		SetInstrumentParam(roster.Sax, "osc_enabled", 1)
@@ -33,9 +25,7 @@ func TestSaxParamsConfigurable(t *testing.T) {
 		return buf
 	}
 
-	// Each new sax knob: its shipped default vs a value clearly off it. If the
-	// param is wired through to render_sax, the two renders differ; if it is
-	// unregistered/inert, both collapse to the same render (test stays red).
+	// An unregistered or inert param collapses both renders to one.
 	cases := []struct {
 		name          string
 		def, modified float64

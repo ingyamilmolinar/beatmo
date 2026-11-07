@@ -5,8 +5,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// MIDIEvent represents a MIDI event captured during recording.
-// These events are collected alongside audio data to enable future MIDI export.
 type MIDIEvent struct {
 	Time     float64       // seconds from recording start
 	Type     string        // "note_on", "note_off"
@@ -16,8 +14,7 @@ type MIDIEvent struct {
 	InstrID  instrument.ID // the instrument that triggered this event
 }
 
-// MIDIMapping maps Beatmo instrument IDs to General MIDI percussion note numbers.
-// Channel 10 (index 9) is the standard GM percussion channel.
+// Channel 10 (index 9) is the GM percussion channel.
 var MIDIMapping = map[instrument.ID]int{
 	roster.Kick:      36, // Bass Drum 1
 	roster.KickDeep:  35, // Acoustic Bass Drum
@@ -38,8 +35,7 @@ var MIDIMapping = map[instrument.ID]int{
 	roster.FmPluck:   39, // Hand Clap (fallback)
 }
 
-// MIDINoteForInstrument returns the GM percussion note number for a Beatmo instrument.
-// Returns 38 (Acoustic Snare) as default if the instrument is not mapped.
+// Acoustic Snare (38) when unmapped.
 func MIDINoteForInstrument(id instrument.ID) int {
 	if note, ok := MIDIMapping[id]; ok {
 		return note

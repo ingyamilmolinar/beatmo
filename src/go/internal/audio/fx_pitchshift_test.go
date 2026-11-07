@@ -9,8 +9,7 @@ import (
 
 const pitchSR = 44100
 
-// pitchTestSamples returns 2 seconds of test signal at the given sample rate,
-// enough for the pitch shifter to stabilize.
+// Enough for the shifter to stabilise.
 func pitchTestSamples() int { return pitchSR * 2 }
 
 func newTestPitchShift(pitch, mix float64) *pitchShift {
@@ -108,8 +107,7 @@ func TestPitchShiftZeroPassthrough(t *testing.T) {
 }
 
 func TestPitchShiftMixZero(t *testing.T) {
-	// Create with mix=0 so the smoothParam starts at zero; assertDryWhenMixZero
-	// calls SetParam("mix", 0) which is then a no-op ramp.
+	// Created at mix 0, so setting it again is a no-op ramp.
 	ps := newTestPitchShift(12, 0)
 	assertDryWhenMixZero(t, ps, 440, pitchSR, pitchTestSamples())
 }

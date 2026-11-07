@@ -4,10 +4,7 @@ package audio
 
 import "math"
 
-// gate implements a noise gate with envelope-follower-based gain control.
-// Signals below the threshold are attenuated by the range parameter;
-// signals above pass through at unity. Attack and release control the
-// envelope follower smoothing, mirroring the compressor's approach.
+// Below threshold the signal is attenuated by range; attack and release smooth the follower like the compressor's.
 type gate struct {
 	thresholdDB float64 // -60 to 0 dB
 	attackMs    float64 // 0.1 to 50 ms

@@ -5,10 +5,7 @@ import (
 	"testing"
 )
 
-// TestDefaultFXDistortionMatchesSoftClip verifies that the DefaultFX distortion
-// produces a similar character to the old softClip helper.
-// Exact match is not expected (biquad LP vs one-pole LP, different gain models)
-// but RMS ratio should be within a reasonable range.
+// Not an exact match (biquad vs one-pole LP, different gain model): only the RMS ratio is compared.
 func TestDefaultFXDistortionMatchesSoftClip(t *testing.T) {
 	const sr = 44100
 	const n = sr / 2
@@ -42,8 +39,6 @@ func TestDefaultFXDistortionMatchesSoftClip(t *testing.T) {
 	}
 }
 
-// TestDefaultFXFilterMatchesLPFilter verifies that the DefaultFX LP filter
-// attenuates high frequencies similarly to the old lpFilter helper.
 func TestDefaultFXFilterMatchesLPFilter(t *testing.T) {
 	const sr = 44100
 	const n = sr / 2
@@ -72,8 +67,6 @@ func TestDefaultFXFilterMatchesLPFilter(t *testing.T) {
 	}
 }
 
-// TestDefaultFXBitcrusherProducesDistortion verifies the bitcrusher effect
-// alters the signal.
 func TestDefaultFXBitcrusherProducesDistortion(t *testing.T) {
 	const sr = 44100
 	const n = sr / 2
@@ -104,8 +97,6 @@ func TestDefaultFXBitcrusherProducesDistortion(t *testing.T) {
 	}
 }
 
-// TestDefaultFXChainOrder verifies that multi-effect DefaultFX chains process
-// in the correct order (left to right).
 func TestDefaultFXChainOrder(t *testing.T) {
 	const sr = 44100
 	const n = sr / 2
@@ -140,8 +131,6 @@ func TestDefaultFXChainOrder(t *testing.T) {
 	}
 }
 
-// TestDefaultFXDisabledSlotsSkipped verifies that disabled slots in DefaultFX
-// are not processed.
 func TestDefaultFXDisabledSlotsSkipped(t *testing.T) {
 	const sr = 44100
 	const n = sr / 4

@@ -12,15 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestPipelineStatsBytesUsed verifies that CurrentPipelineStats.BytesUsed
-// is populated from per-channel sample counts × bytes-per-sample, so the
-// perf snapshot can surface "how much audio data has been encoded so far"
-// without a separate atomic counter on the hot path.
-//
-// Mirrors the WASM Phase 4 contract where the encoder Worker reports
-// bytesUsed for hard-cap detection (BYTES_PER_CHANNEL_MAX). On desktop
-// the same field is derived from the streaming pipeline's existing
-// per-channel sample counters.
+// From per-channel sample counts × bytes per sample, so the perf snapshot needs no hot-path counter.
 func TestPipelineStatsBytesUsed(t *testing.T) {
 	t.Cleanup(env.RecordingsDir.SetForTest(t.TempDir()))
 
@@ -37,13 +29,8 @@ func TestPipelineStatsBytesUsed(t *testing.T) {
 		if IsRecording() {
 			_, _ = StopRecording()
 		}
-		// StopRecording detaches and finalizes the file writers
-		// asynchronously on the lifecycle pool (the desktop fast-return
-		// contract). Wait for that tail to flush + close the WAV files
-		// before t.TempDir()'s RemoveAll runs — otherwise finalize writes
-		// .wav/session.json into the dir concurrently with RemoveAll and
-		// trips "directory not empty". This cleanup runs before the
-		// TempDir cleanup by LIFO ordering.
+		// Finalize writes asynchronously on the lifecycle pool; wait for it before TempDir's RemoveAll (LIFO cleanup order),
+		// or it trips "directory not empty".
 		wctx, wcancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer wcancel()
 		if err := WaitRecordingFinalized(wctx); err != nil {
@@ -51,8 +38,6 @@ func TestPipelineStatsBytesUsed(t *testing.T) {
 		}
 	})
 
-	// Push a few blocks through the pipeline so per-channel sample counts
-	// are non-zero. Use the global pipeline directly via the atomic ptr.
 	pipe := pipelinePtr.Load()
 	if pipe == nil {
 		t.Fatal("expected pipeline to be active")
@@ -78,13 +63,10 @@ func TestPipelineStatsBytesUsed(t *testing.T) {
 	if !stats.Active {
 		t.Fatal("expected Active=true")
 	}
-	// Per-channel: blocks * blockLen samples * 3 bytes (WAV24).
-	// Master + 1 instrument = 2 channels.
+	// 3 bytes per sample (WAV24), master + 1 instrument.
 	const wantPerChannel = blocks * blockLen * 3
 	const wantTotal = wantPerChannel * 2
-	// Allow some slack (queue may not have drained completely; samples may
-	// be reported lower than wantTotal if the worker is mid-write). Just
-	// verify BytesUsed is non-zero and within a reasonable range.
+	// The worker may be mid-write, so only a sane range is checked.
 	if stats.BytesUsed <= 0 {
 		t.Errorf("BytesUsed=%d, want > 0", stats.BytesUsed)
 	}

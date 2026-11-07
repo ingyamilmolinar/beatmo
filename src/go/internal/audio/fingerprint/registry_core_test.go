@@ -8,9 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// TestCoreDescriptorsCoverTheNineLegacyAxes pins the Group/Name strings that
-// cmd/refs/testdata/diagnose_baseline_2026-08-22.json and the mapping doc's
-// verdict table key on. Renaming any of them breaks the acceptance gate.
+// The baseline and the verdict table key on these strings.
 func TestCoreDescriptorsCoverTheNineLegacyAxes(t *testing.T) {
 	want := map[string]struct{ group, name string }{
 		IDNoiseFraction:     {GroupNoise, "noise fraction"},
@@ -36,8 +34,7 @@ func TestCoreDescriptorsCoverTheNineLegacyAxes(t *testing.T) {
 	}
 }
 
-// TestSilentWaveYieldsUnavailableNotZero is the honest-N/A contract: a silent
-// clip must say it could not be measured, never report 0 as if measured.
+// A silent clip says it could not be measured, never 0.
 func TestSilentWaveYieldsUnavailableNotZero(t *testing.T) {
 	b := NewBundle(bundleSilence(44100, 1), "silent")
 	for _, id := range []string{IDEnvAttack, IDEnvRingT60, IDEnvRelease, IDSustainModulation} {
@@ -55,8 +52,6 @@ func TestSilentWaveYieldsUnavailableNotZero(t *testing.T) {
 	}
 }
 
-// TestEnvelopeDescriptorsDoNotApplyToSilence checks the other half of the
-// gate: silence should not even produce envelope rows.
 func TestEnvelopeDescriptorsDoNotApplyToSilence(t *testing.T) {
 	b := NewBundle(bundleSilence(44100, 1), "silent")
 	for _, d := range DefaultRegistry().Applicable(b) {
@@ -66,35 +61,14 @@ func TestEnvelopeDescriptorsDoNotApplyToSilence(t *testing.T) {
 	}
 }
 
-// coreGroups are the groups this smoke test covers: the whole-signal axes that
-// are defined for ANY pitched tone.
-//
-// Deliberately not "every registered descriptor". A synthetic steady sine has
-// no vibrato and no body resonance, so the vibrato and formant descriptors
-// report an honest not-applicable on it -- which is the designed behaviour, not
-// a failure. Asserting availability across the whole registry would force those
-// descriptors to invent a zero for a signal that genuinely has neither.
+// Not every descriptor: a steady sine has no vibrato or body resonance, so those report an honest N/A by design.
 var coreGroups = map[string]bool{
 	GroupNoise: true, GroupEnvelope: true, GroupPartials: true,
 	GroupBright: true, GroupMod: true,
 }
 
-// scaleDecayingToneWithNoiseOnset is a third probe, added alongside
-// steady-tone and percussive-hit for noise.decay_vs_tone (task 6): a
-// genuinely pitched signal (most of its length is a clean, slowly-decaying
-// tone, so F0 detection stays confident) that ALSO carries a short,
-// separately-decaying noise burst at the onset.
-//
-// Neither existing probe can exercise a TONE-VS-RESIDUAL DECAY RATIO
-// descriptor: bundleTone's steady tone never decays at all (both its tonal
-// AND its near-zero residual track are trivially "still above -20dB at clip
-// end"), and scalePercussive mixes noise in PROPORTIONAL to the tone's own
-// envelope throughout the clip, which is realistic for a percussive hit but
-// depresses F0 confidence (0.25, below F0ReliableConfidence) enough that a
-// descriptor correctly gated on RequiresPitched never even attempts it. This
-// probe's noise decays independently and much faster than its tone, so both
-// halves of a decay-ratio ARE observable before the clip ends, while the
-// tone stays confidently pitched throughout.
+// A clean, slowly decaying, confidently pitched tone with an independently and faster decaying noise burst at the
+// onset: the other probes never let a tone-vs-residual decay ratio observe both halves.
 func scaleDecayingToneWithNoiseOnset(sr int, f0, sec float64) wave.Wave {
 	n := int(float64(sr) * sec)
 	s := make([]float64, n)
@@ -108,19 +82,8 @@ func scaleDecayingToneWithNoiseOnset(sr int, f0, sec float64) wave.Wave {
 	return wave.Wave{Samples: s, SampleRate: sr}
 }
 
-// TestCoreDescriptorsExtractOnARealSignal is a smoke test that every core
-// descriptor produces an available measurement on at least one ordinary signal.
-//
-// "At least one" rather than "on a steady tone", because the probes cover
-// genuinely different definitions. A dead-steady tone never decays, so the
-// decay-threshold descriptors correctly report a lower bound instead of a
-// measurement on it; a percussive hit has no sustain plateau, so the sustain
-// descriptors correctly decline there; neither probe gives a tone-vs-residual
-// decay-RATIO descriptor anything to divide (see scaleDecayingToneWithNoiseOnset's
-// own doc). Requiring availability on ALL would force one of those honest
-// not-applicables to become a fabricated number, which is exactly the
-// discipline Measurement.OK exists to prevent. Requiring it on NONE would let
-// a descriptor that never measures anything slip in.
+// On at least one probe: requiring all would force an honest N/A into a fabricated number, requiring none would admit
+// a descriptor that never measures.
 func TestCoreDescriptorsExtractOnARealSignal(t *testing.T) {
 	probes := map[string]*Bundle{
 		"steady-tone":              NewBundle(bundleTone(44100, 220, 2), "tone"),
@@ -154,10 +117,7 @@ func TestCoreDescriptorsExtractOnARealSignal(t *testing.T) {
 	}
 }
 
-// TestNoDescriptorProducesNonFiniteValues applies to the WHOLE registry, on
-// every probe signal. A descriptor may legitimately be unavailable; it may
-// never report NaN or +/-Inf, which would poison a comparison silently rather
-// than declaring itself unmeasurable.
+// Unavailable is allowed; NaN or ±Inf would poison a comparison silently.
 func TestNoDescriptorProducesNonFiniteValues(t *testing.T) {
 	for _, probe := range scaleProbes() {
 		b := NewBundle(probe.w, probe.name)
@@ -175,9 +135,7 @@ func TestNoDescriptorProducesNonFiniteValues(t *testing.T) {
 	}
 }
 
-// TestIdenticalBundlesProduceNoMismatch is the identity invariant: comparing a
-// signal against itself must yield "ok" on every axis. If any descriptor
-// fails this, its comparator is asymmetric or non-deterministic.
+// A failure means an asymmetric or non-deterministic comparator.
 func TestIdenticalBundlesProduceNoMismatch(t *testing.T) {
 	w := bundleTone(44100, 220, 2)
 	a := NewBundle(w, "a")
@@ -193,12 +151,9 @@ func TestIdenticalBundlesProduceNoMismatch(t *testing.T) {
 	}
 }
 
-// TestRingT60EscalatesWhenBothSidesExtrapolated pins the compound-measurement
-// path: two clips that both still ring at clip end must be compared by decay
-// RATE, not by their equally-clamped T60 lower bounds.
+// Both clips still ring at the clip end, so the comparison is by decay rate.
 func TestRingT60EscalatesWhenBothSidesExtrapolated(t *testing.T) {
-	// Both clamped to the same T60 bound, but decay rates differ 4x — a raw
-	// ratio would report a vacuous "ok".
+	// Equally clamped bounds, rates 4× apart: a raw ratio would say "ok".
 	ref := Vector([]float64{1.95, 1, -0.7}, nil)
 	synth := Vector([]float64{1.95, 1, -3.1}, nil)
 	rtDrift, rtMismatch := ringT60Thresholds()
@@ -224,10 +179,7 @@ func TestRingT60UsesPlainRatioWhenObservable(t *testing.T) {
 	}
 }
 
-// ringT60Thresholds returns the pair CompareWith hands compareRingT60, so
-// these unit tests exercise the comparator with exactly the numbers
-// production uses. env.ring_t60 is Demoted and therefore excluded from
-// threshold calibration, so this is stable at the KindSeconds defaults.
+// The pair production passes; env.ring_t60 is Demoted, so calibration leaves it at the defaults.
 func ringT60Thresholds() (float64, float64) {
 	d, ok := DefaultRegistry().ByID(IDEnvRingT60)
 	if !ok {

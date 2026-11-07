@@ -13,15 +13,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// zgump_kick_guard_test.go is the REGRESSION + ANTI-OVERFIT net for the modal
-// (variant 6) zgump-kick. It renders the SHIPPED instrument through the real
-// playback dispatch and asserts the organic-character invariants measured from
-// the reference 83768__zgump__kick-pack-0708.wav via the fingerprint kick
-// metrics. The invariants are deliberately structural (bloom present, plateau
-// sustained, glide present, HF smooth) so a future re-tune cannot silently
-// collapse the complex organic envelope into a plain exponential thump — that
-// would be "watering down" the reference. Bounds carry margin so honest tuning
-// tweaks pass; only a character change trips them.
+// The anti-overfit net for the modal kick: structural invariants from its reference (bloom, plateau, glide, smooth
+// HF), so a retune cannot collapse it into a plain exponential thump. Bounds carry margin for honest tuning.
 func TestZgumpKickIsOrganicModalKick(t *testing.T) {
 	buf, sr := kickGuardRender(t, roster.ZgumpKick)
 	if len(buf) == 0 {
@@ -43,14 +36,12 @@ func TestZgumpKickIsOrganicModalKick(t *testing.T) {
 	}
 	fp := fingerprint.KickAnalyze(wave.Wave{Samples: x, SampleRate: sr})
 
-	// 1. Fundamental-dominant mid-bass thump: the 60-120 Hz band carries the most
-	//    energy (the reference is 71% there); NOT a sub-only boom or a mid honk.
+	// 60-120 Hz carries the most energy: not a sub boom or a mid honk.
 	bands := fp.BandAvg
 	if bands[1] <= bands[0] || bands[1] <= bands[2] {
 		t.Fatalf("60-120 Hz is not the dominant band: bands=%v (want band[1] largest — the kick's weight)", bands)
 	}
-	// Calibrated to the reference's own per-window BandAvg (0.447); 0.40 keeps
-	// margin while still requiring the fundamental to carry most of the energy.
+	// The reference's own BandAvg is 0.447.
 	if bands[1] < 0.40 {
 		t.Fatalf("60-120 Hz band = %.2f, want >= 0.40 (fundamental must dominate; reference 0.447)", bands[1])
 	}
@@ -62,14 +53,12 @@ func TestZgumpKickIsOrganicModalKick(t *testing.T) {
 	if fp.PitchSettleHz < 55 || fp.PitchSettleHz > 85 {
 		t.Fatalf("pitch settle = %.1f Hz, want [55,85] (reference 67.5)", fp.PitchSettleHz)
 	}
-	// 4. A real downward pitch GLIDE (the #1 organic tell) — start clearly above
-	//    settle. Guards against a static-pitch (electronic) kick.
+	// A real downward glide, the first organic tell: not a static electronic kick.
 	if fp.PitchStartHz < fp.PitchSettleHz*1.4 {
 		t.Fatalf("pitch glide too shallow: start=%.0f settle=%.0f (want start >= 1.4x settle — the drumhead drop)",
 			fp.PitchStartHz, fp.PitchSettleHz)
 	}
-	// 5. A SWELL-IN onset: the envelope peaks a bit after t=0 (reference ~25 ms),
-	//    not an instant click spike.
+	// The envelope peaks after t=0 (reference ~25 ms), not an instant click.
 	if ms := fp.AttackPeakSec * 1000; ms < 12 || ms > 50 {
 		t.Fatalf("attack peak = %.0f ms, want [12,50] (reference 25; a swell, not an instant click)", ms)
 	}
@@ -77,34 +66,24 @@ func TestZgumpKickIsOrganicModalKick(t *testing.T) {
 	if fp.Crest < 2.6 || fp.Crest > 4.3 {
 		t.Fatalf("crest = %.2f, want [2.6,4.3] (reference 3.4)", fp.Crest)
 	}
-	// 7. THE ORGANIC-COMPLEXITY GUARDS (anti-overfit): the coupled-mode envelope
-	//    must keep its sustained plateau AND its delayed tail bloom. A plain
-	//    exponential decay (the "watered down" failure) has neither.
+	// A plain exponential decay has neither the plateau nor the delayed bloom.
 	if fp.PlateauFlatness < 0.35 {
 		t.Fatalf("plateau flatness = %.2f, want >= 0.35 (a sustained plateau, not a pure exponential decay)", fp.PlateauFlatness)
 	}
 	if !fp.TailBloomPresent {
 		t.Fatal("no tail bloom detected — the coupled-mode beating (the organic complexity) collapsed to a plain decay")
 	}
-	// 8. SMOOTHNESS (anti-spit): the mid-body HF ratio must not oscillate — the
-	//    variant-5 "sputter" failure. A clean modal kick has small window-to-window
-	//    HF jumps.
+	// A clean modal kick has small window-to-window HF jumps; a sputtering one does not.
 	if fp.HFRatioMaxJump > 0.15 {
 		t.Fatalf("HF-ratio max jump = %.3f, want <= 0.15 (no spit/sputter in the tail)", fp.HFRatioMaxJump)
 	}
 }
 
-// kickFingerprintRate is the rate the kick fingerprint's thresholds were
-// calibrated at. Its 15 ms band windows read a different sub/low split at
-// 48 kHz for the SAME sound (kick-acoustic <60 Hz 0.391 → 0.429 while a 1 Hz
-// DFT of the voice and soundview.CompareNotes say nothing moved), so the
-// guards analyse a 44.1 kHz render.
+// Its 15 ms band windows read a different sub/low split at 48 kHz for the SAME sound, so the guards analyse at 44.1 kHz.
 const kickFingerprintRate = 44100
 
-// kickGuardRender renders a shipped kick for the fingerprint guards at
-// kickFingerprintRate — after proving the engine-rate render (what both
-// platforms play) is not audibly different from it, so the pinned analysis
-// rate can never hide a change in what is heard.
+// After proving the played render inaudibly different from it, so the analysis rate cannot hide a change in what is
+// heard.
 func kickGuardRender(t *testing.T, id instrument.ID) ([]float32, int) {
 	t.Helper()
 	played, engineSR := RenderInstrumentOneShotRaw(id)
@@ -124,8 +103,7 @@ func kickGuardRender(t *testing.T, id instrument.ID) ([]float32, int) {
 	return buf, sr
 }
 
-// kickFP renders a shipped instrument and returns its peak-normalized kick
-// fingerprint (shared by the 808 + acoustic guards).
+// Peak-normalized.
 func kickFP(t *testing.T, id instrument.ID) fingerprint.KickFingerprint {
 	t.Helper()
 	buf, sr := kickGuardRender(t, id)
@@ -149,10 +127,7 @@ func kickFP(t *testing.T, id instrument.ID) fingerprint.KickFingerprint {
 	return fingerprint.KickAnalyze(wave.Wave{Samples: x, SampleRate: sr})
 }
 
-// TestKick808IsDeepSubKick guards kick-808's identity vs the progressive-house
-// reference: a deep, sub-heavy boom with a BIG pitch drop and a low settled
-// fundamental. Loose bounds (ear-tunable) but enough to catch a regression back
-// to the old barely-dropping ~89%-sub version.
+// A deep sub boom with a BIG pitch drop and a low settled fundamental; loose, ear-tunable bounds.
 func TestKick808IsDeepSubKick(t *testing.T) {
 	fp := kickFP(t, roster.Kick808)
 	// Sub-heavy: the two lowest bands carry the bulk; <60 Hz is substantial.
@@ -176,20 +151,14 @@ func TestKick808IsDeepSubKick(t *testing.T) {
 	}
 }
 
-// TestKickAcousticIsTightOrganicKick guards kick-acoustic's identity vs the
-// sandyrb reference: a tight, punchy, organic kick — fundamental ~80-90 Hz with
-// 60-120 Hz DOMINANT (NOT a sub boom) and a SHARP beater transient (high crest).
-// This is the anti-"boomy/un-acoustic" net (the old seed sat ~50% sub, crest ~5.7).
+// Tight and punchy: 60-120 Hz DOMINANT (not a sub boom) and a sharp beater transient.
 func TestKickAcousticIsTightOrganicKick(t *testing.T) {
 	fp := kickFP(t, roster.KickAcoustic)
-	// 60-120 Hz dominates (not a sub kick). Threshold calibrated to the
-	// fingerprint's per-window BandAvg (≈0.5 here), not the whole-signal integral.
+	// Calibrated to the per-window BandAvg, not the whole-signal integral.
 	if fp.BandAvg[1] <= fp.BandAvg[0] || fp.BandAvg[1] <= fp.BandAvg[2] || fp.BandAvg[1] < 0.42 {
 		t.Fatalf("kick-acoustic 60-120 Hz=%.2f (must be the dominant band, >= 0.42; a tight kick, not a sub)", fp.BandAvg[1])
 	}
-	// The deep sub is present (this is a low/heavy kick) but must not DOMINATE
-	// over 60-120 (already required above) — that plus the AttackLowMidRatio check
-	// below is what keeps it a kick rather than a boomy/tom-ish sound.
+	// The sub is present but must not dominate: with AttackLowMidRatio, what keeps it a kick rather than a tom.
 	if fp.BandAvg[0] > 0.48 {
 		t.Fatalf("kick-acoustic <60 Hz=%.2f, want <= 0.48", fp.BandAvg[0])
 	}
@@ -197,25 +166,19 @@ func TestKickAcousticIsTightOrganicKick(t *testing.T) {
 	if fp.PitchSettleHz < 45 || fp.PitchSettleHz > 95 {
 		t.Fatalf("kick-acoustic settle=%.1f Hz, want [45,95] (deep kick)", fp.PitchSettleHz)
 	}
-	// KICK, not a tom: the LOUD onset must be fundamental-dominant (energy in
-	// 40-100 Hz >= 100-500 Hz). The earlier tuning read as a high tom (mid-mode
-	// dominant); this is the guard against regressing to that.
+	// The loud onset must be fundamental-dominant, or it reads as a high tom.
 	if fp.AttackLowMidRatio < 1.0 {
 		t.Fatalf("kick-acoustic attack low/mid=%.2f, want >= 1.0 (fundamental-dominant kick, not a mid-dominant tom)", fp.AttackLowMidRatio)
 	}
-	// A punchy transient (the aggressive "soul"). Lower than the dry variant since
-	// the room reverb tail adds a little sustain, but still a clear hit.
+	// Lower than a dry kick since the room tail adds sustain.
 	if fp.Crest < 4.5 {
 		t.Fatalf("kick-acoustic crest=%.2f, want >= 4.5 (a punchy hit, not a soft thump)", fp.Crest)
 	}
-	// A room/reverb TAIL (the recorded kick's space): the tail must ring past the
-	// main hit. Guards against a bone-dry synth kick.
+	// Guards against a bone-dry synth kick.
 	if fp.TailDurationSec < 0.15 {
 		t.Fatalf("kick-acoustic reverb tail=%.0f ms, want >= 150 (a room tail, not bone-dry)", fp.TailDurationSec*1000)
 	}
-	// TIMBRE (the variant-7 modal win): a real-recorded spectral SHAPE — bright
-	// inharmonic modal content + recorded-air texture, NOT the dull pure sine of
-	// the old variant-4 tuning. Guards against a regression to a lifeless tone.
+	// Bright inharmonic modes and recorded-air texture, not a dull pure sine.
 	cmean := 0.0
 	for _, c := range fp.CentroidTrace {
 		cmean += c
@@ -231,14 +194,8 @@ func TestKickAcousticIsTightOrganicKick(t *testing.T) {
 	}
 }
 
-// TestRawKickIsGrittyHeavyKick guards the raw-kick's IDENTITY: a still-kick-
-// shaped but rawer/heavier/harder sibling of zgump-kick (the user brief: "not as
-// brutal, raw, heavy as the reference"). The guard is deliberately looser than
-// zgump's — raw trades the smooth tail bloom for grit + a harder transient, so
-// it does NOT require the bloom. It DOES require: fundamental-dominant (still a
-// kick, not a mid honk), a real pitch glide, a punchy crest, no >2 kHz air, and
-// measurably MORE grit than the clean zgump-kick. Bounds carry margin so ear-
-// tuning the raw character doesn't trip it.
+// A rawer, heavier sibling of zgump-kick: grit and a harder transient instead of the bloom, so the bloom is not
+// required; still fundamental-dominant, gliding, punchy, no >2 kHz air, and grittier than zgump.
 func TestRawKickIsGrittyHeavyKick(t *testing.T) {
 	analyze := func(id instrument.ID) fingerprint.KickFingerprint {
 		buf, sr := kickGuardRender(t, id)
@@ -279,10 +236,7 @@ func TestRawKickIsGrittyHeavyKick(t *testing.T) {
 	if raw.PitchStartHz < raw.PitchSettleHz*1.3 {
 		t.Fatalf("raw-kick glide too shallow: start=%.0f settle=%.0f", raw.PitchStartHz, raw.PitchSettleHz)
 	}
-	// 4. Punchy but bounded (a thump/hit, not a pure click or a drone). The floor
-	// was 2.8 until the 2026-10-02 fullness retune (user A/B at equal peak): a
-	// louder kick under a fixed peak IS a lower crest (2.36). A drone sits near
-	// sqrt(2) ≈ 1.4, so 2.2 still separates a hit from a sustained tone.
+	// Under a fixed peak a louder kick has a lower crest; a drone sits near √2, so 2.2 still separates a hit from a tone.
 	if raw.Crest < 2.2 || raw.Crest > 4.8 {
 		t.Fatalf("raw-kick crest = %.2f, want [2.2,4.8]", raw.Crest)
 	}

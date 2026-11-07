@@ -58,8 +58,7 @@ const (
 	missedRangeDB       = 40
 )
 
-// Analyze composes the stages. On a not_modal refusal it still returns the
-// filled Analysis (partial results are always written, spec §7).
+// A not_modal refusal still returns the filled Analysis: partial results are always written.
 func Analyze(p Prepared) (Analysis, error) {
 	t0 := time.Now()
 	rate := float64(p.Rate)
@@ -112,10 +111,8 @@ func Analyze(p Prepared) (Analysis, error) {
 	return a, nil
 }
 
-// missedModes cross-checks against the STFT mode tracker: a tracked partial
-// within 40 dB of the loudest with no ESPRIT mode within max(3 cents, one STFT
-// bin) is listed. (A 4096-point tracker places a partial to about a bin —
-// half a bin flagged modes ESPRIT had found 3 cents away.)
+// A tracked partial within 40 dB of the loudest with no ESPRIT mode within max(3 cents, one STFT bin): a 4096-point
+// tracker places a partial only to about a bin.
 func missedModes(p Prepared, modes []Mode) []MissedMode {
 	out := []MissedMode{}
 	w := wave.Wave{Samples: p.Samples[p.Onset:p.WindowEnd], SampleRate: p.Rate}
@@ -148,9 +145,7 @@ func missedModes(p Prepared, modes []Mode) []MissedMode {
 	return out
 }
 
-// glideCents measures the strongest mode's frequency over the first and the
-// last third of the decay window (Hann FFT, parabolic peak within ±3 %) and
-// returns the drift last − first in cents.
+// The strongest mode's drift in cents between the first and last third of the decay window.
 func glideCents(p Prepared, m Mode) float64 {
 	n := p.WindowEnd - p.WindowStart
 	third := n / 3
@@ -165,8 +160,7 @@ func glideCents(p Prepared, m Mode) float64 {
 	return 1200 * math.Log2(f2/f1)
 }
 
-// peakNear uses the largest power-of-two prefix of seg: MagnitudeSpectrum
-// windows the WHOLE (zero-padded) buffer, so padding would leave the data
+// The largest power-of-two prefix: MagnitudeSpectrum windows the WHOLE padded buffer, which would leave the data
 // under only the rising edge of the Hann window.
 func peakNear(seg []float64, rate int, f float64) (float64, bool) {
 	size := 1

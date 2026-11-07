@@ -7,8 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Every ABI field is named by at least one module type (value, Set, Global
-// or Enable) — except noise_seed, which no caller ever sets (spec §3).
+// Except noise_seed, which no caller ever sets.
 func TestEveryABIFieldIsDeclared(t *testing.T) {
 	reg := BuiltinModuleRegistry()
 	named := map[string]bool{"noise_seed": true}
@@ -96,10 +95,7 @@ func TestEveryModuleValueHasAParamDef(t *testing.T) {
 	}
 }
 
-// TestDocumentsCarryOnlyVoiceFXBothPlatformsRun: a document's voice FX is
-// applied to the voice on desktop (cgo) and in the browser render worker
-// (voice_post.js), both through the C host, so the registry declares exactly
-// the voiceFXTypes fx.* module types.
+// Both platforms apply a document's voice FX through the C host, so the registry declares exactly those fx.* types.
 func TestDocumentsCarryOnlyVoiceFXBothPlatformsRun(t *testing.T) {
 	reg := BuiltinModuleRegistry()
 	for _, et := range EffectTypes {

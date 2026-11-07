@@ -11,11 +11,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// The desktop mixer's half of the cross-platform contract
-// (xplat_audio_stages.browser.test.js holds the browser to the same numbers):
-// a note is its played voice × volume × headroom with a linear fade-in, from
-// its own sample; a lane stop fades linearly from its own sample; a channel's
-// effects ring on without voices; a recording at another rate is converted.
+// The desktop half of the cross-platform contract (xplat_audio_stages holds the browser to the same numbers): a
+// note is its played voice × volume × headroom with a linear fade-in from its own sample; a lane stop fades linearly
+// from its own sample; effects ring on without voices; a recording at another rate is converted.
 
 func stageReset(t *testing.T) {
 	t.Helper()
@@ -36,10 +34,7 @@ func TestEngineRunsAt48k(t *testing.T) {
 	}
 }
 
-// TestMixerVoiceIsThePlayedVoice: from a start sample inside a 64-frame
-// block, the mixer's per-instrument signal is exactly the played voice
-// (RenderAsPlayed) × volume, faded in linearly over FadeInMs, × headroom —
-// for a pitched, shortened drum and a gated, fractional-pitch melodic note.
+// From a start inside a 64-frame block, for a pitched shortened drum and a gated fractional-pitch melodic note.
 func TestMixerVoiceIsThePlayedVoice(t *testing.T) {
 	stageReset(t)
 	sr := SampleRate()
@@ -72,9 +67,7 @@ func TestMixerVoiceIsThePlayedVoice(t *testing.T) {
 	}
 }
 
-// TestLaneStopLandsOnItsSample: a mute node's stop fades a lane voice from
-// the stop's own sample, linearly to zero over StopFadeMs (it used to wait for
-// the block containing it and fade quadratically).
+// Linearly to zero over StopFadeMs from the stop's own sample.
 func TestLaneStopLandsOnItsSample(t *testing.T) {
 	stageReset(t)
 	sr := SampleRate()
@@ -100,9 +93,7 @@ func TestLaneStopLandsOnItsSample(t *testing.T) {
 	}
 }
 
-// TestEffectTailsRingWithoutVoices: a delay's echoes keep sounding after the
-// note that fed them has ended — a channel with an effect runs every block,
-// voice or not, as the browser's worklet does.
+// A channel with an effect runs every block, voice or not, as the browser's worklet does.
 func TestEffectTailsRingWithoutVoices(t *testing.T) {
 	stageReset(t)
 	sr := SampleRate()
@@ -121,9 +112,7 @@ func TestEffectTailsRingWithoutVoices(t *testing.T) {
 	}
 }
 
-// TestForeignRateSampleIsResampled: PCM recorded at 44.1 or 96 kHz plays at
-// its own pitch and length (it used to be registered as-is — 48 kHz PCM
-// played 1.47 semitones low — or replaced by silence).
+// 44.1 or 96 kHz PCM plays at its own pitch and length.
 func TestForeignRateSampleIsResampled(t *testing.T) {
 	const f = 440.0
 	for _, from := range []int{44100, 96000, 22050} {

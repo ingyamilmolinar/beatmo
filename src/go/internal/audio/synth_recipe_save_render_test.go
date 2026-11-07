@@ -10,8 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// l1 returns the sum of absolute sample differences between two buffers.
-// 0 means bit-identical content over the shared prefix.
+// 0 = bit-identical over the shared prefix.
 func l1(a, b []float32) float64 {
 	n := len(a)
 	if len(b) < n {
@@ -24,8 +23,7 @@ func l1(a, b []float32) float64 {
 	return d
 }
 
-// saveCopyToLibraryForTest is the audio-layer half of the Synth tab's Save:
-// the project copy becomes its library entry.
+// The project copy becomes its library entry.
 func saveCopyToLibraryForTest(t *testing.T, id string) {
 	t.Helper()
 	d, ok := InstrumentDoc(instrument.ID(id))
@@ -38,15 +36,8 @@ func saveCopyToLibraryForTest(t *testing.T, id string) {
 	}
 }
 
-// TestSynthSavePersists_RenderUnchangedAfterSave is the faithful root-cause
-// test for "after Save the sound reverts". It drives the NATIVE dispatcher
-// (newRecipeAwareVoice — the -tags test stub Play is a no-op and cannot
-// exercise this) and proves that after Save and a later Reset (the copy back
-// on its library entry — also the state after a restart) the voice still
-// renders the liked tone, not the bare baseline.
-//
-// Uses kick: a pitched-sine renderer with no noise, so renders are
-// deterministic and byte-comparable across cache invalidations.
+// Through the NATIVE dispatcher (the -tags test Play cannot reach it): after a save, a copy back on its library entry
+// (also the state after a restart) still renders the saved tone. Kick: a noiseless pitched sine, byte-comparable.
 func TestSynthSavePersists_RenderUnchangedAfterSave(t *testing.T) {
 	resetLibraryForTest(t)
 	const id = roster.Kick
@@ -76,9 +67,7 @@ func TestSynthSavePersists_RenderUnchangedAfterSave(t *testing.T) {
 	}
 }
 
-// TestSynthReset_RenderReturnsToOriginal: after a Save over a shipped
-// instrument, Restore shipped (drop the user entry) + Reset brings the
-// original sound back, byte for byte.
+// Moving the library back to shipped and resetting the copy restores the original sound byte for byte.
 func TestSynthReset_RenderReturnsToOriginal(t *testing.T) {
 	resetLibraryForTest(t)
 	const id = roster.Kick

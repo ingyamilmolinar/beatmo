@@ -8,8 +8,7 @@ import (
 func TestBitcrusherQuantization(t *testing.T) {
 	// 4-bit quantization should produce distinct steps.
 	b := newBitcrusher(44100, map[string]float64{"bits": 4, "rate": 1, "mix": 1})
-	// With 4 bits, there are 2^4=16 levels. A signal of 0.123 should be
-	// quantized to the nearest step.
+	// 4 bits is 16 levels.
 	var out float64
 	for i := 0; i < 100; i++ {
 		out = b.ProcessSample(0.123)

@@ -26,8 +26,7 @@ func refineFixture(t *testing.T) (*LossRef, Analysis, instrument.Doc, float64) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Doc₀ from a WRONG analysis: everything above 1.5 kHz 6 dB hot, every
-	// decay 1.5× fast.
+	// Doc₀ from a WRONG analysis: everything above 1.5 kHz 6 dB hot, every decay 1.5× fast.
 	bad := append([]Mode(nil), truth...)
 	for i := range bad {
 		if bad[i].Freq > 1500 {
@@ -47,8 +46,7 @@ func refineFixture(t *testing.T) (*LossRef, Analysis, instrument.Doc, float64) {
 func TestRefineRecoversAPerturbedModel(t *testing.T) {
 	ref, a, d0, pitch := refineFixture(t)
 	res, err := Refine(d0, ref, a, RefineOptions{Render: modelRender(pitch, refineRate), Pitch: pitch, Gens: 80, Seed: 1,
-		// No prior: this fixture's analysis is deliberately WRONG, and the
-		// prior's job is to hold the search near the analysis.
+		// No prior: it holds the search near the analysis, which is wrong here on purpose.
 		Weights: LossWeights{MRSTFT: 1, Envelope: 1}})
 	if err != nil {
 		t.Fatal(err)

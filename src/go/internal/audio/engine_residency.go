@@ -17,9 +17,7 @@ func (m *mixer) residencyOf(ch *Channel) *residencyState {
 	return r
 }
 
-// releaseIfSilent stops running an unheld channel that has no voice and has
-// been quiet for its hold plus its chain's memory (residency.go). Its stages
-// are reset, so a voice or a re-hold wakes it as a fresh channel.
+// Quiet for its hold plus its chain's memory; its stages are reset, so a voice or a re-hold wakes a fresh channel.
 func (m *mixer) releaseIfSilent(ch *Channel) {
 	if ChannelHeld(ch.id) {
 		return

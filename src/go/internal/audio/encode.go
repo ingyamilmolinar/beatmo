@@ -65,8 +65,7 @@ func AvailableFormats() []AudioFormat {
 	return fmts
 }
 
-// FormatFromExtension returns the AudioFormat for the given file extension.
-// Returns empty string if not recognized.
+// "" when unrecognised.
 func FormatFromExtension(ext string) AudioFormat {
 	switch ext {
 	case ".wav":

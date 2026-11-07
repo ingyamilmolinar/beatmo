@@ -5,8 +5,6 @@ import (
 	"testing"
 )
 
-// TestLUFSIntegrator_SilenceReturnsFloor: with no audio fed in the
-// integrator must report the -120 dB silence floor.
 func TestLUFSIntegrator_SilenceReturnsFloor(t *testing.T) {
 	l := NewLUFSIntegrator(48000)
 	if got := l.LUFSShortTerm(); got != -120 {
@@ -14,16 +12,11 @@ func TestLUFSIntegrator_SilenceReturnsFloor(t *testing.T) {
 	}
 }
 
-// TestLUFSIntegrator_FullScaleSineIsLoud: a full-amplitude 1 kHz
-// sine should produce a loudness measurement around -3 LUFS on the
-// K-weighted scale (1 kHz sits in the K-weighting passband; full-scale
-// sine MS = 0.5; LUFS ≈ -0.691 + 10*log10(0.5) ≈ -3.7 plus ~0 dB
-// K-weighting tilt at 1 kHz).
+// 1 kHz sits in the K-weighting passband: MS 0.5 gives ≈ -3.7 LUFS.
 func TestLUFSIntegrator_FullScaleSineIsLoud(t *testing.T) {
 	const fs = 48000.0
 	l := NewLUFSIntegrator(fs)
-	// Generate 4 seconds of 1 kHz full-scale sine so the integrator
-	// fills its 3 s window and reaches steady state.
+	// Fills the 3 s window.
 	const seconds = 4
 	samples := make([]float64, int(fs*seconds))
 	for i := range samples {
@@ -31,17 +24,12 @@ func TestLUFSIntegrator_FullScaleSineIsLoud(t *testing.T) {
 	}
 	l.Process(samples)
 	got := l.LUFSShortTerm()
-	// Accept a wide tolerance — the goal is "non-silent and not insanely
-	// off"; the exact K-weighting response at 1 kHz approximates 0 dB
-	// gain so the result should be close to -3.7 LUFS.
+	// Wide: the goal is "non-silent and not wildly off".
 	if got < -10 || got > 0 {
 		t.Errorf("1 kHz full-scale sine LUFS = %g, want roughly -3.7 (range -10..0)", got)
 	}
 }
 
-// TestLUFSIntegrator_QuieterIsLower: halving the amplitude (-6 dBFS)
-// must produce a LUFS measurement ~6 dB lower than the full-scale
-// reference.
 func TestLUFSIntegrator_QuieterIsLower(t *testing.T) {
 	const fs = 48000.0
 	loud := NewLUFSIntegrator(fs)
@@ -81,9 +69,6 @@ func TestLUFSIntegrator_ResetClearsState(t *testing.T) {
 	}
 }
 
-// TestKWeightingFilter_PassesUnitSample: smoke test that the filter
-// produces finite output for a single impulse and that Reset is
-// idempotent.
 func TestKWeightingFilter_PassesUnitSample(t *testing.T) {
 	f := NewKWeightingFilter(48000)
 	y := f.Process(1.0)
@@ -96,8 +81,7 @@ func TestKWeightingFilter_PassesUnitSample(t *testing.T) {
 	}
 }
 
-// TestKWeightingFilter_NonDefaultSampleRate ensures bilinear-derived
-// coefficients yield a stable filter at 44.1 kHz.
+// Bilinear-derived coefficients at 44.1 kHz.
 func TestKWeightingFilter_NonDefaultSampleRate(t *testing.T) {
 	f := NewKWeightingFilter(44100)
 	// Push a short tone burst; output must stay finite and bounded.

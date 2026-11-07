@@ -2,11 +2,8 @@ package songrender
 
 import "github.com/ingyamilmolinar/beatmo/internal/instrument"
 
-// Rendered is the offline render of a template: the full arrangement, the master
-// mix, and per-instrument stems (keyed by instrument id). Sample slices are mono
-// float64 at Arrangement.SampleRate. Render is build-tag split:
-//   - render_stub.go  (//go:build test):  deterministic pure-Go synth, master == Σ stems.
-//   - render_prod.go  (//go:build !test): faithful audio-engine mix (vol/pan/sends/master).
+// Mono float64 at Arrangement.SampleRate. The test build renders a deterministic pure-Go synth (master == Σ stems);
+// the real build is the faithful engine mix.
 type Rendered struct {
 	Arrangement Arrangement
 	Master      []float64

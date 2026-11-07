@@ -2,16 +2,8 @@ package fingerprint
 
 import "testing"
 
-// compare_scale_test.go — the vector/track comparison path must respect the
-// descriptor's declared scale.
-//
-// Reducing a vector to a mean absolute difference produces a magnitude in the
-// VECTOR'S OWN UNITS. Classifying that against KindFraction's 0.05/0.15
-// thresholds is only correct when the vector happens to hold unit fractions.
-// For a vector of hertz or of cents it is nonsense: two centroid trajectories
-// 45 Hz apart -- a match by any musical standard -- scored MISMATCH with
-// Norm=300, which would also have dominated any worst-offending-axes ranking
-// built on Norm.
+// A vector's mean |Δ| is in the VECTOR'S units, so KindFraction's thresholds are nonsense for hertz or cents: two
+// centroid trajectories 45 Hz apart scored MISMATCH at Norm 300.
 
 func TestCompareVector_HonoursDescriptorThresholds(t *testing.T) {
 	// A vector of hertz, with thresholds declared in hertz.
@@ -55,8 +47,7 @@ func TestCompareTrack_HonoursDescriptorThresholds(t *testing.T) {
 	}
 }
 
-// A vector descriptor with NO explicit thresholds keeps the old
-// KindFraction behaviour, so unit-fraction profiles are unaffected.
+// Unit-fraction profiles are unaffected.
 func TestCompareVector_DefaultsToFractionScale(t *testing.T) {
 	got := CompareByKind(KindFraction,
 		Vector([]float64{0.10, 0.20}, nil),
@@ -72,10 +63,7 @@ func TestCompareVector_DefaultsToFractionScale(t *testing.T) {
 	}
 }
 
-// A ref/synth pair that disagree on FORM cannot be compared. Reading
-// synth.Scalar (structurally 0 for a vector) produced a confident MISMATCH
-// from a value that was never measured -- exactly the misleading zero
-// Measurement.OK exists to prevent.
+// synth.Scalar is structurally 0 for a vector: a confident MISMATCH from a value never measured.
 func TestCompare_FormMismatchIsUnavailable(t *testing.T) {
 	got := CompareByKind(KindHz, Scalar(1500), Vector([]float64{1500, 1600}, nil))
 	if got.OK {
@@ -95,8 +83,7 @@ func TestCompare_FormMismatchIsUnavailable(t *testing.T) {
 	}
 }
 
-// compareRingT60 indexes fixed component positions; a short vector must not
-// panic the whole report.
+// Fixed component positions: a short vector must not panic the report.
 func TestCompareRingT60_ShortVectorIsUnavailable(t *testing.T) {
 	defer func() {
 		if r := recover(); r != nil {

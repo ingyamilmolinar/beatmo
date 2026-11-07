@@ -10,17 +10,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestMelodicPitchRerender_DrumsByteIdentical is HARD GATE 1.
-//
-// Asserts that kick voice rendering and playback output is UNCHANGED after the
-// per-pitch re-render feature is introduced:
-//   - IsMelodicInstrument is false for the kick
-//   - the voiceCacheKey for kick has pitch=0 (not in key for non-pitch-aware)
-//   - the resample path in PlayParams is unchanged for drums
-//
-// Evidence: two consecutively-acquired kick voices at pitch=+12 are
-// byte-identical (both take the legacy resample path, NOT the pitched render
-// path), and the cache key used does NOT include any pitch delta.
+// Drums are pitched by resampling one cached buffer: two kick voices at +12 are byte-identical and the cache key
+// carries no pitch.
 func TestMelodicPitchRerender_DrumsByteIdentical(t *testing.T) {
 	t.Cleanup(func() { ResetInstrumentParams(roster.Kick) })
 	ResetInstrumentParams(roster.Kick)
@@ -30,10 +21,7 @@ func TestMelodicPitchRerender_DrumsByteIdentical(t *testing.T) {
 		t.Fatal("IsMelodicInstrument(kick) = true; want false for a drum")
 	}
 
-	// newRecipeAwareVoicePitched with a drum must fall through to the
-	// non-pitched path (legacy/resample). Get two voices at pitch=+12 and
-	// drain them — they should be byte-identical because the resampled
-	// buffer is the same cached base buffer.
+	// The edit forces the recipe path so the cache is hit.
 	SetInstrumentParam(roster.Kick, "amp_decay", 0.4) // force recipe path so we hit cache
 	t.Cleanup(func() { ResetInstrumentParams(roster.Kick) })
 
@@ -58,36 +46,15 @@ func TestMelodicPitchRerender_DrumsByteIdentical(t *testing.T) {
 		}
 	}
 
-	// Confirm the cache key for drum kick has pitch=0 (non-pitch-aware).
-	// This is structural: by not being pitch-aware, the code path produces
-	// a key with pitch=0 regardless of the node pitch argument.
 	if IsMelodicInstrument(roster.Kick) {
 		t.Error("IsMelodicInstrument(kick) must be false to guarantee byte-identical drum cache keys")
 	}
 }
 
-// TestMelodicPitchRerender_ViolinReRenderDiffersFromResample is HARD GATE 2.
-//
-// Asserts that a violin rendered at pitch=+12 via the new at-pitch path
-// DIFFERS from a naive resample-by-+12 of the pitch=0 violin buffer.
-// This proves the filter formant is preserved by re-rendering at frequency
-// rather than being slid by resampling.
-//
-// Method:
-//  1. Render violin at pitch=0 via tryRecipeVoicePitched (base buffer).
-//  2. Render violin at pitch=+12 via tryRecipeVoicePitched (at-pitch buffer).
-//  3. Resample the pitch=0 buffer by rate=2^(12/12)=2.0 to produce the
-//     "munchkin" version (what the old path did).
-//  4. Assert that (2) and (3) differ materially (non-zero L1 distance).
-//     If they were identical, we'd just be resampling under the hood.
+// A violin rendered at +12 must DIFFER from its pitch-0 render resampled ×2: re-rendering keeps the formant where
+// resampling would slide it.
 func TestMelodicPitchRerender_ViolinReRenderDiffersFromResample(t *testing.T) {
 	t.Cleanup(func() { ResetInstrumentParams(roster.Violin) })
-
-	// Force recipe path by setting a param so RecipeDefaultsCustomized or
-	// params check passes in tryRecipeVoicePitched (pitch value alone suffices
-	// since we call tryRecipeVoicePitched directly, not via the dispatch gate).
-	// tryRecipeVoicePitched itself does not require user params — it always
-	// renders at the given pitch.
 
 	const sr = 44100
 
@@ -111,12 +78,9 @@ func TestMelodicPitchRerender_ViolinReRenderDiffersFromResample(t *testing.T) {
 		t.Fatal("empty violin pitch=+12 buffer")
 	}
 
-	// 3. Produce the resample version: take buf0 and apply 2x speed-up.
-	//    This is exactly what the old PlayParams path did for pitch=+12.
 	resampleBuf := resampleBuffer(buf0, 2.0)
 
-	// 4. Compare the at-pitch render (buf12) with the resample (resampleBuf).
-	//    They must differ materially — if identical, we're not re-rendering.
+	// Identical would mean resampling under the hood.
 	n := len(buf12)
 	if len(resampleBuf) < n {
 		n = len(resampleBuf)
@@ -133,8 +97,6 @@ func TestMelodicPitchRerender_ViolinReRenderDiffersFromResample(t *testing.T) {
 		"non-zero proves formant is preserved by re-rendering, not resampled", l1dist, n)
 }
 
-// TestPitchAwareRecipe_MelodicTrue asserts the set of melodic recipe IDs is
-// correctly classified as pitch-aware.
 func TestPitchAwareRecipe_MelodicTrue(t *testing.T) {
 	melodic := []instrument.ID{
 		roster.Violin,
@@ -165,8 +127,6 @@ func TestPitchAwareRecipe_MelodicTrue(t *testing.T) {
 	}
 }
 
-// TestPitchAwareRecipe_NonMelodicFalse asserts that drums, FM, base modular,
-// and modular-pad are NOT pitch-aware.
 func TestPitchAwareRecipe_NonMelodicFalse(t *testing.T) {
 	nonMelodic := []instrument.ID{
 		roster.Kick, roster.Snare, roster.Hihat, roster.Clap, roster.Tom,
@@ -182,9 +142,7 @@ func TestPitchAwareRecipe_NonMelodicFalse(t *testing.T) {
 	}
 }
 
-// TestMelodicPitchRerender_CacheKeyIncludesPitch asserts that the voiceCacheKey
-// for a melodic instrument includes the rounded pitch, so different pitches
-// produce distinct cache entries.
+// Different pitches must be distinct cache entries.
 func TestMelodicPitchRerender_CacheKeyIncludesPitch(t *testing.T) {
 	t.Cleanup(func() { ResetInstrumentParams(roster.Violin) })
 
@@ -211,9 +169,7 @@ func TestMelodicPitchRerender_CacheKeyIncludesPitch(t *testing.T) {
 	}
 }
 
-// resampleBuffer produces a speed-up/down of src by the given rate using
-// linear interpolation, matching the resampleVoice logic. Returns a slice
-// approximately len(src)/rate samples long.
+// Linear interpolation, like resampleVoice.
 func resampleBuffer(src []float32, rate float64) []float32 {
 	if len(src) == 0 || rate <= 0 {
 		return nil

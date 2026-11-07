@@ -11,9 +11,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestRenderShippedIncludesDocumentFX: for an instrument whose document
-// carries FX, RenderShipped is the PLAYED sound (FX applied, normalised),
-// which the raw RenderWithParams is not — the bug this exists to fix.
+// The raw RenderWithParams is not the played sound.
 func TestRenderShippedIncludesDocumentFX(t *testing.T) {
 	var id string
 	for _, cand := range roster.All {

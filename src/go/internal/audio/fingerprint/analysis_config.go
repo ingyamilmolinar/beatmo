@@ -9,9 +9,7 @@ type BandEdge struct {
 	HiHz float64 `json:"hi_hz,omitempty"`
 }
 
-// AnalysisConfig holds every tunable knob for song-level analysis. All behavior
-// is driven from here; library code contains no magic numbers. JSON tags allow a
-// partial override file merged over DefaultAnalysisConfig via LoadAnalysisConfig.
+// Every tunable for song analysis lives here; a partial JSON file overlays the defaults.
 type AnalysisConfig struct {
 	HopSec           float64     `json:"hop_sec,omitempty"`        // timeline frame hop
 	FrameSec         float64     `json:"frame_sec,omitempty"`      // per-frame analysis length
@@ -37,8 +35,7 @@ type AnalysisConfig struct {
 	RhythmBins  int     `json:"rhythm_bins,omitempty"`  // onset bar-phase histogram resolution
 }
 
-// DefaultAnalysisConfig returns documented defaults. Krumhansl–Kessler key
-// profiles; 5 perceptual bands; 40–240 BPM with octave folding.
+// Krumhansl–Kessler key profiles, 5 perceptual bands, 40–240 BPM with octave folding.
 func DefaultAnalysisConfig() AnalysisConfig {
 	c := AnalysisConfig{
 		HopSec:       0.5,
@@ -70,8 +67,7 @@ func DefaultAnalysisConfig() AnalysisConfig {
 	return c
 }
 
-// LoadAnalysisConfig unmarshals partialJSON over a defaults base, so only the
-// fields present in the JSON override defaults (a shallow overlay merge).
+// A shallow overlay: only fields present override.
 func LoadAnalysisConfig(partialJSON []byte) (AnalysisConfig, error) {
 	c := DefaultAnalysisConfig()
 	if len(partialJSON) == 0 {

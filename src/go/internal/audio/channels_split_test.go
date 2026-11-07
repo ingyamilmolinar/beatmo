@@ -8,17 +8,12 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// gainProc is a tiny Processor that multiplies each sample by a constant
-// gain — used so the splits are easy to predict numerically without depending
-// on biquad coefficients or block-processor optimizations.
+// A constant gain keeps the splits numerically predictable.
 type gainProc struct{ g float64 }
 
 func (p *gainProc) ProcessSample(x float64) float64 { return x * p.g }
 
-// TestProcessInsertsBlockLocalAppliesVolumeAndInsertsOnly pins the contract:
-// ProcessInsertsBlockLocal multiplies by Volume and runs ONLY the inserts
-// chain, leaving the EQ-side processors out. This is what lets the mixer
-// tap the post-FX/pre-EQ signal for scope.StageInsertFX.
+// Volume and ONLY the inserts, so the mixer can tap post-FX / pre-EQ.
 func TestProcessInsertsBlockLocalAppliesVolumeAndInsertsOnly(t *testing.T) {
 	ch := newChannel(channel.Of("split-inserts"), nil)
 	ch.SetVolume(0.5)
@@ -39,9 +34,7 @@ func TestProcessInsertsBlockLocalAppliesVolumeAndInsertsOnly(t *testing.T) {
 	}
 }
 
-// TestProcessEQBlockLocalAppliesEQOnly pins the contract: ProcessEQBlockLocal
-// runs ONLY the eqProcs chain and does NOT re-apply volume — that's the
-// upstream caller's (ProcessInsertsBlockLocal) responsibility.
+// Volume is the upstream caller's job.
 func TestProcessEQBlockLocalAppliesEQOnly(t *testing.T) {
 	ch := newChannel(channel.Of("split-eq"), nil)
 	ch.SetVolume(0.5) // must NOT be applied here
@@ -62,10 +55,7 @@ func TestProcessEQBlockLocalAppliesEQOnly(t *testing.T) {
 	}
 }
 
-// TestProcessEQBlockLocalEmptyChainIsIdentity verifies that when eqProcs is
-// empty, the EQ pass is a copy-accumulate of the input — important so the
-// mixer can call the split methods even when an instrument has no EQ bands
-// configured.
+// The mixer calls the split methods even for an instrument with no EQ.
 func TestProcessEQBlockLocalEmptyChainIsIdentity(t *testing.T) {
 	ch := newChannel(channel.Of("split-empty-eq"), nil)
 	ch.SetVolume(1.0)
@@ -82,13 +72,9 @@ func TestProcessEQBlockLocalEmptyChainIsIdentity(t *testing.T) {
 	}
 }
 
-// TestProcessInsertsAndEQComposeEqualsProcessBlockLocal verifies that calling
-// ProcessInsertsBlockLocal then ProcessEQBlockLocal back-to-back produces
-// the same output as the legacy ProcessBlockLocal — i.e. the split does not
-// change the channel's audible behavior, only exposes a tap point.
+// The split only exposes a tap point; the audible output is unchanged.
 func TestProcessInsertsAndEQComposeEqualsProcessBlockLocal(t *testing.T) {
-	// Use two channels with identical config so internal block-cache state
-	// is not shared.
+	// Two identically configured channels, so no block-cache state is shared.
 	mkChan := func(name string) *Channel {
 		ch := newChannel(channel.Of(instrument.ID(name)), nil)
 		ch.SetVolume(0.6)

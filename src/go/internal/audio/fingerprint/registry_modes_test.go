@@ -65,12 +65,7 @@ func TestModeBeating_TwoCloseSines(t *testing.T) {
 	}
 }
 
-// TestModeSelfBeat_RippleEstimate is the dedicated unit test for the
-// per-mode ripple estimator, exercised directly on a synthetic dB Track
-// (bypassing the FFT/tracker entirely) so the rate/depth math is pinned in
-// isolation. amp(t) = 1 + m*sin(2*pi*f*t) has depth exactly m (its max is
-// 1+m, its min is 1-m, and (max-min)/(max+min) = 2m/2 = m) and ripples at
-// exactly f Hz.
+// On a synthetic dB track, bypassing the FFT: amp = 1 + m·sin(2πft) has depth exactly m and ripples at exactly f.
 func TestModeSelfBeat_RippleEstimate(t *testing.T) {
 	const hopSec = 0.01
 	const f = 3.0
@@ -94,8 +89,6 @@ func TestModeSelfBeat_RippleEstimate(t *testing.T) {
 	}
 }
 
-// TestModeSelfBeat_NoRippleWhenSteady is the negative case for the same
-// estimator: a perfectly constant track has no ripple to report.
 func TestModeSelfBeat_NoRippleWhenSteady(t *testing.T) {
 	const hopSec = 0.01
 	track := make([]float64, 300)
@@ -107,13 +100,8 @@ func TestModeSelfBeat_NoRippleWhenSteady(t *testing.T) {
 	}
 }
 
-// TestModeBeating_RejectsGlobalTremolo is the critical tremolo-conflation
-// regression: a vibraphone-like tone with three STEADY partials (1, 4.0,
-// 10.7 x f0) under a single GLOBAL 5 Hz amplitude tremolo modulates every
-// partial identically, so every strong mode's own dB track ripples at the
-// same rate. That is common-mode amplitude modulation of the whole
-// instrument, not two partials beating against each other, and must be
-// rejected.
+// A global 5 Hz tremolo moves every steady partial identically, so every mode ripples at the same rate: common-mode
+// modulation, not beating.
 func TestModeBeating_RejectsGlobalTremolo(t *testing.T) {
 	sr := 44100
 	dur := 2.0
@@ -137,10 +125,7 @@ func TestModeBeating_RejectsGlobalTremolo(t *testing.T) {
 	}
 }
 
-// TestModeBeating_DetectsPerPartialRipple is the positive counterpart: two
-// STEADY partials (1, 2.76 x f0) where ONLY the second carries its own 3 Hz
-// amplitude ripple. This is NOT common-mode (the first partial has no
-// ripple at all to share the rate with), so it must be detected.
+// Only the second partial ripples, so there is no shared rate and it is beating.
 func TestModeBeating_DetectsPerPartialRipple(t *testing.T) {
 	sr := 44100
 	dur := 2.0
@@ -167,26 +152,9 @@ func TestModeBeating_DetectsPerPartialRipple(t *testing.T) {
 	}
 }
 
-// decayingRippleTrack builds a synthetic dB Track directly (bypassing the
-// FFT/tracker, same style as TestModeSelfBeat_RippleEstimate) representing a
-// partial decaying at decayDBPerSec (matching Task 1's twoDecayingModes
-// shape, amp(t) = 10^(rate*t/20), i.e. a LINEAR trend in dB) with an
-// amplitude ripple of rippleHz/rippleDepth riding on top of the decay:
-// dB(t) = decayDBPerSec*t + 20*log10(1 + rippleDepth*sin(2*pi*rippleHz*t)).
-//
-// This is the regression pin for the real bug the detrending fix addressed.
-// Every prior beating test uses a constant-envelope tone, which makes
-// modeSelfBeat's OLS detrending a no-op — none of them would have caught a
-// regression to the pre-fix "count crossings of the raw global mean"
-// behaviour, which undercounts cycles once a decaying tail drops well below
-// that mean (measured on the real vibraphone synth as a false ~2 Hz instead
-// of the true ~5 Hz tremolo). Constructing the Track directly, rather than
-// going through a real waveform + STFT, keeps the ripple's dB-domain shape
-// exact rather than partially averaged away by the analysis window (whose
-// ~0.186s duration is close to a 5 Hz ripple's own 0.2s period) — measuring
-// the DETRENDING logic in isolation is the point of this test, not
-// re-verifying the FFT/tracker path (already covered by the audio-level
-// beating tests above).
+// A decaying partial (linear in dB) with a ripple on top, built directly so the ripple's dB shape is exact rather
+// than averaged by an analysis window close to its period. A constant-envelope tone makes detrending a no-op, so
+// only this shape catches a regression to counting raw-mean crossings.
 func decayingRippleTrack(hopSec, decayDBPerSec, rippleHz, rippleDepth float64, n int) []float64 {
 	track := make([]float64, n)
 	for i := range track {
@@ -199,12 +167,7 @@ func decayingRippleTrack(hopSec, decayDBPerSec, rippleHz, rippleDepth float64, n
 	return track
 }
 
-// TestModeBeating_DecayingPartialWithRipple pins the detrending fix: a
-// partial decaying at -12 dB/s carrying a 5 Hz/depth-0.35 amplitude ripple
-// must still be detected. The coordinator's reported pre-fix failure mode on
-// this exact shape was rate=1.40/depth=0.91 (wrong, from counting crossings
-// of the raw undetrended track) vs rate=5.06/depth=0.36 (correct, with
-// detrending) — reproduced here as rate~5.05/depth~0.36.
+// -12 dB/s with a 5 Hz / 0.35 ripple: without detrending it read rate 1.40 / depth 0.91.
 func TestModeBeating_DecayingPartialWithRipple(t *testing.T) {
 	track := decayingRippleTrack(0.02, -12, 5.0, 0.35, 100)
 	rate, depth, ok := modeSelfBeat(Mode{Track: track}, 0.02)
@@ -219,12 +182,7 @@ func TestModeBeating_DecayingPartialWithRipple(t *testing.T) {
 	}
 }
 
-// TestModeBeating_DecayingPartialNoRippleIsOK is the negative counterpart:
-// the same decay shape with NO ripple must not report beating. Without
-// detrending removing the decay trend first, a monotonically falling track
-// crosses its own global mean at most once, which already fails
-// modeSelfBeat's crossings>=2 floor — this pins that a decay alone, however
-// steep, is never mistaken for a ripple.
+// A decay alone, however steep, is never a ripple.
 func TestModeBeating_DecayingPartialNoRippleIsOK(t *testing.T) {
 	track := decayingRippleTrack(0.02, -12, 0, 0, 100)
 	if _, _, ok := modeSelfBeat(Mode{Track: track}, 0.02); ok {
@@ -233,8 +191,7 @@ func TestModeBeating_DecayingPartialNoRippleIsOK(t *testing.T) {
 }
 
 func TestModeRows_AppearForUnpitchedSignal(t *testing.T) {
-	// A bar tone whose DetectF0 confidence is irrelevant: the mode rows must
-	// apply purely on RequiresModes.
+	// The mode rows apply on RequiresModes alone, whatever DetectF0's confidence.
 	b := NewBundle(ratioTone(44100, 1.5, 220, []float64{1, 2.76, 5.40}), "bar")
 	ids := map[string]bool{}
 	for _, d := range DefaultRegistry().Applicable(b) {
@@ -247,19 +204,8 @@ func TestModeRows_AppearForUnpitchedSignal(t *testing.T) {
 	}
 }
 
-// TestModeRatiosIsDemoted pins I6's ruling.
-//
-// The row compares the symmetric mean nearest-neighbour gap between two mode
-// ladders. That quantity answers "how far is each mode from SOME mode on the
-// other side", which is a measure of mode ABSENCE, not of mistuning: when the
-// synth simply lacks a partial the reference has, the nearest surviving
-// neighbour supplies the gap and a missing mode scores LARGER than a badly
-// mistuned one. The corpus proved it — calibration over the listener-approved
-// group put the p50 at 520 cents, nearly half an octave, on instruments
-// nobody described as mistuned at all.
-//
-// It stays registered and printed (the ratio list beside it is the clearest
-// view of partial structure the report has) and is excluded from ranking.
+// The nearest-neighbour gap measures mode ABSENCE, not mistuning: a missing partial borrows a far neighbour and scores
+// worse than a badly tuned one (the approved group's p50 was 520 cents). Printed, excluded from ranking.
 func TestModeRatiosIsDemoted(t *testing.T) {
 	d, ok := DefaultRegistry().ByID(IDModeRatios)
 	if !ok {
@@ -272,10 +218,7 @@ func TestModeRatiosIsDemoted(t *testing.T) {
 	if !strings.Contains(d.Doc, "DEMOTED") {
 		t.Error("a demoted descriptor's Doc must say so, and say why")
 	}
-	// A demoted descriptor must not carry a calibrated entry: calibrating
-	// thresholds nobody is allowed to rank on buys nothing and hides the
-	// declared values. (thresholds_embedded_test.go gates this globally; this
-	// assertion names the row so the failure points at the demotion.)
+	// Calibrating thresholds nobody may rank on hides the declared values.
 	if _, ok := LoadThresholdFile()[IDModeRatios]; ok {
 		t.Error("mode.ratios is Demoted but still has a thresholds.json entry — regenerate the calibration")
 	}

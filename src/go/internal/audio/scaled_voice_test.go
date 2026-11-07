@@ -79,8 +79,7 @@ func TestScaledVoiceSampleBlockFallsBackForNonBlockVoice(t *testing.T) {
 	if n != 32 {
 		t.Fatalf("SampleBlock returned n=%d, want 32", n)
 	}
-	// It never reads ahead to find the end (that consumed — dropped — a
-	// sample per block): the next block reports done with nothing in it.
+	// It never reads ahead to find the end, which dropped a sample per block.
 	if done {
 		t.Error("SampleBlock must not read past the block to detect the end")
 	}

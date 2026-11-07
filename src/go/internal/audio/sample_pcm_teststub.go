@@ -1,9 +1,6 @@
 //go:build test
 
-// Package audio — pure-Go WAV decoder stub for the test build.
-// Under -tags test the CGo loadAudio / miniaudio path is absent; this file
-// provides a stdlib-only DecodeWAVToPCM so test-build code paths that decode a
-// WAV (always a GENERATED one -- tests never read reference audio) still work.
+// Under -tags test the CGo miniaudio decoder is absent: a stdlib-only decoder for the GENERATED WAVs tests use.
 package audio
 
 import (
@@ -14,9 +11,7 @@ import (
 	"os"
 )
 
-// DecodeWAVAtRate is DecodeWAVToPCM converted (ResampleToRate) to rate when
-// the file's own rate differs — the production contract, for the reference
-// tools that read at the corpus rate.
+// The production contract, for the reference tools.
 func DecodeWAVAtRate(path string, rate int) ([]float32, int, error) {
 	buf, sr, err := DecodeWAVToPCM(path)
 	if err != nil || sr == rate {
@@ -25,11 +20,7 @@ func DecodeWAVAtRate(path string, rate int) ([]float32, int, error) {
 	return ResampleToRate(buf, sr, rate), rate, nil
 }
 
-// DecodeWAVToPCM decodes a mono or stereo PCM WAV file to mono float32 at its
-// native sample rate. No resampling is applied; the caller receives the file's
-// own sample rate. Supported formats: PCM (format 1) with 16-bit or 24-bit
-// depth, and IEEE float (format 3) with 32-bit depth. Stereo is averaged to
-// mono.
+// At the file's own rate, no resampling. PCM 16/24-bit or IEEE float 32-bit; stereo averaged to mono.
 func DecodeWAVToPCM(path string) ([]float32, int, error) {
 	f, err := os.Open(path)
 	if err != nil {

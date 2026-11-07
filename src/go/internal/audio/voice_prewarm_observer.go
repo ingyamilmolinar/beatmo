@@ -2,15 +2,8 @@ package audio
 
 import "github.com/ingyamilmolinar/beatmo/internal/instrument"
 
-// VoiceCacheInvalidateObserver, when set, is notified with the instrument id
-// whenever the voice cache is invalidated (ClearInstrument), or "" when the
-// whole cache is cleared (Clear). The UI voice-prewarmer registers it to
-// proactively re-render the affected instrument's known pitches off the
-// audioLoop dispatch goroutine — so a synth param edit during playback does not
-// leave the next beat to cold-render inline (the overdue-panic window). The
-// callback must be cheap and non-blocking; it is invoked from cache-mutation
-// paths. Untagged so every build (native/test/js) can reference the var; only
-// the native cache actually fires it.
+// Called with the id on ClearInstrument, "" on Clear, so the prewarmer re-renders the instrument's pitches off the
+// dispatch goroutine. Must be cheap and non-blocking: invoked from cache mutations. Only the native cache fires it.
 var VoiceCacheInvalidateObserver func(id instrument.ID)
 
 // notifyVoiceCacheInvalidated fires the observer if one is registered.

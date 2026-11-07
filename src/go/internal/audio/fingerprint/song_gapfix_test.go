@@ -2,9 +2,7 @@ package fingerprint
 
 import "testing"
 
-// TestDetectTempo_OctaveCorrectsSlow: a 40-BPM click train was previously
-// reported as 40 (the bar/harmonic-rhythm lock); it must now octave-correct
-// above the musical floor.
+// A 40 BPM click train locks onto the bar period; it must octave-correct above the floor.
 func TestDetectTempo_OctaveCorrectsSlow(t *testing.T) {
 	cfg := DefaultAnalysisConfig()
 	cfg.HopSec = 0.01
@@ -16,8 +14,6 @@ func TestDetectTempo_OctaveCorrectsSlow(t *testing.T) {
 	}
 }
 
-// TestHarmonicProfile_IgnoresSubAudio: a loud sub-audio bin must not be picked
-// as the primary; the musical peak above harmonicMinHz wins.
 func TestHarmonicProfile_IgnoresSubAudio(t *testing.T) {
 	binHz := 44100.0 / 16384.0 // ~2.69 Hz/bin
 	mag := make([]float64, 8192)

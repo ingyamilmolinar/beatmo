@@ -2,9 +2,7 @@ package clone
 
 import "math"
 
-// DecayLaw is α(f) = A·(f/1 kHz)^P + B·(f/10 kHz)^6 (spec §2e). Both
-// reference frequencies are fixed: a free HF corner is not identifiable (B and
-// the corner only ever appear as B/f_c⁶).
+// Both reference frequencies are fixed: a free HF corner is not identifiable (B and the corner only appear as B/f_c⁶).
 type DecayLaw struct {
 	A      float64 `json:"a"`
 	P      float64 `json:"p"`
@@ -17,11 +15,8 @@ func (d DecayLaw) Eval(f float64) float64 {
 	return d.A*math.Pow(f/1000, d.P) + d.B*math.Pow(f/10000, 6)
 }
 
-// FitDecayLaw fits the law across the modes, weighted by energy, minimising
-// the RELATIVE error (fast high modes and slow low ones count alike): a grid
-// over P ∈ [−1, 3] (step 0.01) with a non-negative linear solve for (A, B) at
-// each P. Fewer than three modes cannot pin a shape: a flat law at the
-// energy-weighted mean α.
+// Energy-weighted RELATIVE error, so fast high modes and slow low ones count alike; a grid over P with a non-negative
+// solve for (A, B). Fewer than three modes cannot pin a shape: a flat law at the mean α.
 func FitDecayLaw(modes []Mode) DecayLaw {
 	if len(modes) == 0 {
 		return DecayLaw{}

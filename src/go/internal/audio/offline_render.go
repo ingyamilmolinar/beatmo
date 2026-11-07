@@ -11,25 +11,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
-// Deterministic offline audio-quality harness.
-//
-// The choppiness/lag users hear during playback is a REALTIME DELIVERY problem
-// (the sequencer goroutine being starved on a saturated thread), not a signal
-// COMPUTATION problem — an offline render of the same circuit is always clean
-// because the samples are computed correctly; only their real-time delivery
-// glitches. So this harness validates SIGNAL CORRECTNESS deterministically:
-// it drives the real desktop mixer (no Oto, no wall clock) block-by-block,
-// captures the post-master-chain master PCM, and lets a caller assert the
-// output matches an analytically-known signal (one transient per scheduled
-// trigger, silence between, no NaN/clip/noise) plus a byte-exact golden hash.
-//
-// A separate measurement (node_logic_cost_test.go) deterministically times the
-// predictor/scheduling CPU cost that DOES cause the realtime starvation.
+// Choppy playback is a REAL-TIME DELIVERY problem; an offline render computes the same samples cleanly. So this checks
+// SIGNAL correctness deterministically through the real mixer, no device and no wall clock.
 
-// burstVoice renders a short decaying sine — a deterministic, perfectly
-// reproducible "hit" that survives the mixer's 5ms anti-pop fade-in (a literal
-// 1-sample impulse would be multiplied by ~0 at voice start and be inaudible).
-// Same params → byte-identical samples every run, so it pins a golden hash.
+// A decaying sine, not a 1-sample impulse, which the 5 ms fade-in would multiply by ~0.
 type burstVoice struct {
 	pos   int
 	n     int
@@ -39,8 +24,7 @@ type burstVoice struct {
 	sr    float64
 }
 
-// newBurstVoice returns the canonical harness instrument: a 1 kHz sine that
-// decays over ~8ms. Deterministic and allocation-light.
+// 1 kHz decaying over ~8 ms.
 func newBurstVoice() Voice {
 	sr := float64(sampleRate)
 	return &burstVoice{
@@ -62,8 +46,7 @@ func (v *burstVoice) Sample() (float64, bool) {
 	return s, false
 }
 
-// newTestMixer builds a mixer driven directly (no Oto context / no realtime
-// player). Field set mirrors newMixer/newTemplateMixer.
+// No device or real-time player.
 func newTestMixer() *mixer {
 	return &mixer{
 		workBuf:   make([]float64, blockSize),
@@ -75,8 +58,7 @@ func newTestMixer() *mixer {
 	}
 }
 
-// renderMixer drives the mixer block-by-block and returns the captured master
-// PCM (float64, post headroom/EQ/compressor/limiter, pre-int16).
+// Post headroom/EQ/soft clip, pre-int16.
 func renderMixer(m *mixer, nSamples int) []float64 {
 	ClearOutputCapture()
 	StartOutputCapture()
@@ -111,10 +93,7 @@ func absInt(a int) int {
 	return a
 }
 
-// detectOnsets returns the start index of each transient: a rising edge above
-// `floor` that follows at least `refractory` samples of quiet. A single
-// sustained burst (which dips below floor only at its sine zero-crossings)
-// counts exactly once; a genuinely new hit requires a quiet gap first.
+// A burst dipping below floor only at its zero crossings counts once; a new hit needs a quiet gap first.
 func detectOnsets(x []float64, floor float64) []int {
 	var onsets []int
 	const refractory = 256 // samples of quiet required to re-arm
@@ -132,8 +111,7 @@ func detectOnsets(x []float64, floor float64) []int {
 	return onsets
 }
 
-// hashFloat64PCM is a byte-exact digest of the float64 master converted to
-// float32 LE (matches the cross-platform float32 transport width).
+// float32 LE: the cross-platform transport width.
 func hashFloat64PCM(buf []float64) string {
 	h := sha256.New()
 	var b [4]byte

@@ -4,18 +4,12 @@ package audio
 
 import "github.com/ingyamilmolinar/beatmo/internal/instrument"
 
-// RenderInstrumentOneShot renders the active recipe-aware voice for id into a
-// fresh []float32 by draining it once. It is the deterministic "From Synth"
-// capture source for the Sampler tab — unlike LatestVoiceSample it does not
-// depend on the instrument having been played yet.
+// The Sampler's deterministic "From Synth" source: unlike LatestVoiceSample it needs no prior trigger.
 func RenderInstrumentOneShot(id instrument.ID) ([]float32, int) {
 	return renderInstrumentOneShotOpts(id, false)
 }
 
-// RenderInstrumentOneShotRaw renders ignoring any non-destructive sample-edit
-// descriptor. The Sampler editor loads through this so it shows the UN-edited
-// source waveform and overlays the saved trim/pitch/gain itself — capturing
-// through the edited path would double-apply the edit.
+// The Sampler shows the UN-edited source and overlays the saved edit itself; capturing edited would apply it twice.
 func RenderInstrumentOneShotRaw(id instrument.ID) ([]float32, int) {
 	return renderInstrumentOneShotOpts(id, true)
 }

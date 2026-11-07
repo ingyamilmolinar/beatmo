@@ -5,8 +5,7 @@ import (
 	"testing"
 )
 
-// TestTablesAreModelParametersOnly: a document can never carry a waveform —
-// the registry's tables are bounded in size and every column in value.
+// A document can never carry a waveform: tables are bounded in size and every column in value.
 func TestTablesAreModelParametersOnly(t *testing.T) {
 	reg := BuiltinModuleRegistry()
 	cells := 0

@@ -13,13 +13,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestStopRecording_FinalizeCompletesWithinDeadline asserts the
-// async-finalize pipeline returns control to the caller fast (the UI
-// thread should never block on disk I/O) and the on-disk artifacts are
-// fully written before WaitRecordingFinalized returns. The plan calls
-// out finalize as the "no context.Context" path — this test pins the
-// invariant that, even without cancellation, finalize completes
-// promptly under normal load.
+// The UI thread never blocks on disk I/O, yet everything is written by the time WaitRecordingFinalized returns.
 func TestStopRecording_FinalizeCompletesWithinDeadline(t *testing.T) {
 	dir := t.TempDir()
 	t.Cleanup(env.RecordingsDir.SetForTest(dir))
@@ -42,9 +36,7 @@ func TestStopRecording_FinalizeCompletesWithinDeadline(t *testing.T) {
 	}
 	stopElapsed := time.Since(stopStart)
 
-	// Stop should return fast — finalize runs async on the lifecycle
-	// pool. 200ms is generous; in practice this returns in <10ms even
-	// on slow CI.
+	// Generous; finalize runs on the lifecycle pool.
 	if stopElapsed > 200*time.Millisecond {
 		t.Fatalf("StopRecording blocked for %v; finalize should run async", stopElapsed)
 	}
@@ -61,9 +53,7 @@ func TestStopRecording_FinalizeCompletesWithinDeadline(t *testing.T) {
 		t.Fatalf("finalize took %v after Stop returned; should be sub-second under no load", waitElapsed)
 	}
 
-	// Verify a session directory was created. With no audio fed via Tap
-	// we don't get session.json (SaveRecording skips empty sessions),
-	// but the recording dir itself proves the lifecycle pool ran.
+	// Empty sessions write no session.json, but the directory proves the pool ran.
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("readdir: %v", err)
@@ -73,9 +63,7 @@ func TestStopRecording_FinalizeCompletesWithinDeadline(t *testing.T) {
 	}
 }
 
-// TestWaitRecordingFinalized_NoSessionReturnsImmediately documents the
-// contract: with no in-flight finalize, Wait is a fast path so callers
-// (CLI bench, shutdown handlers) can call it unconditionally.
+// So shutdown handlers can call it unconditionally.
 func TestWaitRecordingFinalized_NoSessionReturnsImmediately(t *testing.T) {
 	wctx, wcancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer wcancel()
@@ -90,10 +78,7 @@ func TestWaitRecordingFinalized_NoSessionReturnsImmediately(t *testing.T) {
 	}
 }
 
-// TestWaitRecordingFinalized_RespectsContextCancel verifies that if the
-// caller's context is cancelled while waiting, Wait returns ctx.Err()
-// promptly instead of blocking until finalize completes. Important for
-// shutdown handlers that have a deadline.
+// For shutdown handlers with a deadline.
 func TestWaitRecordingFinalized_RespectsContextCancel(t *testing.T) {
 	t.Cleanup(env.RecordingsDir.SetForTest(t.TempDir()))
 	opts := RecordingOptions{

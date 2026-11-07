@@ -26,10 +26,7 @@ func TestRegistryRejectsNilExtract(t *testing.T) {
 	r.Register(Descriptor{ID: "x", Group: "g", Name: "n", Doc: "d", Applies: AlwaysApplies})
 }
 
-// TestRegistryDisciplineEveryDescriptorIsComplete is the discipline gate the
-// spec requires: a descriptor cannot enter the battery without an ID, a
-// group, a name, documentation, an explicit applicability decision and an
-// extractor.
+// No descriptor enters without an ID, group, name, documentation, an explicit applicability decision and an extractor.
 func TestRegistryDisciplineEveryDescriptorIsComplete(t *testing.T) {
 	for _, d := range DefaultRegistry().All() {
 		if d.ID == "" {
@@ -67,10 +64,7 @@ func TestRegistryAllIsSortedAndStable(t *testing.T) {
 	}
 }
 
-// TestRegistryAllPreservesNarrativeGroupOrder pins the report's group order to
-// the mapping doc's own argument order. Alphabetical sorting would put
-// brightness first and "spectral flatness" ahead of "noise fraction", which
-// reads as a scrambled report even though every row is still present.
+// Alphabetical order would read as a scrambled report.
 func TestRegistryAllPreservesNarrativeGroupOrder(t *testing.T) {
 	want := []string{GroupNoise, GroupEnvelope, GroupPartials, GroupBright, GroupMod}
 	var got []string
@@ -120,8 +114,6 @@ func TestRegistryFilterByGroup(t *testing.T) {
 	}
 }
 
-// TestApplicabilityPredicatesDiscriminate pins the self-classifying gate: a
-// steady tone is pitched and sustained but not percussive.
 func TestApplicabilityPredicatesDiscriminate(t *testing.T) {
 	tone := NewBundle(bundleTone(44100, 220, 2), "tone")
 	if !RequiresAudible(tone) {

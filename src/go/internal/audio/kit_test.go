@@ -10,9 +10,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// stubKitBinder is the minimal KitRowBinder for unit testing ApplyKit
-// without pulling in DrumView. Captures every SetRowInstrument call for
-// assertion.
 type stubKitBinder struct {
 	mu    sync.Mutex
 	insts []instrument.ID
@@ -20,8 +17,7 @@ type stubKitBinder struct {
 	swaps map[int]instrument.ID // row → newInst
 }
 
-// stubRow is one binder row: its instrument and its explicit role ("" =
-// derive it from the instrument).
+// Role "" = derive it from the instrument.
 type stubRow struct {
 	inst instrument.ID
 	role instrument.Role
@@ -78,9 +74,6 @@ func waitForKitApplied(t *testing.T, events func() []hooks.Event) hooks.Event {
 	return hooks.Event{}
 }
 
-// TestApplyKit_RebindsByExplicitRole — a row carrying an explicit Role
-// gets rebound to the kit's member for that role; rows without a
-// matching role are untouched.
 func TestApplyKit_RebindsByExplicitRole(t *testing.T) {
 	events := captureKitEvents(t)
 	binder := newStubKitBinder(
@@ -118,10 +111,6 @@ func TestApplyKit_RebindsByExplicitRole(t *testing.T) {
 	}
 }
 
-// TestApplyKit_HeuristicWhenRoleEmpty — rows without an explicit Role
-// resolve via roleHeuristic. Covers the shipped name patterns
-// (open-hihat / hihat / kick / snare / tom / clap / cowbell / ride /
-// crash / shaker / bass).
 func TestApplyKit_HeuristicWhenRoleEmpty(t *testing.T) {
 	binder := newStubKitBinder(
 		stubRow{roster.SnareLofi, instrument.RoleNone},
@@ -150,9 +139,7 @@ func TestApplyKit_HeuristicWhenRoleEmpty(t *testing.T) {
 	}
 }
 
-// TestApplyKit_NoOpWhenMemberMatchesCurrent — a kit member that maps to
-// the row's existing instrument doesn't count as a rebind (avoids a
-// spurious onRowInstrumentChanged + hook for a no-op swap).
+// A no-op swap must not fire onRowInstrumentChanged or the hook.
 func TestApplyKit_NoOpWhenMemberMatchesCurrent(t *testing.T) {
 	binder := newStubKitBinder(stubRow{roster.Snare, instrument.RoleSnare}, stubRow{roster.Kick, instrument.RoleKick})
 	kit := Kit{
@@ -167,8 +154,6 @@ func TestApplyKit_NoOpWhenMemberMatchesCurrent(t *testing.T) {
 	}
 }
 
-// TestApplyKit_EmptyMembersAndNilBinder — defensive: ApplyKit with an
-// empty kit or nil binder is a no-op (no panic, no hook).
 func TestApplyKit_EmptyMembersAndNilBinder(t *testing.T) {
 	if got := ApplyKit(Kit{}, newStubKitBinder(stubRow{roster.Snare, instrument.RoleSnare})); got != 0 {
 		t.Errorf("empty Members rebound %d rows", got)
@@ -178,9 +163,7 @@ func TestApplyKit_EmptyMembersAndNilBinder(t *testing.T) {
 	}
 }
 
-// TestKitRegistry_RoundTripsAndOrders — RegisterKit / KitForID /
-// KitsForExport / UnregisterKit. Order is registration order; replacing
-// an existing id preserves position.
+// Replacing an existing id keeps its position.
 func TestKitRegistry_RoundTripsAndOrders(t *testing.T) {
 	t.Cleanup(ResetKitsForTest)
 	ResetKitsForTest()
@@ -214,9 +197,7 @@ func TestKitRegistry_RoundTripsAndOrders(t *testing.T) {
 	}
 }
 
-// TestRoleFromName_Patterns — the name rules that classify an instrument the
-// user named (a shipped one reads builtinProperties); a name no rule
-// recognises has no role.
+// A shipped instrument reads builtinProperties; these are the rules for names the user gave.
 func TestRoleFromName_Patterns(t *testing.T) {
 	cases := []struct {
 		name string

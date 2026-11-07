@@ -7,10 +7,6 @@ import (
 	"testing"
 )
 
-// renderModularSeed renders a seeded voice through the same recipe path the
-// modular goldens use: the RecipeParams seed is overlaid on the schema
-// identity (newModularBlock fills any absent key from
-// modularFieldInits()), then rendered via renderModularBlock.
 func renderModularSeed(t *testing.T, seed RecipeParams, secs float64) []float32 {
 	t.Helper()
 	const sr = 48000
@@ -20,8 +16,7 @@ func renderModularSeed(t *testing.T, seed RecipeParams, secs float64) []float32 
 	return buf
 }
 
-// Formant stage off (identity) must be an exact bypass: byte-identical to a
-// render with no formant params at all.
+// Byte-identical to a render with no formant params at all.
 func TestFormantStage_OffIsExactBypass(t *testing.T) {
 	base := RecipeParams{"osc_type": 1, "osc_enabled": 1}
 	withOff := RecipeParams{"osc_type": 1, "osc_enabled": 1, "formant_mix": 0.9} // enabled ABSENT

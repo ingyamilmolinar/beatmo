@@ -9,18 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// The violin "too much bass" bug was found by hand by toggling stages and
-// measuring energy below 1 kHz; the body resonator's low modes were the
-// culprit. The ablation matrix must rediscover that the resonator is a
-// top-leverage stage for brightness ratio.
-//
-// The gate is "in the top 3", not "first". The measured order is filter first,
-// resonator second: violinSeed pairs body_mix=1.0 with a low-pass at 3100 Hz
-// sitting just above the body's ~2.5 kHz bridge hill, so opening the filter
-// releases MORE high-frequency energy than removing the body does, on an axis
-// that is a ratio of high-band to low-band energy. Both are real findings about
-// the same tuning decision; ranking them against each other would be reading
-// precision into a sensitivity number that stage interaction does not support.
+// The violin's excess bass came from the body resonator's low modes. "Top 3", not "first": the low-pass just above the
+// body's bridge hill ranks higher on a high/low ratio, and stage interaction does not support ranking the two.
 func TestAblate_ViolinResonatorDrivesBrightness(t *testing.T) {
 	rep, err := Ablate(roster.Violin, 12, 44100, 2.0, nil)
 	if err != nil {
@@ -44,12 +34,8 @@ func TestAblate_ViolinResonatorDrivesBrightness(t *testing.T) {
 	}
 }
 
-// The floor subtraction has to hold on the REAL registry, not just on the
-// hand-built descriptors the fast-path test uses: env.release is KindSeconds,
-// whose raw self-comparison Norm is 1/mismatch, so before the subtraction
-// every no-effect stage read a spurious ~0.50 there. After it, a stage that
-// does not touch the release must read exactly 0 -- and nothing may go
-// negative.
+// On the REAL registry: a seconds axis compared with itself reads 1/mismatch, so a stage that does not touch the
+// release must read exactly 0 after the floor, never negative.
 func TestAblate_ViolinReleaseSensitivityFlooredAtZero(t *testing.T) {
 	rep, err := Ablate(roster.Violin, 12, 44100, 2.0, nil)
 	if err != nil {

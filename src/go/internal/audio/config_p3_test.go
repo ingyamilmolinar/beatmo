@@ -7,14 +7,8 @@ import (
 	"testing"
 )
 
-// TestP3_NoRenderFuncField locks the P3 invariant (config as single source of
-// truth): the legacy per-instrument C-renderer dispatch field is retired. Every
-// built-in instrument renders through the ONE modular pipeline (render_modular_p
-// via renderModularBlock) — melodics via bakedModularRender/the recipe, drums via
-// renderXVoice (the Phase-5 modular cutover). InstrumentConfig now carries only
-// declarative render metadata (duration, amplitude); the "which C function"
-// string is gone. Reintroducing it would re-open a bespoke/baked path that
-// bypasses the pipeline, so this fails if the field comes back.
+// Every built-in renders through the one modular pipeline: a "which C function" field would reopen a bespoke path
+// that bypasses it.
 func TestP3_NoRenderFuncField(t *testing.T) {
 	typ := reflect.TypeOf(InstrumentConfig{})
 	for i := 0; i < typ.NumField(); i++ {

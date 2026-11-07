@@ -47,8 +47,6 @@ func TestSampleEditIdentitySetClears(t *testing.T) {
 	resetSampleEditsForTest(t)
 	const id = roster.Snare
 	SetSampleEdit(id, nonTrivialEdit())
-	// Storing the identity edit (full range, no transforms) is equivalent to
-	// clearing — the descriptor would be a no-op at render time.
 	SetSampleEdit(id, SampleEdit{StartFrac: 0, EndFrac: 1})
 	if HasSampleEdit(id) {
 		t.Fatal("identity Set must clear the descriptor")
@@ -126,7 +124,6 @@ type stubSampleEditSource map[instrument.ID]map[string]float64
 func (s stubSampleEditSource) LoadSampleEdits() (map[instrument.ID]map[string]float64, error) {
 	return s, nil
 }
-
 
 func TestSampleEditPlatformHookFiresOnSetAndClear(t *testing.T) {
 	resetSampleEditsForTest(t)

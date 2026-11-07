@@ -8,14 +8,10 @@ import (
 	"testing"
 )
 
-// The C stages after the voice (fx_host.c effects, mix_dsp.c EQ and soft
-// clip) are the one implementation both platforms run: desktop through cgo
-// in 64-frame blocks (or whatever an oto Read hands the mixer), the browser's
-// beatmo-dsp worklet in 128-frame render quanta. These tests pin the
-// properties that make that true.
+// The C stages after the voice are the one implementation both platforms run, desktop in 64-frame blocks (or
+// whatever an oto Read hands over) and the browser worklet in 128-frame quanta.
 
-// stageSignal is a deterministic second of everything a stage can meet: a
-// log chirp, a noise burst, decaying hits, silence, a full-scale square.
+// A chirp, a noise burst, decaying hits, silence and a full-scale square.
 func stageSignal(sr int) []float32 {
 	n := sr
 	out := make([]float32, n)
@@ -45,8 +41,7 @@ func stageSignal(sr int) []float32 {
 	return out
 }
 
-// effectParamSets: the defaults, every parameter at its minimum, at its
-// maximum, and at the middle of its range.
+// Defaults, every param at its minimum, its maximum and its midpoint.
 func effectParamSets(t EffectType) map[string]map[string]float64 {
 	reg := EffectRegistrations()[t]
 	sets := map[string]map[string]float64{"default": DefaultParams(t), "min": {}, "max": {}, "mid": {}}
@@ -67,9 +62,7 @@ func runInBlocks(proc BlockProcessor, in []float32, block int) []float32 {
 	return out
 }
 
-// TestEveryEffectIsBlockSizeInvariant: an effect's output never depends on
-// how the stream is cut into blocks, so desktop's 64-frame blocks (or an odd
-// oto Read) and the browser's 128-frame quanta compute the same samples.
+// So desktop's blocks (or an odd oto Read) and the browser's quanta compute the same samples.
 func TestEveryEffectIsBlockSizeInvariant(t *testing.T) {
 	const sr = EngineSampleRate
 	in := stageSignal(sr)
@@ -89,9 +82,7 @@ func TestEveryEffectIsBlockSizeInvariant(t *testing.T) {
 	}
 }
 
-// TestEffectParamNamesMatchTheRegistry: every parameter the FX panel offers
-// reaches the C init, and the C init reads nothing the registry does not
-// define (the browser orders values by the same C list).
+// The browser orders values by the same C list.
 func TestEffectParamNamesMatchTheRegistry(t *testing.T) {
 	for _, et := range EffectTypes {
 		var reg []string
@@ -107,9 +98,7 @@ func TestEffectParamNamesMatchTheRegistry(t *testing.T) {
 	}
 }
 
-// TestEffectCreateFailurePassesThrough: an effect the C engine cannot build
-// (unknown type here; on the browser's fixed heap, memory running out)
-// passes its input through — never silence, never NaN.
+// Unknown type here; on the browser's fixed heap, memory running out. Never silence, never NaN.
 func TestEffectCreateFailurePassesThrough(t *testing.T) {
 	e := newCEffect(EffectType("no-such-effect"), EngineSampleRate, nil)
 	in := stageSignal(EngineSampleRate)[:512]
@@ -119,9 +108,7 @@ func TestEffectCreateFailurePassesThrough(t *testing.T) {
 	}
 }
 
-// TestSetKeepsState: a live param edit retunes the running effect (its delay
-// line keeps the echoes already in it) — the browser applies the same C
-// ifx_set to its live instance.
+// The delay line keeps its echoes; the browser applies the same ifx_set to its live instance.
 func TestSetKeepsState(t *testing.T) {
 	const sr = EngineSampleRate
 	in := stageSignal(sr)
@@ -159,9 +146,7 @@ func TestEQIsBlockSizeInvariant(t *testing.T) {
 	}
 }
 
-// eqCases are the EQ shapes the UI can make (buildFullEQBands): flat, boosts
-// and cuts, the shelves at their extremes, high-/low-pass, a muted band,
-// muted + both filters, everything muted.
+// The shapes buildFullEQBands can produce.
 func eqCases() map[string][]EQBand {
 	graphic := func(gains []float64, muted map[int]bool) []EQBand {
 		var out []EQBand
@@ -195,10 +180,8 @@ func eqCases() map[string][]EQBand {
 	}
 }
 
-// TestHPFAndMutedBandKeepEveryFilter: with a band muted the graphic section
-// becomes a band split, and the high-/low-pass stay in series around it (they
-// used to be counted as two extra bands of the split, which dropped both and
-// slid every band onto the wrong frequencies).
+// With a band muted the graphic section becomes a band split, and the high/low-pass stay in series around it rather
+// than counting as bands of the split.
 func TestHPFAndMutedBandKeepEveryFilter(t *testing.T) {
 	prog := BuildEQProgram(EngineSampleRate, eqCases()["muted+filters"])
 	if prog[0] != 3 {
@@ -215,8 +198,7 @@ func TestHPFAndMutedBandKeepEveryFilter(t *testing.T) {
 	}
 }
 
-// TestEQMatchesItsResponse: the C chain is the filter the EQ panel draws —
-// a steady sine comes out at |H(f)| within 0.05 dB.
+// A steady sine comes out at |H(f)| within 0.05 dB.
 func TestEQMatchesItsResponse(t *testing.T) {
 	const sr = EngineSampleRate
 	for _, name := range []string{"flat", "shaped", "shaped+filters"} {
@@ -245,9 +227,7 @@ func rms32(x []float32) float64 {
 	return math.Sqrt(s / float64(len(x)))
 }
 
-// TestEQEditKeepsFilterState: a band drag (same shape, new gain) retunes the
-// running filters; a mute toggle (new shape) is refused so a fresh EQ is
-// built — on both platforms.
+// Same shape, new gain retunes the running filters; a new shape (mute) is refused, so a fresh EQ is built.
 func TestEQEditKeepsFilterState(t *testing.T) {
 	const sr = EngineSampleRate
 	in := stageSignal(sr)
@@ -269,9 +249,7 @@ func TestEQEditKeepsFilterState(t *testing.T) {
 	}
 }
 
-// TestSoftClipIsContinuousAndBounded: identity up to the knee, never a jump
-// (the old T·tanh(x/T) curve fell from 0.9 to 0.685 at the knee), never past
-// full scale, odd, and NaN never reaches the device.
+// Identity to the knee, no jump there, never past full scale, odd, and NaN never reaches the device.
 func TestSoftClipIsContinuousAndBounded(t *testing.T) {
 	const h = 1e-4
 	prev := -8.0

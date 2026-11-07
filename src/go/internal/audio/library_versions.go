@@ -9,24 +9,18 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/objects"
 )
 
-// library_versions.go — the user library as versioned objects (spec
-// docs/superpowers/specs/2026-10-31-versioned-objects-and-residency-revisions-design.md
-// §2.2–2.4). Every Save As appends an instrument version (its document and the
-// version of its audio bundle) to that instrument's history and makes it
-// current; nothing is overwritten. The library plays each instrument's current
-// version; a history whose pointer is on its base plays the shipped document.
+// Every Save As appends a version (document + its audio bundle's version) and makes it current; nothing is overwritten.
+// A history whose pointer is on its base plays the shipped document.
 
-// InstrumentVersion is one saved version of an instrument: its document
-// (identity cleared — the same content saved under two names is one version)
-// or, for a sample instrument, its PCM's SHA-256, plus its bundle's version.
+// Identity is cleared, so the same content saved under two names is one version; a sample instrument stores its PCM's
+// SHA-256.
 type InstrumentVersion struct {
 	Doc    *instrument.Doc `json:"doc,omitempty"`
 	Sample string          `json:"sample,omitempty"`
 	Bundle string          `json:"bundle,omitempty"`
 }
 
-// LibraryVersionLimit is how many versions of each instrument the library
-// keeps (the current one always stays).
+// The current version always stays.
 var LibraryVersionLimit = 20
 
 func versionOf(d instrument.Doc, bundleDigest string) InstrumentVersion {
@@ -44,8 +38,6 @@ func InstrumentVersionDigest(d instrument.Doc, b AudioBundle) string {
 	return objects.Digest(versionOf(d, bd))
 }
 
-// putVersionLocked stores version v (its bundle part set from b) and b as
-// objects and returns the version digest.
 func putVersionLocked(v InstrumentVersion, b AudioBundle) string {
 	if b = b.Normalized(); b.IsNeutral() {
 		return library.Put(objects.KindInstrument, v)
@@ -54,9 +46,7 @@ func putVersionLocked(v InstrumentVersion, b AudioBundle) string {
 	return library.Put(objects.KindInstrument, v, v.Bundle)
 }
 
-// SaveInstrumentVersion appends (d, b) to id's history, makes it current,
-// prunes past LibraryVersionLimit and persists. A save that cannot persist
-// changes nothing and returns the error.
+// A save that cannot persist changes nothing.
 func SaveInstrumentVersion(id instrument.ID, d instrument.Doc, b AudioBundle) error {
 	d = d.Clone()
 	d.ID, d.Origin = id, ""
@@ -66,8 +56,7 @@ func SaveInstrumentVersion(id instrument.ID, d instrument.Doc, b AudioBundle) er
 	return saveVersion(id, versionOf(d, ""), b)
 }
 
-// SaveSampleVersion appends a version of the sample instrument id — its PCM by
-// SHA-256 (the PCM itself stays in the sample store, persisted here) and b.
+// The PCM itself stays in the sample store; the version names it by SHA-256.
 func SaveSampleVersion(id instrument.ID, b AudioBundle) error {
 	rec, ok := UserSamplePCM(id)
 	if !ok {
@@ -97,8 +86,7 @@ func saveVersion(id instrument.ID, v InstrumentVersion, b AudioBundle) error {
 	return nil
 }
 
-// MoveLibraryToShipped points id's history at its base (the shipped document,
-// or none), keeping every saved version.
+// Keeps every saved version.
 func MoveLibraryToShipped(id instrument.ID) error {
 	userLibMu.Lock()
 	defer userLibMu.Unlock()
@@ -153,8 +141,7 @@ func currentVersionLocked(id instrument.ID) (InstrumentVersion, bool) {
 	return v, true
 }
 
-// rebuildUserLibLocked derives userLib (each identity's current document)
-// from the store; an entry that no longer validates is skipped with a WARN.
+// An entry that no longer validates is skipped with a WARN.
 func rebuildUserLibLocked() {
 	reg := BuiltinModuleRegistry()
 	next := map[instrument.ID]instrument.Doc{}

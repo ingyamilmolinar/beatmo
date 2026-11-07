@@ -30,23 +30,15 @@ func sineAt(freq, amp float64, i int) float64 {
 	return amp * math.Sin(2*math.Pi*freq*float64(i)/float64(smoothSR))
 }
 
-// peakIdx returns a sample index where a sine wave at freq is near its positive
-// peak, after at least minSamples of warmup. This ensures the parameter change
-// occurs when the signal is at maximum amplitude, making discontinuities most
-// detectable.
+// The change lands at the signal's peak, where a discontinuity is most detectable.
 func peakIdx(freq float64, minSamples int) int {
 	period := float64(smoothSR) / freq
 	cycles := math.Ceil(float64(minSamples) / period)
 	return int(math.Round((cycles + 0.25) * period))
 }
 
-// TestDistortionMixNoZipperNoise verifies that changing the distortion mix
-// parameter mid-stream does not cause an audible discontinuity.
-//
-// Without parameter smoothing, mix jumps from 0 to 1 in a single sample,
-// causing the output to leap from the dry signal level (~0.3) to the saturated
-// wet level (~0.995 via tanh(10*0.3)). This amplitude jump of ~0.7 far exceeds
-// the natural sample-to-sample variation of the sine wave (~0.019).
+// An unsmoothed mix jumps from the dry level (~0.3) to the saturated wet level (~0.995) in one sample, far beyond the
+// sine's natural step (~0.019).
 func TestDistortionMixNoZipperNoise(t *testing.T) {
 	const freq = 440.0
 	const amp = 0.3
@@ -76,9 +68,7 @@ func TestDistortionMixNoZipperNoise(t *testing.T) {
 	}
 
 	ratio := changeDelta / steadyDelta
-	// With smoothing (~5ms ramp), the per-sample mix change is tiny, keeping
-	// the transition delta close to the natural sine delta (ratio ~1.0).
-	// Without smoothing, the ratio exceeds 10x.
+	// A ~5 ms ramp keeps the step near the sine's own; an unsmoothed one exceeds 10×.
 	if ratio > 4.0 {
 		t.Errorf("distortion mix 0->1 caused discontinuity: "+
 			"change delta=%.6f is %.1fx steady delta=%.6f (max 4.0x)\n"+
@@ -87,12 +77,7 @@ func TestDistortionMixNoZipperNoise(t *testing.T) {
 	}
 }
 
-// TestDelayTimeNoPopOnChange verifies that changing the delay time mid-stream
-// does not cause an audible pop from the read-pointer jump.
-//
-// Without smoothing, changing delay time instantly moves the read position in
-// the circular buffer to a completely different location, reading an unrelated
-// sample value and producing a sharp click.
+// An instant time change moves the read pointer to an unrelated sample: a click.
 func TestDelayTimeNoPopOnChange(t *testing.T) {
 	const freq = 441.0 // non-round to avoid phase alignment with delay times
 	const amp = 0.3
@@ -122,8 +107,7 @@ func TestDelayTimeNoPopOnChange(t *testing.T) {
 	}
 
 	ratio := changeDelta / steadyDelta
-	// With crossfaded read pointers, the transition stays smooth.
-	// Without crossfade, the pointer jump produces a pop far exceeding 3x.
+	// Crossfaded read pointers stay smooth; a jump pops far past 3×.
 	if ratio > 3.0 {
 		t.Errorf("delay time 110->370ms caused pop: "+
 			"change delta=%.6f is %.1fx steady delta=%.6f (max 3.0x)\n"+
@@ -132,14 +116,7 @@ func TestDelayTimeNoPopOnChange(t *testing.T) {
 	}
 }
 
-// TestFilterCutoffNoBiquadTransient verifies that changing the filter cutoff
-// mid-stream does not cause a transient spike from biquad state discontinuity.
-//
-// Without smoothing, rebuildBiquad() creates a fresh biquad with zeroed state
-// (x1=x2=y1=y2=0), discarding the old biquad's running state. The new 200Hz LP
-// filter's first output is nearly zero (b0*x where b0 is tiny for a 200Hz LP),
-// while the previous output was the full-amplitude sine. This produces a massive
-// transient spike.
+// A fresh biquad with zeroed state outputs ~0 where the old one output the full sine: a massive spike.
 func TestFilterCutoffNoBiquadTransient(t *testing.T) {
 	const freq = 440.0
 	const amp = 0.5
@@ -169,8 +146,7 @@ func TestFilterCutoffNoBiquadTransient(t *testing.T) {
 	}
 
 	ratio := changeDelta / steadyDelta
-	// With coefficient interpolation or crossfade, the transition is gradual.
-	// Without it, the zeroed biquad state creates a spike exceeding 10x.
+	// A zeroed biquad spikes past 10×.
 	if ratio > 5.0 {
 		t.Errorf("filter cutoff 10kHz->200Hz caused transient: "+
 			"change delta=%.6f is %.1fx steady delta=%.6f (max 5.0x)\n"+
@@ -179,13 +155,7 @@ func TestFilterCutoffNoBiquadTransient(t *testing.T) {
 	}
 }
 
-// TestEffectToggleNoCrossfadePop verifies that disabling an effect mid-stream
-// does not cause a pop from the abrupt processor chain swap.
-//
-// Without crossfading, ToggleInsertEffect atomically replaces the channel's
-// processor chain via replaceProcessors. The output jumps from the heavily
-// distorted signal (~0.995 peak) to the raw dry signal (~0.3 peak) in one
-// sample — a level shift of ~0.7.
+// Swapping the chain in one sample jumps from the distorted level (~0.995) to dry (~0.3).
 func TestEffectToggleNoCrossfadePop(t *testing.T) {
 	resetChains(t)
 	const freq = 440.0
@@ -219,11 +189,7 @@ func TestEffectToggleNoCrossfadePop(t *testing.T) {
 	}
 
 	ratio := changeDelta / steadyDelta
-	// With a crossfade envelope, the transition is smooth.
-	// Without it, the output level jumps from distorted to dry.
-	// Note: the distorted signal itself has high deltas at zero crossings
-	// (tanh saturation creates steep transitions), so the ratio is modest
-	// (~4x) but the absolute pop is large (~0.7).
+	// tanh makes steep zero crossings, so the ratio is modest (~4×) while the absolute pop is large.
 	if ratio > 3.0 {
 		t.Errorf("effect toggle off caused pop: "+
 			"change delta=%.6f is %.1fx steady delta=%.6f (max 3.0x)\n"+
@@ -232,14 +198,7 @@ func TestEffectToggleNoCrossfadePop(t *testing.T) {
 	}
 }
 
-// TestReverbMixNoClickOnChange verifies that changing the reverb mix from 0
-// to 0.5 mid-stream does not cause a click.
-//
-// At mix=0 the dry signal passes through at full amplitude. When mix jumps to
-// 0.5, the dry component instantly halves (from 0.3 to 0.15 at peak) while the
-// reverb tail (which has been accumulating internally) is suddenly added. The
-// abrupt dry-level drop alone causes a discontinuity of ~0.15, far exceeding
-// the natural sine delta of ~0.019.
+// A mix jump halves the dry signal instantly and adds the accumulated tail at once: a click far beyond the sine step.
 func TestReverbMixNoClickOnChange(t *testing.T) {
 	const freq = 440.0
 	const amp = 0.3
@@ -254,8 +213,7 @@ func TestReverbMixNoClickOnChange(t *testing.T) {
 		output[i] = r.ProcessSample(sineAt(freq, amp, i))
 	}
 
-	// At mix=0 combs accumulate but don't contribute. Changing mix suddenly
-	// halves the dry component and adds accumulated wet energy.
+	// At mix 0 the combs still accumulate.
 	r.SetParam("mix", 0.5)
 
 	for i := changeAt; i < total; i++ {
@@ -270,8 +228,7 @@ func TestReverbMixNoClickOnChange(t *testing.T) {
 	}
 
 	ratio := changeDelta / steadyDelta
-	// With smoothed mix, the dry/wet blend transitions gradually.
-	// Without it, the amplitude jump exceeds 4x.
+	// Unsmoothed, the jump exceeds 4×.
 	if ratio > 4.0 {
 		t.Errorf("reverb mix 0->0.5 caused click: "+
 			"change delta=%.6f is %.1fx steady delta=%.6f (max 4.0x)\n"+
@@ -280,13 +237,8 @@ func TestReverbMixNoClickOnChange(t *testing.T) {
 	}
 }
 
-// TestChorusDepthNoPopOnChange verifies that changing chorus depth mid-stream
-// does not cause a pop.
-//
-// When depth increases from 0 to 15ms, the buffer is reallocated (zeroed) and
-// the modulated read position jumps from 1 sample to up to ~662 samples back.
-// The wet signal drops to zero (from the empty buffer) while the dry component
-// continues, causing a level shift that manifests as a pop.
+// A depth jump reallocates (zeroes) the buffer and moves the read position hundreds of samples, dropping the wet
+// signal.
 func TestChorusDepthNoPopOnChange(t *testing.T) {
 	const freq = 441.0
 	const amp = 0.3
@@ -316,8 +268,6 @@ func TestChorusDepthNoPopOnChange(t *testing.T) {
 	}
 
 	ratio := changeDelta / steadyDelta
-	// With smoothed depth change, the modulation range transitions gradually.
-	// Without it, the buffer reset and read-position jump cause a pop.
 	if ratio > 4.0 {
 		t.Errorf("chorus depth 0->15ms caused pop: "+
 			"change delta=%.6f is %.1fx steady delta=%.6f (max 4.0x)\n"+

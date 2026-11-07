@@ -49,11 +49,7 @@ func TestBuildArrangement_Deterministic(t *testing.T) {
 	}
 }
 
-// TestArrangementRunsAtTheTemplateTempo pins the clock to the engine's: a
-// template's subdiv is grid units per BEAT, so at 100 BPM the snare on beat
-// two of the funky-drummer template lands 60/100 s in. This rendered at 4×60/88 s while
-// the conversion read subdiv as units per bar — every template a quarter of
-// its tempo.
+// Subdiv is units per BEAT: at 100 BPM the snare on beat two lands 60/100 s in.
 func TestArrangementRunsAtTheTemplateTempo(t *testing.T) {
 	pt, err := LoadTemplate("funky-drummer")
 	if err != nil {
@@ -79,9 +75,7 @@ func TestArrangementRunsAtTheTemplateTempo(t *testing.T) {
 	}
 }
 
-// TestArrangementAppliesEachNodesGroove: a swung offbeat sixteenth sounds
-// (r-1)/(r+1) of a step late — 1/12 at the Funky Drummer's 13:11 — and the
-// downbeat beside it does not move.
+// (r-1)/(r+1) of a step late: 1/12 at 13:11. The downbeat beside it does not move.
 func TestArrangementAppliesEachNodesGroove(t *testing.T) {
 	pt, err := LoadTemplate("funky-drummer")
 	if err != nil {
@@ -119,9 +113,7 @@ func absInt(v int) int {
 	return v
 }
 
-// TestArrangementChordEmitsOneNoteEventPerLayer: a chord node sounds one
-// NoteEvent per layer of its voice stack (pitch = node pitch + layer semis,
-// volume × layer gain); every other cell is unchanged.
+// Pitch = node pitch + layer semis, volume × layer gain.
 func TestArrangementChordEmitsOneNoteEventPerLayer(t *testing.T) {
 	pt, err := LoadTemplate("funky-drummer")
 	if err != nil {

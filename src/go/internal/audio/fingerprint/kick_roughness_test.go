@@ -7,14 +7,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// --- direct-formula sanity ----------------------------------------------------
-//
-// The FFT framing (fftSize 4096 @ 44.1 kHz → binHz ≈ 10.8 Hz) cannot resolve two
-// partials a semitone apart at 200 Hz (≈11.9 Hz ≈ 1 bin); they merge into one
-// peak. So the classic semitone/octave/pure sanity cases are validated on the
-// roughness FUNCTION directly with constructed partials (deterministic, no FFT),
-// which is what actually encodes the Plomp–Levelt curve. The FFT pipeline is
-// exercised separately below with FFT-resolvable content.
+// At ~10.8 Hz/bin two partials a semitone apart at 200 Hz merge into one peak, so the semitone / octave / pure cases
+// test the roughness FUNCTION on constructed partials; the FFT path is tested on resolvable content below.
 
 func TestRoughness_SemitoneVsOctaveVsPure(t *testing.T) {
 	semitone := math.Pow(2, 1.0/12) // 200 → ~211.9 Hz, ~a quarter critical band apart
@@ -26,9 +20,7 @@ func TestRoughness_SemitoneVsOctaveVsPure(t *testing.T) {
 	if pure != 0 {
 		t.Errorf("pure single-partial roughness = %g, want exactly 0", pure)
 	}
-	// Two equal partials cap the product-normalized roughness at 0.25·d_max
-	// (d_max ≈ 0.045 at the curve's peak), so ~0.039 near a quarter critical band
-	// is the practical maximum here — far above the octave/pure cases.
+	// Two equal partials cap the normalised roughness at 0.25·d_max, so ~0.039 is the practical maximum.
 	if semi <= 0.03 {
 		t.Errorf("semitone-apart roughness = %.4f, want HIGH (> 0.03)", semi)
 	}
@@ -41,8 +33,7 @@ func TestRoughness_SemitoneVsOctaveVsPure(t *testing.T) {
 }
 
 func TestRoughness_InharmonicVsHarmonic(t *testing.T) {
-	// Inharmonic cluster (close, unequal spacings) vs an octave-spaced harmonic
-	// stack of the SAME partial count and amplitudes.
+	// The same partial count and amplitudes.
 	inharm := plompLeveltRoughness([]spectralPartial{
 		{Freq: 200, Amp: 1}, {Freq: 227, Amp: 1}, {Freq: 258, Amp: 1},
 	})
@@ -70,8 +61,7 @@ func TestRoughness_ScaleInvariant(t *testing.T) {
 
 // --- full-pipeline sanity (FFT-resolvable content) ---------------------------
 
-// staticPartials renders a sum of steady (non-decaying) sines — used to feed the
-// body-region roughness a controlled partial set that survives the FFT grid.
+// Steady sines, so the partial set survives the FFT grid.
 func staticPartials(sr int, dur float64, freqs []float64) wave.Wave {
 	n := int(dur * float64(sr))
 	s := make([]float64, n)
@@ -88,8 +78,7 @@ func staticPartials(sr int, dur float64, freqs []float64) wave.Wave {
 
 func TestKickAnalyze_RoughnessPipeline(t *testing.T) {
 	const sr = 44100
-	// FFT-resolvable spacings (≥ ~2.5 bins ≈ 27 Hz apart): an inharmonic cluster
-	// vs a harmonic/octave stack over the same span.
+	// At least ~2.5 bins apart.
 	rough := KickAnalyze(staticPartials(sr, 0.4, []float64{200, 231, 264, 299}))
 	smooth := KickAnalyze(staticPartials(sr, 0.4, []float64{200, 400, 800, 1600}))
 

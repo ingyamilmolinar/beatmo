@@ -6,12 +6,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// snare_metrics.go — snare-specific analysis. A snare = a TONAL DRUM BODY (the
-// head/shell modes, a mid "thud" ~150-250 Hz) + the SNARE WIRES (a broadband
-// buzz, the defining "snap"). The two have their OWN levels and decays — a "fat
-// bottom" snare is body-heavy with a shorter bright buzz. The existing kick
-// metrics give bands/flatness/T60/centroid but not the explicit TONE-vs-NOISE
-// split or the body tuning, which are what you actually turn to tune a snare.
+// A snare is a tonal body plus a broadband wire buzz with their OWN levels and decays; the explicit tone/noise split and
+// body tuning are what you turn to tune one.
 
 // SnareMetrics holds the tonal-body / snare-noise decomposition.
 type SnareMetrics struct {
@@ -37,8 +33,6 @@ const (
 	snareDecayDropDB = 20.0 // measure the -20 dB decay time (snares are short)
 )
 
-// AnalyzeSnare decomposes a snare one-shot into its tonal-body and snare-noise
-// components and their decays.
 func AnalyzeSnare(w wave.Wave) SnareMetrics {
 	sr := w.SampleRate
 	if sr <= 0 {
@@ -111,8 +105,7 @@ func strongestPeakHz(mag []float64, binHz, lo, hi float64) float64 {
 	return bf
 }
 
-// harmonicFraction sums spectral power within ±3% of each harmonic n·f0 (the
-// tonal body) and returns it as a fraction of the total power (residual = noise).
+// Within ±3 % of each harmonic; the residual is noise.
 func harmonicFraction(mag []float64, binHz, f0, total float64) float64 {
 	if total <= 0 || f0 <= 0 {
 		return 0
@@ -135,8 +128,7 @@ func harmonicFraction(mag []float64, binHz, f0, total float64) float64 {
 	return r
 }
 
-// bandDecayMs returns the time (ms) for the band-limited RMS envelope to fall
-// snareDecayDropDB below its peak (a robust short-percussion decay measure).
+// Robust for short percussion.
 func bandDecayMs(x []float64, sr int, lo, hi float64) float64 {
 	filt := bandpassNaive(x, sr, lo, hi)
 	win := secToSamples(0.006, sr)
@@ -164,8 +156,7 @@ func bandDecayMs(x []float64, sr int, lo, hi float64) float64 {
 	return float64(len(env)-peakIdx) * hopSec * 1000 // never dropped: floor
 }
 
-// bandpassNaive is a cheap 2nd-order-ish band limiter (one-pole HP then LP) for
-// envelope extraction only (not for audio).
+// For envelope extraction only, not audio.
 func bandpassNaive(x []float64, sr int, lo, hi float64) []float64 {
 	dt := 1.0 / float64(sr)
 	rcHP := 1.0 / (2 * math.Pi * lo)

@@ -2,10 +2,7 @@ package audio
 
 import "testing"
 
-// TestPostStageHasNoGatesOrderOrEnable: the post ops are always on and each is a
-// no-op at its identity, so the per-op gates, the op-order switch and
-// post_enabled are gone; the one thing post_enabled really did — skip the ±1.5
-// output clamp — is now the explicit out_clamp knob (Phase C task C4).
+// The post ops are always on and each is a no-op at its identity; skipping the ±1.5 clamp is the explicit out_clamp knob.
 func TestPostStageHasNoGatesOrderOrEnable(t *testing.T) {
 	idx := ModularParamSchemaIndexMap()
 	for _, gone := range []string{"post_enabled", "post_order", "post_pitch_on", "post_decay_on",

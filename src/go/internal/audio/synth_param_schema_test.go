@@ -8,25 +8,13 @@ import (
 	"testing"
 )
 
-// Phase 2 — synth_param_schema_test ensures the checked-in JS gen file
-// matches what cmd/gen-synth-abi would emit RIGHT NOW. If the Go schema
-// changes (reorder/add/remove a knob), the gen file must be regenerated
-// in the same commit. This test prevents the failure mode where the C
-// struct memory layout drifts from the JS write loop silently.
-//
-// We don't run the codegen at every audio test (it spawns a subprocess);
-// only this dedicated test triggers it. The test is skipped under the
-// `test` build path's race detector contexts where stdout capture in a
-// subprocess can be flaky on shared CI runners — see goleak comment in
-// main_test.go.
+// The checked-in JS file must equal what the generator emits now: the JS write loop drifting from the C struct layout
+// fails silently otherwise.
 func TestSynthParamABIGenFileIsCurrent(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("subprocess codegen relies on POSIX go binary path")
 	}
-	// Find repo root by walking up from this test file's directory until
-	// we hit src/. CLAUDE.md guarantees src/go/ is the Go module root and
-	// src/js/ is the JS root, so synth_param_abi.gen.js lives at
-	// src/js/synth_param_abi.gen.js relative to the repo root.
+	// src/go is the module root and src/js the JS root.
 	_, thisFile, _, _ := runtime.Caller(0)
 	srcGo := filepath.Dir(filepath.Dir(filepath.Dir(thisFile))) // src/go
 	repoRoot := filepath.Dir(filepath.Dir(srcGo))               // repo root
@@ -37,9 +25,7 @@ func TestSynthParamABIGenFileIsCurrent(t *testing.T) {
 		t.Fatalf("read %s: %v", genJSPath, err)
 	}
 
-	// Run cmd/gen-synth-abi and capture its stdout. We use the same go
-	// binary that's running this test so the schema source compiles
-	// against the in-tree internal/audio package.
+	// The same go binary, so the generator compiles against the in-tree package.
 	goBin := goBinaryPath()
 	cmd := exec.Command(goBin, "run", "./cmd/gen-synth-abi")
 	cmd.Dir = srcGo
@@ -65,8 +51,7 @@ Diff (want = on-disk, got = generator output):
 	}
 }
 
-// goBinaryPath returns the path to the go binary that executed this test.
-// Falls back to PATH lookup when GOROOT is unavailable (e.g. shared CI).
+// Falls back to PATH when GOROOT is unavailable.
 func goBinaryPath() string {
 	if goroot := runtime.GOROOT(); goroot != "" {
 		return filepath.Join(goroot, "bin", "go")

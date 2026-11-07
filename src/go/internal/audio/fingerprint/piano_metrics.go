@@ -6,15 +6,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// piano_metrics.go — piano-specific analysis. What makes a struck-string note
-// read as a real PIANO rather than an electronic/organ tone:
-//  1. INHARMONICITY — a real piano string is STIFF, so its partials are STRETCHED
-//     sharp: f_n = n·f0·√(1 + B·n²). Exact integer harmonics (B=0) are the classic
-//     synth/organ tell. B is the single strongest cue.
-//  2. TWO-STAGE DECAY — the coupled unison strings give a fast "prompt" decay then
-//     a slow "aftersound". A single exponential decay reads synthetic.
-//  3. HAMMER ATTACK — a fast percussive strike with a brief broadband transient.
-// These complement the general Fingerprint; use AnalyzePiano for a struck note.
+// What reads as a real piano: inharmonicity (stiff strings stretch partials sharp, f_n = n·f0·√(1 + B·n²); B=0 is the
+// synth/organ tell), a two-stage decay (prompt sound then aftersound) and a hammer attack.
 
 const (
 	pianoFFT       = 16384 // fine frequency resolution for measuring partial stretch
@@ -36,8 +29,7 @@ type PianoMetrics struct {
 	CentroidHz     float64
 }
 
-// AnalyzePiano computes the struck-string metrics for a full note (attack +
-// decay). f0 is the played fundamental; if ≤0 it is detected.
+// f0 ≤ 0 is detected.
 func AnalyzePiano(w wave.Wave, f0 float64) PianoMetrics {
 	sr := w.SampleRate
 	if sr <= 0 {
@@ -65,10 +57,7 @@ func AnalyzePiano(w wave.Wave, f0 float64) PianoMetrics {
 	return out
 }
 
-// pianoInharmonicity fits the stiff-string stretch coefficient B from the
-// measured partial frequencies over the post-attack spectral window. For each
-// partial n, s_n = f_measured/(n·f0) and s_n² = 1 + B·n², so B is the
-// amplitude-weighted least-squares slope of (s_n²−1) against n².
+// s_n² = 1 + B·n², so B is the amplitude-weighted least-squares slope of (s_n² − 1) on n².
 func pianoInharmonicity(x []float64, sr int, f0 float64) (B float64, stretch []float64, nUsed int, centroid float64) {
 	a := secToSamples(pianoSpecSkipS, sr)
 	b := a + secToSamples(pianoSpecLenS, sr)
@@ -111,11 +100,7 @@ func pianoInharmonicity(x []float64, sr int, f0 float64) (B float64, stretch []f
 			maxAmp = best.Amp
 		}
 	}
-	// Origin-constrained weighted least-squares fit of y = B·n² (y = s²−1),
-	// but ONLY over STRONG, non-outlier partials: a weak high partial is easily
-	// mis-identified (grabs a neighbouring peak) and, weighted by n², would
-	// dominate and corrupt B. Reject amp < 3% of the strongest partial and any
-	// implausible stretch (>80 cents = a wrong peak, not string stiffness).
+	// Only STRONG, plausible partials: a weak high partial grabs a neighbouring peak and, weighted by n², would corrupt B.
 	var numB, denB float64
 	for _, m := range matches {
 		if m.amp < 0.03*maxAmp || math.Abs(stretch[m.n-1]) > 80 {
@@ -136,8 +121,7 @@ func pianoInharmonicity(x []float64, sr int, f0 float64) (B float64, stretch []f
 	return B, stretch, nUsed, centroid
 }
 
-// pianoDecay measures the RMS-envelope decay in an early window (prompt sound)
-// vs a late window (aftersound), and the attack time to the envelope peak.
+// Early (prompt) vs late (aftersound) RMS decay, plus the attack time.
 func pianoDecay(x []float64, sr int) (fastDBs, slowDBs, attackMs float64) {
 	win := secToSamples(0.02, sr)
 	hop := secToSamples(0.005, sr)

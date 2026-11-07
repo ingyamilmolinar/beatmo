@@ -7,9 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// CancelVoices silently removes lane voices that have not started rendering.
-// CancelVoices silently removes not-yet-started lane voices and returns the
-// ones it refused because they had already started.
+// Returns the ones it refused because they had already started.
 func CancelVoices(ids []uint64) (started []uint64) {
 	if mix != nil {
 		return mix.cancelVoices(ids)
@@ -24,10 +22,7 @@ func CancelAllLaneFuture() {
 	}
 }
 
-// StopLaneAt fades, at audio time t (the Now() clock), the lane voices of
-// inst that started before t; voices starting at/after t are spared. t is
-// converted to a mixer sample position with the same delay math
-// playParamsIdentity uses for a note's start.
+// Voices starting at/after t are spared. t goes to a sample position through playParamsIdentity's delay math.
 func StopLaneAt(inst instrument.ID, t float64) {
 	if mix == nil {
 		return

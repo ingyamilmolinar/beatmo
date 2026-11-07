@@ -9,33 +9,16 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestSynthTabHotPathAllocBudget pins the per-trigger cumulative allocation
-// budget for the hot path the OOM-prevention investigation surfaced:
-//
-//	voiceCache.Get  +  tryRecipeVoice  +  cVoice construction
-//
-// This is the "fast" path taken every time a scheduled trigger fires AFTER
-// the first warm-up render — and it is the path the 12 Hz synth-tab knob
-// churn re-enters on every cache invalidation. Pre-fix this allocated ~160
-// KB per trigger (two clones — one in voiceCache.Get, one in
-// tryRecipeVoice — plus the cVoice struct + 1.2 GB cumulative attribution
-// in the profile). Post-fix the only allocation is the cVoice struct.
-//
-// We measure via runtime.MemStats.Mallocs delta rather than
-// testing.AllocsPerRun because the inner closure spans multiple
-// allocation sites and AllocsPerRun's float64 return is too coarse for a
-// per-call budget that spans multiple functions.
+// The cache-hit path every trigger after a warm-up takes, re-entered on every knob-drag invalidation: the only
+// allocation may be the cVoice struct. Measured by MemStats.Mallocs: AllocsPerRun is too coarse across several
+// functions.
 func TestSynthTabHotPathAllocBudget(t *testing.T) {
 	t.Cleanup(func() {
 		ResetInstrumentParams(roster.Snare)
 		globalVoiceCache.ClearInstrument(roster.Snare)
 	})
 
-	// Seed the voice cache with a realistic snare buffer for the default
-	// (no per-instrument-params) cache key. This puts us on the cache-hit
-	// path that the 12 Hz churn re-enters every time a SetInstrumentParam
-	// invalidates the entry — the next trigger renders, then the next 50
-	// or so triggers hit. The hit rate dominates the cumulative budget.
+	// The cache-hit path dominates the cumulative budget.
 	const samples = 22050
 	const sampleRate = 44100
 	buf := make([]float32, samples)
@@ -72,9 +55,7 @@ func TestSynthTabHotPathAllocBudget(t *testing.T) {
 	perCall := float64(mallocs) / float64(iterations)
 	bytesPerCall := float64(bytes) / float64(iterations)
 
-	// Budget: 1 alloc / call (the cVoice struct) + a small slack for
-	// runtime overhead. Pre-fix this was 4+ (two slice clones, two slice
-	// headers, plus the struct).
+	// The cVoice struct plus runtime slack.
 	const allocBudget = 1.2
 	const bytesBudget = 32.0 // cVoice = ptr + int = 24 bytes; +slack for alignment
 
@@ -99,14 +80,7 @@ func TestSynthTabHotPathAllocBudget(t *testing.T) {
 		bytesBudget, samples*4*2)
 }
 
-// TestRecipeAwareVoiceDispatch_LegacyPathAllocBudget pins the legacy
-// (no-user-params) dispatch path, which is the OTHER common branch in
-// production: instruments with no per-instrument param edits fall through
-// to inst.NewVoice. This test makes sure no clone has been introduced
-// on the legacy side either — the production OOM only landed in the
-// recipe path because that's what the churn invalidates, but tightening
-// the recipe path without a guard on the legacy path would let drift
-// re-emerge through the "default" code branch.
+// The other common branch: guarding only the recipe path would let a clone creep back through the default one.
 func TestRecipeAwareVoiceDispatch_LegacyPathAllocBudget(t *testing.T) {
 	t.Cleanup(func() {
 		ResetInstrumentParams(roster.Snare)
@@ -116,8 +90,7 @@ func TestRecipeAwareVoiceDispatch_LegacyPathAllocBudget(t *testing.T) {
 	// Ensure no user params for snare so we take the legacy branch.
 	ResetInstrumentParams(roster.Snare)
 
-	// Warm up so cVoice typed-table lookups, channel resolution, etc.
-	// don't show up as one-shot allocs in the measured window.
+	// So one-shot lookups do not land in the measured window.
 	for i := 0; i < 16; i++ {
 		_ = newRecipeAwareVoice(roster.Snare, 44100)
 	}
@@ -126,10 +99,7 @@ func TestRecipeAwareVoiceDispatch_LegacyPathAllocBudget(t *testing.T) {
 		_ = newRecipeAwareVoice(roster.Snare, 44100)
 	})
 
-	// Legacy path returns inst.NewVoice(...) which constructs a fresh
-	// cVoice with a freshly rendered buffer — at minimum 2 allocs (the
-	// struct + the buffer). Pin the budget at 4 to allow for instrument
-	// dispatch overhead but flag any new alloc-heavy code on this path.
+	// At least the struct and its buffer; 4 leaves room for dispatch overhead.
 	const budget = 4.0
 	if allocs > budget {
 		t.Errorf("legacy dispatch allocs/call = %.1f exceeds budget %.0f",

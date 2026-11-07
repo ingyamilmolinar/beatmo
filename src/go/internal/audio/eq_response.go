@@ -8,9 +8,7 @@ type BiquadCoeffs struct {
 	A1, A2     float64
 }
 
-// ComputeBiquadCoeffs returns biquad coefficients for the given filter parameters
-// using RBJ Audio EQ Cookbook formulas. Returns zero coefficients if parameters
-// are invalid.
+// RBJ Cookbook formulas; zero coefficients for invalid parameters.
 func ComputeBiquadCoeffs(kind EQKind, sampleRate int, freq, q, gainDB float64) BiquadCoeffs {
 	if sampleRate <= 0 || freq <= 0 || q <= 0 {
 		return BiquadCoeffs{}
@@ -93,10 +91,7 @@ type FreqResponsePoint struct {
 	GainDB float64
 }
 
-// ComputeFreqResponse computes the combined magnitude response |H(e^jw)| of a
-// chain of biquad filters at log-spaced frequencies between startHz and endHz.
-// Muted bands are skipped. Multiple bands are summed in dB (serial chain =
-// product of magnitudes = sum of dB).
+// Muted bands skipped; a serial chain sums in dB.
 func ComputeFreqResponse(sampleRate int, bands []EQBand, numPoints int, startHz, endHz float64) []FreqResponsePoint {
 	if numPoints <= 0 || sampleRate <= 0 || startHz <= 0 || endHz <= startHz {
 		return nil
@@ -132,8 +127,6 @@ func ComputeFreqResponse(sampleRate int, bands []EQBand, numPoints int, startHz,
 		totalDB := 0.0
 		for _, bc := range active {
 			c := bc.c
-			// Evaluate H(z) at z = e^(jw):
-			// H(z) = (b0 + b1*z^-1 + b2*z^-2) / (1 + a1*z^-1 + a2*z^-2)
 			cosW := math.Cos(w)
 			sinW := math.Sin(w)
 			cos2W := math.Cos(2 * w)

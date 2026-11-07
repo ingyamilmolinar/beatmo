@@ -7,9 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// synthKick builds a deterministic kick-shaped signal: a short bright attack
-// (fast-decaying broadband click) + a decaying low sine body + an optional long
-// low tail. attackBright scales the click's high content; tailAmp adds a low tail.
+// A bright click, a decaying low body and an optional long tail.
 func synthKick(sr int, f0, attackBright, tailAmp float64) wave.Wave {
 	n := sr * 6 / 10 // 0.6 s
 	x := make([]float64, n)
@@ -19,9 +17,7 @@ func synthKick(sr int, f0, attackBright, tailAmp float64) wave.Wave {
 		body := math.Sin(2*math.Pi*f0*t) * math.Exp(-8*t)
 		// bright click: a decaying high tone (~2.5 kHz) in the first ~8 ms
 		click := attackBright * math.Sin(2*math.Pi*2500*t) * math.Exp(-350*t)
-		// long low tail (reverb-ish), GATED to start after ~140 ms so it is
-		// temporally isolated in the TAIL segment (changing tailAmp then only
-		// affects the tail region).
+		// Gated to start after ~140 ms, so changing tailAmp affects only the tail segment.
 		tail := 0.0
 		if t > 0.14 {
 			tail = tailAmp * math.Sin(2*math.Pi*(f0*0.9)*t) * math.Exp(-6*(t-0.14))
@@ -48,8 +44,7 @@ func TestKickSegmentAnalyze_Structure(t *testing.T) {
 	if a.EndSec > 0.08 {
 		t.Fatalf("attack segment too long: ends at %.0f ms (want <= 80)", a.EndSec*1000)
 	}
-	// The attack is the brightest segment (the click lives there) — a genuine
-	// per-segment metric (unlike crest, which is confounded by segment length).
+	// The click lives there.
 	if a.Centroid <= b.Centroid {
 		t.Fatalf("attack centroid %.0f should exceed body centroid %.0f (the click is bright)", a.Centroid, b.Centroid)
 	}
@@ -69,9 +64,7 @@ func TestKickSegmentDistance_TargetsTheRightSegment(t *testing.T) {
 		t.Fatalf("identity distance = %.6f, want ~0", d.Total)
 	}
 
-	// A kick that differs ONLY in the attack brightness → the top-ranked delta
-	// must be the ATTACK centroid (the actionable target), and the attack segment
-	// must carry more distance than the tail.
+	// A difference only in attack brightness ranks the ATTACK centroid first.
 	brightAttack := KickSegmentAnalyze(synthKick(sr, 60, 2.0, 0.05))
 	d := KickSegmentDistance(ref, brightAttack)
 	if len(d.Deltas) == 0 {
@@ -85,8 +78,7 @@ func TestKickSegmentDistance_TargetsTheRightSegment(t *testing.T) {
 		t.Fatalf("attack distance %.3f should exceed tail distance %.3f", d.PerSegment[SegAttack], d.PerSegment[SegTail])
 	}
 
-	// A kick that differs ONLY in the tail level → the tail segment must carry the
-	// most distance (energyFrac / tail metrics), NOT the attack.
+	// A difference only in tail level puts the distance in the tail.
 	bigTail := KickSegmentAnalyze(synthKick(sr, 60, 0.5, 0.4))
 	dt := KickSegmentDistance(ref, bigTail)
 	if dt.PerSegment[SegTail] <= dt.PerSegment[SegAttack] {

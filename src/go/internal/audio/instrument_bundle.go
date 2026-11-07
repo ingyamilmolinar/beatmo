@@ -8,23 +8,13 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/schema"
 )
 
-// Portable, config-only instrument bundle (`*.beatmo-inst.json`). Holds 1+
-// instruments plus a NORMALIZED effects library the instruments reference by id
-// — effects are defined once here, never welded into an instrument. WAV-based
-// instruments carry a reference (name + content hash + version), never PCM.
-//
-// This is the shareable file format; it is deliberately decoupled from the
-// user/game preferences store. See
-// docs/superpowers/specs/2026-07-19-portable-instrument-format-design.md.
+// The shareable `*.beatmo-inst.json`: config only, decoupled from prefs. Effects live once in a normalized library
+// the instruments reference by id; a WAV instrument carries a reference (name + hash + version), never PCM.
 
-// InstrumentBundleFormat is the magic string that identifies our file and
-// lets import reject foreign JSON. It answers "which format is this?" and is
-// orthogonal to schema_version, which answers "which revision of it?".
+// Lets import reject foreign JSON. "Which format", orthogonal to schema_version's "which revision".
 const InstrumentBundleFormat = "beatmo.instrument"
 
-// WavSourceKind is where a referenced WAV can be resolved from. A closed
-// enum: a new kind is a new schema version, so an unknown spelling is a
-// decode error, never a silently skipped source.
+// A new kind is a new schema version, so an unknown spelling is a decode error, never a silently skipped source.
 type WavSourceKind int
 
 const (
@@ -41,8 +31,7 @@ func (k *WavSourceKind) UnmarshalText(b []byte) error {
 	return enum.Unmarshal(wavSourceKindNames, b, k)
 }
 
-// BundleKind says how a bundled instrument is made. It is derived from what
-// the entry carries (BundleInstrument.KindOf) and checked on import.
+// Derived from what the entry carries (KindOf) and checked on import.
 type BundleKind int
 
 const (
@@ -57,20 +46,13 @@ func (k BundleKind) String() string                { return enum.String(bundleKi
 func (k BundleKind) MarshalText() ([]byte, error)  { return enum.Marshal(bundleKindNames, k) }
 func (k *BundleKind) UnmarshalText(b []byte) error { return enum.Unmarshal(bundleKindNames, b, k) }
 
-// WavSource is one candidate location an instrument's WAV can be resolved from.
-// Multiple sources let a shared instrument carry several ways to find the same
-// bytes (e.g. a local path AND a URL); resolution tries them in order and
-// verifies the Sha256 of whatever it finds.
+// Sources are tried in order; whatever is found is verified against Sha256.
 type WavSource struct {
 	Kind WavSourceKind `json:"kind"`
 	Ref  string        `json:"ref"` // path | storage key | URL
 }
 
-// WavRef pins a specific version of a user WAV by content — the audio bytes
-// live in separate storage the user manages, NOT in this bundle. Sha256 is the
-// portable truth; Version is a friendly label from the local WAV registry;
-// Sources are candidate locations (local filesystem, browser storage, or remote
-// URL) resolution attempts in order.
+// The bytes live in storage the user manages, not in the bundle. Sha256 is the portable truth; Version is a local label.
 type WavRef struct {
 	Name    string      `json:"name"`
 	Sha256  string      `json:"sha256"`
@@ -78,9 +60,7 @@ type WavRef struct {
 	Sources []WavSource `json:"sources,omitempty"`
 }
 
-// EffectDef is one entry in the bundle's normalized effects library. Instruments
-// reference it by ID from their EffectChain. Identity for dedup is (Type,
-// Params, Enabled).
+// Dedup identity is (Type, Params, Enabled).
 type EffectDef struct {
 	ID      string             `json:"id"`
 	Name    string             `json:"name,omitempty"`
@@ -89,9 +69,7 @@ type EffectDef struct {
 	Enabled bool               `json:"enabled"`
 }
 
-// InstrumentEQ is the optional inline per-instrument EQ (a fixed 10-band curve +
-// HPF/LPF). Unlike insert effects it is not a variable-length, reusable unit, so
-// it stays inline on the instrument rather than in the normalized library.
+// Inline: unlike insert effects it is a fixed shape, not a reusable unit.
 type InstrumentEQ struct {
 	GainsDB     []float64    `json:"gains_db,omitempty"`
 	BandsHz     [][2]float64 `json:"bands_hz,omitempty"`
@@ -102,11 +80,8 @@ type InstrumentEQ struct {
 	LPFCutoffHz float64      `json:"lpf_cutoff_hz,omitempty"`
 }
 
-// BundleInstrument fully describes ONE shareable instrument (config only). It
-// reconstructs the sound on a machine that has never seen it: a synth from its
-// complete instrument document (spec 2026-10-04 §3), a re-voiced sample from
-// that document + sample_edit, a user WAV from wav_ref (resolved against the
-// recipient's own file/registry).
+// Enough to rebuild the sound on a machine that never saw it: a synth or re-voiced sample from its document (+
+// sample_edit), a user WAV from wav_ref resolved against the recipient's own files.
 type BundleInstrument struct {
 	Name        string             `json:"name"`
 	Kind        BundleKind         `json:"kind"`
@@ -118,9 +93,7 @@ type BundleInstrument struct {
 	EQ          *InstrumentEQ      `json:"eq,omitempty"`
 }
 
-// InstrumentBundle is the top-level file. A single-instrument export writes a
-// 1-entry Instruments slice; a "pack" is the same schema with N entries. The
-// Effects library is shared across all instruments in the bundle.
+// A pack is the same schema with N entries; the effects library is shared across them.
 type InstrumentBundle struct {
 	schema.Envelope
 	Format      string             `json:"format"`
@@ -139,15 +112,12 @@ func (b BundleInstrument) KindOf() BundleKind {
 	return BundleSynth
 }
 
-// NewInstrumentBundle returns a bundle stamped with the current schema
-// version and format magic. Every writer must go through this rather than
-// building a literal, so no path can emit an unstamped bundle.
+// Every writer goes through this, so no path can emit an unstamped bundle.
 func NewInstrumentBundle() InstrumentBundle {
 	return InstrumentBundle{Envelope: schema.Current(), Format: InstrumentBundleFormat}
 }
 
-// ValidateBundleHeader rejects foreign JSON (wrong/absent magic) and any
-// schema_version other than the current one, an absent one included.
+// An absent schema_version is rejected too.
 func ValidateBundleHeader(b *InstrumentBundle) error {
 	if b == nil {
 		return fmt.Errorf("instrument bundle: nil")

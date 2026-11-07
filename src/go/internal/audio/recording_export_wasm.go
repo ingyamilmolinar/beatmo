@@ -9,19 +9,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// SaveRecording triggers the browser download for the most recent
-// recording. The encoded zip Blob lives entirely in the JS encoder
-// Worker; here we only fetch the cached object URL + filename and ask
-// the JS download helper to dispatch the anchor.click. No bytes cross
-// the Go-WASM boundary on this path — zero memcpy, zero re-encoding.
-//
-// Must be called from a goroutine that's reasonably close in time to
-// the user-gesture event (the stop-button click) for the download to
-// fire without browser policy gating. The full Stop → SaveRecording
-// path completes in well under one second with worker-side encoding,
-// well within the user-activation window.
-//
-// Returns the zip filename on success, error on failure.
+// The zip Blob lives in the JS encoder Worker; only its URL and filename are fetched, so no bytes cross the Go-WASM
+// boundary. Call it close to the stop click, or browser policy may gate the download.
 func SaveRecording(result *RecordingResult) (string, error) {
 	if result == nil {
 		return "", fmt.Errorf("nil recording result")

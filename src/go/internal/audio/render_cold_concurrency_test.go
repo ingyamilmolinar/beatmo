@@ -18,9 +18,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// coldRaceIDs use every lazily built oscillator table: saw (lead-hoover,
-// bass-wobble), square (pwm-pad, lead-chip), glottal (ensemble-lead), sine,
-// and the FM engine's own tables (fm-bass, fm-bell).
+// Together they use every lazily built oscillator table.
 var coldRaceIDs = []instrument.ID{roster.LeadHoover, roster.BassWobble, roster.PwmPad, roster.LeadChip, roster.EnsembleLead, roster.Violin, roster.FmBass, roster.FmBell}
 
 func coldRenderHash(t *testing.T, id string) string {
@@ -38,21 +36,9 @@ func coldRenderHash(t *testing.T, id string) string {
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 
-// The C engine builds its oscillator wavetables lazily, on the first render
-// that needs them. That first render must be safe to run on several threads at
-// once: the voice prewarm pool renders on 4 workers from the moment a circuit
-// loads, so the very first renders of a session ARE concurrent.
-//
-// They were not: ensure_modular_tables (and the FM engine's twin) checked a
-// plain int flag, then each generator memset the shared table and summed its
-// harmonics into it with +=. Two cold renders both built the tables at once —
-// one zeroing what the other was summing, or both summing (a doubled table) —
-// and the flag then froze whatever came out for the rest of the process: the
-// saw / square / triangle / glottal / FM voices of that session no longer
-// sounded as tuned, and differently from one launch to the next.
-//
-// Each child process below starts COLD and releases eight renders at once;
-// every one must equal the serial reference rendered in this process.
+// The prewarm pool renders on several workers from the moment a circuit loads, so a session's first renders ARE
+// concurrent, and a table two cold renders built at once froze corrupted for the whole process. Each child starts
+// COLD and releases eight renders at once; every one must equal the serial reference.
 func TestColdConcurrentRendersMatchSerial(t *testing.T) {
 	if os.Getenv("BEATMO_COLD_RENDER_CHILD") == "1" {
 		t.Skip("child process")
@@ -91,9 +77,7 @@ func TestColdConcurrentRendersMatchSerial(t *testing.T) {
 	}
 }
 
-// TestColdConcurrentRenderChild is the child half: no render has happened in
-// this process yet, so the tables are built by whichever renders get there
-// first — all eight at once.
+// No render has happened in this process, so all eight race to build the tables.
 func TestColdConcurrentRenderChild(t *testing.T) {
 	if os.Getenv("BEATMO_COLD_RENDER_CHILD") != "1" {
 		t.Skip("run by TestColdConcurrentRendersMatchSerial")

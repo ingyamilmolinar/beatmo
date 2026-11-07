@@ -12,20 +12,12 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// demoInstruments is a launch-circuit-sized instrument set — the kind whose
-// cold render can stall the audioLoop dispatch goroutine and trip the overdue
-// timing gate.
+// Launch-circuit sized: cold renders of these can stall the dispatch goroutine.
 var demoInstruments = []instrument.ID{
 	roster.DnbKick, roster.Snare, roster.HihatOpenBright, roster.Clap, roster.Shaker, roster.OrganChurch,
 }
 
-// TestSynthRenderCostTable measures the cold (cache-miss) render cost of each
-// demo instrument through the SAME path dispatch uses (newRecipeAwareVoicePitched
-// for melodic, newRecipeAwareVoice otherwise), at the instrument's natural render
-// window. This is the "how expensive is one voice render on the dispatch
-// goroutine" evidence table. Run:
-//
-//	xvfb-run -a go test ./internal/audio/ -run TestSynthRenderCostTable -v
+// Cold render cost through the same path dispatch uses, at each instrument's own length.
 func TestSynthRenderCostTable(t *testing.T) {
 	const sr = 44100
 	type row struct {
@@ -69,8 +61,7 @@ func TestSynthRenderCostTable(t *testing.T) {
 		_ = pitches
 	}
 
-	// The beat period at BPM 120, subdiv 8, is 60/120/8 = 62.5 ms. Any cold
-	// render exceeding this while another beat is queued causes overdue.
+	// One step at 120 BPM, subdiv 8: a cold render longer than this while a beat is queued makes it overdue.
 	const beatPeriodMS = 62.5
 	sort.Slice(rows, func(i, j int) bool { return rows[i].coldNS > rows[j].coldNS })
 
@@ -90,11 +81,7 @@ func TestSynthRenderCostTable(t *testing.T) {
 	fmt.Printf("(beat period @ bpm120 subdiv8 = %.1f ms; a cold render longer than this stalls the next queued beat)\n\n", beatPeriodMS)
 }
 
-// BenchmarkOrganChurchColdRender isolates the single most expensive demo voice
-// (church organ) render cost + allocations. Run with a CPU profile to see where
-// the time goes inside the C render:
-//
-//	xvfb-run -a go test ./internal/audio/ -run=^$ -bench=BenchmarkOrganChurchColdRender -benchmem -cpuprofile=/tmp/organ.prof
+// The most expensive demo voice; run with -cpuprofile to see where the time goes in C.
 func BenchmarkOrganChurchColdRender(b *testing.B) {
 	const (
 		sr = 44100

@@ -6,11 +6,8 @@ import (
 	"testing"
 )
 
-// rattleFixture renders a decaying excitation through a bank of damped modes
-// between 2 and 12 kHz: the same topology as the cymbal plate's wire layer.
-// dense=true drives it with continuous noise (a fused buzz); dense=false with a
-// Poisson click train whose RATE decays with its amplitude — the legacy wire
-// behaviour that the listener heard as rattle.
+// The cymbal plate's wire-layer topology: dense = continuous noise (a fused buzz), sparse = a click train whose RATE
+// decays with its amplitude (heard as rattle).
 func rattleFixture(dense bool) []float64 {
 	const sr = 44100
 	n := sr
@@ -54,8 +51,7 @@ func rattleFixture(dense bool) []float64 {
 func TestTailRattleSeparatesClicksFromBuzz(t *testing.T) {
 	buzz := TailRattle(rattleFixture(true), 44100)
 	clicks := TailRattle(rattleFixture(false), 44100)
-	// A synthetic noise buzz still has chance 1 ms spikes near the -55 dB floor,
-	// so it is not exactly 0; what matters is an order-of-magnitude gap.
+	// Chance spikes near the floor keep a synthetic buzz above 0; the gap is an order of magnitude.
 	if buzz > 25 {
 		t.Errorf("dense buzz scored %.1f ticks/s, want < 25 (a fused buzz is not rattle)", buzz)
 	}

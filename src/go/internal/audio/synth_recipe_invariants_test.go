@@ -11,13 +11,9 @@ import (
 	"testing"
 )
 
-// Phase 6 plugin-readiness invariants. Each test pins one of the v1
-// freezing-surface contracts the future .wasm plugin loader will rely on.
-// Changing any of these contracts is a coordinated v2 migration, not a
-// drive-by edit; the tests force the conversation.
+// Contracts a future .wasm plugin loader relies on: changing one is a coordinated migration, and these force the
+// conversation.
 
-// repoRootForInvariants walks up from this test file to find the repo
-// root (the directory containing src/c and src/go).
 func repoRootForInvariants(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
@@ -39,9 +35,7 @@ func repoRootForInvariants(t *testing.T) string {
 	return ""
 }
 
-// Invariant #2: ParamDef JSON shape. Plugins ship a manifest with the
-// same field names + types; renaming a JSON tag silently corrupts every
-// in-the-wild .wasm.
+// Plugins ship a manifest with these names: renaming a JSON tag silently corrupts every one in the wild.
 func TestInvariant_ParamDefJSONShape(t *testing.T) {
 	d := ParamDef{
 		Name:    "decay",
@@ -57,9 +51,7 @@ func TestInvariant_ParamDefJSONShape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	// Decode into a map and assert every expected key is present with
-	// the expected type. Field order in JSON is implementation-defined
-	// for structs, so we don't compare byte sequences.
+	// Struct field order in JSON is not a contract, so keys and types are compared, not bytes.
 	var got map[string]any
 	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
@@ -80,8 +72,6 @@ func TestInvariant_ParamDefJSONShape(t *testing.T) {
 		t.Errorf("ParamDef JSON has unexpected extra keys: %v", got)
 	}
 
-	// Reverse: a JSON manifest with the documented shape must
-	// decode without losing fields.
 	manifest := `{"name":"pitch","label":"Pitch","min":-24,"max":24,"default":0,"unit":"st","curve":"linear","group":"generic"}`
 	var d2 ParamDef
 	if err := json.Unmarshal([]byte(manifest), &d2); err != nil {
@@ -92,10 +82,7 @@ func TestInvariant_ParamDefJSONShape(t *testing.T) {
 	}
 }
 
-// Invariant #3: RecipeParams semantics. The IPC payload is a flat
-// map[string]float64; nested types or non-float values would break the
-// JS bridge serialization (json.Marshal in synth_recipe_wasm.go) and the
-// hash function (hashRecipeParams).
+// A flat map[string]float64: nested or non-float values would break the bridge serialization and the hash.
 func TestInvariant_RecipeParamsType(t *testing.T) {
 	got := reflect.TypeOf(RecipeParams{})
 	if got.Kind() != reflect.Map {
@@ -119,10 +106,7 @@ func randIdent(rng *rand.Rand) string {
 	return string(buf)
 }
 
-// Invariant #6: window.setInstrumentBlock is the only IPC seam for synth
-// voices (spec 2026-10-04 §8): Go flattens each instrument document and pushes
-// the block; audio.js keeps no parameter maps. The instrumentBlocks map is
-// written in exactly one place, and the retired param-map globals are gone.
+// audio.js keeps no parameter maps: the block map is written in exactly one place.
 func TestInvariant_SinglePlatformIPCSeam(t *testing.T) {
 	root := repoRootForInvariants(t)
 	jsPath := filepath.Join(root, "src", "js", "audio.js")

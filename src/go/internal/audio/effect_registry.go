@@ -17,8 +17,7 @@ var (
 	registryOrder []EffectType
 )
 
-// RegisterEffect adds an effect type to the global registry.
-// Call from init() in each effect file.
+// Called from each effect file's init().
 func RegisterEffect(reg EffectRegistration) {
 	registryMu.Lock()
 	defer registryMu.Unlock()
@@ -52,9 +51,7 @@ func EffectTypeOrder() []EffectType {
 	return out
 }
 
-// applyDefaultFX processes a float32 buffer through a chain of insert effects.
-// Creates temporary processors, processes the buffer, then discards them.
-// Used to apply a document's FX chain during voice rendering (cached).
+// Temporary processors for a document's FX chain during voice rendering.
 func applyDefaultFX(buf []float32, sampleRate int, slots []EffectSlot) {
 	if len(slots) == 0 {
 		return
@@ -75,13 +72,8 @@ func applyDefaultFX(buf []float32, sampleRate int, slots []EffectSlot) {
 		}
 	}
 	if len(blocks) == len(procs) {
-		// One cgo call per effect per voice instead of one per sample: the
-		// call overhead cost more than most effects' own work (~6 % of every
-		// `refs match` render). The C loops carry their state sample by
-		// sample and float32 -> float64 -> float32 is exact, so the voice is
-		// identical bit for bit (TestDocumentFXBlockMatchesPerSample). Voices
-		// render concurrently, so the scratch buffer is the voice's own (the
-		// mixer's blockBufPool is single-threaded).
+		// One cgo call per effect per voice instead of per sample, bit-identical since the C loops carry state per sample
+		// and float32 → float64 → float32 is exact. Voices render concurrently, so the scratch is the voice's own.
 		src, dst := buf, make([]float32, len(buf))
 		for _, b := range blocks {
 			b.ProcessBlockBuf(src, dst, len(buf))

@@ -7,11 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// resolveRender resolves what a render of instID plays: the instrument's
-// document with the overrides and "pitch" set through it (the same document
-// the production renderer flattens), its flat field view, and the sample
-// count. Shared by the production and test renderers so param resolution is
-// identical in both build modes.
+// Shared by the production and test renderers so param resolution is identical in both builds.
 func resolveRender(instID instrument.ID, pitch float64, sr int, durSec float64, overrides map[string]float64) (fields map[string]float64, merged map[string]float64, samples int, err error) {
 	fields = make(map[string]float64, len(overrides)+1)
 	for k, v := range overrides {

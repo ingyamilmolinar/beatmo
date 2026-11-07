@@ -9,16 +9,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// voice_binding_invariant_test.go pins the Voice Binding contract from
-// docs/superpowers/specs/2026-07-15-realtime-param-edit-audio-model-design.md:
-// a node's audio is fully determined at trigger time and immutable afterward.
-//
-// These invariants hold structurally today (a param edit renders into a NEW
-// buffer under a NEW key; cached buffers are never written; eviction only drops
-// the map lookup and Go's GC keeps the slice alive for a live reader). They are
-// pinned here because Phase 2 adds a best-available fallback that deliberately
-// hands out a different buffer than the exact binding requested — the one thing
-// it must never do is mutate a buffer someone is already playing.
+// A node's audio is fixed at trigger time: an edit renders into a NEW buffer under a NEW key, cached buffers are never
+// written, eviction only drops the lookup. The best-available fallback hands out a different buffer, but must never
+// mutate one being played.
 
 // I1 — once a voice is scheduled, nothing can alter its samples.
 func TestI1_InFlightVoiceIsImmutableAcrossParamEdit(t *testing.T) {
@@ -54,8 +47,6 @@ func TestI1_InFlightVoiceIsImmutableAcrossParamEdit(t *testing.T) {
 	}
 }
 
-// I2 — an edit is visible to the NEXT trigger, and N edits compose latest-wins
-// into ONE binding.
 func TestI2_EditAppliesToNextTriggerAndComposes(t *testing.T) {
 	const id = roster.OrganChurch
 	const pitch = 2.0
@@ -76,8 +67,7 @@ func TestI2_EditAppliesToNextTriggerAndComposes(t *testing.T) {
 		t.Fatal("a param edit did not rotate the binding — the next trigger would read stale audio")
 	}
 
-	// Latest-wins: setting the same param again lands on ONE binding, and
-	// returning to the original value returns to the original binding.
+	// Returning to the original value returns to the original binding.
 	SetInstrumentParam(id, p, 0.75)
 	k2, _ := pitchedVoiceKey(id, SampleRate(), pitch)
 	if k2 == k1 {
@@ -102,18 +92,12 @@ func TestI4_EditIsolatedToItsInstrument(t *testing.T) {
 	bBefore := docHashForTest(string(b))
 	aBefore := docHashForTest(string(a))
 
-	// NOTE: the churn value MUST vary per iteration. SetInstrumentParam coalesces
-	// same-value writes (SetInstrumentParam's no-op-on-identical-value skip) and
-	// rejects non-finite values, so a constant here would silently make every
-	// iteration a no-op and re-vacuum this test.
+	// Must vary per iteration: same-value writes are coalesced, so a constant would make every iteration a no-op.
 	for i := 0; i < 20; i++ {
 		SetInstrumentParam(a, churnableParam(t, string(a)), float64(i)/20.0)
 	}
 
-	// Vacuity guard: prove A's edits actually landed. B's document is a
-	// separate entry of the project store, so "B unchanged" is guaranteed by
-	// the data structure and would pass even if
-	// SetInstrumentParam were a complete no-op. Without this, the test proves nothing.
+	// Vacuity guard: B's document is a separate entry, so "B unchanged" would pass even if SetInstrumentParam did nothing.
 	aAfter := docHashForTest(string(a))
 	if aAfter == aBefore {
 		t.Fatal("A's binding did not change — the edits never landed, so the " +
@@ -126,8 +110,7 @@ func TestI4_EditIsolatedToItsInstrument(t *testing.T) {
 	}
 }
 
-// churnableParam returns a deterministic continuous knob of id's document
-// (the alphabetically first one it owns), excluding the special-cased "pitch".
+// Alphabetically first, excluding "pitch".
 func churnableParam(t *testing.T, id string) string {
 	t.Helper()
 	owned := GetInstrumentParams(instrument.ID(id))

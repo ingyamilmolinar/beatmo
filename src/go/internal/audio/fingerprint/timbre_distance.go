@@ -2,19 +2,11 @@ package fingerprint
 
 import "math"
 
-// timbre_distance.go — TimbreDistance is a CLASSIFICATION distance (which
-// instrument is this?), as opposed to Distance, which is tuned to give a smooth
-// optimizer gradient. The difference matters: Distance normalizes ~11 terms to
-// [0,1] and sums them near-equally, so two different instruments at the same
-// pitch/loudness land at similar totals (everything clusters). TimbreDistance
-// instead leans hard on the pitch/loudness/expression-INVARIANT identity cues —
-// the harmonic-profile SHAPE (spectral envelope), MFCC, tristimulus, even/odd
-// balance — and deliberately ignores raw-spectrum L2, vibrato, coupling and the
-// amplitude envelope, which vary with the specific note and performance and blur
-// instrument identity (a real violin's envelope ≠ a 2 s synth render's).
+// A CLASSIFICATION distance (which instrument is this?), unlike Distance's smooth optimiser gradient where different
+// instruments cluster. It leans on invariant identity cues (harmonic-profile shape, MFCC, tristimulus, even/odd) and
+// ignores what varies with the note and performance (raw spectrum, vibrato, coupling, envelope).
 
-// TimbreWeights weights the identity sub-distances. Defaults emphasize the
-// harmonic-profile shape + MFCC (the two strongest instrument-identity cues).
+// The harmonic-profile shape and MFCC are the strongest identity cues.
 type TimbreWeights struct {
 	Profile     float64 // harmonic-profile shape (cosine over normalized partials)
 	MFCC        float64 // mel-cepstrum L2 (coeffs 1..12)
@@ -26,8 +18,7 @@ type TimbreWeights struct {
 	Formant     float64 // spectral-envelope formant peaks (when available)
 }
 
-// DefaultTimbreWeights is the starting weight set (tuned empirically against the
-// reference-attribution harness).
+// Tuned against the reference-attribution harness.
 var DefaultTimbreWeights = TimbreWeights{
 	Profile:     3.0,
 	MFCC:        2.0,
@@ -44,8 +35,7 @@ func TimbreDistance(ref, cand Fingerprint) float64 {
 	return TimbreDistanceWeighted(ref, cand, DefaultTimbreWeights)
 }
 
-// TimbreDistanceWeighted is TimbreDistance with explicit weights (for the
-// harness weight sweep). Symmetric; zero for identical fingerprints.
+// Symmetric, zero for identical fingerprints.
 func TimbreDistanceWeighted(ref, cand Fingerprint, w TimbreWeights) float64 {
 	d := 0.0
 	d += w.Profile * partialShapeDist(ref.Partials, cand.Partials)
@@ -64,10 +54,7 @@ func TimbreDistanceWeighted(ref, cand Fingerprint, w TimbreWeights) float64 {
 	return d
 }
 
-// partialShapeDist is the cosine distance (0=identical shape … 2=opposed) over
-// the first-16 harmonic amplitudes, each vector L2-normalized so it compares the
-// SHAPE of the harmonic series (the spectral envelope) independent of level or
-// pitch — the single strongest instrument-identity cue.
+// Cosine distance over L2-normalised harmonic amplitudes: the series' SHAPE, independent of level or pitch.
 func partialShapeDist(a, b [16]float64) float64 {
 	var na, nb, dot float64
 	for i := 0; i < 16; i++ {
@@ -82,8 +69,7 @@ func partialShapeDist(a, b [16]float64) float64 {
 	return 1 - cos
 }
 
-// mfccL2 is the Euclidean distance over MFCC coefficients 1..12 (skip c0, an
-// energy/level offset that is not a timbre cue).
+// c0 is a level offset, not a timbre cue.
 func mfccL2(a, b [13]float64) float64 {
 	s := 0.0
 	for i := 1; i < 13; i++ {
@@ -93,10 +79,7 @@ func mfccL2(a, b [13]float64) float64 {
 	return math.Sqrt(s)
 }
 
-// formantShapeDist compares the two spectral envelopes' formant structure when
-// both are available (the bridge-hill / formant peaks are a strong bore/body
-// signature). Returns 0 when either is missing (no penalty). Uses the bridge
-// hill freq + gain exposed on SpectralEnvelope.
+// The bridge hill and formants are a body signature; 0 (no penalty) when either envelope is missing.
 func formantShapeDist(a, b *SpectralEnvelope) float64 {
 	if a == nil || b == nil {
 		return 0

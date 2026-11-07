@@ -10,21 +10,11 @@ var octaveBandLabels = []string{"125", "250", "500", "1k", "2k", "4k", "8k"}
 
 const bandDecayFitFloorDB = 40.0
 
-// bandEnergyGateDB: a band whose own peak sits more than this far below the
-// LOUDEST band's peak, in the SAME signal, carries essentially no energy and
-// must never be "fitted" -- an OLS slope over near-silence measures FFT
-// leakage/noise floor drift, not a real decay. Without this gate, a harp's
-// fundamental-and-above spectrum still reported a "measurable" 125 Hz and
-// 500 Hz band T60 purely from spectral leakage of the real (much higher)
-// partials, both sitting BELOW the instrument's actual fundamental with
-// almost no energy of their own -- see TestBandT60_EnergyGateRejectsQuietBands.
+// A band whose own peak is this far below the loudest band's carries no energy: an OLS slope over near-silence measures
+// leakage, not decay.
 const bandEnergyGateDB = 30.0
 
-// bandT60Unfit is the sentinel Vector component for a band whose decay could
-// not be fitted (BandDecay.OK[i]==false). A real T60Sec is always > 0, so -1
-// is unambiguous and, unlike math.NaN(), keeps every Extract-ed Measurement
-// finite -- required by TestNoDescriptorProducesNonFiniteValues and
-// TestFamilyExtractionIsFinite, which forbid NaN/Inf in ANY OK measurement.
+// -1, since a real T60 is always > 0; unlike NaN it keeps every OK measurement finite.
 const bandT60Unfit = -1.0
 
 type BandDecay struct {
@@ -33,19 +23,14 @@ type BandDecay struct {
 	RateDBPerSec []float64
 }
 
-// BandT60 fits each octave band's decay RATE from the visible tail and
-// converts it to a T60, so a clip that ends above -60 dB still yields a
-// number. This is the replacement for the clamped env.ring_t60.
+// Fits each octave's decay RATE from the visible tail, so a clip ending above -60 dB still yields a number.
 func BandT60(st *STFTFrames) BandDecay {
 	n := len(octaveBandCentersHz)
 	out := BandDecay{T60Sec: make([]float64, n), OK: make([]bool, n), RateDBPerSec: make([]float64, n)}
 	if st == nil || len(st.Frames) < 3 {
 		return out
 	}
-	// First pass: build each band's dB-over-time track and find its own
-	// peak. The energy gate below needs every band's peak before it can
-	// decide which ones are loud enough relative to the LOUDEST band in
-	// this same signal, so the fit loop cannot run in the same pass.
+	// The energy gate needs every band's peak first, so tracks and peaks come before the fits.
 	tracks := make([][]float64, n)
 	peaks := make([]float64, n)
 	peakFrames := make([]int, n)

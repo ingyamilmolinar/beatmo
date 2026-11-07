@@ -8,10 +8,7 @@ import (
 
 const shapeEps = 1e-12
 
-// computeShape fills fp's spectral-shape fields from w's sustain-window
-// magnitude spectrum and fp.Partials (already populated by computeSpectral).
-// Sustain window policy: skip SustainSkipSec, analyze SustainLenSec; fall back
-// to the whole wave when the window is too short.
+// fp.Partials must already be populated; the whole wave when the sustain window is too short.
 func computeShape(w wave.Wave, fp *Fingerprint) {
 	// Sustain window — shared policy via sustainWindow.
 	seg := sustainWindow(w)
@@ -21,11 +18,7 @@ func computeShape(w wave.Wave, fp *Fingerprint) {
 
 	mag, binHz := wave.MagnitudeSpectrum(seg, 16384, wave.WindowHann)
 
-	// Work over bins i>=1 (skip DC).
-	// -----------------------------------------------------------------------
-	// SpectralFlatness = geomean(mag) / arithmean(mag).
-	// geomean via exp(mean(log(mag+eps))).
-	// -----------------------------------------------------------------------
+	// DC skipped; geometric mean via exp(mean(log(mag + eps))).
 	n := len(mag) - 1 // number of non-DC bins
 	if n <= 0 {
 		return
@@ -50,19 +43,11 @@ func computeShape(w wave.Wave, fp *Fingerprint) {
 		fp.SpectralFlatness = geomMean / arithMean
 	}
 
-	// -----------------------------------------------------------------------
-	// SpectralCrest = max(mag) / arithmean(mag).
-	// -----------------------------------------------------------------------
 	if arithMean > shapeEps {
 		fp.SpectralCrest = maxMag / arithMean
 	}
 
-	// -----------------------------------------------------------------------
-	// SpectralSkewness and SpectralKurtosis: weighted moments over frequency.
-	// w_i = mag[i], f_i = i * binHz.
-	// μ = Σ w_i f_i / W,  σ² = Σ w_i (f_i−μ)² / W,
-	// skew = Σ w_i (f_i−μ)³ / (W σ³),  kurt = Σ w_i (f_i−μ)⁴ / (W σ⁴).
-	// -----------------------------------------------------------------------
+	// Moments weighted by magnitude over frequency.
 	W := arithSum // Σ w_i (same as arithSum computed above)
 	if W > shapeEps {
 		// Weighted mean frequency.
@@ -98,13 +83,7 @@ func computeShape(w wave.Wave, fp *Fingerprint) {
 		}
 	}
 
-	// -----------------------------------------------------------------------
-	// Tristimulus from fp.Partials (squared partial amplitudes p_k²).
-	// Indices: k=0..15 → partials 1..16.
-	// T1 = p1² / Σ
-	// T2 = (p2²+p3²+p4²) / Σ
-	// T3 = (p5²+…+p16²) / Σ
-	// -----------------------------------------------------------------------
+	// T1 = p1²/Σ, T2 = (p2²+p3²+p4²)/Σ, T3 = (p5²+…+p16²)/Σ.
 	var sumSq float64
 	var pSq [16]float64
 	for k := 0; k < 16; k++ {

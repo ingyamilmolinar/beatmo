@@ -8,11 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestResetSampleToFactory_RestoresPlaybackRegistration — reverting a built-in
-// must un-register the user sample from the playback layer (desktop instrument
-// table / WASM render cache) so the synth is actually heard again, not just
-// returned to its library entry. Asserts the UnregisterSamplePCM seam is invoked.
-// (The recorder seam is test-build-only, hence this file's build tag.)
+// Returning to the library entry is not enough: the playback layer must drop the user sample so the synth is heard.
 func TestResetSampleToFactory_RestoresPlaybackRegistration(t *testing.T) {
 	resetUserSamplesForTest()
 	sink := &fakeSampleSink{}

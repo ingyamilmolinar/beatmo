@@ -7,62 +7,38 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// Kick-drum fingerprinting: TIME-RESOLVED analysis for tuning a synthesized kick
-// against a reference kick WAV.
-//
-// Motivation: averaged scalar metrics (spectral centroid, flatness, a single
-// band split) can HIDE organic complexity. A real "spit"/sputter bug in the kick
-// synth was invisible to averaged spectral descriptors — it only showed up when
-// the signal was analyzed window-by-window over time. So EVERY metric here is a
-// trace over time, and KickDistance compares those traces point-by-point rather
-// than collapsing them to scalars. The scalar landmarks (attack-peak time,
-// plateau flatness, tail-bloom presence) are derived FROM the traces and carry
-// only a supporting weight.
-//
-// All windowing is done on the peak-normalized signal. Window/hop sizes are
-// named constants derived from the sample rate.
+// Time-resolved kick fingerprinting: averaged scalars hide organic complexity (a sputter bug was invisible to them), so
+// every metric is a trace over time compared point by point; the scalar landmarks derive from the traces and carry
+// only supporting weight. All windowing is on the peak-normalised signal.
 
 // --- window/hop policy (seconds) ---------------------------------------------
 
 const (
-	// Envelope: a 20 ms analysis window (>= one period of the lowest kick
-	// fundamental ~50 Hz, so intra-cycle RMS ripple is suppressed) advanced by a
-	// 5 ms hop (the "~5 ms" time resolution the trace reports). Overlapping the
-	// window is deliberate: a bare 5 ms window under-resolves a 50-100 Hz
-	// fundamental and its RMS ripples within each cycle, which would fabricate
-	// spurious envelope minima/maxima and defeat the tail-bloom detector.
+	// A 20 ms window (≥ one period of a ~50 Hz fundamental) on a 5 ms hop: a bare 5 ms window ripples within each cycle,
+	// fabricating envelope minima and maxima that defeat the tail-bloom detector.
 	kickEnvWindowSec = 0.020
 	kickEnvHopSec    = 0.005
 
-	// Pitch: ~15 ms window (spec) advanced by a 5 ms hop for fine time resolution
-	// through a fast pitch glide.
+	// A 5 ms hop resolves a fast pitch glide.
 	kickPitchWindowSec = 0.015
 	kickPitchHopSec    = 0.005
 
-	// Bands: ~15 ms non-overlapping window; each window is zero-padded to
-	// kickBandFFT for adequate low-frequency bin resolution.
+	// Zero-padded to kickBandFFT for low-frequency bin resolution.
 	kickBandWindowSec = 0.015
 	kickBandHopSec    = 0.015
 
-	// HF ratio ("spit" detector): a short 10 ms window advanced by 5 ms so a brief
-	// sputter shows up as a sharp jump between consecutive windows, while the
-	// window is long enough to keep single-cycle leakage from dominating.
+	// Short enough that a brief sputter is a sharp jump between windows, long enough to keep single-cycle leakage down.
 	kickHFWindowSec = 0.010
 	kickHFHopSec    = 0.005
 
-	// The attack transient of a kick is legitimately broadband (the beater click);
-	// that is not "spit". HFRatioMaxJump is therefore measured only after this
-	// initial window so a normal attack does not read as a sputter.
+	// A kick's attack is legitimately broadband (the beater click), so sputter is measured after it.
 	kickHFAttackSkipSec = 0.020
 
-	// A pitch window is treated as voiced only when its RMS is at least this
-	// fraction of the loudest window's RMS (≈ −12 dB). Below it the note has
-	// decayed into the tail where a dominant-frequency estimate is just noise;
-	// the settle pitch is derived from the sustained body, not the dying tail.
+	// About −12 dB of the loudest window: below it the tail's dominant frequency is noise, and the settle pitch comes
+	// from the body.
 	kickVoicedFrac = 0.25
 
-	// FFT sizes for the per-window spectra (both power-of-two; the short windows
-	// are zero-padded up to these lengths inside wave.MagnitudeSpectrum).
+	// Short windows are zero-padded up to these.
 	kickBandFFT = 4096
 	kickHFFFT   = 1024
 
@@ -83,21 +59,15 @@ const (
 	kickBloomMinSec  = 0.04 // ...and occur at least this long after the attack peak
 	kickDistResample = 64   // common length traces are resampled to before pointwise comparison
 
-	// Fundamental-dominance ("kick vs tom") band split. The LOW band is the kick
-	// fundamental region; the MID band is where a tom's inharmonic body modes
-	// live. AttackLowMidRatio = energy(LOW)/energy(MID) over the loud onset.
+	// A kick's loud onset is fundamental-dominant, a tom's mid-dominant (inharmonic body modes).
 	kickLowBandLoHz = 40.0
 	kickLowBandHiHz = 100.0
 	kickMidBandLoHz = 100.0
 	kickMidBandHiHz = 500.0
 
-	// A window counts toward the LOUD onset (for AttackLowMidRatio) when its RMS
-	// is at least this fraction of the loudest window's RMS.
 	kickAttackLoudFrac = 0.50
 
-	// Reverb-tail thresholds (fractions of the envelope peak). The tail region
-	// begins where the envelope FIRST falls to kickTailStartFrac of peak; the
-	// tail is considered "ringing" while it stays above kickTailFloorFrac.
+	// The tail begins where the envelope first falls to kickTailStartFrac and rings while above kickTailFloorFrac.
 	kickTailStartFrac = 0.10
 	kickTailFloorFrac = 0.02
 )
@@ -105,8 +75,7 @@ const (
 // KickBandCount is the number of frequency bands in the per-window band trace.
 const KickBandCount = 7
 
-// KickBands returns the fixed 7-band split used by the band-energy trace, in
-// ascending order. The top band runs up to Nyquist (clamped at analysis time).
+// The top band runs to Nyquist, clamped at analysis time.
 func KickBands() []BandEdge {
 	return []BandEdge{
 		{Name: "<60", LoHz: 0, HiHz: 60},
@@ -153,26 +122,16 @@ type KickFingerprint struct {
 	HFRatioHopSec  float64
 	HFRatioMaxJump float64 // max |Δ| between consecutive HFRatioTrace windows (smoothness guard)
 
-	// --- 5. Timbre (spectral color + noisiness) ----------------------------
-	// The axes that separate a BRIGHT, NOISY real recorded kick from a dull,
-	// pure-tonal synth even when band energies + crest match (diagnosed on the
-	// sandyrb acoustic ref: centroid 872 vs 99 Hz, flatness 0.086 vs 0.000).
-	// Band energies throw away the fine spectral SHAPE; these keep it.
+	// These separate a bright, noisy recorded kick from a dull tonal synth when band energies and crest already match:
+	// band energies throw away the fine spectral SHAPE.
 	CentroidTrace  []float64   // spectral centroid (Hz) per body window — brightness over time
 	CentroidHopSec float64     //
 	FlatnessAvg    float64     // mean spectral flatness (0=pure tone … 1=white noise) over voiced windows
 	AttackCentroid float64     // spectral centroid (Hz) of the first ~20 ms (beater-click brightness)
 	MFCC           [13]float64 // mel-cepstral timbre fingerprint (perceptual spectral shape)
 
-	// --- 6. Body character (kick-vs-tom) + reverb tail ---------------------
-	// Two axes the timbre/band terms miss. (a) Fundamental dominance: a KICK's
-	// loud onset is fundamental-dominant (energy in 40–100 Hz >> 100–500 Hz),
-	// whereas a TOM's loud onset is MID-dominant (prominent inharmonic body
-	// modes at 100–500 Hz). Band fractions alone can't separate them because a
-	// tom can share a kick's overall low-frequency weighting once its long ring
-	// is averaged in — the discriminator is the ratio at the LOUD onset only.
-	// (b) Reverb/echo tail: a recorded kick has a low-level tail that persists
-	// well past the main hit; a dry synth kick has none.
+	// Band fractions cannot tell a kick from a tom once a tom's ring is averaged in, so the ratio is read at the LOUD
+	// onset only; a recorded kick also carries a low-level reverb tail a dry synth lacks.
 	LowMidRatioTrace  []float64 // per body window: energy(40–100 Hz) / energy(100–500 Hz)
 	LowMidHopSec      float64   // seconds between LowMidRatioTrace samples
 	AttackLowMidRatio float64   // low/mid energy ratio over the LOUD onset windows only (kick≫1, tom<1); PRIMARY kick-vs-tom scalar
@@ -181,43 +140,28 @@ type KickFingerprint struct {
 	TailDurationSec float64 // time from the main peak until the envelope RMS last exceeds 2% of peak (how long the tail rings)
 	TailFlatness    float64 // spectral flatness of the tail region (reverb is smooth/diffuse → higher)
 
-	// --- 7. Sensory dissonance + per-band decay ----------------------------
-	// Two axes every energy/shape metric above is blind to. (a) Roughness: the
-	// Plomp–Levelt/Sethares sensory-dissonance of the sustained body — the
-	// beating/intermodulation between close partials heard as a "creak"/buzz
-	// (a saturating-inharmonic-modes bug was invisible to band/centroid/MFCC).
-	// See kick_roughness.go. (b) BandT60: the decay time (T60) of EACH frequency
-	// band independently — a real kick's sub rings long while its click dies in
-	// ms; the whole-signal envelope collapses that away. See kick_decay.go.
+	// Axes every energy/shape metric is blind to: roughness (beating between close partials heard as a creak) and the
+	// decay of EACH band (the sub rings long while the click dies in ms).
 	Roughness float64 // sensory dissonance of the body partials; 0 (consonant/pure) → higher (rough/buzzy)
 
 	BandT60        []float64 // per-band 60 dB decay time (seconds), len KickBandCount; 0 = band too quiet to measure
 	BandT60Floored []bool    // per-band: T60 clamped to remaining signal length (decay too slow to reach −60 dB)
 	DecayHopSec    float64   // seconds between the per-band decay-envelope samples
 
-	// --- 8. Temporal spectral change (flux + warble) ----------------------
-	// Two axes every AVERAGED/STATIC spectral statistic above is blind to: a
-	// slow pitch/formant SWEEP or an amplitude WARBLE leaves BandAvg/FlatnessAvg/
-	// MFCC unchanged while the ear hears movement. See kick_flux.go.
+	// A sweep or a warble leaves every averaged spectrum unchanged while the ear hears movement.
 	SpectralFluxAvg float64 // mean per-frame spectral flux over the sustained (post-attack) region; level-invariant. Steady tone ≈ 0, sweep/creak > 0
 	WarbleDepth     float64 // 2–30 Hz amplitude-modulation depth of the mid-band body (log-detrended CoV); 0 = steady, higher = warbling
 
-	// --- 9. Inharmonicity (metallic vs pure) ------------------------------
-	// Amplitude-weighted mean mistuning of the body partials from an exact
-	// harmonic series of f0 — the axis mode_detune drives. See kick_inharmonicity.go.
+	// The axis mode_detune drives.
 	Inharmonicity float64 // 0 = perfectly harmonic, higher = inharmonic/metallic
 
-	// --- 10. MPEG-7 attack descriptors ------------------------------------
-	// Perceptual (log-time) transient character + where energy sits in time —
-	// axes the linear AttackRiseSec landmark compresses away. See kick_attack.go.
+	// Perceptual log-time transient character the linear rise time compresses away.
 	LogAttackTime       float64 // log10(t_peak − t_start) seconds (NEGATIVE); sharp click ≈ −4, slow swell higher
 	TemporalCentroidSec float64 // energy-weighted mean time (seconds); front-loaded → small, long tail → larger
 }
 
-// KickAnalyze computes the time-resolved kick fingerprint of w. The signal is
-// peak-normalized first (like FromWave), so envelope levels are relative to the
-// signal's own peak. A silent input yields a zero fingerprint (hop fields still
-// populated).
+// Peak-normalised first, so levels are relative to the signal's own peak; silent input gives a zero fingerprint with
+// the hop fields still set.
 func KickAnalyze(w wave.Wave) KickFingerprint {
 	sr := w.SampleRate
 	if sr <= 0 {
@@ -258,19 +202,13 @@ func KickAnalyze(w wave.Wave) KickFingerprint {
 	return fp
 }
 
-// computeTimbre fills the spectral-color + noisiness fields: a per-window
-// spectral-centroid trace (brightness over time), the mean spectral flatness of
-// the voiced windows (noisy vs tonal), the beater-click brightness (attack-
-// window centroid), and the 13-coefficient MFCC timbre fingerprint. These are
-// what a real recorded kick and a pure-tonal synth diverge on when their band
-// energies already agree.
+// What a recorded kick and a tonal synth diverge on when their band energies already agree.
 func (fp *KickFingerprint) computeTimbre(w wave.Wave, samples []float64, sr int) {
 	win := secToSamples(kickBandWindowSec, sr)
 	hop := secToSamples(kickBandHopSec, sr)
 	fp.CentroidHopSec = float64(hop) / float64(sr)
 
-	// Peak RMS across windows → a voiced gate so the decayed tail (noise-only,
-	// meaningless flatness/centroid) doesn't skew the averages.
+	// A voiced gate keeps the noise-only tail out of the averages.
 	var peakRMS float64
 	type wstat struct{ centroid, flatness, rms float64 }
 	var stats []wstat
@@ -335,8 +273,7 @@ func spectralCentroidHz(mag []float64, binHz float64) float64 {
 	return num / den
 }
 
-// spectralFlatnessOf is geometric-mean / arithmetic-mean of the magnitude
-// spectrum: ~0 for a pure tone, →1 for white noise (the "noisiness" axis).
+// ~0 for a pure tone, → 1 for white noise.
 func spectralFlatnessOf(mag []float64) float64 {
 	if len(mag) == 0 {
 		return 0
@@ -394,15 +331,8 @@ func (fp *KickFingerprint) computeEnvelope(samples []float64, sr int) {
 		fp.AttackRiseSec = float64(first90-first10) * fp.EnvHopSec
 	}
 
-	// ---- PlateauFlatness ----
-	// Definition: over the region from the attack peak down to the -12 dB point,
-	// compute the coefficient of variation (std/mean) of the envelope and report
-	// PlateauFlatness = clamp(1 - CoV, 0, 1). A pure exponential decay drops from
-	// peak to a quarter of peak across this region → large spread → high CoV →
-	// LOW flatness. A sustained plateau stays near-constant → CoV ≈ 0 → HIGH
-	// flatness. (The exponential-fit variant is NOT used because fitting an
-	// exponential to a constant also yields near-zero residual, so it cannot tell
-	// a plateau from a decay — CoV can.)
+	// 1 − the envelope's CoV from the attack peak to −12 dB: an exponential spreads (low), a plateau stays flat (high).
+	// An exponential fit cannot tell them apart, since fitting one to a constant also leaves no residual.
 	endIdx := len(env) - 1
 	for i := peakIdx; i < len(env); i++ {
 		if env[i] <= kickMinus12dB {
@@ -419,12 +349,8 @@ func (fp *KickFingerprint) computeEnvelope(samples []float64, sr int) {
 		}
 	}
 
-	// ---- TailBloom ----
-	// Rule: after the attack peak, find the first "significant" local minimum
-	// (a local min that dips below kickBloomSigMin·peak). Then take the largest
-	// local maximum after that minimum. If that later maximum is >= kickBloomRatio
-	// of the global peak AND occurs > kickBloomMinSec after the attack peak, a
-	// tail bloom is present. (env is normalized so the global peak == 1.)
+	// After the peak, the first local minimum below kickBloomSigMin, then the largest later maximum: a bloom when it
+	// reaches kickBloomRatio of the peak more than kickBloomMinSec after it.
 	minIdx := -1
 	for i := peakIdx + 1; i < len(env)-1; i++ {
 		if env[i] < env[i-1] && env[i] <= env[i+1] && env[i] < kickBloomSigMin {
@@ -460,11 +386,8 @@ func (fp *KickFingerprint) computePitch(samples []float64, sr int) {
 	if win < 4 {
 		return
 	}
-	// Compute a dominant-frequency estimate AND a window RMS for every window.
-	// The full trace (including decayed tail windows) is retained so the trace's
-	// index→time mapping stays intact; PitchStartHz / PitchSettleHz / GlideSec are
-	// derived only from the VOICED windows so the dead tail (where a
-	// dominant-frequency estimate is just noise) cannot skew the settle pitch.
+	// The full trace keeps its index→time mapping; start, settle and glide come from VOICED windows only, so the dead
+	// tail cannot skew the settle pitch.
 	var rms []float64
 	peakRMS := 0.0
 	for start := 0; start+win <= len(samples); start += hop {
@@ -550,15 +473,12 @@ func (fp *KickFingerprint) computeHF(samples []float64, sr int) {
 	hop := secToSamples(kickHFHopSec, sr)
 	fp.HFRatioHopSec = float64(hop) / float64(sr)
 
-	// Full windows only: a ragged final partial window has a different length and
-	// FFT support, which fabricates a spurious jump at the end of the trace.
+	// A ragged final window has another length and FFT support, fabricating a jump at the end.
 	for start := 0; start+win <= len(samples); start += hop {
 		seg := wave.Wave{Samples: samples[start : start+win], SampleRate: sr}
 		fp.HFRatioTrace = append(fp.HFRatioTrace, kickHFRatio(seg, kickHFCutoffHz, kickHFFFT))
 	}
-	// MaxJump over the body only (skip the attack transient — see
-	// kickHFAttackSkipSec). A smoothly-varying HFRatio ⇒ small jump; a spitty
-	// kick oscillates ⇒ large jump.
+	// Body only: a smooth HF ratio gives a small jump, a spitty kick a large one.
 	skip := int(kickHFAttackSkipSec / fp.HFRatioHopSec)
 	if skip < 1 {
 		skip = 1
@@ -589,21 +509,9 @@ func (fp *KickFingerprint) computeCrest(samples []float64) {
 
 // --- body character (kick-vs-tom) + reverb tail -------------------------------
 
-// computeBodyReverb fills the fundamental-dominance and reverb-tail fields.
-//
-// Fundamental dominance: over each body window (same window/hop as the band
-// trace) it takes the ratio energy(40–100 Hz)/energy(100–500 Hz). A kick's LOUD
-// onset is fundamental-dominant (ratio ≫ 1); a tom's loud onset is mid-dominant
-// (ratio < 1). AttackLowMidRatio aggregates that ratio over the loud onset only
-// (windows whose RMS ≥ kickAttackLoudFrac of the peak window) as a SUM-of-energy
-// ratio, which is more stable than averaging per-window ratios that blow up when
-// a window's mid energy is near zero.
-//
-// Reverb tail: using the same RMS envelope as computeEnvelope, it locates the
-// tail region (everything after the envelope first falls to 10 % of peak) and
-// reports the tail's mean level relative to peak (TailRatio), how long it keeps
-// ringing above 2 % of peak (TailDurationSec), and the tail's spectral flatness
-// (reverb is smooth/diffuse). A dry synth kick reads ~0 on all three.
+// Over the loud onset the low/mid ratio is a SUM-of-energy ratio, more stable than averaging per-window ratios
+// that explode when a window's mid energy is near zero. The tail (after the first fall to 10 %) reports level,
+// ringing time above 2 % and flatness; a dry synth reads ~0 on all three.
 func (fp *KickFingerprint) computeBodyReverb(w wave.Wave, samples []float64, sr int) {
 	// ---- fundamental dominance (kick vs tom) ----
 	win := secToSamples(kickBandWindowSec, sr)
@@ -683,8 +591,7 @@ func (fp *KickFingerprint) computeBodyReverb(w wave.Wave, samples []float64, sr 
 	}
 	fp.TailDurationSec = float64(lastIdx-peakIdx) * envHop
 
-	// Tail flatness: spectral flatness of the tail-region samples (reuse the
-	// shared helper). Only when the tail region has enough support for an FFT.
+	// Only when the tail has enough support for an FFT.
 	if tailStart >= 0 {
 		s0 := tailStart * ehop
 		if s0 < len(samples) && len(samples)-s0 >= 8 {
@@ -716,9 +623,7 @@ func bandEnergy(mag []float64, binHz, loHz, hiHz float64) float64 {
 
 // --- distance -----------------------------------------------------------------
 
-// KickWeights sets the relative contribution of each KickDistance sub-term. The
-// three trace terms (EnvShape, Pitch, Bands) intentionally carry the most weight
-// so the metric stays honest — no single averaged scalar can dominate.
+// The three trace terms carry the most weight, so no single averaged scalar can dominate.
 type KickWeights struct {
 	EnvShape      float64
 	Pitch         float64
@@ -736,8 +641,7 @@ type KickWeights struct {
 	Attack        float64
 }
 
-// DefaultKickWeights weights the point-by-point trace terms above the scalar
-// terms. A tuner may pass its own weights to KickDistanceWeighted.
+// A tuner may pass its own to KickDistanceWeighted.
 var DefaultKickWeights = KickWeights{
 	EnvShape:   2.0,  // envelope shape over time — the primary organic-complexity signal
 	Pitch:      1.5,  // pitch-glide trajectory
@@ -756,8 +660,7 @@ var DefaultKickWeights = KickWeights{
 	Attack:        0.75, // MPEG-7 log-attack-time + temporal-centroid gap — supporting axis
 }
 
-// KickDistanceBreakdown holds the per-term and total weighted kick distance.
-// Lower is more similar. Total == 0 for identical fingerprints. Symmetric.
+// Zero for identical fingerprints; symmetric.
 type KickDistanceBreakdown struct {
 	EnvShape   float64 // resampled EnvTrace, mean |Δ| (both are 0..1 normalized)
 	Pitch      float64 // resampled PitchTrace log-Hz diff + settle/glide terms
@@ -788,16 +691,12 @@ func KickDistanceWeighted(a, b KickFingerprint, w KickWeights) KickDistanceBreak
 	const L = kickDistResample
 	var d KickDistanceBreakdown
 
-	// EnvShape: resample both normalized envelopes to a common length and take
-	// the mean absolute pointwise difference.
 	d.EnvShape = meanAbsDiff(resampleLinear(a.EnvTrace, L), resampleLinear(b.EnvTrace, L))
 
-	// Pitch: pointwise |log2(ratio)| over the resampled traces (octave distance),
-	// plus a relative settle term and a scaled glide-time term.
+	// Octave distance pointwise, plus settle and glide terms.
 	d.Pitch = kickPitchDistance(a, b, L)
 
-	// Bands: per-window, per-band fraction difference (NOT just BandAvg — averaged
-	// bands hide time drift). Each band series is resampled over the window axis.
+	// Per window, not BandAvg: averaged bands hide drift over time.
 	d.Bands = kickBandDistance(a, b, L)
 
 	// Landmarks: derived scalars.
@@ -813,15 +712,12 @@ func KickDistanceWeighted(a, b KickFingerprint, w KickWeights) KickDistanceBreak
 	// Timbre: MFCC color + centroid brightness trajectory + noisiness.
 	d.Timbre = kickTimbreDistance(a, b, L)
 
-	// LowMid: fundamental-dominance (kick-vs-tom). The scalar AttackLowMidRatio
-	// difference in log-space (the +0.2 floor keeps a tom's near-zero ratio from
-	// blowing the log up) plus the pointwise ratio-trace difference. This is the
-	// term that pulls a re-tune away from tom-like (mid-dominant) toward kick-like.
+	// Log space with a +0.2 floor so a tom's near-zero ratio cannot blow up the log; this term pulls a re-tune from
+	// tom-like toward kick-like.
 	d.LowMid = math.Abs(math.Log((a.AttackLowMidRatio+0.2)/(b.AttackLowMidRatio+0.2))) +
 		meanAbsDiff(resampleLinear(a.LowMidRatioTrace, L), resampleLinear(b.LowMidRatioTrace, L))
 
-	// Reverb: tail presence + duration + diffuseness. TailRatio/TailFlatness are
-	// small (a few %) so the ratio term is scaled ×8; TailDurationSec ×2.
+	// The tail measures are small, so they are scaled to the other terms.
 	d.Reverb = 8*math.Abs(a.TailRatio-b.TailRatio) +
 		2*math.Abs(a.TailDurationSec-b.TailDurationSec) +
 		math.Abs(a.TailFlatness-b.TailFlatness)
@@ -829,20 +725,17 @@ func KickDistanceWeighted(a, b KickFingerprint, w KickWeights) KickDistanceBreak
 	// Roughness: absolute sensory-dissonance gap, scaled to a comparable range.
 	d.Roughness = math.Abs(a.Roughness-b.Roughness) * kickRoughDistScale
 
-	// Decay: mean per-band |log ratio| of T60 (scale-robust). Bands where either
-	// side is unmeasurable (T60 ≤ 0 — too quiet to fit a decay) are skipped.
+	// Scale-robust; bands too quiet to fit are skipped.
 	d.Decay = kickDecayDistance(a.BandT60, b.BandT60)
 
-	// Flux: temporal spectral change. The sustained-flux gap (sweep/creak) plus the
-	// warble-depth gap (2–30 Hz tremolo), each scaled to a comparable range.
+	// Each scaled to a comparable range.
 	d.Flux = kickFluxDistScale*math.Abs(a.SpectralFluxAvg-b.SpectralFluxAvg) +
 		kickWarbleDistScale*math.Abs(a.WarbleDepth-b.WarbleDepth)
 
 	// Inharmonicity: absolute partial-mistuning gap, scaled up (raw range ~0–0.1).
 	d.Inharmonicity = math.Abs(a.Inharmonicity-b.Inharmonicity) * kickInharmDistScale
 
-	// Attack: MPEG-7 log-attack-time gap (already log-domain) + the temporal-centroid
-	// gap as a log ratio (scale-robust; the +eps floor guards a near-zero centroid).
+	// The centroid gap as a log ratio, floored so a near-zero centroid cannot blow up.
 	d.Attack = math.Abs(a.LogAttackTime-b.LogAttackTime) +
 		math.Abs(math.Log((a.TemporalCentroidSec+kickAttackEps)/(b.TemporalCentroidSec+kickAttackEps)))
 
@@ -854,10 +747,7 @@ func KickDistanceWeighted(a, b KickFingerprint, w KickWeights) KickDistanceBreak
 	return d
 }
 
-// kickDecayDistance is the mean over measurable bands of the absolute log-ratio of
-// per-band T60 (a scale-robust ratio distance). A band is measurable only when
-// BOTH fingerprints report a positive T60 for it (a band too quiet to fit a decay
-// carries T60 ≤ 0 and is skipped). Returns 0 when no band is jointly measurable.
+// Only bands where BOTH report a positive T60; 0 when none is jointly measurable.
 func kickDecayDistance(a, b []float64) float64 {
 	n := len(a)
 	if len(b) < n {
@@ -878,12 +768,7 @@ func kickDecayDistance(a, b []float64) float64 {
 	return sum / float64(cnt)
 }
 
-// kickTimbreDistance measures spectral-color + noisiness divergence: a scaled
-// MFCC L2 (dropping C0 = loudness), the per-window spectral-centroid trajectory
-// in octaves (brightness over time), the attack-window centroid (beater-click
-// brightness), and the flatness (noisy-vs-tonal) gap. These are the axes a real
-// recorded kick and a pure-tonal synth diverge on when band energies already
-// agree, so this term is what pulls tuning toward the reference's actual color.
+// C0 (loudness) is dropped from the MFCC L2; this term pulls tuning toward the reference's actual colour.
 func kickTimbreDistance(a, b KickFingerprint, L int) float64 {
 	// MFCC coeffs 1..12 (skip loudness), scaled to ~unit range.
 	mfcc := 0.0
@@ -893,8 +778,7 @@ func kickTimbreDistance(a, b KickFingerprint, L int) float64 {
 	}
 	mfcc = math.Sqrt(mfcc / 12.0)
 
-	// Centroid trajectory: octave distance per window (log-frequency; +25 Hz
-	// floor avoids blowups on near-silent windows).
+	// A +25 Hz floor avoids blow-ups on near-silent windows.
 	ca := resampleLinear(a.CentroidTrace, L)
 	cb := resampleLinear(b.CentroidTrace, L)
 	cent := 0.0
@@ -964,10 +848,7 @@ func kickLandmarkDistance(a, b KickFingerprint) float64 {
 
 // --- low-level helpers --------------------------------------------------------
 
-// kickRMSEnvelope computes an overlapping RMS envelope: window win samples,
-// advanced by hop samples. Unlike RMSEnvelope in signal.go (window == hop), this
-// allows win > hop so a low fundamental's intra-cycle ripple is smoothed while
-// the trace keeps fine time resolution.
+// win > hop, unlike RMSEnvelope: smooths a low fundamental's ripple while keeping fine time resolution.
 func kickRMSEnvelope(samples []float64, win, hop int) []float64 {
 	if win < 1 {
 		win = 1
@@ -993,11 +874,7 @@ func kickRMSEnvelope(samples []float64, win, hop int) []float64 {
 	return env
 }
 
-// kickDominantPitch returns the frequency (Hz) with maximum Goertzel power over
-// [loHz, hiHz] scanned at stepHz. A Hann window is applied first to reduce
-// spectral leakage. Goertzel (a single-bin DFT) is used rather than an FFT so
-// the scan grid can be finer than an FFT bin — and it does not duplicate the
-// shared FFT in internal/wave.
+// Goertzel rather than an FFT, so the scan grid can be finer than a bin; Hann-windowed against leakage.
 func kickDominantPitch(samples []float64, sr int, loHz, hiHz, stepHz float64) float64 {
 	n := len(samples)
 	if n < 4 || sr <= 0 || stepHz <= 0 {
@@ -1019,8 +896,7 @@ func kickDominantPitch(samples []float64, sr int, loHz, hiHz, stepHz float64) fl
 	return bestF
 }
 
-// kickGoertzelPower returns the |X(f)|² power of samples at an arbitrary
-// (non-bin-aligned) frequency via the Goertzel recurrence.
+// At an arbitrary, non-bin-aligned frequency.
 func kickGoertzelPower(samples []float64, freq float64, sr int) float64 {
 	if len(samples) == 0 || sr <= 0 {
 		return 0
@@ -1040,8 +916,7 @@ func kickGoertzelPower(samples []float64, freq float64, sr int) float64 {
 	return p
 }
 
-// kickBandFractions returns the fraction of spectral energy (mag², DC excluded)
-// falling in each band, normalized to sum ~1 across bands.
+// DC excluded; sums to ~1.
 func kickBandFractions(seg wave.Wave, bands []BandEdge, fftSize int) []float64 {
 	mag, binHz := wave.MagnitudeSpectrum(seg, fftSize, wave.WindowHann)
 	out := make([]float64, len(bands))
@@ -1094,8 +969,7 @@ func kickHFRatio(seg wave.Wave, cutHz float64, fftSize int) float64 {
 	return hf / total
 }
 
-// resampleLinear resamples src to exactly n points via linear interpolation.
-// An empty src yields zeros; a single-element src is held constant.
+// An empty src gives zeros; a single element is held.
 func resampleLinear(src []float64, n int) []float64 {
 	out := make([]float64, n)
 	if n <= 0 {
@@ -1216,8 +1090,6 @@ func rmsOf(xs []float64) float64 {
 	return math.Sqrt(sum / float64(len(xs)))
 }
 
-// medianLastThirdVoiced returns the median pitch over the last third of the
-// voiced-window indices.
 func medianLastThirdVoiced(trace []float64, voiced []int) float64 {
 	if len(voiced) == 0 {
 		return 0

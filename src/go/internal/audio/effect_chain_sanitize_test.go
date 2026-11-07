@@ -7,13 +7,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// SetInsertEffects is the project-import boundary for insert chains: a
-// hand-edited or corrupted beatmo.json must not poison the processors (C
-// effects on native/worklet receive these values raw). Mirrors the synth
-// param boundary (sanitizeParamValue in synth_recipe.go): out-of-range
-// values clamp to the registry's [Min,Max]; non-finite values fall back to
-// the registry default; unknown effect types pass through untouched
-// (forward-compat — they already render as passthrough processors).
+// The C effects receive these values raw, so out-of-range values clamp, non-finite ones fall back to the default,
+// and unknown types pass through untouched.
 func TestSetInsertEffectsSanitizesParams(t *testing.T) {
 	t.Cleanup(ClearAllInsertEffects)
 

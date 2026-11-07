@@ -8,8 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Spec 2026-10-31 §1.2: boot, reset, registration and reads build no channel;
-// the first use does.
+// Boot, reset, registration and reads build no channel; the first use does.
 func TestResetAndRegisterCreateNoInstrumentChannel(t *testing.T) {
 	withDefaultAudio(t)
 	ResetInstruments()

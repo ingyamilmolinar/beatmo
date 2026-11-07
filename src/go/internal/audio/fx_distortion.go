@@ -4,9 +4,7 @@ package audio
 
 import "math"
 
-// distortion implements a tanh soft-clip waveshaper with a one-pole lowpass
-// tone filter and wet/dry mix. Higher drive values produce more saturation.
-// All user-facing parameters are smoothed to prevent clicks on change.
+// tanh with a one-pole tone filter; every param smoothed.
 type distortion struct {
 	drive smoothParam // 1-20: gain before tanh
 	tone  smoothParam // LP filter cutoff Hz

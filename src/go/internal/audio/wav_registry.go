@@ -5,18 +5,13 @@ import (
 	"sync"
 )
 
-// WavVersion is one recorded content version of a named WAV: a monotonic
-// human-friendly Version paired with the authoritative content Sha256.
+// A friendly monotonic Version paired with the authoritative Sha256.
 type WavVersion struct {
 	Version int    `json:"version"`
 	Sha256  string `json:"sha256"`
 }
 
-// WavRegistry is our own file-based versioning of user WAV files, kept in the
-// decoupled instrument store. It maps a WAV name to the content versions seen
-// for it, so an instrument can pin "my-808.wav v3" and import can resolve that
-// exact version by hash (and show the friendly label). The registry never holds
-// PCM — only names, versions, and hashes.
+// So an instrument can pin "my-808.wav v3" and import resolve that exact content by hash. Never holds PCM.
 type WavRegistry struct {
 	mu       sync.Mutex
 	versions map[string][]WavVersion
@@ -27,9 +22,7 @@ func NewWavRegistry() *WavRegistry {
 	return &WavRegistry{versions: map[string][]WavVersion{}}
 }
 
-// Register records (name, sha). If the hash is already known for that name it
-// returns the existing version; otherwise it assigns the next monotonic version
-// for that name and returns it.
+// A known hash keeps its version; new content gets the next one.
 func (r *WavRegistry) Register(name, sha string) WavVersion {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -47,8 +40,6 @@ func (r *WavRegistry) Register(name, sha string) WavVersion {
 	return v
 }
 
-// Lookup returns the recorded version for (name, sha), or ok=false when that
-// exact content isn't known for the name.
 func (r *WavRegistry) Lookup(name, sha string) (WavVersion, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

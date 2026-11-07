@@ -10,12 +10,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestDesktopChannelVolumeApplied guards that per-instrument channel volume
-// attenuates desktop live audio. The desktop mixer never calls Channel.
-// ProcessBlockLocal for instrument channels — it applies the channel gain inside
-// ProcessInsertsBlockLocal (Phase 2 of processBlock, engine_stop.go) — so this
-// pins that the atomic set by SetChannelVolume actually reaches the output.
-// Halving the channel volume must halve the output RMS.
+// The desktop mixer applies instrument channel gain inside ProcessInsertsBlockLocal, never ProcessBlockLocal, so
+// this pins that SetChannelVolume reaches the output: half the volume, half the RMS.
 func TestDesktopChannelVolumeApplied(t *testing.T) {
 	pinSampleRate(t, 44100)
 	pinMasterVolume(t, 1.0)

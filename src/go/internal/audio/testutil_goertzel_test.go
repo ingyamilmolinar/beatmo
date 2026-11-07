@@ -5,10 +5,7 @@ import (
 	"testing"
 )
 
-// goertzelMagnitude measures the energy at a specific frequency in a signal
-// using the Goertzel algorithm. Returns the magnitude (linear scale).
-// This is equivalent to a single-bin DFT and is more efficient than FFT
-// when only a few frequencies need to be measured.
+// A single-bin DFT, cheaper than an FFT for a few frequencies.
 func goertzelMagnitude(samples []float64, targetFreq float64, sr int) float64 {
 	n := len(samples)
 	if n == 0 {

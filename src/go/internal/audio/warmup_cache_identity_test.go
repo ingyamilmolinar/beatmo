@@ -8,11 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestSecondWarmOfIdenticalSetRendersNothing pins the headline cache-hit
-// guarantee: re-loading a document whose instruments, params and pitches are
-// unchanged must render ZERO voices. This is the promise the import-warmup
-// playback gate is built on — without it, every re-import and every template
-// reload pays full render cost again.
+// The promise the import warm-up gate is built on: an unchanged document re-renders ZERO voices.
 func TestSecondWarmOfIdenticalSetRendersNothing(t *testing.T) {
 	pitches := []float64{-12, -5, 0, 4, 7, 12}
 	for _, p := range pitches {
@@ -30,11 +26,7 @@ func TestSecondWarmOfIdenticalSetRendersNothing(t *testing.T) {
 	}
 }
 
-// TestEffectsChangeDoesNotInvalidateVoices pins that insert effects are
-// post-voice processing and are correctly ABSENT from voiceCacheKey. Changing
-// only the effect chain must not re-render a single voice — if this
-// ever fails, someone "fixed" the key by adding effects to it and made every
-// FX tweak cost a full circuit re-render.
+// Insert effects are post-voice and ABSENT from the key: adding them would make every FX tweak re-render the circuit.
 func TestEffectsChangeDoesNotInvalidateVoices(t *testing.T) {
 	const id = roster.Violin
 	PrewarmVoice(id, 0)

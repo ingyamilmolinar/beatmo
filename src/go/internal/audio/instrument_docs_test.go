@@ -9,8 +9,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// memLibrary: docs is the pre-versioning documents the library reads in;
-// saved records whether the versioned store was persisted.
 type memLibrary struct {
 	docs  map[instrument.ID][]byte
 	blob  []byte
@@ -24,8 +22,6 @@ func (m *memLibrary) SaveLibrary(b []byte) error {
 	return nil
 }
 
-// resetLibraryForTest gives the test an empty, private user library and a
-// store re-initialised from the shipped library; both are restored after.
 func resetLibraryForTest(t *testing.T) *memLibrary {
 	t.Helper()
 	lib := &memLibrary{}
@@ -128,9 +124,7 @@ func TestLibraryIDsListsShippedThenUserOnly(t *testing.T) {
 	}
 }
 
-// Every shipped instrument reaches the browser: re-initialising the store
-// pushes each document through the platform seam (audio.js has no static
-// render table any more — it renders exactly what Go pushes; spec §8).
+// audio.js has no render table: it renders exactly what Go pushes.
 func TestEveryShippedInstrumentIsPushedToThePlatform(t *testing.T) {
 	pushed := map[string]bool{}
 	prev := platformInstrumentDocChanged
@@ -144,11 +138,7 @@ func TestEveryShippedInstrumentIsPushedToThePlatform(t *testing.T) {
 	}
 }
 
-// TestReplaceInstrumentDocsTouchesOnlyWhatChanged: a project import (and so
-// every undo/redo, which re-imports) replaces the store wholesale but must
-// re-push only the documents that actually change — a push re-renders that
-// voice in the browser, and re-pushing all of them made one undo re-render the
-// whole roster.
+// A push re-renders that voice in the browser; re-pushing all of them made one undo re-render the roster.
 func TestReplaceInstrumentDocsTouchesOnlyWhatChanged(t *testing.T) {
 	resetLibraryForTest(t)
 	edited, _ := InstrumentDoc(roster.Kick)
@@ -182,8 +172,7 @@ func TestReplaceInstrumentDocsTouchesOnlyWhatChanged(t *testing.T) {
 		t.Error("kick lost the file's value")
 	}
 
-	// A document for an id this machine has never seen (a Save-As instrument
-	// from another library) becomes a playable instrument.
+	// An unknown id (a Save-As instrument from another library) becomes playable.
 	alien := snare.Clone()
 	alien.ID, alien.Origin = "user.alien.abc123", "user.alien.abc123"
 	if err := ReplaceInstrumentDocs(map[instrument.ID]instrument.Doc{"user.alien.abc123": alien}); err != nil {
@@ -194,8 +183,6 @@ func TestReplaceInstrumentDocsTouchesOnlyWhatChanged(t *testing.T) {
 	}
 }
 
-// IsMelodicInstrument is the document's render.melodic — the project copy when
-// there is one, else the shipped document (tools ask before any project exists).
 func TestIsMelodicInstrumentReadsTheDocument(t *testing.T) {
 	resetLibraryForTest(t)
 	for _, id := range roster.All {
@@ -227,11 +214,8 @@ func TestFlatFieldMapCoversEveryABIField(t *testing.T) {
 	}
 }
 
-// TestInstrumentDocWithFieldsAddsALayerWithAllItsFields: an override set that
-// ADDS a layer (gen9_source on an instrument with 8 layers) must land every
-// field of that layer — including the ones that sort BEFORE the source key
-// (gen9_env_fast_mix < gen9_source), which are inactive until the source
-// creates the layer. A single sorted pass silently dropped them.
+// The layer's fields that sort before gen9_source are inactive until the source creates the layer; a single sorted
+// pass dropped them.
 func TestInstrumentDocWithFieldsAddsALayerWithAllItsFields(t *testing.T) {
 	resetLibraryForTest(t)
 	fields := map[string]float64{

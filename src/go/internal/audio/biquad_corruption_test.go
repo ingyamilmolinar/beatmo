@@ -17,8 +17,7 @@ func genSine(freq float64, sr, n int) []float64 {
 	return out
 }
 
-// computeCorrelation returns the Pearson correlation coefficient between a and b.
-// Returns 0 if either slice has zero variance.
+// 0 when either slice has zero variance.
 func computeCorrelation(a, b []float64) float64 {
 	n := len(a)
 	if n == 0 || n != len(b) {
@@ -47,10 +46,8 @@ func computeCorrelation(a, b []float64) float64 {
 	return cov / denom
 }
 
-// TestBiquadStateCorruptionFromInterleaving proves that interleaving unrelated
-// voice signals through a shared biquad filter corrupts the filter state and
-// produces measurable distortion. This was the root cause of desktop audio
-// distortion before the 3-phase mixer fix.
+// A biquad is stateful: interleaving unrelated voices through one filter corrupts its state measurably, which is
+// why voices are summed before the channel EQ runs.
 func TestBiquadStateCorruptionFromInterleaving(t *testing.T) {
 	const (
 		sr        = 44100
@@ -71,8 +68,7 @@ func TestBiquadStateCorruptionFromInterleaving(t *testing.T) {
 		coherentOut[i] = bq1.ProcessSample(sig440[i])
 	}
 
-	// Interleaved: alternate 64-sample blocks of 440Hz and 3kHz through the
-	// same biquad, but only collect the 440Hz output.
+	// Alternating 64-sample blocks of 440 Hz and 3 kHz through one biquad, collecting only the 440 Hz output.
 	bq2 := makeBiquad(EQLowpass, sr, 1000, 0.707, 0)
 	if bq2 == nil {
 		t.Fatal("failed to create biquad 2")
@@ -111,9 +107,6 @@ func TestBiquadStateCorruptionFromInterleaving(t *testing.T) {
 	}
 }
 
-// TestProcessBlockLocalPreservesSignalCoherence proves that the 3-phase mixer
-// pattern (sum voices first, then EQ) produces clean output matching a
-// reference single-pass processing.
 func TestProcessBlockLocalPreservesSignalCoherence(t *testing.T) {
 	withDefaultAudio(t)
 	const (
@@ -163,9 +156,6 @@ func TestProcessBlockLocalPreservesSignalCoherence(t *testing.T) {
 	}
 }
 
-// TestInterleavedChannelProcessingProducesDistortion proves that the old
-// per-voice-through-shared-channel pattern produces measurably different
-// (distorted) output compared to sum-first-then-EQ.
 func TestInterleavedChannelProcessingProducesDistortion(t *testing.T) {
 	withDefaultAudio(t)
 	const (
@@ -193,8 +183,7 @@ func TestInterleavedChannelProcessingProducesDistortion(t *testing.T) {
 		cleanOut[i] = cleanCh.ProcessSampleLocal((sigA[i] + sigB[i]) * 0.25)
 	}
 
-	// Interleaved: alternate blocks of A and B through the SAME channel,
-	// accumulate both outputs (simulating the old bug).
+	// Both outputs accumulate, as per-voice processing through a shared channel did.
 	bqBad := makeBiquad(EQLowpass, sr, 1000, 0.707, 0)
 	if bqBad == nil {
 		t.Fatal("failed to create interleaved biquad")
@@ -226,10 +215,7 @@ func TestInterleavedChannelProcessingProducesDistortion(t *testing.T) {
 	}
 }
 
-// TestBiquadBlockVsSampleParity verifies that biquad state accumulates
-// identically regardless of whether samples are processed one-by-one or in
-// blocks. This ensures block-based mixer processing introduces no rounding
-// artifacts.
+// Block processing must introduce no rounding artefacts.
 func TestBiquadBlockVsSampleParity(t *testing.T) {
 	const (
 		sr        = 44100

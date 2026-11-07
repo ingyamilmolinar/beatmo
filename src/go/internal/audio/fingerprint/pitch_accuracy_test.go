@@ -8,27 +8,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
 )
 
-// pitch_accuracy_test.go — how ACCURATE is DetectF0Detailed, and where does it
-// stop being accurate?
-//
-// pitch_support_test.go asks whether a detected f0 is usable at all. This file
-// asks the separate question of whether the number is RIGHT, across the
-// spectral shapes that break pitch detectors in practice: strong upper
-// harmonics (octave-up errors), missing fundamentals and odd-only series
-// (octave-down errors), and the edges of the search range.
-//
-// Everything here is deliberately expressed in CENTS, because a pitch error of
-// "2 Hz" means something wildly different at 50 Hz than at 2000 Hz.
-//
-// Relationship to pitch_test.go: that file pins individual scenarios against
-// DetectF0's bare float with Hz tolerances, several of them regressions from
-// specific instruments (the 122.8 Hz baritone sax, the D5 sub-harmonic bug).
-// This file sweeps the same detector systematically through DetectF0Detailed —
-// whole-range accuracy, the invariances (sample rate, phase, DC, determinism),
-// the search-range edges, and buffer lengths. Two octave-error shapes appear in
-// both; the overlap is deliberate, since an octave error is the failure that
-// has actually shipped here, and the two files would catch it with different
-// diagnostics.
+// Whether the number is RIGHT across the shapes that break detectors (strong upper harmonics, missing fundamentals,
+// odd-only series, the range edges), in CENTS, since 2 Hz means different things at 50 and 2000 Hz. The octave
+// shapes overlap pitch_test.go on purpose: that error has actually shipped.
 
 // centsApart returns the absolute interval between two frequencies in cents.
 func centsApart(a, b float64) float64 {
@@ -38,11 +20,7 @@ func centsApart(a, b float64) float64 {
 	return math.Abs(1200 * math.Log2(a/b))
 }
 
-// TestDetectF0_AccuracyAcrossTheSearchRange walks a plain harmonic tone across
-// the whole usable range and pins the error in cents.
-//
-// A quarter tone (50 cents) is the bar: past it the note NAME changes, which is
-// the only error a user can see.
+// 50 cents is the bar: past it the note NAME changes.
 func TestDetectF0_AccuracyAcrossTheSearchRange(t *testing.T) {
 	const tolCents = 50
 	// From just above the detector's floor to just under its ceiling.
@@ -60,10 +38,7 @@ func TestDetectF0_AccuracyAcrossTheSearchRange(t *testing.T) {
 	}
 }
 
-// TestDetectF0_ResistsOctaveErrors is the failure mode that actually bit this
-// codebase: on the real roster the harpsichord measures 440 Hz against a true
-// 220, the same octave artifact that previously put guitar and organ out. Each
-// shape below is one that tempts the detector into the wrong octave.
+// Each shape tempts the detector into the wrong octave, the failure that has actually shipped.
 func TestDetectF0_ResistsOctaveErrors(t *testing.T) {
 	const f0 = 220.0
 	const tolCents = 50
@@ -73,12 +48,10 @@ func TestDetectF0_ResistsOctaveErrors(t *testing.T) {
 		numbers []float64
 		amps    []float64
 	}{
-		// Octave-UP bait: the 2nd harmonic is louder than the fundamental, so
-		// a naive detector locks onto 440.
+		// A louder 2nd harmonic baits a lock onto 440.
 		{"2nd harmonic dominant", []float64{1, 2, 3, 4}, []float64{0.3, 1.0, 0.5, 0.4}},
 		{"fundamental barely present", []float64{1, 2, 3, 4}, []float64{0.1, 1.0, 0.8, 0.6}},
-		// Octave-DOWN bait: an odd-only series (a clarinet-like square) has a
-		// gap where the 2nd harmonic would be, which invites halving.
+		// An odd-only series has a gap where H2 would be, inviting halving.
 		{"odd harmonics only", []float64{1, 3, 5, 7}, []float64{1.0, 0.4, 0.25, 0.15}},
 		// Missing fundamental: the ear hears 220, and so should the detector.
 		{"missing fundamental", []float64{2, 3, 4, 5}, []float64{1.0, 0.7, 0.5, 0.3}},
@@ -94,8 +67,7 @@ func TestDetectF0_ResistsOctaveErrors(t *testing.T) {
 			if off <= tolCents {
 				return
 			}
-			// Name the error precisely — an octave out is a different bug from
-			// simply being imprecise, and the message should say which.
+			// An octave out is a different bug from imprecision.
 			switch {
 			case centsApart(est.Hz, f0*2) <= tolCents:
 				t.Errorf("detected %.1f Hz — an OCTAVE HIGH (want %.0f)", est.Hz, f0)
@@ -110,9 +82,7 @@ func TestDetectF0_ResistsOctaveErrors(t *testing.T) {
 	}
 }
 
-// TestDetectF0_IsSampleRateIndependent: the same tone rendered at different
-// rates must report the same pitch. A rate-dependent answer would mean the
-// fundamentals table depends on the render rate the generator happened to pick.
+// Otherwise the fundamentals table would depend on the generator's render rate.
 func TestDetectF0_IsSampleRateIndependent(t *testing.T) {
 	const f0 = 220.0
 	const tolCents = 20
@@ -133,9 +103,7 @@ func TestDetectF0_IsSampleRateIndependent(t *testing.T) {
 	}
 }
 
-// TestDetectF0_IsDeterministic: the analysis must be a pure function of its
-// input. The fundamentals table is committed and diffed, so a detector that
-// wobbled between runs would make the drift guard fail at random.
+// The fundamentals table is committed and diffed, so a wobbling detector would fail the drift guard at random.
 func TestDetectF0_IsDeterministic(t *testing.T) {
 	rng := rand.New(rand.NewSource(17))
 	w := synth(supportTestSR, 1.5, func(t float64) float64 {
@@ -154,10 +122,7 @@ func TestDetectF0_IsDeterministic(t *testing.T) {
 	}
 }
 
-// TestDetectF0_IsImmuneToPhaseAndDCOffset: neither the starting phase nor a
-// constant offset changes the pitch of a sound, so neither may change the
-// answer. A DC offset is the realistic one — it arrives from an unbalanced
-// render or an asymmetric waveshaper.
+// A DC offset arrives from an unbalanced render or an asymmetric waveshaper.
 func TestDetectF0_IsImmuneToPhaseAndDCOffset(t *testing.T) {
 	const f0 = 220.0
 	const tolCents = 20
@@ -185,9 +150,7 @@ func TestDetectF0_IsImmuneToPhaseAndDCOffset(t *testing.T) {
 	}
 }
 
-// TestDetectF0_ConfidenceFallsAsNoiseRises pins that confidence is a real
-// measurement and not a constant. The whole pitched/unpitched decision leans on
-// it, so a confidence that did not respond to the signal would be worthless.
+// The pitched/unpitched decision leans on it.
 func TestDetectF0_ConfidenceFallsAsNoiseRises(t *testing.T) {
 	var confs []float64
 	for _, noise := range []float64{0, 0.5, 2, 8} {
@@ -206,9 +169,6 @@ func TestDetectF0_ConfidenceFallsAsNoiseRises(t *testing.T) {
 	}
 }
 
-// TestDetectF0_SearchRangeEdges documents exactly what happens at the two
-// bounds — the behaviour callers have to reason about, stated rather than
-// discovered.
 func TestDetectF0_SearchRangeEdges(t *testing.T) {
 	// Below the floor: pins at the floor and must be flagged, NOT trusted.
 	for _, f0 := range []float64{20, 30, 44, 49} {
@@ -229,8 +189,7 @@ func TestDetectF0_SearchRangeEdges(t *testing.T) {
 		}
 	}
 
-	// Above the ceiling: whatever is reported, it must not be presented as an
-	// accurate pitch, since the detector cannot resolve a period that short.
+	// The detector cannot resolve a period that short, so the result must not look accurate.
 	w := synth(supportTestSR, 1.5, func(t float64) float64 {
 		return math.Sin(2 * math.Pi * 3000 * t)
 	})
@@ -241,8 +200,6 @@ func TestDetectF0_SearchRangeEdges(t *testing.T) {
 	}
 }
 
-// TestDetectF0_HandlesShortAndOddLengthBuffers: buffer lengths that are not a
-// tidy multiple of the frame size must not panic or silently return garbage.
 func TestDetectF0_HandlesShortAndOddLengthBuffers(t *testing.T) {
 	for _, n := range []int{5, 100, 4095, 4096, 4097, 6143, 8191} {
 		s := make([]float64, n)

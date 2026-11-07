@@ -22,12 +22,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// render_parity_tool_test.go — the byte-parity gate for the config-only engine
-// refactor (docs/superpowers/plans/2026-10-02-config-only-synth-engine.md).
-// Dump every built-in instrument's one-shot render before a change, dump again
-// after, compare: every instrument must be BIT-IDENTICAL unless the step allows
-// a bounded change (BEATMO_RENDER_PARITY_MIN_SNR_DB). Env-gated: skips unless
-// BEATMO_RENDER_PARITY_DIR is set. Dumps never live in the repo.
+// Dump every built-in's render before a change and after: each must be BIT-IDENTICAL unless the step allows a bounded
+// change (BEATMO_RENDER_PARITY_MIN_SNR_DB). Skips unless BEATMO_RENDER_PARITY_DIR is set; dumps never live in the repo.
 
 func renderParityDir(t *testing.T) string {
 	d := os.Getenv("BEATMO_RENDER_PARITY_DIR")
@@ -47,9 +43,8 @@ func TestRenderParityDump(t *testing.T) {
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// BEATMO_RENDER_PARITY_ROUND_F32=1 rounds every modular param to float32 before
-	// the (double) C block — the pre-switch delivery — to prove the switch itself
-	// is bit-exact.
+	// Rounding to float32 before the double block reproduces a float block's delivery, proving the type switch alone is
+	// bit-exact.
 	if os.Getenv("BEATMO_RENDER_PARITY_ROUND_F32") != "" {
 		renderModularRoundParamsToFloat32 = true
 		defer func() { renderModularRoundParamsToFloat32 = false }()
@@ -85,8 +80,7 @@ func TestRenderParityDump(t *testing.T) {
 	t.Logf("dumped %d instruments + %d knob/pitch cases to %s", len(ids), nCases, out)
 }
 
-// parityHash is the sha256 of the float bits (as float32 — what the engine
-// emits) of a render.
+// As float32, what the engine emits.
 func parityHash(x []float64) string {
 	h := sha256.New()
 	var b [4]byte
@@ -97,10 +91,7 @@ func parityHash(x []float64) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// renderParityCases widens the gate past the default one-shot: for melodic
-// recipes the pitched voice at −12/−5/+7/+12 semitones, and the engine cases
-// (every visible knob at its extremes, engineParityCases). Returns case →
-// render hash.
+// Melodic voices at −12/−5/+7/+12 and every visible knob at its extremes.
 func renderParityCases(id instrument.ID) map[string]string {
 	out := map[string]string{}
 	if docMelodic(id) {
@@ -127,10 +118,7 @@ func renderParityCases(id instrument.ID) map[string]string {
 	return out
 }
 
-// engineCaseRender renders the C ENGINE — render(Flatten(doc)), the path every
-// note takes — for one instrument with one field set through the document
-// (instrument.SetField): 250 ms. ok=false when the document cannot take that
-// value (the field is not part of its modules), which produces no case.
+// The path every note takes, 250 ms. ok=false when the document's modules cannot take the field.
 func engineCaseRender(id, field string, v float64) ([]float32, bool) {
 	d, ok := EnsureInstrumentDoc(instrument.ID(id))
 	if !ok {
@@ -144,11 +132,8 @@ func engineCaseRender(id, field string, v float64) ([]float32, bool) {
 	return renderBlockForTest(instrument.Flatten(d2, reg), SampleRate()/4), true
 }
 
-// engineParityCases is the ENGINE half of the gate: for every visible ParamDef
-// and every field the document sets away from identity, the C render with that
-// field at the def's Min, Max and — whenever 0 lies in [Min,Max] — 0. The zero
-// case runs even when the document's value is 0: that is exactly where a "0
-// means the C default" fallback hides.
+// Min, Max and 0 when it lies in range, even when the document's value is 0: exactly where a "0 means the C default"
+// fallback hides.
 func engineParityCases(id instrument.ID) map[string]string {
 	out := map[string]string{}
 	defs := InstrumentParamDefs(id)
@@ -205,8 +190,7 @@ func matchesAny(globs []string, s string) bool {
 	return false
 }
 
-// caseParam is the param name a case key is about ("engine:gen1_x@min" →
-// "gen1_x"; "pitch+7" → "").
+// "engine:gen1_x@min" → "gen1_x"; "pitch+7" → "".
 func caseParam(c string) string {
 	c = strings.TrimPrefix(c, "engine:")
 	if i := strings.LastIndex(c, "@"); i > 0 {
@@ -290,20 +274,9 @@ func TestRenderParityCompare(t *testing.T) {
 	compareParityCases(t, filepath.Join(dir, a, "cases.json"), filepath.Join(dir, b, "cases.json"), !math.IsInf(minSNR, 1))
 }
 
-// compareParityCases checks the knob/pitch case hashes. A case that changed is
-// an error unless bounded changes are allowed (then it is only counted); a case
-// or instrument present in A but missing in B is always an error (coverage
-// lost); new ones in B are logged.
-//
-// BEATMO_RENDER_PARITY_REKEYED (comma list of instrument ids) names instruments
-// whose recipe changed shape between A and B — e.g. a legacy family recipe that
-// became a config row — so their knob cases key on different param names and
-// cannot be compared. Their base renders are still compared bit-exact above.
-//
-// BEATMO_RENDER_PARITY_DROPPED: path.Match globs over PARAM names whose cases may
-// disappear (a param deliberately removed from the block).
-// BEATMO_RENDER_PARITY_ALLOW: path.Match globs over "<id> <case>" that may change
-// (the exact cases a step means to change).
+// A changed case is an error unless bounded changes are allowed; a case missing from B is always one (coverage lost).
+// _REKEYED names instruments whose knob cases key on different names; _DROPPED globs params removed on purpose;
+// _ALLOW globs "<id> <case>" a step means to change.
 func compareParityCases(t *testing.T, pa, pb string, allowChanges bool) {
 	dropped, allow := parityGlobs("BEATMO_RENDER_PARITY_DROPPED"), parityGlobs("BEATMO_RENDER_PARITY_ALLOW")
 	nDropped, nAllowed := 0, 0
@@ -374,9 +347,7 @@ func compareParityCases(t *testing.T, pa, pb string, allowChanges bool) {
 	t.Logf("cases: %d bit-identical, %d changed, %d allowed-changed, %d lost, %d dropped, %d new", same, changed, nAllowed, lost, nDropped, added)
 }
 
-// TestEngineParityCasesCoverSeedAndVisibleParams pins what the engine half of
-// the parity gate covers: every visible knob AND every param the seed sets,
-// rendered through the C engine (not the Go preview) at Min, Max and 0.
+// Through the C engine, at Min, Max and 0.
 func TestEngineParityCasesCoverSeedAndVisibleParams(t *testing.T) {
 	cases := engineParityCases(roster.Hihat)
 	for _, want := range []string{

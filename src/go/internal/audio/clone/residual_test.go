@@ -6,11 +6,8 @@ import (
 	"testing"
 )
 
-// TestMeasureResidualRecoversABandEnvelope: a band-limited noise envelope can
-// only be measured to ~1/sqrt(B·τ). Measured spread of the fast rate over 20
-// seeds: 26 % in the 2 kHz third-octave (B ≈ 470 Hz) at τ = 1/30 s, 12 % in
-// the 8 kHz one (B ≈ 1.9 kHz) — so the estimator is judged statistically:
-// unbiased on average over 10 seeds, every seed within a 2.5σ bound.
+// A band-noise envelope is measurable only to ~1/sqrt(B·τ), so the estimator is judged statistically: unbiased over
+// the seeds, each within 2.5σ.
 func TestMeasureResidualRecoversABandEnvelope(t *testing.T) {
 	const fc, m, r1, r2 = 8063.0, 0.7, 30.0, 6.0
 	var sumFast, sumTail, sumMix float64

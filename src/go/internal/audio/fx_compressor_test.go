@@ -13,8 +13,6 @@ func newTestCompressorFX(params map[string]float64) *compressorFX {
 	return newCompressorFX(compressorSR, params)
 }
 
-// TestCompressorFXReducesLoudSignal verifies that a loud signal (amplitude 1.0)
-// with a low threshold (-10 dB) is compressed, producing lower RMS output than input.
 func TestCompressorFXReducesLoudSignal(t *testing.T) {
 	c := newTestCompressorFX(map[string]float64{
 		"threshold": -10,
@@ -43,8 +41,7 @@ func TestCompressorFXReducesLoudSignal(t *testing.T) {
 	}
 }
 
-// TestCompressorFXPassesQuietSignal verifies that a very quiet signal with a
-// high threshold (0 dB) passes through essentially unmodified (no makeup gain).
+// No makeup gain.
 func TestCompressorFXPassesQuietSignal(t *testing.T) {
 	c := newTestCompressorFX(map[string]float64{
 		"threshold": 0,
@@ -75,8 +72,6 @@ func TestCompressorFXPassesQuietSignal(t *testing.T) {
 	}
 }
 
-// TestCompressorFXMakeupGain verifies that adding makeup gain changes the output
-// energy compared to zero makeup.
 func TestCompressorFXMakeupGain(t *testing.T) {
 	params := map[string]float64{
 		"threshold": -20,
@@ -110,10 +105,7 @@ func TestCompressorFXMakeupGain(t *testing.T) {
 	}
 }
 
-// TestCompressorFXMixZeroDry verifies that mix=0 produces exact passthrough.
-// We create the effect with mix=0 upfront so the smoothParam starts at zero
-// (assertDryWhenMixZero calls SetParam which triggers the smooth ramp, but
-// since we start at 0 the ramp is a no-op).
+// Created at mix 0, so the smoothed mix starts there and setting it again is a no-op ramp.
 func TestCompressorFXMixZeroDry(t *testing.T) {
 	c := newTestCompressorFX(map[string]float64{
 		"threshold": -20,
@@ -126,8 +118,6 @@ func TestCompressorFXMixZeroDry(t *testing.T) {
 	assertDryWhenMixZero(t, c, 440, compressorSR, compressorSR)
 }
 
-// TestCompressorFXReset verifies that Reset() clears internal envelope state,
-// so processing silence after reset produces silence.
 func TestCompressorFXReset(t *testing.T) {
 	c := newTestCompressorFX(map[string]float64{
 		"threshold": -20,
@@ -140,8 +130,6 @@ func TestCompressorFXReset(t *testing.T) {
 	assertResetClearsState(t, c)
 }
 
-// TestCompressorFXNoNaNInf verifies no sample is NaN or Inf when processing
-// a full-amplitude signal through the compressor.
 func TestCompressorFXNoNaNInf(t *testing.T) {
 	c := newTestCompressorFX(map[string]float64{
 		"threshold": -10,
@@ -155,8 +143,6 @@ func TestCompressorFXNoNaNInf(t *testing.T) {
 	assertNoNaNOrInf(t, out)
 }
 
-// TestCompressorFXModifiesSignal verifies that the compressor effect changes
-// the signal (i.e., it is not a passthrough).
 func TestCompressorFXModifiesSignal(t *testing.T) {
 	c := newTestCompressorFX(map[string]float64{
 		"threshold": -10,

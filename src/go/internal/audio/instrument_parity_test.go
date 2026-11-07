@@ -6,10 +6,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestInstrumentParityAfterReset verifies that ResetInstruments() populates the
-// instrument list with all built-in synth instruments in the canonical order
-// matching roster.All. This is a contract test that prevents drift
-// between stub/WASM/desktop instrument lists.
+// The canonical order prevents drift between the stub, WASM and desktop instrument lists.
 func TestInstrumentParityAfterReset(t *testing.T) {
 	ResetInstruments()
 

@@ -8,11 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// SetInsertEffects is the entry point project IMPORT uses — unlike
-// AddInsertEffect (the FX-panel path the other processing tests cover), it
-// bulk-replaces the chain. These tests prove that an imported chain actually
-// processes audio on the channel, and that a disabled imported slot is
-// bypassed — closing the "state restored but inert" class of gap.
+// SetInsertEffects bulk-replaces the chain on import; the imported chain must process audio and a disabled slot be
+// bypassed, not merely restored as inert state.
 
 func TestSetInsertEffectsChainProcessesAudio(t *testing.T) {
 	resetChains(t)

@@ -97,8 +97,6 @@ func TestWavCategoryStub(t *testing.T) {
 		{"toms", "Toms (WAV)"},
 		{"percussion", "Percussion (WAV)"},
 		{"drum machines", "Drum Machines (WAV)"},
-		// Unknown folder names are pretty-printed with " (WAV)" suffix —
-		// no catch-all "Samples" bucket exists.
 		{"unknown", "Unknown (WAV)"},
 		{"my pack", "My Pack (WAV)"},
 	}
