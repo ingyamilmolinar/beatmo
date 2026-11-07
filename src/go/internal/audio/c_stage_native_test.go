@@ -302,3 +302,55 @@ func TestSoftClipIsContinuousAndBounded(t *testing.T) {
 		t.Fatalf("soft clip(NaN) = %v, want 0", nan[0])
 	}
 }
+
+// TestEQResetClearsEveryFilter: after Reset (audio.ResetDSPState) silence in is
+// silence out, on the plain chain and the band split alike; without it the
+// filters still ring.
+func TestEQResetClearsEveryFilter(t *testing.T) {
+	const sr = EngineSampleRate
+	silence := make([]float32, 256)
+	for _, name := range []string{"shaped", "muted-band"} {
+		prog := BuildEQProgram(sr, eqCases()[name])
+		ringing := newCEQ(prog)
+		runInBlocks(ringing, stageSignal(sr)[:sr/4], 128)
+		if slices.Equal(runInBlocks(ringing, silence, 128), silence) {
+			t.Fatalf("%s: the EQ never rings, so this test cannot see a reset", name)
+		}
+		e := newCEQ(prog)
+		runInBlocks(e, stageSignal(sr)[:sr/4], 128)
+		e.Reset()
+		if out := runInBlocks(e, silence, 128); !slices.Equal(out, silence) {
+			t.Errorf("%s: after Reset a filter kept its history (first sample %g)", name, out[0])
+		}
+	}
+}
+
+// TestEQUpdateRefusesAMovedMute: muting a different band is a new topology,
+// even with the same band count, so it must rebuild rather than retune.
+func TestEQUpdateRefusesAMovedMute(t *testing.T) {
+	const sr = EngineSampleRate
+	bands := eqCases()["muted-band"]
+	moved := slices.Clone(bands)
+	from := slices.IndexFunc(moved, func(b EQBand) bool { return b.Muted })
+	if from < 0 {
+		t.Fatal("the muted-band case mutes no band")
+	}
+	to := (from + 1) % len(moved)
+	moved[from].Muted, moved[to].Muted = false, true
+	live := newCEQ(BuildEQProgram(sr, bands))
+	if live.update(BuildEQProgram(sr, moved)) {
+		t.Error("moving the mute to another band was applied in place")
+	}
+}
+
+// TestEQRejectsAnUnknownStage: a program the runner does not understand
+// builds no EQ, and the channel passes audio through untouched.
+func TestEQRejectsAnUnknownStage(t *testing.T) {
+	e := newCEQ([]float64{1, 99})
+	if e.h != nil {
+		t.Fatal("a program with stage kind 99 built an EQ")
+	}
+	if got := e.ProcessSample(0.5); got != 0.5 {
+		t.Errorf("an EQ that failed to build changed the signal: 0.5 -> %g", got)
+	}
+}
