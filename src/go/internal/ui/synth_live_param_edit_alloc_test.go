@@ -7,9 +7,11 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/async"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
@@ -83,6 +85,29 @@ const (
 
 // measureFrameBytes runs Update+Draw for frames iterations, invoking perFrame
 // before each, and returns the average allocated bytes per frame.
+// waitForBackgroundIdle runs frames until no async pool has work. TotalAlloc is
+// process-wide, so renders still draining (this Game's or a previous test's)
+// would be billed to the frames being measured.
+func waitForBackgroundIdle(t *testing.T, g *Game, screen *ebiten.Image) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		busy := false
+		for _, st := range async.DefaultRegistry().Stats() {
+			busy = busy || st.Queued+st.Inflight > 0
+		}
+		if !busy {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("background pools never went idle, so idle frames keep submitting work: %+v", async.DefaultRegistry().Stats())
+		}
+		_ = g.Update()
+		g.Draw(screen)
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 func measureFrameBytes(g *Game, screen *ebiten.Image, frames int, perFrame func(i int)) float64 {
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
@@ -143,6 +168,7 @@ func TestSynthTab_LiveControlEditFrameByteBudget(t *testing.T) {
 	}
 
 	// Phase 1: idle Synth-tab frames (tab open, no knob touched).
+	waitForBackgroundIdle(t, g, screen)
 	idleBytes := measureFrameBytes(g, screen, 60, nil)
 	t.Logf("idle synth-tab frame: %.0f KB/frame (budget %d KB)", idleBytes/1024, synthTabIdleFrameByteBudget>>10)
 
