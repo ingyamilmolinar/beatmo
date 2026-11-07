@@ -311,6 +311,7 @@ func (m *mixer) processRawVoice(offset, blockLen int, p []byte) {
 	updateDeviceClock(int64(m.pos))
 }
 
+// Caller holds m.mu: it mutates voices, laneStops and the resampler state.
 func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 	// Each buffer separately, for test fixtures that build mixer{} directly with only some allocated.
 	if m.workBuf == nil {
@@ -477,7 +478,7 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 	// The Levels tab's LUFS-S follows the master.
 	FeedMasterLUFS(m.workBuf[:blockLen])
 
-	// Scope tap: final master output (after master EQ/compressor).
+	// Scope tap: the master after its EQ, before the soft clip.
 	if scopeSvc != nil {
 		scopeSvc.PushSamples(scope.StageMaster, channel.Master, m.workBuf[:blockLen])
 	}

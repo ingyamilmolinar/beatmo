@@ -1225,7 +1225,7 @@ function createCtx() {
         _audioUnlocked = true;
         // Apply any channel ops that were queued before context existed.
         applyPendingOps();
-        // Ensure the main node and limiter are wired up now that context is live.
+        // Ensure the main node and the master output are wired up now that the context is live.
         ensureMainNode();
         // Flush any audio events that were deferred while the context was suspended.
         if (queueSize() > 0) {
@@ -3638,7 +3638,7 @@ window.startOutputCapture = () => {
   } else if (!outputCaptureIsWorklet) {
     // Re-verify capture chain is intact — Chrome's ScriptProcessorNode can
     // receive all-zero input after extended use across multiple start/stop
-    // cycles. Re-wiring the limiter → captureNode → destination path fixes it.
+    // cycles. Re-wiring masterOut → captureNode → destination fixes it.
     const c = getCtx();
     const out = ensureMasterOut();
     if (out && c) {

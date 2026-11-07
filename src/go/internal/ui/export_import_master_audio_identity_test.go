@@ -4,7 +4,7 @@ package ui
 
 // A project file describes everything audible: render, export, wipe every global, import, render again —
 // byte-identical, since every stage is a pure function of config plus a seeded PRNG. The master bus, because a
-// per-voice test cannot see channel volume, inserts, EQ or the limiter.
+// per-voice test cannot see channel volume, inserts, EQ or the master soft clip.
 
 import (
 	"encoding/json"
