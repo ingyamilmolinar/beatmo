@@ -78,8 +78,9 @@ $CC -O2 -DBEATMO_GCOV -c src/c/gcov_flush.c -o build/gcov_flush.o
 $CC -O2 -c src/c/noise_ma_oracle.c -o build/noise_ma_oracle.o
 
 # --- 3. Archive at the path hardcoded in the #cgo LDFLAGS --------------------
-ar rcs build/libdrums.a build/miniaudio.o build/gcov_flush.o build/noise_ma_oracle.o \
+ar rcsD build/libdrums.a build/miniaudio.o build/gcov_flush.o build/noise_ma_oracle.o \
     $(printf 'build/%s.o ' "${OWN_SRC[@]}")
+"$REPO_ROOT/scripts/clib-hash.sh" --write >/dev/null
 
 # --- 4. Run the native (no -tags test) audio tests through the bridge --------
 export CGO_LDFLAGS="--coverage"

@@ -81,3 +81,13 @@ func targetRecipe(makefile, name string) string {
 	}
 	return ""
 }
+
+// The bundled toolchain exists only on a developer machine; a recipe that names
+// it directly fails with "command not found" in CI and in the image.
+func TestMakefileRunsGoOnlyThroughTheGOVariable(t *testing.T) {
+	for i, line := range strings.Split(mustRead(t, filepath.Join(repoRoot(t), "Makefile")), "\n") {
+		if strings.Contains(line, ".tools/go/bin/go") && !strings.HasPrefix(line, "GO ?=") {
+			t.Errorf("Makefile:%d names .tools/go directly — use $(GO): %s", i+1, strings.TrimSpace(line))
+		}
+	}
+}
