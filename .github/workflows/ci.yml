@@ -270,6 +270,9 @@ jobs:
     container:
       image: ${{ needs.images.outputs.browser }}
       options: --ipc=host --init
+    # Jobs run as root; Firefox refuses root with a $HOME another user owns.
+    env:
+      HOME: /root
     strategy:
       matrix: ${{ fromJson(needs.browser-matrix.outputs.matrix) }}
       fail-fast: false
