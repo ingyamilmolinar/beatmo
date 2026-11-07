@@ -8,13 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestDialSpansAreTheSameOnEveryInstrument: a knob means ONE thing. The value
-// a dial position writes to a param is defined by the dial's data alone
-// (synth_dials.json from/to), never by the instrument it sits on: no
-// instrument's param range may clip a span, and no per-instrument cap may
-// narrow it. So "Tail 100" or "Drive 0" is the same param value on a kick, a
-// piano and a pad (user rule 2026-10-25), and a project, bundle or template
-// edited on one instrument means the same thing on another.
+// One knob, one meaning: a dial position writes the same param value on every instrument, never clipped by an
+// instrument's range or capped per instrument, so an edit means the same thing wherever it lands.
 func TestDialSpansAreTheSameOnEveryInstrument(t *testing.T) {
 	checked := 0
 	for _, id := range roster.All {

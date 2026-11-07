@@ -14,28 +14,17 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// ─── Audio-panel ↔ drum-rows input isolation ────────────────────────────────
-//
-// These tests drive the REAL DrumView input loop (dv.Update → dv.tree.Update,
-// the same per-frame path production runs) rather than a synthetic HitIndex.
-// They reproduce the cross-zone wheel leak: the audio panel and the drum rows
-// share ONE DrumViewTree / HitIndex, so a wheel gesture over the panel that no
-// panel handler consumes falls through, by z-order, to the row-rack scroll
-// handler and scrolls the unrelated drum rows.
+// Through the real dv.Update loop: a wheel over the panel that no panel handler takes must not fall through by
+// z to the row-rack scroll and move the drum rows.
 
-// newTestDrumViewWithRows builds a fully-composed Game (so the bottom audio
-// panel exists and is laid out exactly as in production) and grows the drum
-// rows to at least `rows` so the row offset CAN change. It returns the Game's
-// DrumView. The Game is kept alive for the test's lifetime via t.Cleanup.
+// A full Game, so the panel is laid out as in production, with enough rows that the offset can change.
 func newTestDrumViewWithRows(t *testing.T, rows int) *DrumView {
 	t.Helper()
 	assertDefaultParityState(t)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
-	// Desktop viewport: wide+tall enough that the synth tab lays out real knob
-	// rects and the row rack shows fewer rows than exist (so scrolling is
-	// possible). Width stays in the desktop class so the panel sits at the
-	// bottom (not a mobile bottom-sheet).
+	// Desktop class, so the panel sits at the bottom, and tall enough that the synth tab lays out real knobs while
+	// the rack still scrolls.
 	g.Layout(1280, 900)
 	for len(g.drum.Rows) < rows {
 		g.drum.AddRow()
@@ -43,16 +32,12 @@ func newTestDrumViewWithRows(t *testing.T, rows int) *DrumView {
 	return g.drum
 }
 
-// activateSynthTab switches the bottom audio panel to the Synth tab on desktop
-// and binds row 0's instrument to a recipe so the tab renders a real knob set.
-// Routes through the production SetActiveTab path (→ EnsureAnalyzersForTab).
+// Through the production SetActiveTab path, with row 0 bound so the tab renders real knobs.
 func activateSynthTab(t *testing.T, dv *DrumView) {
 	t.Helper()
 	if dv == nil || dv.eqPanelZone == nil {
 		t.Fatal("nil drum view / eq panel zone while activating synth tab")
 	}
-	// Anchor a recipe binding for row 0 so the Synth tab has a non-empty
-	// ParamDef set to render (mirrors soak_heap_bound_helper_test.go).
 	if len(dv.Rows) > 0 && dv.Rows[0] != nil && dv.Rows[0].Instrument != "" {
 		id := dv.Rows[0].Instrument
 		_ = audio.InstallInstrumentDocForTest(id, roster.Snare)
@@ -62,16 +47,11 @@ func activateSynthTab(t *testing.T, dv *DrumView) {
 	dv.eqPanelZone.Layout(dv.eqPanelZone.PanelRect())
 }
 
-// layoutForTest runs the same layout the production per-frame loop runs, so
-// the synth knob rects + zone hit areas exist before input is injected.
 func layoutForTest(dv *DrumView) {
 	if dv == nil {
 		return
 	}
-	// dv.Update() runs recalcButtons + calcLayout + tree.Update (Layout phase
-	// publishes hit areas). Run it twice: the first frame populates
-	// instEditorControls via buildSynthTab; the second lets the tree pick up the
-	// freshly-sized hit areas (mirrors the soak helper's double Update).
+	// Twice: the first frame builds the controls, the second publishes their freshly sized hit areas.
 	dv.eqPanelZone.Layout(dv.eqPanelZone.PanelRect())
 	dv.Update()
 	dv.Update()
@@ -79,23 +59,15 @@ func layoutForTest(dv *DrumView) {
 
 func (dv *DrumView) layoutForTest() { layoutForTest(dv) }
 
-// updateForTest ticks one real frame through the production DrumView input
-// loop (dv.Update → dv.tree.Update → wheel dispatch).
 func (dv *DrumView) updateForTest() { dv.Update() }
 
-// firstNonScrollableSynthControlRect returns the on-screen rect of the first knob
-// belonging to a synth section that is NOT scrollable (sectionGrid == nil or
-// !HasScroll()). Over such a knob, synthControlHitAdapter.OnWheel returns
-// InputIgnored — the precondition for the row-scroll leak.
+// Over a knob in a non-scrollable section the wheel is ignored, the precondition for the leak.
 func firstNonScrollableSynthControlRect(t *testing.T, dv *DrumView) image.Rectangle {
 	t.Helper()
 	if dv == nil {
 		return image.Rectangle{}
 	}
-	// Only the SELECTED section has laid-out (non-empty) knob rects. With the
-	// fewer-per-row layout a stage can become scrollable, so probe each section
-	// in turn — select it, lay out, and return the first NON-scrollable one's
-	// visible knob (leaving that section active for the caller).
+	// Only the selected section has knob rects, and a stage can become scrollable, so probe each in turn.
 	instID := ""
 	if len(dv.Rows) > 0 && dv.Rows[0] != nil {
 		instID = string(dv.resolveSynthInstrument(dv.Rows[0].Instrument))
@@ -134,10 +106,7 @@ func firstNonScrollableSynthControlRect(t *testing.T, dv *DrumView) image.Rectan
 	return image.Rectangle{}
 }
 
-// injectWheelAt places the cursor at (x,y) and delivers a wheel delta
-// (dx,dy) for exactly one frame through the production input seams
-// (cursorPosition + wheel, both swapped by SetInputForTest), then ticks the
-// DrumView so the tree's wheel dispatch runs against that frame's input.
+// For exactly one frame, through the production input seams.
 func injectWheelAt(t *testing.T, dv *DrumView, x, y int, dx, dy float64) {
 	t.Helper()
 	restore := SetInputForTest(
@@ -152,11 +121,7 @@ func injectWheelAt(t *testing.T, dv *DrumView, x, y int, dx, dy float64) {
 	restore()
 }
 
-// TestWheelOverSynthControlDoesNotScrollRows reproduces the bug where a
-// two-finger trackpad drag (wheel events) over a synth knob whose section
-// is NOT scrollable leaked through the shared HitIndex to the row-rack
-// scroll handler, scrolling the unrelated drum rows. Drives the real
-// DrumView input loop.
+// A trackpad wheel over a knob in a non-scrollable section must not scroll the drum rows.
 func TestWheelOverSynthControlDoesNotScrollRows(t *testing.T) {
 	dv := newTestDrumViewWithRows(t, 12) // enough rows that rowOffset CAN change
 	activateSynthTab(t, dv)              // desktop: panel visible, Synth tab active
@@ -181,30 +146,11 @@ func TestWheelOverSynthControlDoesNotScrollRows(t *testing.T) {
 	}
 }
 
-// ─── Discipline tests: lock the audio-panel ↔ drum-view isolation ───────────
-//
-// These tests lock the RootTree composition so the wheel/press-cross bug class
-// cannot return. Isolation is enforced TWO ways and these tests assert BOTH:
-//
-//   STRUCTURAL — dv.tree (drum-view) and dv.audioTree (audio-panel) are
-//   SEPARATE DrumViewTree instances with distinct HitIndex / capture / portal.
-//   The eq-panel zone lives ONLY in audioTree; row-rack lives ONLY in dv.tree.
-//
-//   BEHAVIORAL — the RootTree routes each frame's input to exactly ONE subtree
-//   (capturer → blocking-portal owner → top-down by z), and the audio subtree
-//   (z=1, on top) consumes input in the panel region first, so a sibling-
-//   subtree handler never sees a press/wheel that landed on the panel.
-//
-// IMPORTANT: the subtrees' hit-area RECTS are NOT spatially disjoint — the
-// row-rack scroll catch-all spans the whole drum pane and overlaps the panel
-// region. So these tests assert BEHAVIOR + STRUCTURE, never literal rect
-// disjointness. Every test drives the REAL per-frame input loop
-// (dv.updateForTest / press injection through SetInputForTest), not a
-// synthetic HitIndex.
+// The audio panel and the drum view are separate trees (own HitIndex, capture, portal), and the RootTree routes
+// each frame to exactly one; their rects overlap (the rack's scroll catch-all spans the pane), so these
+// assert structure and behaviour, never rect disjointness.
 
-// rowRackSpy hooks every row-rack callback with a leak-detecting spy and
-// returns a pointer to the slice that accumulates the names of any callbacks
-// that fired. Mirrors the spy pattern in drumview_fx_panel_test.go.
+// Collects the name of any row-rack callback that fires.
 func rowRackSpy(dv *DrumView) *[]string {
 	leaked := &[]string{}
 	cb := &dv.rowRackZone.callbacks
@@ -236,9 +182,7 @@ func rowRackSpy(dv *DrumView) *[]string {
 	return leaked
 }
 
-// injectPressAt holds a LEFT-button press at (x,y) for exactly one frame
-// through the production input seams, then ticks the DrumView. The button stays
-// "down" only for this frame (release is a separate call). Mirrors injectWheelAt.
+// Down for this frame only; the release is a separate call.
 func injectPressAt(t *testing.T, dv *DrumView, x, y int) {
 	t.Helper()
 	restore := SetInputForTest(
@@ -268,8 +212,6 @@ func injectRelease(t *testing.T, dv *DrumView, x, y int) {
 	restore()
 }
 
-// rowMuteCenter returns the on-screen center of row 0's mute button (a
-// row-rack control in the drum-rows region) and whether it has a usable rect.
 func rowMuteCenter(dv *DrumView) (int, int, bool) {
 	btns := dv.rowMuteBtns()
 	if len(btns) == 0 || btns[0] == nil {
@@ -282,9 +224,7 @@ func rowMuteCenter(dv *DrumView) (int, int, bool) {
 	return r.Min.X + r.Dx()/2, r.Min.Y + r.Dy()/2, true
 }
 
-// TestAudioPanelIsOwnSubtree locks the STRUCTURAL half of the isolation: the
-// audio panel is a separate DrumViewTree with its own HitIndex, and the
-// eq-panel / row-rack zones live in exactly one subtree each.
+// Its own HitIndex, with eq-panel and row-rack each in exactly one tree.
 func TestAudioPanelIsOwnSubtree(t *testing.T) {
 	dv := newTestDrumViewWithRows(t, 12)
 	activateSynthTab(t, dv)
@@ -296,18 +236,14 @@ func TestAudioPanelIsOwnSubtree(t *testing.T) {
 	if dv.tree == dv.audioTree {
 		t.Fatal("audio panel shares the drum-view subtree — must be its own DrumViewTree")
 	}
-	// Distinct HitIndex instances: a press/wheel handled by one index can
-	// never be re-considered by the other.
+	// So an input handled by one is never reconsidered by the other.
 	if dv.tree.HitIndexRef() == nil || dv.audioTree.HitIndexRef() == nil {
 		t.Fatal("both subtrees must own a HitIndex")
 	}
 	if dv.tree.HitIndexRef() == dv.audioTree.HitIndexRef() {
 		t.Fatal("subtrees share one HitIndex — isolation is structurally impossible")
 	}
-	// Popups live in a THIRD, top-of-z overlay subtree that is distinct from
-	// both base subtrees. Base subtrees keep their own (now popup-free) portals
-	// for structural isolation; every menu/picker/panel opens in the overlay
-	// portal so it composites and hit-tests above ALL base zones.
+	// Popups open in a third overlay tree, so they composite and hit-test above every base zone.
 	if dv.overlayTree == nil {
 		t.Fatal("overlay subtree must exist to own the global portal")
 	}
@@ -335,10 +271,7 @@ func TestAudioPanelIsOwnSubtree(t *testing.T) {
 	}
 }
 
-// TestWheelAnywhereInPanelNeverScrollsRows generalizes the original
-// reproduction: a wheel delivered at ANY point inside the eq-panel rect must
-// never scroll the drum rows, regardless of which panel sub-control (or
-// whitespace) sits under the cursor.
+// Whatever control or whitespace is under the cursor.
 func TestWheelAnywhereInPanelNeverScrollsRows(t *testing.T) {
 	dv := newTestDrumViewWithRows(t, 12)
 	activateSynthTab(t, dv)
@@ -374,9 +307,7 @@ func TestWheelAnywhereInPanelNeverScrollsRows(t *testing.T) {
 	}
 }
 
-// TestPressInPanelNeverHitsRowRack: a LEFT press on panel whitespace (not a
-// knob/control) must not trigger any row-rack callback and must not scroll the
-// rows. The audio subtree's eq-panel catch-all consumes the press in its region.
+// The panel's catch-all consumes a press on its whitespace.
 func TestPressInPanelNeverHitsRowRack(t *testing.T) {
 	dv := newTestDrumViewWithRows(t, 12)
 	activateSynthTab(t, dv)
@@ -386,8 +317,6 @@ func TestPressInPanelNeverHitsRowRack(t *testing.T) {
 	if panel.Empty() {
 		t.Fatal("eq-panel rect is empty")
 	}
-	// Panel whitespace: a point near the top-left inside the panel but not on
-	// any synth knob. Verify it is NOT inside any knob rect.
 	px := panel.Min.X + 6
 	py := panel.Min.Y + 6
 	pt := image.Pt(px, py)
@@ -414,8 +343,6 @@ func TestPressInPanelNeverHitsRowRack(t *testing.T) {
 	}
 }
 
-// TestPressInRowsNeverChangesPanel: a press on a drum-row control (rows region)
-// must not change the audio panel's active tab or active channel.
 func TestPressInRowsNeverChangesPanel(t *testing.T) {
 	dv := newTestDrumViewWithRows(t, 12)
 	activateSynthTab(t, dv)
@@ -428,8 +355,7 @@ func TestPressInRowsNeverChangesPanel(t *testing.T) {
 	if !ok {
 		t.Fatal("no row-0 mute button rect in the rows region")
 	}
-	// Guard: the press point must be OUTSIDE the panel (it is a rows-region
-	// control), else the test is not exercising the cross-boundary path.
+	// Otherwise the cross-boundary path is not exercised.
 	if image.Pt(mx, my).In(dv.eqPanelZone.PanelRect()) {
 		t.Fatalf("mute center (%d,%d) is inside the panel rect — not a rows-region point", mx, my)
 	}
@@ -445,9 +371,7 @@ func TestPressInRowsNeverChangesPanel(t *testing.T) {
 	}
 }
 
-// TestPanelModalBlocksRowRack: a BLOCKING overlay open in the audio subtree
-// gives that subtree exclusive dispatch, so a press on a drum-row control is
-// not dispatched. Uses a Modal scrim overlay opened on dv.audioTree.Portal().
+// A blocking overlay gives its tree exclusive dispatch.
 func TestPanelModalBlocksRowRack(t *testing.T) {
 	dv := newTestDrumViewWithRows(t, 12)
 	activateSynthTab(t, dv)
@@ -499,28 +423,10 @@ func TestPanelModalBlocksRowRack(t *testing.T) {
 	}
 }
 
-// ─── Task 9: cross-cutting surface verification ─────────────────────────────
-//
-// The audio-panel/drum-view subtree split (RootTree composing dv.tree +
-// dv.audioTree) touches four cross-cutting surfaces beyond plain input
-// isolation:
-//
-//  1. Mobile visibility gating — when the audio panel is hidden by view-mode,
-//     it must publish EMPTY hit areas so a tap reaches the row rack BENEATH
-//     (across the subtree boundary), not be swallowed by a stale catch-all.
-//  2. RootTree.Draw ordering — a modal/scrim opened in the AUDIO subtree must
-//     composite ABOVE the drum-view subtree's CONTENT (all content first, then
-//     all overlays), so the scrim darkens rows-region pixels.
-//  3. Render isolation — the audio subtree's content must stay clipped to the
-//     panel rect; it must not bleed UP into the rows region.
-//  4. Portal ownership — the EQ channel dropdown lives in the AUDIO subtree's
-//     portal/HitIndex, not the drum-view subtree's.
-//
-// All four drive the real per-frame loop / real Draw composite.
+// With the panel hidden its tree publishes nothing; its scrim composites above the drum view's content; its
+// content stays clipped to the panel; the channel dropdown lives in the overlay tree. All through the real loop.
 
-// newTestMobileDrumViewWithRows builds a Game in the mobile screen class with at
-// least `rows` drum rows and returns the DrumView plus a restore closure for the
-// forced small-screen profile. Mirrors pads_input_regression_test.go's setup.
+// Returns a restore for the forced small-screen profile.
 func newTestMobileDrumViewWithRows(t *testing.T, rows int) (*DrumView, func()) {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -534,14 +440,8 @@ func newTestMobileDrumViewWithRows(t *testing.T, rows int) (*DrumView, func()) {
 	return g.drum, func() { restore() }
 }
 
-// TestMobilePadsTapReachesRowRackAfterPanelHidden is the cross-subtree
-// generalization of pads_input_regression_test.go. On mobile the audio panel
-// REPLACES the rows: in an audio view mode the eq-panel zone is visible (and the
-// row rack gated), and in viewModeRows the eq-panel zone is hidden and MUST
-// publish empty hit areas. This test walks the EQ-view → Pads transition that
-// reportedly broke, then injects a real press on a row-rack control in the band
-// where the panel WAS, and asserts the row-rack callback FIRES — proving the
-// now-hidden audio SUBTREE does not swallow the tap across the subtree boundary.
+// On mobile the panel replaces the rows; after EQ → Pads its hidden tree must not swallow a real press on a row
+// control where the panel was.
 func TestMobilePadsTapReachesRowRackAfterPanelHidden(t *testing.T) {
 	dv, restore := newTestMobileDrumViewWithRows(t, 8)
 	defer restore()
@@ -549,9 +449,7 @@ func TestMobilePadsTapReachesRowRackAfterPanelHidden(t *testing.T) {
 		t.Fatal("mobile profile not active; SetForceSmallScreen did not take")
 	}
 
-	// Make the audio panel visible first (Synth audio view), run frames so its
-	// hit areas publish, then switch back to Pads (rows) and run frames so the
-	// panel's visibility predicate flips and it republishes EMPTY hit areas.
+	// Visible first so its hit areas publish, then Pads so it republishes nothing.
 	dv.setViewMode(viewModeSynth)
 	dv.recalcButtons()
 	dv.updateForTest()
@@ -568,8 +466,7 @@ func TestMobilePadsTapReachesRowRackAfterPanelHidden(t *testing.T) {
 		t.Fatal("MobileEQMode should be false after switching back to Rows")
 	}
 
-	// Find a real interactive row-rack control. Use the rack's own published
-	// hit areas — that's a point an honest user tap could land on.
+	// From the rack's own published areas: a point an honest tap could land on.
 	rack := dv.rowRackZone
 	if rack == nil {
 		t.Fatal("row rack zone is nil")
@@ -591,9 +488,7 @@ func TestMobilePadsTapReachesRowRackAfterPanelHidden(t *testing.T) {
 	px := target.Min.X + target.Dx()/2
 	py := target.Min.Y + target.Dy()/2
 
-	// Sanity: the chosen point must lie inside the rows band, i.e. inside the
-	// drum-view subtree's HitIndex coverage. Confirm the drum-view subtree has a
-	// hit there and the audio subtree does NOT (its catch-all is gone).
+	// The drum-view tree has a hit here and the audio tree none.
 	dvHits := dv.tree.HitIndexRef().At(px, py)
 	if len(dvHits) == 0 {
 		t.Skipf("no drum-view hit at row-rack probe (%d,%d); layout/profile mismatch", px, py)
@@ -606,9 +501,6 @@ func TestMobilePadsTapReachesRowRackAfterPanelHidden(t *testing.T) {
 		}
 	}
 
-	// Drive the real press+release loop on a mobile-sized canvas and assert a
-	// row-rack callback fired (the press reached the rack beneath the formerly
-	// visible panel).
 	leaked := rowRackSpy(dv)
 	restoreInput := SetInputForTest(
 		func() (int, int) { return px, py },
@@ -637,9 +529,7 @@ func TestMobilePadsTapReachesRowRackAfterPanelHidden(t *testing.T) {
 	}
 }
 
-// dvImageDiffers reports whether two ebiten images differ at any pixel along the
-// horizontal scanline y in [x0,x1). Used to assert "the pixel changed" without
-// pinning an exact color.
+// Changed, without pinning an exact colour.
 func dvScanlineDiffers(a, b *ebiten.Image, x0, x1, y int) (int, int, bool) {
 	for x := x0; x < x1; x++ {
 		ar, ag, ab, aa := a.At(x, y).RGBA()
@@ -651,20 +541,8 @@ func dvScanlineDiffers(a, b *ebiten.Image, x0, x1, y int) (int, int, bool) {
 	return 0, 0, false
 }
 
-// TestPanelModalDrawsAboveDrumView proves RootTree.Draw composites the AUDIO
-// subtree's OVERLAYS above the drum-view subtree's CONTENT. It opens a
-// Scrim:true portal entry on the AUDIO subtree's portal (the same portal the
-// EQ channel dropdown / synth overflow sheet use) and asserts a pixel in the
-// ROWS region — which the drum-view subtree paints as CONTENT — changes versus
-// a control frame with the scrim closed. The scrim is painted full-screen by
-// OverlayPortal.Draw (portal.go: drawRect(screenBounds, colScrim)), which only
-// runs inside DrawOverlays; if RootTree drew the audio subtree's overlays
-// BEFORE the drum-view subtree's content, the rows-region pixel would be the
-// underlying drum content, not the scrim composite.
-//
-// Assertion: exact-color — the rows-region pixel under the scrim must equal the
-// drum content alpha-composited with colScrim (pure-black @ alpha 150). We
-// compute the expected composite from the control (no-scrim) pixel and compare.
+// The portal's full-screen scrim only paints in DrawOverlays, so a rows-region pixel darkens only if the RootTree
+// draws every tree's content before any overlay. Exact colour: the content composited with colScrim.
 func TestPanelModalDrawsAboveDrumView(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -681,8 +559,7 @@ func TestPanelModalDrawsAboveDrumView(t *testing.T) {
 	if panel.Empty() {
 		t.Fatal("eq-panel rect empty; layout failed")
 	}
-	// Probe a point in the ROWS region (above the panel), well inside the drum
-	// pane, where the drum-view subtree paints content.
+	// Above the panel, where the drum view paints content.
 	px := dv.Bounds.Min.X + dv.Bounds.Dx()/2
 	py := panel.Min.Y - 40
 	if py <= dv.Bounds.Min.Y {
@@ -715,8 +592,7 @@ func TestPanelModalDrawsAboveDrumView(t *testing.T) {
 	g.Draw(withScrim)
 	sr, sg, sb, sa := withScrim.At(px, py).RGBA()
 
-	// The scrim must have changed the rows-region pixel. If the audio overlay
-	// composited BELOW the drum content, the pixel would be identical.
+	// Unchanged means the overlay composited below the drum content.
 	if sr == cr && sg == cg && sb == cb && sa == ca {
 		t.Fatalf("rows-region pixel at (%d,%d) UNCHANGED by an audio-subtree scrim "+
 			"(control=%v scrim=%v) — RootTree.Draw did not composite the audio subtree's "+
@@ -725,10 +601,7 @@ func TestPanelModalDrawsAboveDrumView(t *testing.T) {
 			color.RGBA{uint8(sr >> 8), uint8(sg >> 8), uint8(sb >> 8), uint8(sa >> 8)})
 	}
 
-	// Exact-color check: colScrim is pure-black @ alpha 150 painted with
-	// source-over. Expected channel = src*(1-a) where src is the control color
-	// (premultiplied) and a = 150/255. We compare 8-bit channels with a small
-	// tolerance for rounding in the stub blend.
+	// Black at alpha 150, source-over: channel = src·(1 − a), with a little tolerance for stub rounding.
 	const scrimA = 150.0 / 255.0
 	c8 := func(v uint32) float64 { return float64(v >> 8) }
 	wantR := c8(cr) * (1 - scrimA)
@@ -737,32 +610,18 @@ func TestPanelModalDrawsAboveDrumView(t *testing.T) {
 	gotR, gotG, gotB := c8(sr), c8(sg), c8(sb)
 	const tol = 6.0
 	if absF(gotR-wantR) > tol || absF(gotG-wantG) > tol || absF(gotB-wantB) > tol {
-		// Non-fatal diagnostic: blend math in the stub may differ. The
-		// "changed" assertion above is the load-bearing one; this is a tighter
-		// cross-check we only LOG when it disagrees so a legitimate blend
-		// difference doesn't fail the isolation guarantee.
+		// Logged, not failed: the stub's blend may differ, and the "changed" check is the guarantee.
 		t.Logf("scrim composite color near-but-not-exact: got(%.0f,%.0f,%.0f) want≈(%.0f,%.0f,%.0f) "+
 			"(src %.0f,%.0f,%.0f × %.2f darken) — 'changed' assertion still holds",
 			gotR, gotG, gotB, wantR, wantG, wantB, c8(cr), c8(cg), c8(cb), 1-scrimA)
 	}
 }
 
-// TestLayoutResizeHitAreasStayInAudioSubtreeAfterResize locks the subtree the
-// layout-resize zone republishes into. The zone is registered in dv.audioTree
-// (so its z=ZResize hit areas out-prioritize the eq-panel catch-all WITHIN
-// audioTree's HitIndex). recalcButtons re-publishes the divider pills' hit areas
-// after a bounds change / widget-board resize; that manual republish MUST target
-// the SAME HitIndex the zone lives in (audioTree), or the updated pill geometry
-// drifts into dv.tree while audioTree keeps stale frame-1 geometry — making the
-// divider un-hit-testable after a desktop resize. (Latent: the zone never
-// re-dirties via the normal layout pass, so layout-once-then-drag tests pass.)
-//
-// This test FAILS against the old `dv.tree`-targeted republish (the "layout-
-// resize" areas would be in dv.tree, not audioTree) and PASSES after FIX 1.
+// The resize zone lives in the audio tree, so recalcButtons' republish after a bounds change must target that
+// index too; otherwise the pills drift into the drum tree and the divider stops hit-testing after a resize.
 func TestLayoutResizeHitAreasStayInAudioSubtreeAfterResize(t *testing.T) {
 	assertDefaultParityState(t)
-	// Floor the audio panel so the EQ-boundary row divider actually exists
-	// (mirrors driveRealEQDivider in row_eq_divider_functional_test.go).
+	// Floored, so the EQ-boundary divider exists.
 	eqPanelHeightForTest = 190
 	t.Cleanup(func() { eqPanelHeightForTest = 0 })
 
@@ -787,9 +646,7 @@ func TestLayoutResizeHitAreasStayInAudioSubtreeAfterResize(t *testing.T) {
 		t.Fatal("layout-resize zone published no hit areas — divider build missing")
 	}
 
-	// Trigger a bounds change / re-layout: a different viewport runs the
-	// production layout path (recalcButtons), which contains the manual
-	// layout-resize republish under test. Re-resolve the pill after relayout.
+	// A new viewport runs the production recalcButtons republish.
 	g.Layout(1200, 760)
 	for i := 0; i < 3; i++ {
 		_ = g.Update()
@@ -805,8 +662,6 @@ func TestLayoutResizeHitAreasStayInAudioSubtreeAfterResize(t *testing.T) {
 	px := (hr.Min.X + hr.Max.X) / 2
 	py := (hr.Min.Y + hr.Max.Y) / 2
 
-	// The "layout-resize" owner's areas must live in audioTree's HitIndex and
-	// must be hit-testable at the pill center there.
 	audioHasResize := false
 	for _, h := range dv.audioTree.HitIndexRef().At(px, py) {
 		if h.Tag == "layout-resize-row" || h.Tag == "layout-resize-col" {
@@ -835,9 +690,7 @@ func absF(v float64) float64 {
 	return v
 }
 
-// nullScrimOverlay is a portal overlay that paints nothing itself; the portal's
-// own full-screen scrim (Scrim:true) provides the visible darkening. Used to
-// isolate the RootTree draw-ordering contract from any overlay-specific paint.
+// Paints nothing, so only the portal's own scrim shows and the test is about draw order alone.
 type nullScrimOverlay struct{ closed bool }
 
 func (o *nullScrimOverlay) Layout(_, _ image.Rectangle) {}
@@ -845,22 +698,10 @@ func (o *nullScrimOverlay) HitAreas() []HitArea         { return nil }
 func (o *nullScrimOverlay) Draw(_ *ebiten.Image)        {}
 func (o *nullScrimOverlay) ShouldClose() bool           { return o.closed }
 
-// ─── Symmetric isolation: the DRUM-VIEW subtree freezes the AUDIO panel ──────
-//
-// The discipline tests above lock the audio→drum-view direction (an audio-panel
-// capture / blocking overlay freezes the row rack). The RootTree's routing is
-// symmetric — capturer() and blockingPortalOwner() scan ALL children — but the
-// drum-view→audio direction is the NON-OBVIOUS one: the audio subtree sits at
-// z=1 and is dispatched FIRST, so these tests prove a z=0 drum-view
-// gesture/overlay still seizes input from (and draws above) the HIGHER-z
-// sibling. They are mirrors of TestKnobDragFreezesRowRackPresses /
-// TestPanelModalBlocksRowRack / TestPanelModalDrawsAboveDrumView with the
-// subtrees swapped, and were called out in the plan (Task 8 Steps 4-5, Task 9
-// Step 2 "symmetric") but not yet shipped.
+// The reverse direction is the non-obvious one: the audio tree is z=1 and dispatched first, yet a drum-view
+// capture or overlay must still seize input from it and draw above it.
 
-// firstTimelineScrubPoint returns the center of the drum-view timeline's
-// "timeline-scrub" hit area — pressing it captures in dv.tree — and whether one
-// is present in this layout.
+// Pressing it captures in dv.tree.
 func firstTimelineScrubPoint(dv *DrumView) (int, int, bool) {
 	if dv == nil || dv.timelineZone == nil {
 		return 0, 0, false
@@ -873,11 +714,8 @@ func firstTimelineScrubPoint(dv *DrumView) (int, int, bool) {
 	return 0, 0, false
 }
 
-// TestTimelineScrubFreezesPanelPresses is the symmetric counterpart of
-// TestKnobDragFreezesRowRackPresses: a drag begun on the drum-view timeline
-// (dv.tree captures) must own ALL subsequent input. Dragging the held cursor
-// onto a synth knob must NOT start an audio-subtree capture or change the panel,
-// and the capture must stay with the drum-view subtree until release.
+// A drag begun on the timeline owns all input until release: crossing a synth knob starts no audio capture and
+// changes nothing in the panel.
 func TestTimelineScrubFreezesPanelPresses(t *testing.T) {
 	dv := newTestDrumViewWithRows(t, 12)
 	activateSynthTab(t, dv)
@@ -902,9 +740,7 @@ func TestTimelineScrubFreezesPanelPresses(t *testing.T) {
 		t.Fatal("audio subtree must NOT be capturing — the scrub lives in dv.tree")
 	}
 
-	// Drag the held cursor onto a synth knob (button stays down). The RootTree
-	// routes ALL input to the capturing (drum-view) subtree, so the audio panel
-	// must not start a knob capture and its active tab must not change.
+	// The RootTree routes everything to the capturing tree while the button stays down.
 	tabBefore := dv.eqPanelZone.ActiveTab()
 	for i := 0; i < 3; i++ {
 		injectPressAt(t, dv, kx, ky) // still holding — a drag move, not a fresh press
@@ -916,10 +752,7 @@ func TestTimelineScrubFreezesPanelPresses(t *testing.T) {
 		t.Errorf("audio panel active tab changed while the drum-view held capture: %v -> %v", tabBefore, got)
 	}
 
-	// Release ends the drum-view capture; normal dispatch resumes and a fresh
-	// tap on the card now ARMS it inline. (Task 13 retired the tap-to-open
-	// modal popup in favor of tap-to-arm — Capturing() is no longer the
-	// resume signal for synth cards, and neither is a popup opening.)
+	// Normal dispatch resumes, and a fresh tap arms the card inline.
 	injectRelease(t, dv, kx, ky)
 	if dv.tree.Capturing() {
 		t.Fatal("drum-view capture should clear after release")
@@ -933,13 +766,8 @@ func TestTimelineScrubFreezesPanelPresses(t *testing.T) {
 	dv.lockSynthControl(instID)
 }
 
-// TestDrumViewModalBlocksPanel is the symmetric counterpart of
-// TestPanelModalBlocksRowRack: a BLOCKING overlay open in the DRUM-VIEW subtree
-// gives that subtree exclusive dispatch, so a press on a synth knob is not
-// dispatched to the audio panel. Real drum-view blocking overlays (row context
-// menu, instrument picker, rename dialog) route identically; a synthetic
-// modal+scrim entry keeps the test about the RootTree contract (mirrors
-// TestPanelModalDrawsAboveDrumView's overlay setup).
+// A blocking drum-view overlay gives that tree exclusive dispatch; a synthetic modal keeps this about the
+// RootTree contract.
 func TestDrumViewModalBlocksPanel(t *testing.T) {
 	dv := newTestDrumViewWithRows(t, 12)
 	activateSynthTab(t, dv)
@@ -966,10 +794,7 @@ func TestDrumViewModalBlocksPanel(t *testing.T) {
 		t.Fatal("audio subtree must NOT have a blocking overlay")
 	}
 
-	// A synth card tap while the drum-view modal is open must NOT reach the
-	// audio panel: the sibling modal has exclusive dispatch, so the control
-	// does not arm. (Task 13 retired the tap-to-open modal popup in favor of
-	// tap-to-arm; arming is the new "did dispatch reach the card" signal.)
+	// Arming is the signal that dispatch reached the card.
 	instID := dv.resolveSynthInstrument(dv.Rows[0].Instrument)
 	tabBefore := dv.eqPanelZone.ActiveTab()
 	injectPressAt(t, dv, kx, ky)
@@ -995,16 +820,7 @@ func TestDrumViewModalBlocksPanel(t *testing.T) {
 	dv.lockSynthControl(instID)
 }
 
-// TestDrumViewModalDrawsAbovePanel is the symmetric counterpart of
-// TestPanelModalDrawsAboveDrumView: it proves RootTree.Draw composites the
-// DRUM-VIEW subtree's OVERLAYS above the AUDIO subtree's CONTENT. It opens a
-// Scrim:true overlay on the drum-view subtree's portal and asserts a pixel
-// INSIDE the panel region — which the audio subtree paints as CONTENT — changes
-// versus a control frame with the scrim closed. Because RootTree.Draw paints ALL
-// subtree content first then ALL subtree overlays, a z=0 drum-view scrim must
-// darken the z=1 audio panel's pixels; if overlays were drawn per-subtree
-// interleaved with content, the panel content would paint OVER the lower
-// subtree's scrim and the pixel would be unchanged.
+// A z=0 drum-view scrim darkens the z=1 panel's pixels only because all content draws before all overlays.
 func TestDrumViewModalDrawsAbovePanel(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -1058,14 +874,8 @@ func TestDrumViewModalDrawsAbovePanel(t *testing.T) {
 	}
 }
 
-// TestAudioSubtreeDoesNotPaintAbovePanel proves the audio subtree's CONTENT
-// stays clipped to the panel rect and does not bleed UP into the rows region.
-// It renders two frames whose ONLY difference is the audio panel's internal
-// content (active tab switched between two data-different tabs: Wave vs
-// Spectrum), and asserts that every pixel along a scanline a few px ABOVE the
-// panel rect is IDENTICAL across the two frames. If the audio subtree painted
-// above its panel rect, changing its internal content would perturb those
-// rows-region pixels.
+// Two frames differing only in the panel's content (Wave vs Spectrum) leave every pixel just above the panel
+// identical.
 func TestAudioSubtreeDoesNotPaintAbovePanel(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -1092,8 +902,7 @@ func TestAudioSubtreeDoesNotPaintAbovePanel(t *testing.T) {
 	dv.Update()
 	dv.Update()
 	if got := dv.eqPanelZone.PanelRect(); got != panel {
-		// A tab switch should not move the panel; if it did, the scanline
-		// comparison would be apples-to-oranges. Use the min of the two.
+		// A moved panel would make the comparison meaningless.
 		t.Logf("panel rect changed across tab switch: %v -> %v", panel, got)
 		if got.Min.Y < panel.Min.Y {
 			panel = got
@@ -1102,8 +911,7 @@ func TestAudioSubtreeDoesNotPaintAbovePanel(t *testing.T) {
 	frameB := ebiten.NewImage(1280, 900)
 	g.Draw(frameB)
 
-	// Scanline a few px ABOVE the panel: this is the rows region. Span the panel
-	// width so any bleed under the panel's horizontal extent is caught.
+	// Spanning the panel's width.
 	y := panel.Min.Y - 5
 	if y <= dv.Bounds.Min.Y {
 		t.Fatalf("scanline y=%d above panel not inside bounds (panel=%v)", y, panel)
@@ -1120,17 +928,8 @@ func TestAudioSubtreeDoesNotPaintAbovePanel(t *testing.T) {
 	}
 }
 
-// TestEQChannelDropdownInOverlaySubtree proves the EQ channel dropdown is owned
-// by the top-of-z OVERLAY subtree's portal + HitIndex — NOT by either base
-// subtree (drum-view or audio). Every popup opens in the single global overlay
-// portal so it composites and hit-tests above ALL base zones in ALL subtrees
-// (the FX-panel-over-EQ isolation guarantee). It opens the dropdown through the
-// production OnClick path and asserts: (1) the entry lives in dv.portal() (the
-// overlay portal) and NOT in either base subtree's portal; (2) the dropdown's
-// hit areas are visible to dv.overlayTree.HitIndexRef() and absent from BOTH
-// base subtree HitIndexes. The click-changes-channel behavior is fully covered
-// by TestEQChannelDropdownOpensAndSelects / TestEQChannelDropdownViaGameUpdate
-// in eq_per_instrument_test.go, so here we lock subtree OWNERSHIP only.
+// Owned by the overlay tree's portal and index and by neither base tree, so it sits above every base zone;
+// selection behaviour is tested elsewhere.
 func TestEQChannelDropdownInOverlaySubtree(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -1150,8 +949,6 @@ func TestEQChannelDropdownInOverlaySubtree(t *testing.T) {
 	z.stickyBar.ChannelBtn().OnClick()
 	dv.Update()
 
-	// Ownership: the dropdown portal entry must live in the OVERLAY subtree,
-	// and in NEITHER base subtree.
 	if !dv.portal().Has("eq-channel-dropdown") {
 		t.Fatal("eq-channel-dropdown must be registered in the global overlay portal")
 	}
@@ -1162,9 +959,6 @@ func TestEQChannelDropdownInOverlaySubtree(t *testing.T) {
 		t.Fatal("eq-channel-dropdown must NOT be registered in the drum-view base subtree's portal")
 	}
 
-	// HitIndex ownership: find a point inside the dropdown menu rect and assert
-	// the OVERLAY subtree's HitIndex has the dropdown hit there while NEITHER
-	// base subtree's HitIndex does.
 	menu := z.channelScroll.VS.View
 	if menu.Empty() {
 		t.Fatal("channel dropdown menu rect empty")
@@ -1193,10 +987,7 @@ func TestEQChannelDropdownInOverlaySubtree(t *testing.T) {
 		}
 	}
 
-	// Behavioral cross-check (cheap, deterministic): selecting an item via the
-	// real loop changes the active channel. Covered in depth by
-	// eq_per_instrument_test.go; asserted lightly here so ownership + dispatch
-	// are proven together.
+	// A light check that ownership and dispatch hold together.
 	before := dv.activeEQChannel()
 	anchor := dv.eqChannelBtn().Rect()
 	btnH := 24

@@ -16,8 +16,7 @@ func knobValAngle(v float64) float32 {
 	return knobRadDeg(knobArcStartDeg + v*knobArcSweepDeg)
 }
 
-// TestKnobValueArcSpanUnipolar pins the default (unipolar) behaviour: the value
-// arc grows from the track start to the value angle; value 0 draws nothing.
+// From the track start to the value; 0 draws nothing.
 func TestKnobValueArcSpanUnipolar(t *testing.T) {
 	if _, _, draw := knobValueArcSpan(0, 0.5, false); draw {
 		t.Errorf("unipolar value=0 should draw no value arc")
@@ -34,9 +33,7 @@ func TestKnobValueArcSpanUnipolar(t *testing.T) {
 	}
 }
 
-// TestKnobValueArcSpanBipolarSymmetric pins symmetric bipolar params (detune
-// ±cents, transpose ±st): zero sits at the 12-o'clock centre (zeroFrac 0.5),
-// value 0.5 draws nothing, and the fill grows symmetrically from centre.
+// Zero at 12 o'clock (zeroFrac 0.5); the fill grows symmetrically from there.
 func TestKnobValueArcSpanBipolarSymmetric(t *testing.T) {
 	if _, _, draw := knobValueArcSpan(0.5, 0.5, true); draw {
 		t.Errorf("bipolar value=0.5 (centre) should draw no value arc")
@@ -54,10 +51,7 @@ func TestKnobValueArcSpanBipolarSymmetric(t *testing.T) {
 	}
 }
 
-// TestKnobValueArcSpanBipolarAsymmetric pins an asymmetric bipolar param such
-// as gain (-24..+6 dB, so 0 dB is at zeroFrac 0.8). The neutral point is the
-// param's zero, NOT the geometric centre: value 0.8 draws nothing; above/below
-// fill toward 0.8. This is the audit's "Gain +0 dB renders ~85% ring" bug.
+// The neutral point is the param's zero, not the centre: gain -24..+6 dB puts 0 dB at 0.8.
 func TestKnobValueArcSpanBipolarAsymmetric(t *testing.T) {
 	const zero = 0.8 // (0 - (-24)) / (6 - (-24))
 	if _, _, draw := knobValueArcSpan(zero, zero, true); draw {

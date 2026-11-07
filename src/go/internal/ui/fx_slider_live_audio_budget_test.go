@@ -10,20 +10,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// TestHeldFXSliderWritesAudioOnlyOnValueChange drives a real FX-slider
-// gesture through Game.Update and counts what reached the audio graph.
-//
-// The reported bug (2026-10-25): startup demo playing, open the kick's FX,
-// add a Pitch Shifter, touch its slider — the audio lagged and then stopped.
-// Phase 0 of handleFXPanelInput pushed the slider value on EVERY input tick
-// of a held slider, moved or not, and each push rebuilt the channel's whole
-// WebAudio insert chain (fresh AudioWorkletNode, empty delay line, full
-// rewire). Measured in real Chrome: ~1,000 AudioWorkletNodes and ~15,000
-// connect/disconnect calls per second of dragging, kick notes cut, and at a
-// 6x slower CPU the main thread blocked for 25 of 30 s.
-//
-// Contract: a still slider writes nothing; each value change writes at most
-// one IN-PLACE param update; no part of a param gesture rebuilds the chain.
+// A held slider wrote the audio every tick, moved or not, and each write rebuilt the channel's whole WebAudio
+// insert chain (a fresh worklet, an empty delay line): kick notes cut. A still slider writes nothing; each
+// change is at most one in-place param update; no part of a gesture rebuilds the chain.
 func TestHeldFXSliderWritesAudioOnlyOnValueChange(t *testing.T) {
 	g := newMelodicCircuitGame(t, 0, 2)
 	const row = 1 // the kick row
@@ -115,11 +104,7 @@ func TestHeldFXSliderWritesAudioOnlyOnValueChange(t *testing.T) {
 	}
 }
 
-// TestHeldEQHandleWritesAudioOnlyOnValueChange is the EQ twin, found by
-// webaudio_live_edit_budget's eq-band-hold phase: the curve handle's OnDrag
-// runs every frame of its capture and wrote the channel EQ each time, moved or
-// not — on WASM that rebuilt the channel's ten biquads and rewired the channel
-// every frame; on desktop it swapped a fresh EQ processor into the chain.
+// The curve handle's OnDrag runs every captured frame and must write the channel EQ only when the value moves.
 func TestHeldEQHandleWritesAudioOnlyOnValueChange(t *testing.T) {
 	g := newMelodicCircuitGame(t, 0, 2)
 	const w, h = 1280, 720
@@ -145,8 +130,7 @@ func TestHeldEQHandleWritesAudioOnlyOnValueChange(t *testing.T) {
 		z.SetActiveTab(TabEQ)
 	}
 	advanceFrames(g, 3)
-	// Give the audio panel room the way its divider drag does, so a band
-	// handle has dB to travel (the 2-row test circuit leaves it 32 px tall).
+	// The 2-row test circuit leaves the panel 32 px tall, too little for a handle to travel.
 	g.drum.widgets.ResizeAxis("row", 1, -120)
 	g.drum.refreshWidgetLayout()
 	g.drum.recalcButtons()

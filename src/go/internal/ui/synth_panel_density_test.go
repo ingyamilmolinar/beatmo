@@ -6,20 +6,11 @@ import (
 	"testing"
 )
 
-// TestSynthSectionsFitAtAllDensities pins the Phase 2 adaptive
-// section-height solver: for every density × content-height
-// combination, the last section's Max.Y must be ≤ the content rect's
-// Max.Y. Pre-Phase-2 the section min-h was a fixed 88 px floor and
-// 4 sections × 88 = 352 overflowed a 360-px panel; the solver below
-// steps the per-section height down so all sections fit.
-//
-// The test exercises the solver directly via Profile() — no Game
-// scaffolding — so it's fast and decoupled from the row-rack init
-// path.
+// At every density × content height the last section fits; the solver steps the section height down. Driven through
+// Profile() with no Game.
 func TestSynthSectionsFitAtAllDensities(t *testing.T) {
 	densities := []Density{DensityCompact, DensityComfortable, DensitySpacious}
-	// Test against a range of content heights including the
-	// pre-Phase-2 break point (360 panel - 52 header = 308 content).
+	// Including 308 (a 360 panel less its header), where a fixed floor overflowed.
 	contentHeights := []int{200, 280, 308, 400, 600}
 	const numSections = 4
 	for _, d := range densities {
@@ -38,10 +29,7 @@ func TestSynthSectionsFitAtAllDensities(t *testing.T) {
 				perSectionH = hardFloor
 			}
 			lastY := perSectionH * numSections
-			// Allow the hardFloor case to overflow — but only when h
-			// itself is below n × hardFloor (the genuine pathological
-			// "panel too short" case). For h above n × hardFloor the
-			// solver must produce a fit.
+			// Overflow is allowed only below n × hardFloor, a genuinely too-short panel.
 			if h >= hardFloor*numSections && lastY > h {
 				t.Errorf("density=%v h=%d: solver produced lastY=%d > h=%d (should fit)",
 					d, h, lastY, h)
@@ -51,10 +39,7 @@ func TestSynthSectionsFitAtAllDensities(t *testing.T) {
 	}
 }
 
-// TestSynthSpaciousFitsTwoOnPortrait — the canonical mobile failure:
-// 4 sections at Spacious density on a 360 × 480 portrait phone with
-// a ~52 px header. Pre-Phase-2 this clipped the bottom section. The
-// solver must now produce sections that all fit.
+// Four sections at Spacious on a 360 × 480 phone all fit.
 func TestSynthSpaciousFitsOn360TallPanel(t *testing.T) {
 	restore := SetDensityForTest(DensitySpacious)
 	defer restore()
@@ -74,8 +59,7 @@ func TestSynthSpaciousFitsOn360TallPanel(t *testing.T) {
 	}
 	totalSectionsH := perSectionH * numSections
 	if totalSectionsH > contentH {
-		// Only acceptable when the hard floor itself can't fit; verify
-		// that's the case.
+		// Only when the hard floor itself cannot fit.
 		if hardFloor*numSections <= contentH {
 			t.Errorf("Spacious solver overflowed: total=%d > contentH=%d (hardFloor*n=%d ≤ contentH)",
 				totalSectionsH, contentH, hardFloor*numSections)
@@ -83,12 +67,8 @@ func TestSynthSpaciousFitsOn360TallPanel(t *testing.T) {
 	}
 }
 
-// TestTruncCaptionEllipsis pins the helper's contract: short captions
-// pass through; long captions get an ellipsis appended; impossibly
-// narrow targets degenerate to "…".
+// Short captions pass, long ones get "…", impossible widths degenerate to "…".
 func TestTruncCaptionEllipsis(t *testing.T) {
-	// At 200 px width, "tone +0.12" fits (TextWidth of that string is
-	// well under 200 in the body font).
 	if got := truncCaption("tone +0.12", 200); got != "tone +0.12" {
 		t.Errorf("wide cell: got %q, want unchanged", got)
 	}

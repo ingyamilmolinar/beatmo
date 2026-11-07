@@ -10,9 +10,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// countColoredSegments draws a segmented level bar of the given height with a
-// loud signal and counts how many lit LED fills (green/yellow/red) land inside
-// it. It uses the package's drawRect interceptor (collectFilledRects).
 func countColoredSegments(t *testing.T, barDy int, db float64) int {
 	t.Helper()
 	dst := ebiten.NewImage(40, barDy+4)
@@ -34,8 +31,7 @@ func countColoredSegments(t *testing.T, barDy int, db float64) int {
 	return n
 }
 
-// A short level bar (38px tall) must still render lit LED segments for a loud
-// signal — regression guard for the audio-panel control-header height squeeze.
+// A 38 px bar still lights its segments for a loud signal.
 func TestSegmentedLevelBarRendersWhenShort(t *testing.T) {
 	if got := countColoredSegments(t, 38, -3.0); got < 1 {
 		t.Fatalf("short (38px) level bar drew %d lit segments, want ≥1", got)

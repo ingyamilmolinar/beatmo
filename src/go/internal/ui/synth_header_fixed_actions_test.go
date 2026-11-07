@@ -12,18 +12,14 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// setupMobileSynthTab builds a narrow mobile synth tab with a synth
-// instrument bound and returns the game. The size is intentionally as
-// narrow as a small portrait phone so the OLD cascade would have
-// collapsed the Save/Preview actions into the overflow (⋯) chevron.
+// As narrow as a small phone.
 func setupMobileSynthTab(t *testing.T, w, h int) *Game {
 	t.Helper()
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
 	g := New(logger)
 	t.Cleanup(g.CloseForTest)
-	// SetForceMobileProfile is a no-op under -tags test; force the small-screen
-	// profile directly so the mobile two-row header layout actually runs.
+	// SetForceMobileProfile is a no-op under -tags test.
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })
 	UpdateProfile()
@@ -41,11 +37,8 @@ func setupMobileSynthTab(t *testing.T, w, h int) *Game {
 	return g
 }
 
-// TestSynthMobileActionsOnStickyBar — on mobile the Synth tab has NO in-panel
-// banner/action row: identity lives in the channel pill and the actions relocate
-// to the sticky bar as a [Preview][Save][⋯] cluster (Approach B). The overflow
-// (⋯) button carries the IconOverflow kebab; the in-panel SynthTabButtons no
-// longer contains the header actions.
+// No in-panel banner on mobile: identity is the channel pill and the actions are a [Preview][Save][⋯] cluster on the
+// sticky bar.
 func TestSynthMobileActionsOnStickyBar(t *testing.T) {
 	for _, loc := range []i18n.Locale{i18n.LocaleEN, i18n.LocaleES} {
 		t.Run(string(loc), func(t *testing.T) {
@@ -87,9 +80,7 @@ func TestSynthMobileActionsOnStickyBar(t *testing.T) {
 	}
 }
 
-// TestSynthMobileOverflowMenuHasSaveAs — tapping the ⋯ overflow opens the
-// shared action menu with Save As… and the portable Export/Import instrument
-// actions (see instrumentActionMenuItems in action_menu_open.go).
+// The shared action menu: Save As and the portable Export/Import.
 func TestSynthMobileOverflowMenuHasSaveAs(t *testing.T) {
 	g := setupMobileSynthTab(t, 360, 760)
 	actions := g.drum.synthPanelMobileActions()

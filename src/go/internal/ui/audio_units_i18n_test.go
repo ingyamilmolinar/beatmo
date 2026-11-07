@@ -10,8 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// The cents value unit reads "ct" (centésimas) in Spanish, "c" in English.
-// Symbol units (st/dB/Hz/%/×/ms/s) are international and stay identical.
+// Symbol units (st/dB/Hz/%/×/ms/s) are international.
 func TestCentsUnitLocalized(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	i18n.SetLocale(i18n.LocaleES)
@@ -62,8 +61,7 @@ func TestLevelsTooltipsLocalized(t *testing.T) {
 	}
 }
 
-// fitScaleToWidth keeps the base scale when text fits, and shrinks it just
-// enough to fit when it doesn't — so longer Spanish strings never overflow.
+// Shrinks just enough, so longer Spanish strings never overflow.
 func TestFitScaleToWidth(t *testing.T) {
 	if got := fitScaleToWidth(50, 1.0, 100); got != 1.0 {
 		t.Errorf("fits: got %v want 1.0", got)
@@ -77,9 +75,7 @@ func TestFitScaleToWidth(t *testing.T) {
 	}
 }
 
-// Every sampler knob caption renders at FULL font and fits inside its cell —
-// the layout widens cells (and wraps to two rows) instead of shrinking text,
-// so "Ganancia +0 dB" stays readable and never overlaps a neighbour.
+// The layout widens cells and wraps to two rows rather than shrinking text.
 func TestSamplerCaptionsFitFullFontDesktop(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	g := samplerLayoutGame(t)

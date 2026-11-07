@@ -10,9 +10,7 @@ import (
 var finishKnobs = []string{"post_pitch", "post_decay", "post_decay_rate", "post_body",
 	"post_brightness", "post_darken", "post_drive", "out_clamp"}
 
-// TestFinishStageShowsEveryPostKnob: the post ops (resample, fade, low boost,
-// air, darken, saturate) and the output limit are a visible FINISH stage on a
-// percussion AND a melodic instrument (Phase C task C5; Phase B review #5).
+// The post ops and the output limit form a visible stage on a percussion and a melodic instrument.
 func TestFinishStageShowsEveryPostKnob(t *testing.T) {
 	for _, inst := range []instrument.ID{roster.Snare, roster.Violin} {
 		g := newSynthTabGame(t)
@@ -38,10 +36,7 @@ func TestFinishStageShowsEveryPostKnob(t *testing.T) {
 	}
 }
 
-// TestFinishKnobNamesDoNotCollide: two knobs that share a screen never share a
-// display name. A category card mixes stages (Grit holds POST's drive AND
-// FINISH's saturate), so FINISH's knobs must not read as a second "Pitch",
-// "Drive" or "Decay" there — nor inside the FINISH stage itself.
+// A category card mixes stages (Grit holds POST's drive and FINISH's saturate), so names never repeat on one screen.
 func TestFinishKnobNamesDoNotCollide(t *testing.T) {
 	for _, inst := range []instrument.ID{roster.Kick, roster.Snare, roster.Violin, roster.FmBass, roster.Hihat} {
 		defs, merged := instSchemaForTest(t, inst)

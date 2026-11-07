@@ -1,17 +1,7 @@
 //go:build test
 
-// Phase 4 — audioLoop allocation discipline.
-//
-// The long-session OOM the user reported with plain playback (no EQ
-// panel) landed in audioLoop's `reqs := make([]soundReq, 0, reqCap)`
-// at game_audio_loop.go:22. The fix reuses scratch buffers
-// (audioLoopReqs / audioLoopBatch) across iterations so steady-state
-// playback does not allocate ~3 KB of slice headers per drain cycle.
-//
-// This test exercises the SAME scratch-buffer reuse pattern the real
-// audioLoop uses, on an isolated Game shell so the live audioLoop
-// goroutine doesn't race with us for the channel. Asserts the
-// allocation budget. Pre-fix: ~6 KB+ per cycle. Post-fix: ≤ 1 KB.
+// audioLoop reuses scratch buffers so steady playback does not allocate slice headers per drain; this runs the
+// same pattern on a bare Game, away from the live goroutine.
 
 package ui
 
@@ -23,19 +13,12 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestAudioLoopAllocStability validates the reuse contract on the
-// scratch buffers without invoking the real audioLoop goroutine.
-// Constructs a bare Game struct (no New() — that would spawn the live
-// goroutine that competes for audioCh) and runs the drain pattern
-// against the same Game fields.
+// A bare Game: New() would spawn the live audioLoop competing for audioCh.
 func TestAudioLoopAllocStability(t *testing.T) {
-	// Bare struct — no goroutines, no subsystems. We're testing the
-	// allocator behaviour of the reuse pattern, not the dispatch path.
 	g := &Game{
 		audioCh: make(chan soundReq, 256),
 	}
-	// playbackSlate methods dereference this back-reference; struct literals
-	// that bypass New() must set it explicitly (mirrors New()).
+	// Struct literals bypassing New() must set the back-reference.
 	g.playbackSlate.g = g
 
 	enqueue := func(n int) {
@@ -44,8 +27,7 @@ func TestAudioLoopAllocStability(t *testing.T) {
 		}
 	}
 
-	// Warm up: queue + drain a handful of cycles so the scratch slices
-	// reach their steady-state capacity.
+	// Until the scratch slices reach steady capacity.
 	for warmup := 0; warmup < 16; warmup++ {
 		enqueue(8)
 		drainOneAudioLoopIteration(g)
@@ -64,12 +46,8 @@ func TestAudioLoopAllocStability(t *testing.T) {
 	t.Logf("audioLoop scratch reuse TotalAlloc/cycle = %d bytes (cycles=%d)",
 		bytesPerCycle, cycles)
 
-	// Phase 4 budget. Pre-fix the reqs (~3 KB) + batch (~256 B) slices
-	// alone made every cycle >3.3 KB. With reuse, the steady-state
-	// allocations come only from append-grow (amortized to 0) and
-	// the channel send/receive bookkeeping. 512 B cap catches a
-	// regression that reverts the reuse, with comfortable headroom
-	// for incidental scheduler/runtime noise.
+	// Steady state allocates only channel bookkeeping; 512 B catches a reverted reuse (> 3 KB a cycle) with headroom
+	// for runtime noise.
 	const maxBytesPerCycle = 512
 	if bytesPerCycle > maxBytesPerCycle {
 		t.Errorf("audioLoop scratch reuse: bytes/cycle = %d, want <= %d "+
@@ -78,8 +56,7 @@ func TestAudioLoopAllocStability(t *testing.T) {
 			bytesPerCycle, maxBytesPerCycle)
 	}
 
-	// Sanity: scratch fields must have grown to hold the batch and
-	// stayed at capacity across cycles. Capacity should never shrink.
+	// Grown, and never shrinking.
 	if cap(g.audioLoopReqs) == 0 {
 		t.Error("audioLoopReqs capacity = 0 after warm-up; reuse never engaged")
 	}
@@ -88,9 +65,7 @@ func TestAudioLoopAllocStability(t *testing.T) {
 	}
 }
 
-// drainOneAudioLoopIteration mirrors one iteration of audioLoop's
-// for-range body. Tracks the SAME scratch-buffer reuse the real
-// audioLoop does so the test exercises the production fix path.
+// One iteration of audioLoop's body, with the same scratch reuse.
 func drainOneAudioLoopIteration(g *Game) {
 	first, ok := <-g.audioCh
 	if !ok {

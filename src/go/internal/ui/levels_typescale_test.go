@@ -7,10 +7,7 @@ import (
 	"testing"
 )
 
-// The aggregate column's "headline" row (the big Headroom number) must use
-// the panel-title typography role — the styled type-scale step above body —
-// not an ad-hoc scale multiplier. Its rendered height must sit strictly
-// above the body-value rows so the visual hierarchy is real.
+// The panel-title role, strictly taller than the body rows, not an ad-hoc scale.
 func TestLevelsAggregate_HeadlineUsesTypeScale(t *testing.T) {
 	rect := image.Rect(0, 0, 200, 400)
 	rows := levelsAggregateColumnRows(rect)

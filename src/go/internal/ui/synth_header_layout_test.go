@@ -10,9 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// synthHeaderForTest lays out the synth header in isolation and returns the
-// resulting layout. headerH is generous so button height is governed by the
-// density token, not adaptive shrink.
+// A generous headerH, so the density token governs the button height.
 func synthHeaderForTest(t *testing.T, contentR image.Rectangle, inst instrument.ID, mobile bool) synthHeaderLayout {
 	t.Helper()
 	dv := &DrumView{}
@@ -20,9 +18,7 @@ func synthHeaderForTest(t *testing.T, contentR image.Rectangle, inst instrument.
 	return dv.instEditorHeader
 }
 
-// TestSynthHeader_SamplerStyle — the header mirrors the Sampler tab: title on
-// the left, the actions right-aligned in Preview < Save < Save As < Reset < ⋯
-// order with the ⋯ overflow flush against the right inset. No thumbnail, no recipe id.
+// Like the Sampler: title left, actions right in Preview < Save < Save As < Reset < ⋯, ⋯ flush against the inset.
 func TestSynthHeader_SamplerStyle(t *testing.T) {
 	restore := SetDensityForTest(DensityComfortable)
 	defer restore()
@@ -49,8 +45,6 @@ func TestSynthHeader_SamplerStyle(t *testing.T) {
 	}
 }
 
-// TestSynthHeaderButtonHeightFromDensity — header button height must come
-// from DensityValues().SynthHeaderButtonH, not a hardcoded 28/36.
 func TestSynthHeaderButtonHeightFromDensity(t *testing.T) {
 	measure := func(d Density) int {
 		restore := SetDensityForTest(d)
@@ -68,8 +62,7 @@ func TestSynthHeaderButtonHeightFromDensity(t *testing.T) {
 	}
 }
 
-// TestSynthHeaderButtonsFitLabels — header buttons must be wide enough for
-// their labels (label-derived width, not fixed 64/72/84).
+// Label-derived widths.
 func TestSynthHeaderButtonsFitLabels(t *testing.T) {
 	restore := SetDensityForTest(DensityComfortable)
 	defer restore()
@@ -93,8 +86,7 @@ func TestSynthHeaderButtonsFitLabels(t *testing.T) {
 	}
 }
 
-// TestSynthHeaderMobileLaysOutNothing — mobile keeps the actions on the
-// sticky bar; the in-panel header is empty.
+// The actions live on the sticky bar.
 func TestSynthHeaderMobileLaysOutNothing(t *testing.T) {
 	h := synthHeaderForTest(t, image.Rect(0, 0, 360, 200), "kick-1", true)
 	if !h.rect.Empty() || !h.saveAsRect.Empty() || !h.previewRect.Empty() {

@@ -7,9 +7,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// Every dial names the graph view that explains it and the words its two ends
-// are labelled with (spec 2026-10-24 §4.5) — data, checked here against the
-// view registry and the translation catalogue.
+// Checked against the view registry and the translation catalogue.
 func TestEveryDialNamesAViewAndEndWords(t *testing.T) {
 	f, err := loadSynthDials()
 	if err != nil {

@@ -6,12 +6,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// expandSynthPanelForTest activates the Synth tab and forces the audio panel
-// to its expanded synth height (>= 240 px) so the detail pane is several knob
-// rows tall. The panel only claims that height during a DrumView Layout pass
-// that observes TabSynth active; Ebiten's Layout no-ops when the size is
-// unchanged, so we toggle the framebuffer size (shrink then grow) after the
-// tab is active to force a genuine relayout.
+// The panel claims its expanded height only on a Layout that sees TabSynth, and Ebiten skips Layout at an
+// unchanged size, so the framebuffer shrinks then grows to force one.
 func expandSynthPanelForTest(t *testing.T, g *Game) {
 	t.Helper()
 	g.drum.eqPanelZone.SetActiveTab(TabSynth)
@@ -22,10 +18,7 @@ func expandSynthPanelForTest(t *testing.T, g *Game) {
 	layoutSynthTab(t, g)
 }
 
-// selectSectionForKnobIdx opens the synth detail stage that owns the given
-// knob index (so the knob gets a non-empty, hit-testable rect under the new
-// chip-strip + expand-one-detail-pane layout), then re-lays-out the panel.
-// instID is the row's resolved instrument id (e.g. "snare", "modular").
+// Opens the stage that owns the knob, so the knob gets a hit-testable rect.
 func selectSectionForKnobIdx(t *testing.T, g *Game, instID instrument.ID, knobIdx int) {
 	t.Helper()
 	dv := g.drum
@@ -45,15 +38,11 @@ func selectSectionForKnobIdx(t *testing.T, g *Game, instID instrument.ID, knobId
 		t.Fatalf("no section owns knob index %d (sections=%v)", knobIdx, dv.instEditorSections)
 	}
 	dv.setSelectedSynthSection(instID, owner)
-	// Fine-tuning knobs sit behind the More expander: open it so every knob of
-	// the stage can acquire a rect.
+	// Fine-tuning knobs sit behind More.
 	dv.setSynthMoreOpen(dv.resolveSynthInstrument(instID), true)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
-	// Card-cell layout (Task 3): a stage's later knobs can land on a scrolled-off
-	// row. Compute the target knob's GRID index — which is NOT its position in
-	// s.knobIdxs for Advanced knobs: the grid pads the essential tier up to a full
-	// row, inserts a full phantom divider row, then lays out the advanced tier.
-	// Scroll to that grid index and re-layout so its rect is populated.
+	// An Advanced knob's grid index is not its position in knobIdxs: the essentials pad to a full row and a phantom
+	// divider row follows. Scroll to that index so the rect exists.
 	for _, s := range dv.instEditorSections {
 		if s.id != owner {
 			continue
@@ -86,8 +75,7 @@ func selectSectionForKnobIdx(t *testing.T, g *Game, instID instrument.ID, knobId
 	}
 }
 
-// synthBindingIdxByName returns the binding index of the first knob whose
-// param name matches, or fails the test.
+// Fails if none matches.
 func synthBindingIdxByName(t *testing.T, g *Game, name string) int {
 	t.Helper()
 	for i, b := range g.drum.SynthTabBindings() {

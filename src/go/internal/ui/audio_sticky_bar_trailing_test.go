@@ -15,10 +15,7 @@ func trailingTestButtons() []*Button {
 	return []*Button{preview, save, overflow}
 }
 
-// TestStickyBarTrailingActionsMobileLayout verifies the sticky bar lays trailing
-// per-tab action buttons into its right cluster on mobile: all get non-empty
-// rects inside the bar, right-aligned, never overlapping the channel pill, and
-// each is registered as a tappable hit area.
+// On mobile: inside the bar, right-aligned, clear of the channel pill, each with a hit area.
 func TestStickyBarTrailingActionsMobileLayout(t *testing.T) {
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })
@@ -73,10 +70,7 @@ func TestStickyBarTrailingActionsMobileLayout(t *testing.T) {
 	}
 }
 
-// TestStickyBarTrailingActionsMobileTouchMin verifies the relocated action
-// buttons meet the finger target via Touch+ClipRect expansion (the ~32px pills
-// live in a 40px bar; the expanded hit rect must reach MinTarget), mirroring the
-// channel pill's discipline.
+// ~32 px pills in a 40 px bar reach MinTarget through Touch + ClipRect, like the channel pill.
 func TestStickyBarTrailingActionsMobileTouchMin(t *testing.T) {
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })
@@ -115,9 +109,7 @@ func TestStickyBarTrailingActionsMobileTouchMin(t *testing.T) {
 	}
 }
 
-// TestStickyBarTrailingActionsDesktopIgnored verifies trailing actions are a
-// mobile-only affordance: on desktop the right cluster is the tab strip, so
-// trailing buttons receive no rect.
+// On desktop the right cluster is the tab strip.
 func TestStickyBarTrailingActionsDesktopIgnored(t *testing.T) {
 	forceSmallScreenForTest = false
 	UpdateProfile()

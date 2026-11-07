@@ -11,16 +11,11 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// The DSP decides which dials an instrument shows (spec 2026-10-25 §3.2): a
-// dial whose full 0→100 sweep does not change the rendered note audibly is
-// hidden. Under -tags test the renderer is the toy voice
-// (graph_render_teststub.go), which reads the filter CUTOFF but never the
-// RESONANCE — so on it Bright is audible and Edge is not.
+// A dial whose full sweep is inaudible is hidden. The test toy voice reads the cutoff but not the resonance, so on
+// it Bright is audible and Edge is not.
 
-// relevanceGame opens the Synth root on piano-felt (Bright and Edge both
-// config-live) with a manually drained graph pipeline rendering the toy voice.
-// edit, when non-nil, changes the sound BEFORE the tab first sees it, so no
-// generated verdict knows it and the DSP must measure it at runtime.
+// piano-felt (Bright and Edge both config-live) with a hand-drained pipeline; an edit before the tab first sees the
+// sound forces a runtime measurement.
 func relevanceGame(t *testing.T, edit map[string]float64) (*Game, *synthGraphPipeline) {
 	t.Helper()
 	g := newViolinMacroGame(t)
@@ -39,8 +34,7 @@ func rootHasDial(g *Game, card, dial string) bool {
 	return ok
 }
 
-// settleRelevance runs every queued render and relevance probe, then lays the
-// tab out again (what the next frames do in the app).
+// What the next frames do in the app.
 func settleRelevance(g *Game, pipe *synthGraphPipeline) {
 	for i := 0; i < 3; i++ {
 		pipe.drainForTest()
@@ -70,8 +64,7 @@ func TestDialRelevanceIsAnchoredWhileTheInstrumentIsEdited(t *testing.T) {
 	if measured != 1 {
 		t.Fatalf("precondition: one sound measured, got %d", measured)
 	}
-	// Editing in the tab never re-hides or re-shows dials (no card jumps):
-	// the verdict belongs to the instrument as the tab first saw it.
+	// The verdict belongs to the sound the tab first saw, so edits never move cards.
 	inst := instrument.ID(dialInst(g))
 	d, ok := g.drum.synthDialByID("brightness", "bright")
 	if !ok {
@@ -96,10 +89,7 @@ func TestDialRelevanceIsAnchoredWhileTheInstrumentIsEdited(t *testing.T) {
 	}
 }
 
-// A shipped sound's verdict is in the generated table: it applies at the
-// first frame, without rendering anything (the measurement runs only for
-// sounds no table knows — the startup demo's edits, user and imported
-// instruments).
+// Applied on the first frame with nothing rendered; only unknown sounds are measured.
 func TestShippedSoundsTakeTheirVerdictFromTheTable(t *testing.T) {
 	g := newViolinMacroGame(t)
 	g.drum.Rows[0].Instrument = roster.Cowbell
@@ -118,10 +108,8 @@ func TestShippedSoundsTakeTheirVerdictFromTheTable(t *testing.T) {
 	}
 }
 
-// A sound's probes run one at a time even when the pool's worker and a
-// synchronous drain (scene setup) both step the queue: every probe lands in
-// the verdict exactly once and the queue never pops twice (a double pop
-// panicked on the worker while holding the pipeline's lock and froze the app).
+// With the worker and a synchronous drain both stepping the queue, each probe lands exactly once and nothing pops
+// twice (a double pop panicked under the pipeline's lock and froze the app).
 func TestRelevanceStepsFromTwoGoroutinesFinishEachSoundOnce(t *testing.T) {
 	pipe := newSynthGraphPipelineForTest(func(id instrument.ID, d instrument.Doc, pitch float64) ([]float32, int, error) {
 		out := make([]float32, 4800)

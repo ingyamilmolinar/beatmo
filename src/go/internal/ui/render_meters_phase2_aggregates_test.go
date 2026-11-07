@@ -12,10 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestLevelsAggregates_LUFSRendered: when state.Master.LUFSShortTermDB
-// is populated, the aggregates side panel must render the LUFS-S row.
-// Verified via text-rect interception — the row's "LUFS-S" label is
-// drawn with the secondary text color.
+// The LUFS-S row renders when the short-term value is set.
 func TestLevelsAggregates_LUFSRendered(t *testing.T) {
 	state := &analyzer.State{
 		Master: analyzer.ChannelMetrics{
@@ -30,15 +27,10 @@ func TestLevelsAggregates_LUFSRendered(t *testing.T) {
 
 	dst := ebiten.NewImage(400, 200)
 	drawLevelsAggregates(dst, image.Rect(0, 0, 200, 200), state, latches, nil)
-	// Smoke-test only — drawLevelsAggregates returns early on small
-	// rects, so we mainly verify no panic and a non-empty draw. A
-	// dedicated rect-counter integration lives in audio_panel_render
-	// _pixels_test.go which covers the full panel composition.
+	// A smoke test; audio_panel_render_pixels_test.go counts the composed panel.
 }
 
-// TestLevelsAggregates_ClipsWindowOverridesTotal: when state has a
-// rolling 10-second count, the aggregates use that (with "(10s)"
-// suffix on the label) instead of the monotonic total.
+// The rolling 10 s count, labelled "(10s)", wins over the monotonic total.
 func TestLevelsAggregates_ClipsWindowOverridesTotal(t *testing.T) {
 	stateWithWindow := &analyzer.State{
 		Master:          analyzer.ChannelMetrics{Active: true, PeakDB: -3, ClipCount: 100},
@@ -49,17 +41,12 @@ func TestLevelsAggregates_ClipsWindowOverridesTotal(t *testing.T) {
 		ClipsLastWindow: 0,
 	}
 	dst := ebiten.NewImage(400, 200)
-	// Both calls must not panic and must complete; this test pins the
-	// branch behaviour at the API level. drawLevelsAggregates renders
-	// label "CLIPS (10s)" when ClipsLastWindow>0 and "CLIPS" otherwise
-	// — we exercise both code paths.
+	// Both label branches.
 	drawLevelsAggregates(dst, image.Rect(0, 0, 200, 200), stateWithWindow, nil, nil)
 	drawLevelsAggregates(dst, image.Rect(0, 0, 200, 200), stateNoWindow, nil, nil)
 }
 
-// TestMultiLevelsLatch_ClearWipesPersistentMarkers: clicking the Clear
-// Clips pill must wipe the per-channel latches so the persistent "!"
-// markers disappear immediately, not after the 60-frame auto-expire.
+// The "!" markers clear at once, not after the 60-frame auto-expire.
 func TestMultiLevelsLatch_ClearWipesPersistentMarkers(t *testing.T) {
 	m := NewMultiLevelsLatch()
 	// Force a clip event on two channels.
@@ -79,8 +66,3 @@ func TestMultiLevelsLatch_ClearWipesPersistentMarkers(t *testing.T) {
 		t.Errorf("hat still latched after Clear()")
 	}
 }
-
-// NOTE: the Clear-Clips + K-20 pills moved off the sticky bar into the per-tab
-// levelsControls component (audio_tab_controls.go) in the slim-bar phase. Their
-// Meters-only gating + K-20 toggle semantics are now covered by
-// TestLevelsControls* in audio_tab_controls_test.go.

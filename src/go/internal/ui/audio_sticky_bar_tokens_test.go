@@ -4,9 +4,7 @@ package ui
 
 import "testing"
 
-// TestAudioStickyBarTokens pins the audio-panel sticky-bar pill sizing to
-// density tokens so the tab chrome is re-styleable from DESIGN.md (was ~20
-// hand-tuned literals). Comfortable preserves today's values.
+// Density tokens, so the chrome restyles from DESIGN.md; Comfortable keeps the shipped values.
 func TestAudioStickyBarTokens(t *testing.T) {
 	d := Profile().DensityValues()
 	checks := map[string]int{

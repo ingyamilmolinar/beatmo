@@ -12,17 +12,15 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// fakeSink models an audio engine: Schedule stores a voice; Cancel removes it
-// only if it has not started (Time > now) — exactly the engines' contract.
+// Cancel removes a voice only if it has not started (Time > now), the engines' contract.
 type fakeSink struct {
 	mu      sync.Mutex // the kick test drives the lane from the sequencer goroutine
 	sched   map[uint64]laneNote
 	stopAts []string
 	all     int
 	now     *float64
-	// engineLead: how far the ENGINE's notion of "started" runs ahead of the
-	// lane's clock (the desktop mixer renders up to one 10 ms Read chunk
-	// ahead). A cancel the lane thinks is in time can still be refused.
+	// How far the engine's "started" runs ahead of the lane's clock (desktop renders a 10 ms chunk ahead), so an
+	// in-time cancel can still be refused.
 	engineLead float64
 	refused    int // replacements refused because the old voice had started
 }
@@ -85,8 +83,7 @@ func (f *fakeSink) heard() map[[2]int]laneNote {
 	return out
 }
 
-// gridSource: every row sounds on every step (0.125 s = 120 BPM, div 4);
-// rows can be muted, re-leveled, and have their voice revision bumped.
+// Every row sounds on every step (0.125 s: 120 BPM, div 4).
 type gridSource struct {
 	now       *float64
 	playing   bool
@@ -98,9 +95,7 @@ type gridSource struct {
 	prevNon   []uint64
 	voiceOnly []bool
 	layers    [][]model.Layer // per-row voice stack (nil = single voice)
-	// The switch rule (audio_lane_switch_test.go): inst overrides a row's
-	// instrument (default "i<row>"); notReady instruments have no rendered
-	// voice yet; warmed records Warm requests.
+	// inst overrides a row's instrument (default "i<row>"); notReady has no rendered voice; warmed records Warm calls.
 	inst     []instrument.ID
 	notReady map[instrument.ID]bool
 	warmed   []instrument.ID
@@ -158,9 +153,7 @@ func (g *gridSource) RowKey(r int) uint64 {
 }
 func (g *gridSource) VoiceRevOnly(r int) bool { return g.voiceOnly[r] }
 
-// Steps widens the range by one step each side, like the Game source's
-// ±groove-nudge margin: the lane must filter by Time itself (and honour the
-// cancel guard) rather than rely on Steps being exact.
+// One step wider each side, like the Game source's groove margin: the lane must filter by Time itself.
 func (g *gridSource) Steps(from, to float64) (int, int, bool) {
 	lo := int(math.Ceil(from/g.step-1e-9)) - 1
 	hi := int(math.Floor(to/g.step+1e-9)) + 1
@@ -246,9 +239,8 @@ func TestLaneChangeInsideGuardDoesNotDouble(t *testing.T) {
 	}
 }
 
-// Replacing a note must be ATOMIC on the engine: when the engine has already
-// started the old voice (its clock runs ahead of the lane's), the cancel is
-// refused — and the replacement must then NOT play too (a doubled hit / flam).
+// When the engine has already started the old voice, the cancel is refused and the replacement must not play
+// either, or the hit doubles.
 func TestLaneReplaceRefusedByEngineDoesNotDouble(t *testing.T) {
 	l, src, sink, now := newGridLane(t, 1)
 	sink.engineLead = 0.015
@@ -334,13 +326,8 @@ func TestLaneVoiceRecommitRateLimited(t *testing.T) {
 	}
 }
 
-// A knob drag (voice-only edits) re-commits only the notes within VoiceNear
-// at once; the rest of the horizon — committed under the previous voice — is
-// re-derived as it enters that window. Every note still starts on the voice
-// current when it was re-derived, for a fraction of the churn: re-committing
-// the whole second on every drag tick was ~3000 WebAudio voice starts/s in
-// webaudio_all_knob_bpm_stress, and near-due replacements queued behind the
-// far ones and started late.
+// A knob drag re-commits only the VoiceNear window at once; the rest is re-derived as it enters it. Re-committing
+// the whole second per tick was ~3000 voice starts/s, and near-due replacements started late behind far ones.
 func TestLaneVoiceDragRecommitsNearWindowFirst(t *testing.T) {
 	drag := func(near float64) (cancelled uint64, stale int) {
 		l, src, sink, now := newGridLane(t, 1)
@@ -379,8 +366,7 @@ func TestLaneVoiceDragRecommitsNearWindowFirst(t *testing.T) {
 	}
 }
 
-// A voice-only edit still reaches the next note that has not started on the
-// first tick the recommit rate limit allows.
+// On the first tick the rate limit allows.
 func TestLaneVoiceEditReachesNextNoteAtOnce(t *testing.T) {
 	l, src, sink, now := newGridLane(t, 1)
 	l.cfg.VoiceNear = 0.25

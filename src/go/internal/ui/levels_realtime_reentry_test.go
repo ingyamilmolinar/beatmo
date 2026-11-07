@@ -11,16 +11,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
-// newLevelsReentryZone builds an EQPanelZone whose analyzer state is driven
-// by the returned setLoud toggle. Loud => master at -3 dB peak / -9 dB RMS;
-// silent => master at the analyzer dB floor (what the live meters report once
-// audio has stopped and the master ring has drained to silence).
-//
-// The returned draw function advances uiAnimFrame before each Draw — exactly
-// what DrumView.Draw does once per frame in production — so the Levels-tab
-// re-entry detection (which keys off the global frame counter) is exercised
-// faithfully: continuous viewing sees a one-frame gap, a hidden interval sees
-// a larger gap.
+// Loud: master -3 dB peak / -9 dB RMS; silent: the dB floor. draw advances uiAnimFrame as DrumView.Draw does, so
+// re-entry detection sees a one-frame gap while viewed and a larger one after hiding.
 func newLevelsReentryZone(t *testing.T) (z *EQPanelZone, draw func(), setLoud func(bool)) {
 	t.Helper()
 	savedFrame := uiAnimFrame
@@ -49,15 +41,8 @@ func newLevelsReentryZone(t *testing.T) (z *EQPanelZone, draw func(), setLoud fu
 	}, func(v bool) { loud = v }
 }
 
-// TestLevelsTab_ReflectsLiveSilenceOnReentry reproduces the reported bug: a
-// user watches the Levels tab during playback, switches to another tab where
-// audio then stops completely, and on returning to the Levels tab sees a high
-// meter that slowly drains to zero instead of immediately showing silence.
-//
-// Root cause: the peak-hold latch is only ticked while the Levels tab is
-// drawn, so a loud value held during playback freezes while the tab is hidden
-// and then decays from that stale value on return. The meter must instead
-// reflect the live (silent) audio immediately.
+// The latch only ticks while the tab draws, so a loud value froze while hidden and drained slowly on return;
+// the meter shows the live silence at once.
 func TestLevelsTab_ReflectsLiveSilenceOnReentry(t *testing.T) {
 	defer noInputForTest()()
 	z, draw, setLoud := newLevelsReentryZone(t)
@@ -79,8 +64,7 @@ func TestLevelsTab_ReflectsLiveSilenceOnReentry(t *testing.T) {
 	}
 	setLoud(false)
 
-	// 3. Return to the Levels tab. The first drawn frame must reflect live
-	//    silence, not a stale loud value held since the tab was last visible.
+	// The first frame shows live silence.
 	z.SetActiveTab(TabMeters)
 	draw()
 
@@ -89,10 +73,7 @@ func TestLevelsTab_ReflectsLiveSilenceOnReentry(t *testing.T) {
 	}
 }
 
-// TestLevelsTab_ReflectsLiveLevelOnReentryWhileLouder guards the symmetric
-// case: returning to the Levels tab must also snap UP to a louder live level,
-// not linger at a stale quiet value. This keeps the fix from degenerating into
-// "always show silence on entry" — the requirement is real-time accuracy.
+// It snaps UP too: real-time accuracy, not "silence on entry".
 func TestLevelsTab_ReflectsLiveLevelOnReentryWhileLouder(t *testing.T) {
 	defer noInputForTest()()
 	z, draw, setLoud := newLevelsReentryZone(t)
@@ -120,11 +101,7 @@ func TestLevelsTab_ReflectsLiveLevelOnReentryWhileLouder(t *testing.T) {
 	}
 }
 
-// TestLevelsTab_PeakHoldBallisticsSurviveContinuousViewing guards the
-// re-entry fix from over-firing: while the Levels tab stays visible, a brief
-// transient must remain held (peak-hold ballistics) across subsequent quiet
-// frames rather than being reset to the live value every frame. The re-entry
-// guard must only fire when the tab was actually hidden between frames.
+// While the tab stays visible a transient is still held; the reset fires only after the tab was hidden.
 func TestLevelsTab_PeakHoldBallisticsSurviveContinuousViewing(t *testing.T) {
 	defer noInputForTest()()
 	z, draw, setLoud := newLevelsReentryZone(t)
@@ -140,8 +117,7 @@ func TestLevelsTab_PeakHoldBallisticsSurviveContinuousViewing(t *testing.T) {
 		draw()
 	}
 
-	// The peak-hold should still be pinned well above the silence floor
-	// (sticky hold), proving the latch was NOT reset on these frames.
+	// Still pinned well above the floor.
 	if got := z.levelsLatches.Get(channel.Master).PeakHoldDB; got <= analyzerDBFloor+1 {
 		t.Fatalf("peak-hold ballistics lost during continuous viewing: PeakHoldDB=%v dB, want held near -3 dB", got)
 	}

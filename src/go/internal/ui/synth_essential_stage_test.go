@@ -11,20 +11,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// synth_essential_stage_test.go pins the fix for "a beginner can silence an
-// instrument by disabling the one stage that IS its sound". For a sole-source
-// generator stage (the OSC stage on a pure-oscillator voice such as the bare
-// modular synth or FM Bass), the Synth-tab enable pill must be GREYED OUT and
-// non-interactive: it stays visible (so the pipeline order still reads) but a
-// tap can never turn the sound off. Processor stages (filter, env, …) stay
-// fully interactive because their off-state is shaping, not silence.
-//
-// The classification lives in audio.StageDisableSilences (unit-tested in
-// internal/audio); these tests pin the UI wiring on top of it.
+// A sole-source generator stage (OSC on a pure-oscillator voice) cannot be switched off: its pill is greyed and
+// inert, still showing the pipeline order. Processor stages stay interactive, since off means unshaped, not silent.
 
-// TestSynthTab_EssentialOscPillDoesNotDisable is the bug reproduction: on the
-// bare modular synth the OSC stage is the whole voice, so tapping its enable
-// pill must NOT disable it (pre-fix, the tap set osc_enabled=0 → total silence).
+// On the bare modular synth OSC is the whole voice, so its pill must not disable it.
 func TestSynthTab_EssentialOscPillDoesNotDisable(t *testing.T) {
 	g := setupModularSynthGame(t)
 	restore := SwapSynthAuditionFnForTest(func(instrument.ID) {})
@@ -62,9 +52,7 @@ func TestSynthTab_EssentialOscPillDoesNotDisable(t *testing.T) {
 	}
 }
 
-// TestSynthTab_ProcessorPillStillDisables is the control: a shaper stage
-// (FILTER) is NOT the sound source, so its pill stays interactive and a tap
-// bypasses it as before.
+// The control: FILTER is not the source, so a tap bypasses it.
 func TestSynthTab_ProcessorPillStillDisables(t *testing.T) {
 	g := setupModularSynthGame(t)
 	restore := SwapSynthAuditionFnForTest(func(instrument.ID) {})
@@ -105,16 +93,13 @@ func TestSynthTab_ProcessorPillStillDisables(t *testing.T) {
 	}
 }
 
-// TestSynthTab_EssentialOscPillDrawnGreyed asserts the OSC pill is painted with
-// the muted "locked" track tint (never the live green track) while a processor
-// stage's pill keeps the live green track.
+// The muted locked tint, never the live green a processor's pill keeps.
 func TestSynthTab_EssentialOscPillDrawnGreyed(t *testing.T) {
 	g := setupModularSynthGame(t)
 
 	mutedTrack := WithAlpha(colPlayGreen, AlphaSubtle)
 
-	// countTrack draws the panel and counts filled rounded rects inside the
-	// selected stage's pill that match wantCol.
+	// Filled rounded rects inside the selected stage's pill.
 	countTrack := func(sec synthSectionID, wantCol color.Color) int {
 		selectStageProdHeight(t, g, roster.Modular, sec)
 		pill := g.drum.synthDetailEnablePillRect()

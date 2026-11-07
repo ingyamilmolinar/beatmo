@@ -8,9 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Every Params entry in both concept tables must be a real engine ParamDef —
-// guards against typos and param renames drifting the tables
-// away from the engine schema.
+// A typo or rename would drift the tables from the engine schema.
 func TestMacroGroups_NoParamNameTypos(t *testing.T) {
 	real := map[string]bool{}
 	for _, d := range audio.InstrumentParamDefs(roster.Modular) {
@@ -27,8 +25,7 @@ func TestMacroGroups_NoParamNameTypos(t *testing.T) {
 	}
 }
 
-// The percussion Source concept must own the discrete engine pickers exactly once
-// and never fuse them into a continuous macro (Global Constraint).
+// Exactly once, never fused into a continuous macro.
 func TestMacroGroups_PercussionPickersInOneConcept(t *testing.T) {
 	pickers := []string{"osc_type", "fm_algorithm", "filter_type", "body_model"}
 	owner := map[string]string{}
@@ -51,9 +48,7 @@ func TestMacroGroups_PercussionPickersInOneConcept(t *testing.T) {
 	}
 }
 
-// No root concept card may drill into an EMPTY pane: every built macro group must
-// map to at least one bound knob for the instrument, or the user taps a card and
-// sees nothing. Exercised through the real panel build for a kick.
+// Every root card maps to at least one bound knob, or a tap shows nothing.
 func TestSynthMacro_NoEmptyDrill(t *testing.T) {
 	g := newKickMacroGame(t)
 	g.drum.eqPanelZone.SetActiveTab(TabSynth)
@@ -70,16 +65,13 @@ func TestSynthMacro_NoEmptyDrill(t *testing.T) {
 	}
 }
 
-// Every shipped instrument gets categories (no instrument falls back to a
-// different flow), every category has at least one essential, and every
-// visible non-output param is claimed by exactly one category.
+// Every instrument gets categories, each with an essential, and every visible non-output param belongs to exactly one.
 func TestMacroGroups_EveryInstrumentHasCategories(t *testing.T) {
 	for _, id := range roster.All {
 		defs, merged := instSchemaForTest(t, id)
 		checkMacroCategories(t, string(id), defs, merged)
 	}
-	// A WAV-clone document (MODAL / STRIKE / NOISE stages): no shipped
-	// instrument carries those stages until one is adopted.
+	// No shipped instrument carries the WAV-clone stages until one is adopted.
 	if err := installDemoModalDoc(roster.TubularBells); err != nil {
 		t.Fatal(err)
 	}
@@ -103,8 +95,7 @@ func checkMacroCategories(t *testing.T, id string, defs []audio.ParamDef, merged
 			t.Errorf("instrument %s category %s: empty label/gloss", id, g.ID)
 		}
 	}
-	// Coverage counts every concept, active or not: a HIDE-UNUSED concept's
-	// params are still reachable through the pipeline strip's stage drill.
+	// Active or not: a hidden category's params are still reachable through a stage drill.
 	claimed := map[string]int{}
 	for _, g := range buildMacroGroupsAll(defs, merged) {
 		for _, p := range g.Params {

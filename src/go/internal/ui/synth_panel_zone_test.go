@@ -10,9 +10,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// Phase 4 — tests for the Synth tab inside the EQ panel zone. The tab is
-// reached by switching the EQ panel's active tab to TabSynth; the panel
-// then delegates layout/draw/hit-areas to DrumView through the EQCallbacks.
+// The EQ panel delegates the Synth tab's layout, draw and hit areas to DrumView through EQCallbacks.
 
 func newSynthTabGame(t *testing.T) *Game {
 	t.Helper()
@@ -73,9 +71,7 @@ func TestSynthTab_LayoutPopulatesSliders(t *testing.T) {
 }
 
 func TestSynthTab_NoSilentNoOpSlidersAcrossRecipes(t *testing.T) {
-	// Across every shipped instrument, neither attack nor color should appear
-	// in the bindings — no C renderer reads them. Locks in the Synth-tab
-	// redesign's #1 UX fix at the slider-binding layer.
+	// No C renderer reads attack or color, so neither may be bound on any instrument.
 	g := newSynthTabGame(t)
 	for _, id := range roster.All {
 		g.drum.Rows[0].Instrument = instrument.ID("test-noop-" + string(id))
@@ -133,10 +129,7 @@ func TestSynthTab_SliderDragMutatesAudioParams(t *testing.T) {
 	if idx < 0 {
 		t.Fatal("decay slider not in bindings")
 	}
-	// Synth-tab redesign uses Knob widgets (vertical drag). To exercise
-	// the propagate + rescale path deterministically without relying on
-	// the knob's pixels-per-sweep constant, set the slider value directly
-	// — the propagate helper reads from the slider as the value store.
+	// Set directly: the propagate helper reads the knob as its value store, independent of pixels per sweep.
 	sliders[idx].Value = 0.75
 	g.drum.propagateSynthSliderValue(idx, roster.Snare)
 
@@ -162,11 +155,7 @@ func TestSynthTab_HitAreasFlowFromEQPanelWhenActive(t *testing.T) {
 			t.Error("synth hit areas leaked into TabEQ HitAreas")
 		}
 	}
-	// Synth tab: synth hit areas appended. Under the chip-strip +
-	// expand-one-detail-pane layout only the SELECTED stage's knobs publish
-	// hit areas, so open the stage that owns knob index 0 (and force the panel
-	// to its expanded synth height) before asserting synth-slider-0 flows
-	// through the EQ panel zone.
+	// Only the selected stage's knobs publish hit areas, so open knob 0's stage at the expanded height first.
 	expandSynthPanelForTest(t, g)
 	selectSectionForKnobIdx(t, g, roster.Snare, 0)
 	synthAreas := g.drum.eqPanelZone.HitAreas()
@@ -183,36 +172,9 @@ func TestSynthTab_HitAreasFlowFromEQPanelWhenActive(t *testing.T) {
 }
 
 func TestSynthTab_SectionCardsLayoutPerRecipe(t *testing.T) {
-	// Phase 8B unified Synth tab (+ Phase-8C modulator stages + the Phase-8E
-	// filter-envelope / unison additions + the Phase-15 voice/choir stages,
-	// Task 8): every synth instrument shows the standardized
-	// VOICE · OSC · ENSEMBLE · FM · PITCH · LFO · BURST · ENVELOPE · FILTER ·
-	// FILTER ENV · FORMANT · RESONATOR · POST
-	// sequence. For synth-modular-snare:
-	//   VOICE     = the 12 snare family/voice knobs (generator + fundamental + the
-	//               tone/noise/tail decays + mixes + attack + the base Pitch
-	//               voice_freq_hz the seed sets — the knobs that ARE the snare
-	//               sound),
-	//   OSC       = the 3 standardized oscillator knobs (osc_type/detune/octave),
-	//   ENSEMBLE  = the 5 unison/ensemble knobs (Voices/Detune/Mix + 2 drift)
-	//               which stack the oscillator, PLUS the 4 Phase-15 humanization
-	//               knobs (Scatter/Vibrato Rate/Vibrato Depth/Humanize) PLUS the
-	//               Phase-16 Roughness (ens_jitter) knob → 10,
-	//   (no FM: the operators belong to the FM oscillator module, and the
-	//    snare's oscillator is the sine — spec 2026-10-04 §6),
-	//   PITCH     = the 2 pitch-env knobs (pitchenv_amt/decay),
-	//   LFO       = the 4 LFO knobs (lfo_rate/depth/target/delay),
-	//   BURST     = sharpness + 4×(off, amp) = 9,
-	//   ENV       = the 5 amp ADSR knobs (env_enabled is the pill),
-	//   FILTER    = the 3 standardized static-filter knobs,
-	//   FILTER ENV= the 3 filter-envelope knobs (filtenv_amt/decay/attack),
-	//   FORMANT   = the 9 formant knobs (Vowel/Voice Type/Mix/Head Size/Breath/
-	//               Shine/Morph Speed/Morph To + the Phase-16 Dry Blend
-	//               (formant_dry) knob — formant_enabled is the pill),
-	//   RESONATOR = the 3 body-resonator knobs (Body Model/Body Mix/Bow Dynamics),
-	//   POST      = drive + pitch + gain = 3 (drive_enabled is the pill).
-	// Each stage section also carries its enable pill; VOICE/ENSEMBLE/RESONATOR
-	// carry none.
+	// Every synth instrument shows the standard sequence VOICE · OSC · ENSEMBLE · FM · PITCH · LFO · BURST · ENVELOPE ·
+	// FILTER · FILTER ENV · FORMANT · RESONATOR · POST, pruned of empty stages (the snare has no FM); stages carry
+	// enable pills, VOICE/ENSEMBLE/RESONATOR none.
 	g := newSynthTabGame(t)
 	g.drum.eqPanelZone.SetActiveTab(TabSynth)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
@@ -265,9 +227,7 @@ func TestSynthTab_SectionCardsLayoutPerRecipe(t *testing.T) {
 		}
 	}
 
-	// Category layer: sections are the stage MODEL (never laid out as cards).
-	// Every section is part of the pipeline strip model — ON stages as pills,
-	// OFF stages under the "+" pill — in pipeline order.
+	// Sections are the stage model in pipeline order: ON stages as pills, OFF ones under "+".
 	on, off := g.drum.synp().activePipelineStages(g.drum.synthTabActiveInstrument())
 	if got := len(on) + len(off); got != len(sections) {
 		t.Fatalf("pipeline model covers %d stages, want one per section (%d)", got, len(sections))
@@ -287,11 +247,7 @@ func TestSynthTab_SectionCardsLayoutPerRecipe(t *testing.T) {
 }
 
 func TestSynthTab_EmptySectionsArePruned(t *testing.T) {
-	// Empty standardized sections are PRUNED (never shown as "not used"
-	// placeholders). The bare modular voice plays the sine oscillator and no
-	// generator layer, so the FM section (the FM oscillator's operators) has no
-	// knob to show and must be absent; every section that IS shown carries at
-	// least one knob or its enable pill.
+	// Empty sections are pruned, never shown as placeholders: the bare modular voice has no FM operators to show.
 	g := setupModularSynthGame(t)
 	audio.SetInstrumentParam(roster.Modular, "osc_type", 0) // back to the sine oscillator
 	g.drum.eqPanelZone.SetActiveTab(TabSynth)
@@ -307,13 +263,7 @@ func TestSynthTab_EmptySectionsArePruned(t *testing.T) {
 	}
 }
 
-// TestSynthTab_NoSynthInstrumentShowsBanner verifies that when the active
-// row's instrument has no synth recipe (it plays a loaded WAV sample), the
-// synth tab abandons its grid of empty section
-// cards and instead enters the single-banner no-synth state: no sections,
-// no wired knobs, and a non-empty banner rect. Removing the section cards
-// also removes the distracting trigger-pulse borders that used to blink
-// around cards that the sample doesn't use.
+// A WAV instrument gets the single no-synth banner: no sections, no knobs.
 func TestSynthTab_NoSynthInstrumentShowsBanner(t *testing.T) {
 	g := newSynthTabGame(t)
 	g.drum.Rows[0].Name = "Kick"
@@ -341,9 +291,7 @@ func TestSynthTab_NoSynthInstrumentShowsBanner(t *testing.T) {
 	}
 }
 
-// TestSynthTab_RecipeInstrumentDoesNotShowBanner is the negative control:
-// a real synth instrument (snare → synth-modular-snare) must NOT enter the no-synth
-// banner state and must still render its section cards.
+// The control: a synth instrument keeps its cards.
 func TestSynthTab_RecipeInstrumentDoesNotShowBanner(t *testing.T) {
 	g := newSynthTabGame(t)
 	g.drum.eqPanelZone.SetActiveTab(TabSynth)
@@ -372,11 +320,8 @@ func TestSynthTab_HeaderLayoutRecordsResolvedInstrument(t *testing.T) {
 }
 
 func TestSynthTab_SliderDragCoalescesIdenticalValues(t *testing.T) {
-	// Regression: in browser builds the slider drag handler fires
-	// OnDrag every frame even when the mouse stays still, producing
-	// a 60Hz event flood that stalled the JS audio thread. The
-	// coalescer in propagateSynthSliderValue must skip a follow-up
-	// emit when the rescaled value hasn't changed.
+	// The browser fires OnDrag every frame of a still drag; an unchanged value must emit nothing, or the event flood
+	// stalls the JS audio thread.
 	g := newSynthTabGame(t)
 	g.drum.eqPanelZone.SetActiveTab(TabSynth)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
@@ -440,8 +385,7 @@ func TestSynthTab_NoActiveInstrumentRendersEmpty(t *testing.T) {
 	}
 }
 
-// stageDefForTest returns the real modular ParamDef for a stage param, so a
-// test fixture routes exactly as the shipped schema does.
+// So a fixture routes exactly as the shipped schema does.
 func stageDefForTest(t *testing.T, name string) audio.ParamDef {
 	t.Helper()
 	def, ok := audio.StageParamDefByName(name)

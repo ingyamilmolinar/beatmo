@@ -10,24 +10,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// synth_armed_instrument_switch_test.go — regression coverage for the
-// cross-task lifecycle bug: the armed model has an asymmetry where
-// instEditorArmedControl is a per-instID map but instEditorArmedEditor is a
-// single shared pointer. Nothing used to reconcile them when the active
-// instrument changed via the channel pill (or project load / row
-// reassignment): arming a control on instrument A then switching the Synth
-// tab to instrument B left instEditorArmedEditor pointing at A's editor,
-// which forced buildSynthTab(B)'s schema-defer guard to keep rendering A's
-// schema on B's tab — a stuck/frozen Synth tab for B. buildSynthTab now
-// reconciles the shared editor to the instrument being built at the top of
-// the function, before the schema-defer guard runs.
+// The armed control is per instrument but the editor is one shared pointer, so building another instrument's tab
+// must first reconcile the editor, or that tab stays stuck on the previous instrument's schema.
 
-// TestSynthArmedEditor_ReconcilesOnInstrumentSwitch arms a control on
-// instrument A, switches the Synth tab's active instrument to a DIFFERENT
-// instrument B (via the real channel-pill path, EQPanelZone.SetActiveChannel)
-// and drives a layout pass. It asserts the shared armed editor is no longer
-// stale-bound to A (either nil, or rebound to B) and that B's own schema
-// (not A's frozen one) is what actually got laid out.
+// Through the real channel-pill path: the editor is nil or rebound to B, and B's own schema is laid out.
 func TestSynthArmedEditor_ReconcilesOnInstrumentSwitch(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	dv := g.drum
@@ -61,9 +47,7 @@ func TestSynthArmedEditor_ReconcilesOnInstrumentSwitch(t *testing.T) {
 		t.Fatal("instrument A produced no bindings after layout")
 	}
 
-	// Switch the Synth tab's active instrument to B via the real channel-pill
-	// path, then drive another layout/build pass. This is the exact repro:
-	// buildSynthTab(B) must not still see A's stale armed editor.
+	// buildSynthTab(B) must not still see A's editor.
 	dv.eqPanelZone.SetActiveChannel(channel.Of(instB))
 	layoutSynthTab(t, g)
 
@@ -74,9 +58,7 @@ func TestSynthArmedEditor_ReconcilesOnInstrumentSwitch(t *testing.T) {
 		t.Fatalf("armed editor bound to neither A nor B (idx=%d instID=%q)", e.idx, e.instID)
 	}
 
-	// Prove B's OWN schema actually rendered — not A's frozen one. A control
-	// unexpectedly still being reported armed for B (when B never armed
-	// anything) would mean the schema-defer guard incorrectly kept firing.
+	// B never armed anything.
 	if _, armed := dv.synthControlArmed(instB); armed {
 		t.Fatalf("instrument B must not report an armed control; nothing was armed on B")
 	}
@@ -86,10 +68,7 @@ func TestSynthArmedEditor_ReconcilesOnInstrumentSwitch(t *testing.T) {
 	if dv.synthTabActiveInstrument() != instB {
 		t.Fatalf("active instrument should now be B, got %q", dv.synthTabActiveInstrument())
 	}
-	// The bindings the tab actually laid out must reflect B's recipe schema
-	// (drum-snare), not still be frozen to A's (synth-modular) — the
-	// observable symptom of the bug: B's tab visually stuck rendering A's
-	// controls. Compare against the drum-snare param-name set directly.
+	// B's drum-snare schema, not A's frozen synth-modular one.
 	if len(dv.instEditorBindings) == 0 {
 		t.Fatal("instrument B produced no bindings after switch — Synth tab appears frozen/empty")
 	}
@@ -107,10 +86,7 @@ func TestSynthArmedEditor_ReconcilesOnInstrumentSwitch(t *testing.T) {
 	}
 }
 
-// TestSynthArmedEditor_SameInstrumentDeferralStillWorks pins that the fix does
-// NOT regress the existing same-instrument schema-defer guard: arming a
-// control and rebuilding the SAME instrument's tab (e.g. an osc_type toggle
-// mid-edit) must still defer the schema swap until the editor disarms.
+// Rebuilding the SAME instrument (an osc_type toggle mid-edit) still defers the schema swap until disarm.
 func TestSynthArmedEditor_SameInstrumentDeferralStillWorks(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	dv := g.drum
@@ -130,9 +106,7 @@ func TestSynthArmedEditor_SameInstrumentDeferralStillWorks(t *testing.T) {
 	}
 	prevIdx := dv.instEditorArmedEditor.idx
 
-	// Re-layout the SAME instrument's tab repeatedly (mirrors a live edit /
-	// osc_type toggle mid-arm): the armed editor must be REBUILT with the
-	// SAME instID/idx, never disarmed, as long as the control stays armed.
+	// Rebuilt with the same instID/idx, never disarmed.
 	for i := 0; i < 3; i++ {
 		dv.eqPanelZone.SetActiveChannel(channel.Of(instA))
 		layoutSynthTab(t, g)

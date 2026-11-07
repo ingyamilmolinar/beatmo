@@ -8,8 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// recipeParamsSignature is the order-independent fingerprint that drives the
-// Sampler's live re-capture decision.
+// Order-independent; it drives the live re-capture decision.
 func TestRecipeParamsSignature(t *testing.T) {
 	if recipeParamsSignature(nil) != 0 {
 		t.Fatalf("nil overlay must hash to 0")
@@ -32,9 +31,7 @@ func TestRecipeParamsSignature(t *testing.T) {
 	}
 }
 
-// The core fix: when the source synth's signal changes (the user edits a synth
-// knob), the Sampler waveform must re-render to match — without a manual Preview
-// or tab switch — while keeping the user's in-progress chop.
+// A synth edit re-renders the waveform without Preview or a tab switch, keeping the chop.
 func TestSamplerRecapturesWhenSynthSignatureChanges(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -56,8 +53,7 @@ func TestSamplerRecapturesWhenSynthSignatureChanges(t *testing.T) {
 	restoreSig := SwapSamplerSourceSignatureFnForTest(func(instrument.ID) uint64 { return sig })
 	t.Cleanup(func() { SwapSamplerSourceSignatureFnForTest(restoreSig) })
 
-	// A recipe binding makes inst.alpha a synth source (the precondition for
-	// live re-capture-on-signature-change); a non-recipe id is a raw WAV.
+	// A document makes inst.alpha a synth source; an id with none is a raw WAV.
 	_ = audio.InstallInstrumentDocForTest("inst.alpha", roster.Kick)
 	t.Cleanup(func() { audio.RemoveInstrumentDocForTest("inst.alpha") })
 
@@ -96,8 +92,7 @@ func TestSamplerRecapturesWhenSynthSignatureChanges(t *testing.T) {
 	}
 }
 
-// A WAV-sourced buffer is fixed PCM — there is no synth behind it, so a
-// signature change must never trigger a synth re-render.
+// A WAV buffer has no synth behind it.
 func TestSamplerDoesNotRecaptureWAVSource(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -128,8 +123,7 @@ func TestSamplerDoesNotRecaptureWAVSource(t *testing.T) {
 	}
 }
 
-// Selecting a *different* instrument is a fresh chop: edits reset to the full
-// buffer (distinct from a same-instrument live re-capture, which preserves them).
+// A new instrument is a fresh chop; a same-instrument re-capture keeps the edits.
 func TestSamplerReloadResetsEditsOnInstrumentChange(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)

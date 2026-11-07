@@ -12,9 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 )
 
-// channelWithSineWave returns a ChannelMetrics carrying a recognizable sine
-// waveform. Used so drawWaveformCursor has data to sample under the cursor
-// when computing its readout.
+// So drawWaveformCursor has data under the cursor.
 func channelWithSineWave() *analyzer.ChannelMetrics {
 	const n = 512
 	w := make([]float64, n)
@@ -24,9 +22,7 @@ func channelWithSineWave() *analyzer.ChannelMetrics {
 	return &analyzer.ChannelMetrics{Active: true, Waveform: w}
 }
 
-// TestWaveformDrawCursorReadout — drawWaveformCursor must draw a vertical
-// crosshair at cursorX in colTextSecondary and emit a labeled readout box
-// (colSurface2 with AlphaStrong alpha) along the top of the waveform rect.
+// A colTextSecondary crosshair at cursorX and a readout box (surface-2 at AlphaStrong) along the top.
 func TestWaveformDrawCursorReadout(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -60,8 +56,7 @@ func TestWaveformDrawCursorReadout(t *testing.T) {
 	}
 }
 
-// TestWaveformCursorClampsOutsideRect — cursor outside the waveform rect must
-// not emit any draw calls (nothing to render).
+// Nothing to render.
 func TestWaveformCursorClampsOutsideRect(t *testing.T) {
 	assertDefaultParityState(t)
 

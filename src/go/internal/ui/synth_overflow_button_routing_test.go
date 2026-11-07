@@ -11,9 +11,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// setupNarrowSynthOverflow builds a mobile synth tab narrow enough that the
-// header action buttons collapse into the overflow (⋯) chevron, and returns
-// the game plus the overflow button.
+// Narrow enough that the header actions collapse into ⋯.
 func setupNarrowSynthOverflow(t *testing.T, w, h int) (*Game, *Button) {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -43,12 +41,8 @@ func setupNarrowSynthOverflow(t *testing.T, w, h int) (*Game, *Button) {
 	return g, ov
 }
 
-// TestSynthOverflowButtonOpensSheet reproduces a real bug: on a narrow synth
-// panel the header collapses extra actions into the overflow (⋯) button. But
-// the footer hit-dispatch loop routes buttons by their sentinel TEXT, and the
-// overflow button's empty text falls into the `default` case that is wired to
-// the RESET handler. So tapping the overflow chevron wipes the synth params
-// back to defaults instead of opening the actions menu.
+// Buttons are routed by sentinel text, and the overflow's empty text fell to the default case wired to Reset: ⋯
+// must open the menu, never reset the params.
 func TestSynthOverflowButtonOpensSheet(t *testing.T) {
 	g, ov := setupNarrowSynthOverflow(t, 360, 760)
 	if ov == nil || ov.Rect().Empty() {

@@ -7,30 +7,12 @@ import (
 	"testing"
 )
 
-// synth_armed_anim_invariants_test.go — per-FRAME geometry invariants for the
-// armed-control grow/shrink animation.
-//
-// Every earlier armed-grow test inspects only the SETTLED frame. That blind spot
-// hid two separate origin-anchored bugs, because ControlGrid's "off-window"
-// return value (image.Rectangle{}) is simultaneously a NOT-VISIBLE sentinel and
-// a zero-size rect at the SCREEN ORIGIN — so feeding it to lerpRect makes a
-// control travel to or from (0,0):
-//
-//   - empty TARGET  (neighbour reflowed onto a row below the window): the control
-//     flew UP-LEFT toward (0,0), shrinking to nothing.
-//   - empty RESTING (control already off-window before the grow): the control
-//     flew OUT of (0,0), growing from a tiny square and sweeping across unrelated
-//     chrome — visible as a stray square over the "Your sound" preview pane.
-//
-// These run the REAL layout path (eqPanelZone.Layout) frame by frame over several
-// window sizes, including sizes where the grid has a single visible row so the
-// reflow genuinely pushes neighbours off-window.
+// Per-frame invariants of the armed grow/shrink. ControlGrid's off-window rect is also a zero rect at the
+// origin, so lerping to or from it sends a control flying to or out of (0,0); real layouts at several sizes,
+// some with one visible row so neighbours really go off-window.
 
-// armAnimLayouts covers a wide grid (everything stays on-window), WIDE-BUT-SHORT
-// grids (many columns AND a single visible row — the worst case: a control that is
-// off-window at rest has a far-RIGHT target, so interpolating from the origin
-// sentinel sweeps it diagonally across the whole panel, including the right-hand
-// preview pane), and narrow grids with one visible row.
+// Wide-but-short grids are the worst case: an off-window control with a far-right target would sweep across the
+// whole panel from the origin.
 var armAnimLayouts = [][2]int{
 	{1280, 2000}, {1600, 900}, {1440, 950}, {1280, 900}, {900, 1000}, {700, 900}, {560, 820},
 }
@@ -41,9 +23,7 @@ type armAnimFrame struct {
 	rect image.Rectangle
 }
 
-// runArmGrowFrames arms `pick` (chosen from the on-window controls) and yields
-// every frame of the grow to fn, along with the resting rects and the geometry
-// the frame must respect.
+// Yields every grow frame with the resting rects and the geometry it must respect.
 func runArmGrowFrames(t *testing.T, w, h int, pick func(onWin []int) int,
 	fn func(frame int, rects []armAnimFrame, rest map[int]image.Rectangle, content, preview image.Rectangle)) {
 	t.Helper()
@@ -85,9 +65,7 @@ func runArmGrowFrames(t *testing.T, w, h int, pick func(onWin []int) int,
 	}
 }
 
-// No control may ever paint outside the grid's own content column. The empty-
-// target bug sent neighbours up-left to (0,0); the empty-resting bug sent them
-// out of (0,0). Both escape the grid horizontally, which this catches directly.
+// Never outside the grid's content column, which both origin bugs escape.
 func TestArmGrowAnim_NeverEscapesGridHorizontally(t *testing.T) {
 	for _, sz := range armAnimLayouts {
 		w, h := sz[0], sz[1]
@@ -106,8 +84,7 @@ func TestArmGrowAnim_NeverEscapesGridHorizontally(t *testing.T) {
 	}
 }
 
-// The grow must never lift a control above where it was resting: the armed card
-// grows DOWN, neighbours reflow DOWN.
+// The armed card grows DOWN and neighbours reflow DOWN.
 func TestArmGrowAnim_NothingMovesUp(t *testing.T) {
 	for _, sz := range armAnimLayouts {
 		w, h := sz[0], sz[1]
@@ -126,10 +103,8 @@ func TestArmGrowAnim_NothingMovesUp(t *testing.T) {
 	}
 }
 
-// A control that is off-window BEFORE the grow must stay hidden throughout it.
-// The reflow only pushes controls down, so one can never scroll into view — and
-// animating it means interpolating from the empty sentinel at (0,0), which is
-// what painted a stray square over the preview pane.
+// The reflow only pushes down, so an off-window control never scrolls into view; animating it would start at
+// (0,0).
 func TestArmGrowAnim_OffWindowControlStaysHidden(t *testing.T) {
 	checked := 0
 	for _, sz := range armAnimLayouts {
@@ -154,9 +129,7 @@ func TestArmGrowAnim_OffWindowControlStaysHidden(t *testing.T) {
 	}
 }
 
-// Nothing the grow animates may reach into the right-hand "Your sound" preview
-// pane. This is the user-visible symptom the empty-resting bug produced: a small
-// square drifting across the preview graphs.
+// Nothing reaches into the right-hand graph pane.
 func TestArmGrowAnim_NeverPaintsIntoPreviewPane(t *testing.T) {
 	for _, sz := range armAnimLayouts {
 		w, h := sz[0], sz[1]
@@ -178,10 +151,7 @@ func TestArmGrowAnim_NeverPaintsIntoPreviewPane(t *testing.T) {
 	}
 }
 
-// Neighbours move DOWN ONLY — never sideways. reflowArmedAnchored keeps each
-// control in its column, so its X is pixel-identical on every frame of the grow.
-// (The previous reading-order masonry reassigned columns, so cards flew diagonally
-// across the panel.)
+// Each control stays in its column, so its X is identical on every frame.
 func TestArmGrowAnim_NeighboursNeverMoveSideways(t *testing.T) {
 	for _, sz := range armAnimLayouts {
 		w, h := sz[0], sz[1]
@@ -205,9 +175,7 @@ func TestArmGrowAnim_NeighboursNeverMoveSideways(t *testing.T) {
 	}
 }
 
-// Two non-armed cards must never overlap on any frame. Purely vertical, in-column
-// travel makes this hold throughout the transition, not just at rest — the old
-// masonry violated it mid-flight when a card crossed a stationary sibling.
+// Purely vertical in-column travel keeps this true mid-flight, not just at rest.
 func TestArmGrowAnim_NeighboursNeverOverlapEachOther(t *testing.T) {
 	for _, sz := range armAnimLayouts {
 		w, h := sz[0], sz[1]
@@ -230,9 +198,7 @@ func TestArmGrowAnim_NeighboursNeverOverlapEachOther(t *testing.T) {
 	}
 }
 
-// No control may paint below the grid's fold — a neighbour sliding toward an
-// off-window row is cut off at the bottom edge, never drawn over whatever
-// follows the grid.
+// Cut at the fold, never drawn over what follows the grid.
 func TestArmGrowAnim_NeverPaintsBelowTheFold(t *testing.T) {
 	for _, sz := range armAnimLayouts {
 		w, h := sz[0], sz[1]
@@ -274,8 +240,7 @@ func TestArmGrowAnim_NeverPaintsBelowTheFold(t *testing.T) {
 	}
 }
 
-// The SHRINK half (disarming) must obey the same rules — it replays the same
-// reflow with the progress running back down to 0.
+// The same reflow with progress running back to 0.
 func TestArmGrowAnim_ShrinkObeysSameInvariants(t *testing.T) {
 	for _, sz := range armAnimLayouts {
 		w, h := sz[0], sz[1]

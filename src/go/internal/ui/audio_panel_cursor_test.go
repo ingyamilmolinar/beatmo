@@ -9,9 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// setEQPanelCursorTestInput replaces cursorPosition/isMouseButtonPressed with
-// fixed values for the duration of the test. mx/my anchor the desktop cursor;
-// pressed gates isMouseButtonPressed(MouseButtonLeft).
+// mx/my anchor the desktop cursor; pressed gates the left button.
 func setEQPanelCursorTestInput(t *testing.T, mx, my int, pressed bool) func() {
 	t.Helper()
 	return SetInputForTest(
@@ -24,10 +22,7 @@ func setEQPanelCursorTestInput(t *testing.T, mx, my int, pressed bool) func() {
 	)
 }
 
-// laidOutEQZoneForCursor returns an EQPanelZone wired into a tree at a known
-// rect and forces the requested active tab. The zone's stickyBar is created
-// (so freeze etc. don't NPE inside Draw). Pass mobile=true to register the
-// touch scrub hit area before the second rebuild.
+// The sticky bar exists so Draw does not dereference nil; mobile registers the touch scrub before the second rebuild.
 func laidOutEQZoneForCursor(t *testing.T, tab PanelTab) *EQPanelZone {
 	t.Helper()
 	z, _ := newTestEQPanelZone(nil)
@@ -41,8 +36,6 @@ func laidOutEQZoneForCursor(t *testing.T, tab PanelTab) *EQPanelZone {
 	return z
 }
 
-// TestCursorHoverDesktopUpdatesPosition — on desktop, moving the cursor into
-// the content rect on the Spectrum tab sets cursorX and cursorActive.
 func TestCursorHoverDesktopUpdatesPosition(t *testing.T) {
 	assertDefaultParityState(t)
 	// Desktop profile is the default — explicit reset for clarity.
@@ -72,8 +65,6 @@ func TestCursorHoverDesktopUpdatesPosition(t *testing.T) {
 	}
 }
 
-// TestCursorExitDesktopClears — when the mouse leaves the content rect on
-// desktop, cursorActive must drop back to false.
 func TestCursorExitDesktopClears(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = false
@@ -100,8 +91,7 @@ func TestCursorExitDesktopClears(t *testing.T) {
 	}
 }
 
-// TestCursorTouchDragUpdatesPosition — on mobile, a press+drag inside the
-// content rect drives cursorX via the scrub handler.
+// Through the scrub handler.
 func TestCursorTouchDragUpdatesPosition(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true
@@ -116,8 +106,7 @@ func TestCursorTouchDragUpdatesPosition(t *testing.T) {
 	pressY := cr.Min.Y + 10
 	dragX := cr.Min.X + 80
 
-	// Drive the handler directly — same code path the tree's HitIndex would
-	// invoke for the registered "eq-audio-cursor-scrub" hit area.
+	// The same path the HitIndex invokes for "eq-audio-cursor-scrub".
 	h := &cursorScrubHandler{zone: z}
 	if got := h.OnPress(pressX, pressY); got != InputCaptured {
 		t.Errorf("OnPress returned %v, want InputCaptured", got)
@@ -134,8 +123,7 @@ func TestCursorTouchDragUpdatesPosition(t *testing.T) {
 	}
 }
 
-// TestCursorTouchReleasePersists — after release the cursor stays visible
-// (latched via cursorPinned).
+// Latched via cursorPinned.
 func TestCursorTouchReleasePersists(t *testing.T) {
 	assertDefaultParityState(t)
 	forceSmallScreenForTest = true
@@ -153,8 +141,7 @@ func TestCursorTouchReleasePersists(t *testing.T) {
 	if !z.cursorPinned {
 		t.Errorf("cursorPinned=false after release; want true (latched)")
 	}
-	// After Update, mobile path must NOT clear pinned state — there's no
-	// per-frame mobile reset.
+	// There is no per-frame reset on mobile.
 	restore := setEQPanelCursorTestInput(t, 0, 0, false)
 	defer restore()
 	z.updateAudioPanelCursor()

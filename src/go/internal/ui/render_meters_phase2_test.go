@@ -11,8 +11,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 )
 
-// TestLevelsPhase2_PeakHoldRises — feeding the latch a new peak should
-// raise PeakHoldDB to that value, regardless of prior value.
 func TestLevelsPhase2_PeakHoldRises(t *testing.T) {
 	var l LevelsLatch
 	l.PeakHoldDB = -40
@@ -22,9 +20,7 @@ func TestLevelsPhase2_PeakHoldRises(t *testing.T) {
 	}
 }
 
-// TestLevelsPhase2_PeakHoldDecays — feeding the latch a quieter peak
-// should not lower PeakHoldDB this frame (sticks at hold), but after
-// enough frames it should decay toward the live peak.
+// A quieter peak holds this frame and decays toward the live value later.
 func TestLevelsPhase2_PeakHoldDecays(t *testing.T) {
 	var l LevelsLatch
 	l.Update(0, -3, -9)
@@ -45,9 +41,7 @@ func TestLevelsPhase2_PeakHoldDecays(t *testing.T) {
 	}
 }
 
-// TestLevelsPhase2_PeakHoldLineRendered — a non-zero PeakHoldDB should
-// produce a thin vertical marker (colTextPrimary) on the Peak bar in
-// the Levels panel.
+// A thin colTextPrimary marker on the Peak bar.
 func TestLevelsPhase2_PeakHoldLineRendered(t *testing.T) {
 	rect := image.Rect(0, 0, 400, 80)
 	dst := ebiten.NewImage(rect.Dx(), rect.Dy())
@@ -58,9 +52,7 @@ func TestLevelsPhase2_PeakHoldLineRendered(t *testing.T) {
 		drawLevelsDetail(dst, rect, ch, latch)
 	})
 
-	// Peak bar lives in the top 60% of content area (below the 14px
-	// header strip, above the 18px footer). Marker should be in that
-	// vertical band.
+	// Below the 14 px header, above the 18 px footer.
 	peakBandTop := rect.Min.Y + 14
 	peakBandBot := peakBandTop + (rect.Dy()-14-18)*60/100
 	peakBand := image.Rect(rect.Min.X+28, peakBandTop, rect.Max.X-4, peakBandBot)
@@ -71,9 +63,7 @@ func TestLevelsPhase2_PeakHoldLineRendered(t *testing.T) {
 	}
 }
 
-// TestLevelsPhase2_ClipLEDLightsWhenLatched — when the latch is in
-// latched state (recent clip event), the header strip should paint
-// a small meterClip-colored LED.
+// A small meterClip LED in the header while latched.
 func TestLevelsPhase2_ClipLEDLightsWhenLatched(t *testing.T) {
 	rect := image.Rect(0, 0, 400, 80)
 	dst := ebiten.NewImage(rect.Dx(), rect.Dy())
@@ -96,8 +86,6 @@ func TestLevelsPhase2_ClipLEDLightsWhenLatched(t *testing.T) {
 	}
 }
 
-// TestLevelsPhase2_ClipLEDDarkWhenNoClip — header should NOT show
-// the clip LED when there's no recent clip event.
 func TestLevelsPhase2_ClipLEDDarkWhenNoClip(t *testing.T) {
 	rect := image.Rect(0, 0, 400, 80)
 	dst := ebiten.NewImage(rect.Dx(), rect.Dy())

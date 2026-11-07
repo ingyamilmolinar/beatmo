@@ -12,8 +12,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// recSink records the lane's sink calls (vids, voice counts) on top of a
-// fakeSink, so tests can check the per-cell voice-id blocks.
 type recSink struct {
 	*fakeSink
 	schedVIDs []uint64
@@ -47,8 +45,7 @@ func newChordGridLane(t *testing.T, layers []model.Layer) (*audioLane, *gridSour
 	return l, src, rec, now
 }
 
-// A chord cell is ONE lane entry whose voices own a contiguous block of
-// voice ids: the next cell's block starts right after it.
+// One lane entry whose voices own a contiguous block of ids; the next cell's block follows.
 func TestLaneChordCommitsOneBlockPerCell(t *testing.T) {
 	l, _, rec, _ := newChordGridLane(t, triad())
 	l.Tick()
@@ -62,8 +59,7 @@ func TestLaneChordCommitsOneBlockPerCell(t *testing.T) {
 	}
 }
 
-// A regular note mints exactly one id per cell — the sequence is unchanged
-// from before voice stacks existed.
+// Exactly one id per cell.
 func TestLaneSingleVoiceVIDsUnchanged(t *testing.T) {
 	l, _, rec, _ := newChordGridLane(t, nil)
 	l.Tick()
@@ -115,8 +111,7 @@ func TestLaneChordCancelCancelsEveryVoice(t *testing.T) {
 	}
 }
 
-// flushLaneOps expands a chord note into one BatchParam per voice — same
-// start, own voice id, pitch = root + layer semis, vol = vol × layer gain.
+// One BatchParam per voice: same start, own id, pitch root + layer semis, volume × layer gain.
 func TestFlushLaneOpsExpandsChordVoices(t *testing.T) {
 	g := newLaneCircuitGame(t)
 	var got []audio.BatchParam
@@ -137,8 +132,7 @@ func TestFlushLaneOpsExpandsChordVoices(t *testing.T) {
 	}
 }
 
-// A single-voice note reaches the engine exactly as before (voice id, pitch,
-// volume untouched — no gain multiply).
+// Id, pitch and volume untouched, with no gain multiply.
 func TestFlushLaneOpsSingleVoiceUnchanged(t *testing.T) {
 	g := newLaneCircuitGame(t)
 	var got []audio.BatchParam
@@ -151,9 +145,7 @@ func TestFlushLaneOpsSingleVoiceUnchanged(t *testing.T) {
 	}
 }
 
-// Review Focus 2: replacing a chord is all-or-nothing. If the engine refuses
-// ANY old voice (it started), none of the replacement voices play — never
-// the old chord and the new one together. If it refuses none, all play.
+// All or nothing: if the engine refuses ANY old voice, no replacement plays, never both chords at once.
 func TestLaneChordReplaceRefusedDropsWholeChord(t *testing.T) {
 	g := newLaneCircuitGame(t)
 	log := recordEngine(t, map[uint64]bool{21: true}) // only the MIDDLE old voice started
@@ -168,8 +160,7 @@ func TestLaneChordReplaceRefusedDropsWholeChord(t *testing.T) {
 	}
 }
 
-// laneNoteAt carries the chord node's layers; the hash moves when the chord
-// changes (or the lane would never re-commit an edited chord).
+// The hash moves with the chord, or an edited chord would never re-commit.
 func TestLaneNoteAtCarriesChordLayers(t *testing.T) {
 	g := newLaneCircuitGame(t)
 	id := chordTestNodeAt(t, g, 2)
@@ -194,8 +185,6 @@ func TestLaneNoteAtCarriesChordLayers(t *testing.T) {
 	}
 }
 
-// chordTestNodeAt turns the lane circuit's node at grid (i, 0) into a major
-// chord and returns its id.
 func chordTestNodeAt(t *testing.T, g *Game, i int) model.NodeID {
 	t.Helper()
 	ui := g.nodeAt(i, 0)
@@ -213,8 +202,7 @@ func chordTestNodeAt(t *testing.T, g *Game, i int) model.NodeID {
 	return ui.ID
 }
 
-// The legacy dispatch path (lane off) plays every voice of a chord, each
-// with the cell's row/abs; a regular cell still dispatches exactly one.
+// Every voice, each with the cell's row/abs; a regular cell still sends one.
 func TestLegacyDispatchPlaysEveryChordVoice(t *testing.T) {
 	g := newLaneCircuitGame(t)
 	chordTestNodeAt(t, g, 2)

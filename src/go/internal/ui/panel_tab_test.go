@@ -62,12 +62,7 @@ func TestPanelTabAlwaysTallHeight(t *testing.T) {
 	eqPanelHeight = 190
 	t.Cleanup(func() { eqPanelHeight = prev })
 
-	// Every tab returns the tall height regardless of expanded state —
-	// the kid-friendly redesign defaults every audio tab to the same
-	// readable size. Drag-resize via DrumView.eqH overrides downstream.
-	// The Synth tab is the one exception: it packs a row of stage cards
-	// (dial + caption + concept band per knob) and gets one extra
-	// eqPanelHeight of vertical room (see PanelHeightAt).
+	// The same readable height for every tab; Synth gets one extra eqPanelHeight for its row of stage cards.
 	for _, tab := range AllPanelTabs() {
 		s := NewPanelTabState()
 		s.SetActiveTab(tab)
@@ -93,10 +88,6 @@ func TestPanelTabLabels(t *testing.T) {
 		t.Fatalf("expected 7 tabs (EQ + Wave + Spectrum + Levels + Chain + Synth + Sampler), got %d", len(tabs))
 	}
 
-	// "Levels" replaces "Meters" (every consumer DAW uses Levels);
-	// "Chain" replaces "Scope" (communicates pipeline-stage view);
-	// "Synth" surfaces SynthRecipe params; "Sampler" is the WAV/synth-capture
-	// sample editor.
 	expected := map[PanelTab]string{
 		TabWave:     "Wave",
 		TabSpectrum: "Spectrum",
@@ -139,10 +130,7 @@ func TestPanelTabSlugCanonical(t *testing.T) {
 func TestPanelTabSamplerMobileLabel(t *testing.T) {
 	assertDefaultParityState(t)
 
-	// setupMobileTest forces the small-screen profile with proper cleanup so
-	// Profile() resolves to mobile even though detectSmallScreen() would
-	// otherwise report desktop in the test harness. (The desktop "Sampler"
-	// label is covered by TestPanelTabLabels under the default profile.)
+	// Forces the small-screen profile, which the harness would otherwise not detect.
 	setupMobileTest(t, true)
 	UpdateProfile()
 	if got := PanelTabLabelForProfile(TabSampler); got != "Smpl" {

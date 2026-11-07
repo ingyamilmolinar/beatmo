@@ -15,56 +15,29 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/synthdial"
 )
 
-// dialChangeAudible reports whether played differs audibly from centre (the
-// shared oracle, soundview.CompareNotes), and the two measurements behind the
-// verdict.
+// Through the shared oracle, soundview.CompareNotes.
 func dialChangeAudible(played, centre []float64, sr int) (ok bool, db, cents float64) {
 	c := soundview.CompareNotes(played, centre, sr)
 	return c.Audible(), c.GlobalDB, c.Cents
 }
 
-// dialMeasurableMinTravel is the smallest move (in span coordinate) a dial end
-// must make on at least one of its params: 5 % of the term's span.
+// In span coordinate.
 const dialMeasurableMinTravel = 0.05
 
-// dialMeasurableMinGap is how far (in readout units) a dial end must be from
-// the shipped reading before it is held to the contract: an end the sound
-// already sits at (Drive 0 on a clean voice) has nowhere to go.
+// In readout units: an end the sound already sits at has nowhere to go.
 const dialMeasurableMinGap = 10
 
-// TestEveryDialIsMeasurable is the contract behind the dials (spec
-// 2026-10-13 §6.3, 2026-10-25 §3.2): no dead or ineffective control is SHOWN.
-// The DSP decides which dials an instrument shows (synth_dial_relevance.go:
-// a dial whose 0 → 100 sweep is inaudible is hidden), so there is no
-// exception list: for every shipped instrument and every dial its root shows
-// after that verdict, the dial is turned to 0 and to 100 through the live
-// edit path (setSynthDialReading → one SetInstrumentParamsLive, what a drag
-// does) and the instrument is triggered through the playback path
-// (RenderAsPlayed: the cached, length-gated, peak-normalized voice a soloed
-// row actually plays).
-//
-//   - PARAMS: each end ≥ dialMeasurableMinGap from the shipped reading moves at
-//     least one term by ≥ dialMeasurableMinTravel of its span.
-//   - AUDIO: the 0 ↔ 100 sweep sounds different (soundview.CompareNotes) —
-//     on the PLAYED voice, independently of the graph render the verdicts
-//     were measured on.
-//
-// Dials that appear only once a stage is switched on are held to PARAMS; the
-// sound with that stage on is measured by the same relevance function when
-// the tab first shows it.
+// No dead control is shown, with no exception list: every dial shown, turned to 0 and 100 through the live edit
+// path, moves a term ≥ 5% of its span from any end ≥ 10 away, and its sweep is audible on the PLAYED voice.
+// Stage-gated dials are held to the param half.
 func TestEveryDialIsMeasurable(t *testing.T) {
 	g := buildTestGame(t)
 	dv := g.drum
-	// Pin everything the played voice depends on, so the verdicts are the
-	// same alone and after any other test in the package: the shipped
-	// documents (a private, empty user library). The tempo is not one of
-	// them: a voice is render.seconds long at every tempo.
+	// The shipped documents and an empty user library, so the verdicts do not depend on test order.
 	withPrivateInstrumentLibrary(t)
 	audio.ResetInstrumentDocs()
 	t.Cleanup(audio.ResetInstrumentDocs)
-	// Measure the sound, not the prewarm race: a dispatch miss renders the new
-	// voice instead of serving the best cached one (delivery has its own test,
-	// TestSynthDialTurnReachesEveryPlayedNote).
+	// A miss renders instead of serving the best cached voice, so this measures the sound, not the prewarm race.
 	audio.SetDispatchMustNotRender(false)
 	t.Cleanup(func() { audio.SetDispatchMustNotRender(true) })
 
@@ -131,9 +104,7 @@ func TestEveryDialIsMeasurable(t *testing.T) {
 		for _, k := range hidden {
 			onRoot[k[strings.Index(k, "/")+1:]] = true
 		}
-		// Dials that appear only once their stage is switched on (the
-		// developer's "+ Add" / stage pill): PARAMS on this instrument with
-		// exactly the stages their terms live in switched on.
+		// With exactly the stages their terms live in switched on.
 		gates := synthStageGates(schema)
 		defs := map[string]audio.ParamDef{}
 		for _, pd := range schema {

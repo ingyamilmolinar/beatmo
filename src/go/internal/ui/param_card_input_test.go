@@ -10,25 +10,13 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// param_card_input_test.go — Task 5. The synth knob card is now a UNIVERSAL
-// tap-to-popup + desktop-wheel-nudge control on every platform:
-//   - a click/tap anywhere on the card opens the value-wheel popup (was
-//     mobile-only; desktop used to start an in-place rotary drag);
-//   - a desktop scroll-wheel notch over the card nudges the value by one
-//     StepMul (endless) / one detent (discrete) and collapses the whole spin
-//     into ONE debounced undo step;
-//   - a wheel over grid whitespace still scrolls the section (never nudges).
-//
-// These drive the REAL production tree dispatch (SetInputForTest → g.Update →
-// HitIndex → synthControlHitAdapter), mirroring knob_interaction_functional_test.go.
+// The synth card on every platform: a tap arms it, a desktop wheel over the armed value lane nudges by one step
+// and collapses the spin into ONE debounced undo step, and a wheel over whitespace scrolls. Real tree dispatch.
 
-// undoDepth returns the current undo-stack depth (one entry per committed
-// gesture). Mirrors the accessor used by game_marquee_test.go and friends.
+// One entry per committed gesture.
 func undoDepth(g *Game) int { return len(g.undoManager.undo) }
 
-// firstContinuousSynthControl selects the section that owns the canonical
-// continuous (endless, badge-backed) synth knob — filter_cutoff — lays it out,
-// and returns its binding index + on-screen rect. Fails if the knob has no rect.
+// filter_cutoff, the canonical endless badge-backed knob; fails if it has no rect.
 func firstContinuousSynthControl(t *testing.T, g *Game) (int, image.Rectangle) {
 	t.Helper()
 	idx := synthIdxByParam(t, g, "filter_cutoff")
@@ -44,8 +32,7 @@ func firstContinuousSynthControl(t *testing.T, g *Game) (int, image.Rectangle) {
 	return idx, r
 }
 
-// pressAndReleaseAt drives a press+release at (x,y) through the real tree
-// dispatcher (one frame pressed, one frame released).
+// One frame pressed, one released.
 func pressAndReleaseAt(t *testing.T, g *Game, x, y int) {
 	t.Helper()
 	g.drum.eqPanelZone.Invalidate()
@@ -66,8 +53,7 @@ func pressAndReleaseAt(t *testing.T, g *Game, x, y int) {
 	g.Update()
 }
 
-// dispatchWheelAt delivers one vertical wheel notch (steps) at (x,y) through the
-// real tree dispatcher, then settles one frame with no wheel.
+// Then one settle frame with no wheel.
 func dispatchWheelAt(t *testing.T, g *Game, x, y, steps int) {
 	t.Helper()
 	g.drum.eqPanelZone.Invalidate()
@@ -91,11 +77,7 @@ func dispatchWheelAt(t *testing.T, g *Game, x, y, steps int) {
 	g.Update()
 }
 
-// Desktop tap on a card arms it inline (Task 13: the barrel/wheel popup that
-// used to open on tap was retired — Task 9 replaced tap→popup with tap→arm).
-// See synth_armed_input_test.go's TestTapArmsThenWheelEditsValue for the full
-// armed-model tap contract; this only pins that the card-level dispatch still
-// reaches the armed path on desktop.
+// The card-level dispatch reaches the armed path on desktop.
 func TestParamCardClickArmsOnDesktop(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
@@ -108,14 +90,8 @@ func TestParamCardClickArmsOnDesktop(t *testing.T) {
 	}
 }
 
-// Desktop wheel over the ARMED control's value lane nudges the value and
-// commits ONE undo step after the debounce elapses (Task 13: migrated off the
-// retired not-armed wheel-nudge — Task 9 made a not-armed wheel over a card
-// SCROLL the row instead, see TestNotArmedWheelScrollsRow in
-// synth_armed_input_test.go). The gesture is now: arm the control (grows the
-// card + builds the ArmedControlEditor), let the layout populate the value
-// lane's rect, then wheel over that lane through the same real-tree
-// dispatchWheelAt path used everywhere else in this file.
+// Over the armed control's value lane the wheel nudges and commits ONE undo step after the debounce; a wheel over
+// an unarmed card scrolls the row instead.
 func TestParamCardWheelNudgesValue(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
@@ -123,9 +99,7 @@ func TestParamCardWheelNudgesValue(t *testing.T) {
 	inst := dv.synthTabActiveInstrument()
 	idx, _ := firstContinuousSynthControl(t, g)
 
-	// Arm the control, then re-layout/re-draw once so growArmedCard grows the
-	// card and drawArmedControlCard calls ArmedControlEditor.SetCardRect with
-	// the real grown rect — only then is ValueLaneRect() populated.
+	// The value lane's rect exists only after the grown card is laid out and drawn once.
 	dv.armSynthControl(inst, idx)
 	g.Update()
 	img := newTrackedImage("test.paramcardinput.armed", 1280, 720)
@@ -146,10 +120,7 @@ func TestParamCardWheelNudgesValue(t *testing.T) {
 	undoBefore := undoDepth(g)
 
 	vx, vy := vr.Min.X+vr.Dx()/2, vr.Min.Y+vr.Dy()/2
-	// One notch (ImpulseNotch) may not accumulate enough kinetic offset to
-	// cross a detent depending on density's SynthWheelRowH, so drive two —
-	// same margin TestTapArmsThenWheelEditsValue uses in
-	// synth_armed_input_test.go.
+	// One impulse may not cross a detent at every SynthWheelRowH, so two.
 	dispatchWheelAt(t, g, vx, vy, +2)
 	for i := 0; i < 240 && e.Tick(); i++ { // resolve the kinetic wheel animation
 	}
@@ -183,8 +154,7 @@ func TestGridWhitespaceWheelScrollsNotNudges(t *testing.T) {
 		t.Skip("FM section not scrollable at this layout — whitespace-scroll is vacuous")
 	}
 
-	// Locate the section's scroll-body catch-all rect (covers the whole body),
-	// then find a point inside it that is NOT over any knob's base rect.
+	// The section's scroll-body catch-all, at a point over no knob.
 	bodyTag := "synth-scrollbody-" + fmt.Sprint(int(synthSectionFM))
 	var body image.Rectangle
 	for _, h := range dv.synthTabHitAreas() {
@@ -290,20 +260,8 @@ func TestGridWhitespaceWheelScrollsNotNudges(t *testing.T) {
 	}
 }
 
-// TestWheelNudgeFlushesOnTabSwitchAway is a Task-5 review-fix regression test:
-// spinning the synth-card wheel and then switching the active audio-panel
-// tab away from Synth — WITHOUT waiting out the wheelNudgeCommitFrames
-// debounce — must still land exactly one undo step. Before the fix, the
-// debounce only ticked while SynthTabUpdate ran (TabSynth active), so a tab
-// switch mid-gesture silently dropped the latched commit.
-// armWheelPendingCommit arms the first continuous synth control, spins its value
-// lane by one gesture through the real dispatcher, resolves the kinetic
-// animation, and asserts the debounced wheel-nudge commit is still PENDING (not
-// yet an undo step). Armed-model migration of the retired not-armed wheel-nudge:
-// a not-armed wheel now scrolls the row, so a pending value commit only exists
-// once the control is armed and its value lane spun. Returns the undo depth
-// captured before the gesture, so the caller can assert the flush lands exactly
-// one step.
+// Arms the first continuous control and spins its value lane once, leaving the debounced commit PENDING; returns
+// the undo depth from before, so the caller can assert one step lands.
 func armWheelPendingCommit(t *testing.T, g *Game) int {
 	t.Helper()
 	dv := g.drum
@@ -346,10 +304,7 @@ func TestWheelNudgeFlushesOnTabSwitchAway(t *testing.T) {
 	dv := g.drum
 	undoBefore := armWheelPendingCommit(t, g)
 
-	// Switch away from Synth through the real production path (mirrors a
-	// user clicking a different sticky-bar tab pill) WITHOUT running the
-	// wheelNudgeCommitFrames worth of frames the debounce needs to
-	// self-commit — the onLeave hook must flush the pending commit.
+	// Leaving Synth before the debounce elapses: the onLeave hook must flush the pending commit.
 	dv.eqPanelZone.SetActiveTab(TabWave)
 	for i := 0; i < 3; i++ {
 		g.Update()
@@ -360,23 +315,15 @@ func TestWheelNudgeFlushesOnTabSwitchAway(t *testing.T) {
 	}
 }
 
-// TestWheelNudgeFlushesOnViewModeSwitchAwayFromSynth is a Task-5 review-fix
-// regression test for the OTHER tab-transition path: (*DrumView).setViewMode
-// (driven by the mobile bottom-nav segmented control / scene catalog / JS
-// setViewMode export) sets eqPanelZone.tabState directly rather than going
-// through EQPanelZone.SetActiveTab or the sticky-bar onTab closure. It must
-// still flush a pending wheel-nudge commit when leaving TabSynth — verified
-// here via PanelTabState's single onLeave hook (wired once in
-// NewEQPanelZone), which every tab-transition path — including this one —
-// funnels through.
+// setViewMode sets the tab state directly, bypassing SetActiveTab; PanelTabState's one onLeave hook still flushes
+// the pending commit, as on every tab transition.
 func TestWheelNudgeFlushesOnViewModeSwitchAwayFromSynth(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
 	dv := g.drum
 	undoBefore := armWheelPendingCommit(t, g)
 
-	// dv.setViewMode(viewModeEQ) calls eqPanelZone.tabState.SetActiveTab(TabEQ)
-	// directly (drumview_context_menu.go), bypassing EQPanelZone.SetActiveTab.
+	// Bypasses EQPanelZone.SetActiveTab.
 	dv.setViewMode(viewModeEQ)
 	for i := 0; i < 3; i++ {
 		g.Update()
@@ -387,12 +334,8 @@ func TestWheelNudgeFlushesOnViewModeSwitchAwayFromSynth(t *testing.T) {
 	}
 }
 
-// TestSynthControlResolutionLaneIsFiner (Task 9 armed-model rewrite) proves the
-// RESOLUTION lane of the armed editor moves the badge's active rung finer or
-// coarser, and that the choice PERSISTS onto the knob's StepMul (unlike the
-// old transient Shift-wheel nudge, resolution is now a deliberate, sticky
-// choice made via the left lane of the armed control — see
-// synth_barrel_bindings_test.go's badge-index pattern).
+// The armed editor's resolution lane moves the badge rung finer or coarser, and the choice sticks to the knob's
+// StepMul.
 func TestSynthControlResolutionLaneIsFiner(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)

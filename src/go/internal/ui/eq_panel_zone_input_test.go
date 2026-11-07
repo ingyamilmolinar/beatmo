@@ -12,12 +12,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// --- sliderGroupHitAdapter unit tests ---
-//
-// The sliderGroupHitAdapter wraps a SliderGroup as a HitHandler for the
-// hit-index system. These tests exercise the adapter directly (OnPress,
-// OnDrag, OnRelease, OnWheel) to cover the 0% functions that the existing
-// integration test (TestEQPanelZoneSliderCapture) only reaches indirectly.
+// The adapter driven directly: OnPress, OnDrag, OnRelease, OnWheel.
 
 func TestSliderGroupHitAdapter_OnPressHit(t *testing.T) {
 	assertDefaultParityState(t)
@@ -194,11 +189,7 @@ func TestEQChannelDropdownOverlay_ShouldCloseReturnsFalse(t *testing.T) {
 	}
 }
 
-// --- scrollableDropdownHandler: scrollbar thumb drag path ---
-//
-// The existing eq_channel_scroll_test.go covers touch scroll, wheel scroll,
-// and deferred tap. This test specifically covers the scrollbar thumb drag
-// path in OnPress → OnDrag → OnRelease.
+// The scrollbar-thumb drag path, which the scroll tests do not reach.
 
 func TestScrollableDropdownHandler_ThumbDrag(t *testing.T) {
 	assertDefaultParityState(t)
@@ -331,8 +322,7 @@ func TestSetActiveChannel_NoChannelIsIgnored(t *testing.T) {
 
 // --- P3 additional tests ---
 
-// TestEQ_CurveDragBandGainChange verifies that pressing on a curve handle,
-// dragging vertically, and releasing updates gain and fires OnGainChange + OnApplyEQ.
+// Press, vertical drag and release update the gain and fire OnGainChange + OnApplyEQ.
 func TestEQ_CurveDragBandGainChange(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -395,8 +385,7 @@ func TestEQ_CurveDragBandGainChange(t *testing.T) {
 	}
 }
 
-// TestEQ_HPFHandleDrag verifies that dragging the HPF handle changes the cutoff
-// frequency and fires OnHPFCutoffChange + OnApplyEQ.
+// And fire OnHPFCutoffChange + OnApplyEQ.
 func TestEQ_HPFHandleDrag(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -446,8 +435,6 @@ func TestEQ_HPFHandleDrag(t *testing.T) {
 	}
 }
 
-// TestEQ_ChannelDropdownSelectSwitches verifies that opening the channel dropdown,
-// selecting a channel entry, fires OnChannelChange and closes the dropdown.
 func TestEQ_ChannelDropdownSelectSwitches(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false

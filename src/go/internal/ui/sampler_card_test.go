@@ -9,28 +9,15 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// sampler_card_test.go — Task 6. The Sampler tab knob is now the SAME universal
-// ParamCard control the Synth tab uses: a tap anywhere on the card opens the
-// value-wheel popup on EVERY platform (the old desktop rotary drag + step-badge
-// tap + readout-editor tap are retired), and a desktop scroll-wheel notch over
-// the card nudges the value in place (debounced single-undo commit).
-//
-// These drive the REAL production tree dispatch (SetInputForTest → g.Update →
-// HitIndex → samplerKnobHitAdapter), mirroring param_card_input_test.go.
+// The Sampler knob is the same ParamCard as Synth: a tap opens the value wheel on every platform, and a desktop
+// wheel nudges in place with one debounced undo commit. Real tree dispatch.
 
-// samplerCardGame builds a DESKTOP Sampler tab (1280×720 — matching the window
-// the shared pressAndReleaseAt / dispatchWheelAt helpers drive) with a captured
-// buffer so the knob cards lay out, and draws one frame to populate the card
-// rects the input helpers read.
+// 1280×720, the window the shared input helpers drive, with a captured buffer so the cards lay out.
 func samplerCardGame(t *testing.T) *Game {
 	t.Helper()
 	g := samplerLayoutGame(t)
 	g.drum.sampler.captureFromSynth(roster.Kick)
-	// Sampler knob edits are LIVE (audio.ApplySampleEditLive), so any test that
-	// turns a knob here writes into the PROCESS-GLOBAL sample-edit store. Clear
-	// it on the way out or the descriptor rides into the next test — that is how
-	// a wheel nudge here made TestImportClearsStaleSampleEdit export a project
-	// that already carried the edit it was asserting had been cleared.
+	// Knob edits apply live into a process-global store; clear it or the edit rides into the next test's export.
 	t.Cleanup(func() { audio.ClearSampleEdit(roster.Kick) })
 	layoutSamplerTab(t, g)
 	img := newTrackedImage("test.samplercard", 1280, 720)
@@ -53,9 +40,7 @@ func TestSamplerCardClickOpensPopupOnDesktop(t *testing.T) {
 	}
 }
 
-// Wheel over a sampler card nudges the value + records a single undo commit
-// after the debounce; the old dial-wheel and readout-editor special cases are
-// gone.
+// One undo commit after the debounce.
 func TestSamplerCardWheelNudges(t *testing.T) {
 	g := samplerCardGame(t)
 	dv := g.drum

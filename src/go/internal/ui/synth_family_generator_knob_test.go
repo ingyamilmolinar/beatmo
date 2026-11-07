@@ -8,13 +8,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// Every gen-slot voice family (kick, tom, snare, cymbal, FM) reads gen_wave in
-// C — it is the voice's generator waveform, the knob the legacy recipes offered
-// as "Generator" (snare_wave, fm_wave, …). The config-first conversion left
-// gen1_wave in the hidden group, so a config-first snare or FM bass lost the
-// control entirely. It is surfaced once, family-agnostically, on whichever
-// family the recipe plays — and stays hidden where no family is active (the
-// melodic modular voices pick their oscillator with osc_type instead).
+// Every gen-slot family reads gen_wave in C, the voice's generator waveform, so it is shown once, family-agnostically,
+// on whichever family plays, and hidden where none is active (melodic modular voices use osc_type).
 func TestConfigFirstFamilyInstrumentsOfferTheGeneratorKnob(t *testing.T) {
 	offered := func(inst string) (*audio.ParamDef, bool) {
 		schema := audio.InstrumentParamDefs(instrument.ID(inst))
@@ -41,10 +36,7 @@ func TestConfigFirstFamilyInstrumentsOfferTheGeneratorKnob(t *testing.T) {
 		}
 	}
 
-	// The cymbal PLATE (hi-hat) never reads the generator wave — its module
-	// type does not declare it, so the knob is gone (spec 2026-10-04 §6: dead
-	// knobs disappear). No family at all (the bare voice) → no generator knob
-	// either (osc_type owns that job there).
+	// The plate never reads it, and the bare voice has osc_type: no generator knob.
 	for _, inst := range []instrument.ID{roster.Hihat, roster.Modular} {
 		if _, ok := offered(string(inst)); ok {
 			t.Errorf("%s: gen1_wave must stay hidden", inst)

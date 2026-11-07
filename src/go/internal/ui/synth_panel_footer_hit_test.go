@@ -14,8 +14,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// synthFooterClickTestEnv builds a Game with one row bound to drum-snare and
-// the Synth tab active, ready for HitArea-driven press testing.
+// One row bound to drum-snare, Synth tab active.
 type synthFooterClickTestEnv struct {
 	g      *Game
 	instID instrument.ID
@@ -51,8 +50,7 @@ func setupSynthFooterEnv(t *testing.T, width, height int, mobile bool) *synthFoo
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 	g.Update() // flush hit index update via tree
 
-	// Collect all hit areas for the synth tab. Use eqPanelZone.HitAreas()
-	// which already merges in the synth-tab inputs.
+	// The panel's HitAreas already merge in the synth tab.
 	rawHits := g.drum.eqPanelZone.HitAreas()
 	indexed := make([]indexedHitArea, 0, len(rawHits))
 	for _, h := range rawHits {
@@ -73,12 +71,8 @@ func findFooterButton(t *testing.T, dv *DrumView, tag string) *Button {
 	return nil
 }
 
-// TestSynthFooter_ClickAtVisibleCenter_RoutesToCorrectHandler verifies that
-// pressing at the visible center of each footer button (Reset, Save, Save As)
-// routes to that button's handler, not to any overlapping OUT-column link or
-// knob handler. Drives the actual HitIndex.At dispatch path. Fails today
-// because Save/Save-As/Reset share z-index with OUT links and registration
-// order makes OUT win on geometric overlap.
+// A press at each action button's visible centre reaches its own handler, never an overlapping knob, through the
+// real HitIndex.At.
 func TestSynthFooter_ClickAtVisibleCenter_RoutesToCorrectHandler(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -88,9 +82,7 @@ func TestSynthFooter_ClickAtVisibleCenter_RoutesToCorrectHandler(t *testing.T) {
 	}{
 		{"desktop_typical", 1280, 800, false, []string{synthSaveAsButtonTag}},
 		{"desktop_short", 1280, 480, false, []string{synthSaveAsButtonTag}},
-		// No mobile case: on mobile the synth actions live on the sticky bar
-		// (Approach B), not the in-panel footer this test drives. Sticky-bar
-		// routing is covered by TestSynthMobileActionsOnStickyBar.
+		// On mobile the actions live on the sticky bar.
 	}
 
 	for _, tc := range cases {
@@ -120,9 +112,7 @@ func TestSynthFooter_ClickAtVisibleCenter_RoutesToCorrectHandler(t *testing.T) {
 	}
 }
 
-// topHitAt mirrors HitIndex.At sort logic (exact-rect first, then z desc) so
-// the test can resolve the winning hit area without building a real game
-// tree.
+// Exact rect first, then z descending, as HitIndex.At sorts.
 func topHitAt(hits []indexedHitArea, x, y int) *indexedHitArea {
 	pt := image.Pt(x, y)
 	var best *indexedHitArea
@@ -160,10 +150,7 @@ func btnLabel(tag string) string {
 	return tag
 }
 
-// TestSynthFooter_ButtonsInsideHeader — the three action buttons live
-// inside the header strip (right of the caption), not in a separate
-// footer band beneath the section row. Asserts every visible button's
-// rect sits within the header rect's vertical bounds.
+// Inside the header strip, right of the caption.
 func TestSynthFooter_ButtonsInsideHeader(t *testing.T) {
 	env := setupSynthFooterEnv(t, 1280, 800, false)
 	hdr := env.g.drum.SynthTabHeader()
@@ -182,12 +169,8 @@ func TestSynthFooter_ButtonsInsideHeader(t *testing.T) {
 	}
 }
 
-// TestSynthFooter_ControlRectsClearOfFooter — invariant: no knob's visible
-// rect intersects any footer button rect. With the OUT column removed,
-// section cards span the full content width, so the rightmost section's
-// knob lives directly above the right-aligned Save / Save As / Reset
-// buttons. The buildSynthTab footerGap inset must keep them apart at
-// every supported viewport size; this test fails the moment they touch.
+// No knob rect touches an action button at any supported size: the rightmost card's knob sits right above the
+// right-aligned buttons.
 func TestSynthFooter_ControlRectsClearOfFooter(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -228,12 +211,7 @@ func TestSynthFooter_ControlRectsClearOfFooter(t *testing.T) {
 	}
 }
 
-// TestSynthFooter_EveryPointRoutesToFooter samples a 5×5 grid of points
-// inside each footer button rect and asserts the top-of-stack hit area at
-// each point is the footer button itself. This is the user-facing
-// guarantee: anywhere the user can tap on a visible footer button, the
-// click goes to that button. Corner-pixel geometric overlap that doesn't
-// affect dispatch is intentionally tolerated.
+// Anywhere on a visible button the tap goes to it; corner-pixel overlap that dispatch never sees is tolerated.
 func TestSynthFooter_EveryPointRoutesToFooter(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -255,9 +233,7 @@ func TestSynthFooter_EveryPointRoutesToFooter(t *testing.T) {
 				}
 				fr := b.Rect()
 				tag := b.Text
-				// Inset by 2 px so we sample inside the visible chrome
-				// rather than landing on a 1-px shared edge with a
-				// neighbouring button.
+				// Clear of a 1 px shared edge.
 				inset := 2
 				step := 5
 				for dy := inset; dy <= fr.Dy()-inset; dy += max(1, (fr.Dy()-2*inset)/step) {

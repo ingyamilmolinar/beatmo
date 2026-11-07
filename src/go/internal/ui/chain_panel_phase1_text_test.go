@@ -11,13 +11,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
-// TestChainBadgeSizedToStyledCaption — the A/B badge pill is sized to the
-// styled caption-role text metrics (chainBadgeSize → StyledTextWidth/Height
-// at RoleCaption), replacing the old density-scaled bitmap text which
-// pixelated at every factor ≠ 1. The painted badge box (a drawRect we can
-// intercept) must therefore match chainBadgeSize at EVERY density: styled
-// roles render at a fixed true pixel size, so the badge is density-invariant
-// by design (2026-07-16 audio-tab typography migration).
+// Sized to the styled caption metrics, which are true pixels, so the badge is the same at every density.
 func TestChainBadgeSizedToStyledCaption(t *testing.T) {
 	badgeBox := func(d Density) (w, h int) {
 		restore := SetDensityForTest(d)
@@ -31,8 +25,7 @@ func TestChainBadgeSizedToStyledCaption(t *testing.T) {
 
 		want := color.RGBAModel.Convert(colScopeA).(color.RGBA)
 		for _, r := range rects {
-			// The A badge fills colScopeA and lives at the top of the stage
-			// column. State is nil so no trace/legend draws this color.
+			// State is nil, so no trace or legend uses this colour.
 			if r.Color == want && r.Rect.Min.X < chainStageColW+48 && r.Rect.Min.Y < 56 {
 				if r.Rect.Dx() > w {
 					w, h = r.Rect.Dx(), r.Rect.Dy()

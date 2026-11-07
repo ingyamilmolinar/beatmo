@@ -6,10 +6,7 @@ import (
 	"testing"
 )
 
-// TestChainMiniMeterVisibleAtAllDensities pins the Phase 3 fix: the
-// per-stage mini-meter rail must be at least density-table-width
-// pixels wide. Pre-Phase-3 it was a fixed 4 px at every screen size,
-// sub-perceptible on a 360-px mobile portrait.
+// A fixed 4 px rail was sub-perceptible on a phone.
 func TestChainMiniMeterVisibleAtAllDensities(t *testing.T) {
 	cases := []struct {
 		density Density
@@ -30,10 +27,7 @@ func TestChainMiniMeterVisibleAtAllDensities(t *testing.T) {
 	}
 }
 
-// TestChainStageColWidensWithDensity — the stage column width
-// expands from 48 (Compact) to 72 (Spacious) so touch interactions
-// have more room at higher densities. Compact lets desktop power
-// users see more chain at once.
+// 48 at Compact to 72 at Spacious.
 func TestChainStageColWidensWithDensity(t *testing.T) {
 	cases := []struct {
 		density  Density
@@ -59,10 +53,7 @@ func TestChainStageColWidensWithDensity(t *testing.T) {
 	}
 }
 
-// TestChainTextScalesGrowWithDensity — Chain text scales are authored as
-// permille-of-Body and MUST grow monotonically from Compact → Spacious so
-// labels/readouts/pills/badges enlarge on mobile (Spacious) instead of
-// being frozen at the old hardcoded FontSizeCaption/FontSizeBody (~714).
+// Monotonic from Compact to Spacious.
 func TestChainTextScalesGrowWithDensity(t *testing.T) {
 	get := func(d Density) densityValues {
 		restore := SetDensityForTest(d)
@@ -80,11 +71,8 @@ func TestChainTextScalesGrowWithDensity(t *testing.T) {
 		{"ChainPillScale", compact.ChainPillScale, comfortable.ChainPillScale, spacious.ChainPillScale},
 		{"ChainBadgeScale", compact.ChainBadgeScale, comfortable.ChainBadgeScale, spacious.ChainBadgeScale},
 	}
-	// NOTE (2026-07-16 typography migration): Chain text now renders through
-	// the styled text-role API (RoleMicro/RoleCaption, fixed true-pixel
-	// sizes) — these permille tokens no longer drive any text draw. The pins
-	// below only keep the AUTHORED token values monotonic while they remain
-	// in DESIGN.md; delete them together with the densities entries.
+	// Text now renders through the styled roles; these only keep the authored tokens monotonic while DESIGN.md
+	// still lists them.
 	for _, sc := range scales {
 		if !(sc.c <= sc.m && sc.m <= sc.s) {
 			t.Errorf("%s not monotonic across density: compact=%d comfortable=%d spacious=%d",

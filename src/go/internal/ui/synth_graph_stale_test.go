@@ -14,9 +14,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// The graph never shows another instrument's sound, and its BEFORE ghost is
-// never a stale render (review finding 2026-10-25): a picture that lands late
-// belongs to the instrument and document it was asked for, or is not shown.
+// Never another instrument's sound, and never a stale BEFORE: a late picture belongs to what was asked for, or is not
+// shown.
 
 func manualGraphPipe(t *testing.T, g *Game) (*synthGraphPipeline, *fakeGraphRender) {
 	t.Helper()
@@ -81,9 +80,7 @@ func TestBeforeIsTheSoundTheGestureStartedFrom(t *testing.T) {
 	}
 }
 
-// While a dial turns, its two ends do not change (Turn lands exactly on
-// them), so they render ONCE per focus: each detent renders only NOW (spec
-// 2026-10-24 §4.3; review finding 2026-10-25: three renders per detent).
+// Turn lands exactly on the ends, so they render once per focus and each detent renders only NOW.
 func TestEndGhostsDoNotReRenderWhileTheirDialTurns(t *testing.T) {
 	g := newDialGame(t)
 	pipe, f := manualGraphPipe(t, g)
@@ -114,8 +111,7 @@ func TestEndGhostsDoNotReRenderWhileTheirDialTurns(t *testing.T) {
 	dv.endSynthDialGesture(gs, true)
 }
 
-// A language switch re-words the graph — the overview's title and readout too,
-// whose plot key does not change with the locale (review finding 2026-10-25).
+// The overview's plot key ignores the locale, so its words need their own refresh.
 func TestGraphFollowsALanguageSwitch(t *testing.T) {
 	g := newDialGame(t)
 	pipe, _ := manualGraphPipe(t, g)
@@ -134,10 +130,7 @@ func TestGraphFollowsALanguageSwitch(t *testing.T) {
 	}
 }
 
-// A render is identified by what it SOUNDS like (the sound signature, tempo,
-// pitch, Sampler edit), never by the document's revision: returning to a
-// sound the graph already rendered costs nothing, and a dial turned to one of
-// its ends shows the end ghost's render instead of rendering it again.
+// Keyed by sound, never revision: a sound already rendered costs nothing, and a dial at an end reuses the ghost.
 func TestTheSameSoundIsRenderedOnce(t *testing.T) {
 	g := newDialGame(t)
 	pipe, f := manualGraphPipe(t, g)

@@ -10,18 +10,8 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestSynthLayoutFingerprintStable enforces the redesign's invariant from
-// [[feedback_runtime_profile_derivation]]: section + knob + OUT-column
-// rects must be re-derived every Layout, never sampled at ctor.
-//
-// The test builds two independent games at the same profile + size and
-// asserts identical fingerprints. Then it relayouts one of them (without
-// changing anything) and asserts the fingerprint is stable across the
-// repeat call — proves the layout is deterministic and re-derives every
-// Layout. The mobile-vs-desktop divergence check is a separate test
-// (TestSynthLayoutMobileDesktopFork) because cross-profile transitions
-// inside one Game instance require deeper splitter / view-mode plumbing
-// that lives outside the Synth-tab redesign scope.
+// Section and knob rects are re-derived every Layout, never sampled at construction: two games agree, and a repeat
+// layout changes nothing.
 func TestSynthLayoutFingerprintStable(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
@@ -36,8 +26,6 @@ func TestSynthLayoutFingerprintStable(t *testing.T) {
 		t.Fatalf("two fresh games at same profile/size produced different fingerprints\n  A: %+v\n  B: %+v", first, second)
 	}
 
-	// Re-layout the first game (no state change) — fingerprint should be
-	// identical to the original capture.
 	gA.drum.eqPanelZone.Layout(gA.drum.eqPanelZone.PanelRect())
 	third := captureSynthFingerprint(gA)
 	if !fingerprintsEqual(first, third) {
@@ -45,8 +33,7 @@ func TestSynthLayoutFingerprintStable(t *testing.T) {
 	}
 }
 
-// TestSynthLayoutMobileDesktopFork verifies the mobile + desktop
-// layouts differ — proves the runtime-profile fork is active.
+// The runtime-profile fork is active.
 func TestSynthLayoutMobileDesktopFork(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)

@@ -8,9 +8,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// wantReadoutContentW recomputes the content-fit width the SAME way the
-// implementation must, so the test pins the FORMULA (labels + widest big
-// number + padding), not a magic px value.
+// Recomputed like the implementation, so the test pins the formula, not a pixel value.
 func wantReadoutContentW(t *testing.T) int {
 	t.Helper()
 	w := 0
@@ -51,8 +49,7 @@ func TestLevelsReadoutFullW_ContentFitAndSmallerThanToken(t *testing.T) {
 	}
 }
 
-// Full mode returns the content-fit width, and the summary takes well under
-// half the panel so the bars get the majority.
+// The summary takes well under half the panel.
 func TestLevelsReadoutLayout_FullModeBarsGetMajority(t *testing.T) {
 	restore := SetDensityForTest(DensityComfortable)
 	defer restore()
@@ -69,8 +66,7 @@ func TestLevelsReadoutLayout_FullModeBarsGetMajority(t *testing.T) {
 	}
 }
 
-// "Do not change the summary width": the summary width is identical across
-// different full-mode panel widths, so the bars absorb every extra pixel.
+// Constant across widths, so the bars take every extra pixel.
 func TestLevelsReadoutLayout_SummaryWidthConstant_BarsGrow(t *testing.T) {
 	restore := SetDensityForTest(DensityComfortable)
 	defer restore()
@@ -84,9 +80,7 @@ func TestLevelsReadoutLayout_SummaryWidthConstant_BarsGrow(t *testing.T) {
 	}
 }
 
-// Regression guard: mobile (Spacious) at a phone-width panel must STAY in the
-// icon-row mode (the 34px column from the mobile bar-room task), NOT flip to
-// the full column.
+// A phone-width Spacious panel stays in icon mode.
 func TestLevelsReadoutLayout_MobileStaysIcons(t *testing.T) {
 	restore := SetDensityForTest(DensitySpacious)
 	defer restore()

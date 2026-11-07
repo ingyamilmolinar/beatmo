@@ -13,12 +13,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
-// synthMaster builds a master ChannelMetrics whose FFT sits at a flat `floorDB`
-// everywhere, with every bin inside the named ISO bands raised to that band's
-// dB. Overriding whole BANDS rather than individual bins matters: real piled-up
-// energy fills a band, and a handful of hot bins in an otherwise cold band
-// averages back down to nearly the floor — which would make a pile-up test pass
-// or fail on bin spacing rather than on the behaviour under test.
+// Whole bands are raised, not single bins: a few hot bins in a cold band average back to the floor.
 func synthMaster(floorDB float64, bandDB map[int]float64) *analyzer.ChannelMetrics {
 	const nBins = 256
 	freq := make([]float64, nBins)
@@ -50,9 +45,7 @@ func kinds(fs []finding) []findingKind {
 	return out
 }
 
-// A balanced spectrum with no clipping and no shared fundamentals must produce
-// NOTHING. This is the most important case: a tab that always finds a problem
-// is noise, and "only checkable facts" means silence is a valid answer.
+// A balanced mix produces NOTHING: a tab that always finds a problem is noise.
 func TestSpectrumFindings_SilentOnABalancedMix(t *testing.T) {
 	m := synthMaster(-30, nil)
 	rows := []rowFacts{
@@ -80,8 +73,7 @@ func TestSpectrumFindings_ClippingNamesTheRow(t *testing.T) {
 	}
 }
 
-// Ranking: a clipping row outranks a spectral observation. Clipping is audible
-// damage; a pile-up is only a balance note.
+// Clipping is audible damage; a pile-up is a balance note.
 func TestSpectrumFindings_ClippingOutranksPileUp(t *testing.T) {
 	m := synthMaster(-60, map[int]float64{3: -5}) // band 3 = 177-355 Hz
 	rows := []rowFacts{
@@ -96,8 +88,7 @@ func TestSpectrumFindings_ClippingOutranksPileUp(t *testing.T) {
 	}
 }
 
-// A band far louder than its NEIGHBOURS is self-relative — no target curve, no
-// taste. The finding must point at the band that is actually piled up.
+// Relative to its neighbours, with no target curve, and pointing at the band actually piled up.
 func TestSpectrumFindings_PileUpPointsAtTheLoudBand(t *testing.T) {
 	m := synthMaster(-60, map[int]float64{3: -5}) // band 3 = 177-355 Hz
 	got := spectrumFindings(m, nil)
@@ -119,8 +110,7 @@ func TestSpectrumFindings_PileUpPointsAtTheLoudBand(t *testing.T) {
 
 // "Nothing up top" is a fact about the master spectrum alone.
 func TestSpectrumFindings_DeadRangeAboveTheContentStops(t *testing.T) {
-	// Energy across the bottom bands; every band above 1 kHz sits at the floor,
-	// so the ONLY dead end is the top one.
+	// Every band above 1 kHz at the floor, so the only dead end is the top one.
 	m := synthMaster(-78, map[int]float64{0: -26, 1: -20, 2: -22, 3: -24, 4: -28, 5: -30})
 	got := spectrumFindings(m, nil)
 	var dead *finding
@@ -138,8 +128,7 @@ func TestSpectrumFindings_DeadRangeAboveTheContentStops(t *testing.T) {
 	}
 }
 
-// The headline feature: two loud rows whose fundamentals land in one band are
-// fighting, and the finding names both.
+// Two loud rows whose fundamentals share a band are named together.
 func TestSpectrumFindings_CollisionNamesBothRows(t *testing.T) {
 	m := synthMaster(-30, nil)
 	rows := []rowFacts{
@@ -167,8 +156,7 @@ func TestSpectrumFindings_CollisionNamesBothRows(t *testing.T) {
 	}
 }
 
-// Unpitched instruments have no fundamental to collide WITH. Naming one would
-// be a guess, and the design forbids guesses.
+// There is no fundamental to collide with, and naming one would be a guess.
 func TestSpectrumFindings_UnpitchedRowsAreNeverNamedInACollision(t *testing.T) {
 	m := synthMaster(-30, nil)
 	rows := []rowFacts{
@@ -185,8 +173,7 @@ func TestSpectrumFindings_UnpitchedRowsAreNeverNamedInACollision(t *testing.T) {
 // A row that is not currently audible cannot be fighting anything.
 func TestSpectrumFindings_QuietRowsDoNotCollide(t *testing.T) {
 	m := synthMaster(-30, nil)
-	// PeakDB must be stated, not defaulted: the zero value is 0 dBFS, i.e.
-	// FULL SCALE, so an unset peak reads as the loudest possible row.
+	// Stated, not defaulted: the zero value is 0 dBFS, the loudest possible row.
 	rows := []rowFacts{
 		{Name: "Kick", RMSDB: -10, PeakDB: -4, FundHz: 60, Pitched: true},
 		{Name: "Sub", RMSDB: -70, PeakDB: -72, FundHz: 61, Pitched: true}, // silent on both measures
@@ -213,13 +200,8 @@ func TestSpectrumFindings_NilMasterYieldsNoSpectralFindings(t *testing.T) {
 	}
 }
 
-// ── Sentence layer ───────────────────────────────────────────────────────
-//
-// The banner is the whole point of the redesign, so the wording is tested, not
-// just the detection. These assert SHAPE (names appear, frequency appears, no
-// leftover format verbs) rather than exact prose, so copy can be reworded in
-// the catalog without breaking the suite — but a missing catalog entry, an
-// unsubstituted %s, or a finding that silently renders blank still fails.
+// The wording is tested by shape (names, frequency, no leftover verbs), so copy can change while a missing entry
+// or blank sentence still fails.
 
 func TestFindingSentence_NamesTheClippingRow(t *testing.T) {
 	s := findingSentence(finding{Kind: findingClipping, Band: -1, Names: []string{"Snare"}})
@@ -255,9 +237,7 @@ func TestFindingSentence_DeadRangeDistinguishesTopFromBottom(t *testing.T) {
 	}
 }
 
-// Every kind must render. A new findingKind with no catalog entry is a blank
-// banner in production, which is exactly the "shipped unbaked" failure the
-// project's UI rules warn about.
+// A kind with no catalogue entry is a blank banner in production.
 func TestFindingSentence_EveryKindRenders(t *testing.T) {
 	for _, f := range []finding{
 		{Kind: findingClipping, Band: -1, Names: []string{"Kick"}},
@@ -278,10 +258,7 @@ func TestFindingSentence_EveryKindRenders(t *testing.T) {
 
 // ── Live bridge ──────────────────────────────────────────────────────────
 
-// An octave error here silently mislabels which band an instrument occupies,
-// and this codebase has repeatedly been bitten by exactly that (YIN reading a
-// reference an octave low, harpsichord measuring 440 against its true 220). Pin
-// the conversion against known anchors.
+// An octave error silently mislabels a band, so the conversion is pinned to known anchors.
 func TestMidiToHz_KnownAnchors(t *testing.T) {
 	for _, tc := range []struct {
 		midi int
@@ -299,8 +276,7 @@ func TestMidiToHz_KnownAnchors(t *testing.T) {
 	}
 }
 
-// The bridge must report a row's SOUNDING fundamental, i.e. node pitch 0 folded
-// with the instrument's own offset — not a bare A3 for every row.
+// The sounding fundamental, pitch 0 folded with the instrument's offset, not A3 for every row.
 func TestSpectrumRowFacts_ReportsPerRowFundamentals(t *testing.T) {
 	g := setupSpectrumGame(t)
 	facts := g.drum.spectrumRowFacts(testAnalyzerStateOverride)
@@ -324,8 +300,7 @@ func TestSpectrumRowFacts_ReportsPerRowFundamentals(t *testing.T) {
 	}
 }
 
-// Unpitched instruments must come back Pitched=false so the engine can refuse
-// to name them, rather than arriving with a bogus fundamental.
+// So the engine can refuse to name them.
 func TestSpectrumRowFacts_UnpitchedRowsCarryNoFundamental(t *testing.T) {
 	g := setupSpectrumGame(t)
 	for _, f := range g.drum.spectrumRowFacts(testAnalyzerStateOverride) {
@@ -337,10 +312,7 @@ func TestSpectrumRowFacts_UnpitchedRowsCarryNoFundamental(t *testing.T) {
 
 // ── Banner geometry ──────────────────────────────────────────────────────
 
-// The banner must claim its strip from the TOP of the panel and hand the rest
-// to the existing renderers untouched. If the two rects overlapped, the
-// sentence would be stamped over the bars (the exact collision the
-// bracket/Hz-row split was introduced to fix elsewhere in this file).
+// From the top of the panel, never overlapping the plot below it.
 func TestSpectrumBannerSplit_ReservesATopStripWithoutOverlap(t *testing.T) {
 	rect := image.Rect(10, 20, 810, 320)
 	banner, rest := spectrumBannerSplit(rect)
@@ -363,8 +335,7 @@ func TestSpectrumBannerSplit_ReservesATopStripWithoutOverlap(t *testing.T) {
 	}
 }
 
-// A panel too short to afford a banner must give the whole rect to the plot
-// rather than squeezing the bars into nothing. Mobile panels get very short.
+// Too short for a banner, the plot keeps the whole rect.
 func TestSpectrumBannerSplit_YieldsEverythingOnAShortPanel(t *testing.T) {
 	rect := image.Rect(0, 0, 400, 24)
 	banner, rest := spectrumBannerSplit(rect)
@@ -376,19 +347,12 @@ func TestSpectrumBannerSplit_YieldsEverythingOnAShortPanel(t *testing.T) {
 	}
 }
 
-// ── Stability ────────────────────────────────────────────────────────────
-//
-// A percussive row's rolling RMS swings enormously between hits — measured on
-// the real analyzer, Dnb Kick reported -25.0 dB on one frame and -38.8 dB three
-// frames later. Judging "is this row audible" from RMS alone therefore dropped
-// rows below the floor between beats, and the headline sentence flipped between
-// findings several times a second. Peak over the same window is far steadier,
-// so a row counts as audible on EITHER measure.
+// A percussive row's RMS swings ~14 dB between hits while its peak holds, so a row is audible on EITHER measure,
+// or the sentence flips several times a second.
 
 func TestSpectrumFindings_RowAudibleByPeakBetweenHits(t *testing.T) {
 	m := synthMaster(-30, nil)
-	// Both rows are mid-decay: RMS has collapsed below the floor, but each
-	// still peaked loudly inside the analyzer window.
+	// Mid-decay: RMS below the floor, peak still loud.
 	rows := []rowFacts{
 		{Name: "Dnb Kick", RMSDB: -52, PeakDB: -8, FundHz: 49, Pitched: true},
 		{Name: "Sub Bass", RMSDB: -50, PeakDB: -11, FundHz: 46, Pitched: true},
@@ -428,8 +392,7 @@ func TestBannerHold_AdoptsTheFirstLineImmediately(t *testing.T) {
 	}
 }
 
-// The whole point: a different finding must persist before it replaces the
-// sentence on screen, so the banner is readable rather than strobing.
+// A new finding must persist before it replaces the shown line, so the banner never strobes.
 func TestBannerHold_HoldsTheCurrentLineUntilTheNewOnePersists(t *testing.T) {
 	var h bannerHold
 	t0 := time.Unix(100, 0)
@@ -444,8 +407,7 @@ func TestBannerHold_HoldsTheCurrentLineUntilTheNewOnePersists(t *testing.T) {
 	}
 }
 
-// A candidate that keeps changing never wins — otherwise a flapping finding
-// would still reach the screen via whichever value happened to be last.
+// Or a flapping finding reaches the screen as whichever value came last.
 func TestBannerHold_FlappingCandidateNeverReplacesTheShownLine(t *testing.T) {
 	var h bannerHold
 	t0 := time.Unix(200, 0)
@@ -462,16 +424,13 @@ func TestBannerHold_FlappingCandidateNeverReplacesTheShownLine(t *testing.T) {
 	}
 }
 
-// Returning to the line already on screen must cancel any pending candidate,
-// not sit half-way through a switch.
 func TestBannerHold_ReturningToTheShownLineCancelsThePendingSwitch(t *testing.T) {
 	var h bannerHold
 	t0 := time.Unix(300, 0)
 	h.update(spectrumBanner{Text: "collision"}, t0)
 	h.update(spectrumBanner{Text: "dead range"}, t0.Add(100*time.Millisecond))
 	h.update(spectrumBanner{Text: "collision"}, t0.Add(200*time.Millisecond))
-	// The earlier candidate is stale now; a single late sighting must restart
-	// its dwell rather than adopt instantly.
+	// A stale candidate restarts its dwell.
 	if got := h.update(spectrumBanner{Text: "dead range"}, t0.Add(200*time.Millisecond+spectrumBannerDwell/2)); got.Text != "collision" {
 		t.Errorf("stale candidate adopted immediately as %q", got.Text)
 	}

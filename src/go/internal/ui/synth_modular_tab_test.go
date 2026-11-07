@@ -9,8 +9,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// setupModularSynthGame points row 0 at the unified modular instrument and
-// opens the Synth tab.
 func setupModularSynthGame(t *testing.T) *Game {
 	t.Helper()
 	g := newSynthTabGame(t)
@@ -20,9 +18,7 @@ func setupModularSynthGame(t *testing.T) *Game {
 		_ = audio.InstallInstrumentDocForTest(roster.Modular, roster.Modular)
 		audio.ResetInstrumentParams(roster.Modular)
 	})
-	// The FM oscillator, so every pipeline section — FM included — is on
-	// screen: the FM operators belong to the osc.fm source module and are
-	// hidden on any other oscillator (spec 2026-10-04 §6, one visibility rule).
+	// The FM oscillator, so every section is on screen: the FM operators belong to osc.fm and hide on any other.
 	audio.SetInstrumentParam(roster.Modular, "osc_type", 4)
 	layoutSynthTab(t, g)
 	return g
@@ -58,11 +54,8 @@ func TestSynthTab_ModularSectionsCoverPipeline(t *testing.T) {
 			t.Errorf("modular synth tab missing section %v (label %q)", want, sectionLabel(want))
 		}
 	}
-	// Phase 8B unification: a migrated drum recipe (drum-snare) now ALSO shows
-	// the full standardized pipeline — VOICE for its family knobs plus the
-	// enable-able OSC/FM/ENVELOPE/FILTER/POST stages. This is the deliverable:
-	// every synth instrument shares the same section sequence and any stage can
-	// be enabled on any instrument.
+	// A drum recipe shows the full pipeline too: VOICE for its family knobs plus the enable-able stages, so every
+	// instrument shares one section sequence.
 	g2 := newSynthTabGame(t) // drum-snare
 	g2.drum.eqPanelZone.SetActiveTab(TabSynth)
 	g2.drum.eqPanelZone.Layout(g2.drum.eqPanelZone.PanelRect())
@@ -70,8 +63,7 @@ func TestSynthTab_ModularSectionsCoverPipeline(t *testing.T) {
 	for _, s := range g2.drum.SynthTabSections() {
 		drumIDs[s.id] = true
 	}
-	// (FM appears once the FM oscillator is chosen: its operators belong to
-	// that source module — spec 2026-10-04 §6.)
+	// FM appears once the FM oscillator is chosen.
 	for _, want := range []synthSectionID{
 		synthSectionVoice, synthSectionOsc,
 		synthSectionEnvelope, synthSectionFilter, synthSectionPost,
@@ -82,9 +74,7 @@ func TestSynthTab_ModularSectionsCoverPipeline(t *testing.T) {
 	}
 }
 
-// TestSynthTab_WaveControlCaptionShowsLabel locks the family generator-type
-// selector rendering: every <family>_wave ParamDef is a discrete enum whose
-// knob caption shows the waveform name, not a raw number.
+// Every <family>_wave is a discrete enum whose caption shows the waveform name, not a number.
 func TestSynthTab_WaveControlCaptionShowsLabel(t *testing.T) {
 	for _, id := range []instrument.ID{roster.Kick, roster.Hihat, roster.FmBass} {
 		var waveDef *audio.ParamDef
@@ -125,10 +115,8 @@ func TestSynthTab_EnumParamCaptionShowsLabel(t *testing.T) {
 	}
 }
 
-// TestSynthTab_ModularEnumControlWritesSnappedIndex — driving the osc_type
-// control (an Enum param rendered as a snapping knob) must write the nearest
-// integer selector index through audio.SetInstrumentParam, and that write must
-// reach the platform bridge (the WASM seam the browser renders through).
+// The snapping enum writes the nearest integer index, and the write reaches the platform bridge the browser renders
+// through.
 func TestSynthTab_ModularEnumControlWritesSnappedIndex(t *testing.T) {
 	g := setupModularSynthGame(t)
 	sliders := g.drum.SynthTabSliders()
@@ -156,11 +144,7 @@ func TestSynthTab_ModularEnumControlWritesSnappedIndex(t *testing.T) {
 	})
 	t.Cleanup(func() { audio.SwapPlatformInstrumentDocChangedForTest(oldCb) })
 
-	// osc_type is a discrete Enum knob spanning [Min,Max]; the slider value
-	// that targets index 1 (Saw) is 1/(Max-Min) regardless of how many
-	// oscillator types exist. Derive it from the live binding so this stays
-	// correct as the enum grows (it has expanded from 7 to 12 entries). The
-	// snap must land on exactly 1 — no fractional drift.
+	// Index 1 (Saw) is 1/(Max-Min) whatever the enum's size, derived from the live binding; the snap lands on exactly 1.
 	def := bindings[idx].def
 	span := def.Max - def.Min
 	if span <= 0 {

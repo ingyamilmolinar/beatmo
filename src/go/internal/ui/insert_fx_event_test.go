@@ -8,10 +8,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestEmitInsertEffectMoved verifies that emitInsertEffectMoved publishes
-// EventInsertEffectMoved with the correct channel/from/to payload.
-// This is the emit helper wired at the desktop (drumview_fx_panel.go)
-// move-up and move-down OnClick sites.
 func TestEmitInsertEffectMoved(t *testing.T) {
 	e := awaitEmit(t, hooks.EventInsertEffectMoved, func() {
 		emitInsertEffectMoved(channel.Of(roster.Snare), 1, 0)
@@ -25,10 +21,6 @@ func TestEmitInsertEffectMoved(t *testing.T) {
 	}
 }
 
-// TestEmitInsertEffectToggled verifies that emitInsertEffectToggled publishes
-// EventInsertEffectToggled with the correct channel/slot/enabled payload.
-// This is the emit helper wired at the desktop (drumview_fx_panel.go)
-// toggle OnClick site.
 func TestEmitInsertEffectToggled(t *testing.T) {
 	e := awaitEmit(t, hooks.EventInsertEffectToggled, func() {
 		emitInsertEffectToggled(channel.Of(roster.Kick), 2, false)

@@ -9,15 +9,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestRenderProducesNoVisualRegression sanity-checks that Render with the
-// generated ComponentButtonSecondary spec produces the same on-screen
-// pixels as the legacy TransportPlayStyle.Draw. Drift between the two
-// would mean either the spec is wrong (caught by TestComponentSpecsDrift)
-// or Render's logic differs from ButtonStyle.Draw's logic (caught here).
-//
-// Stub-only: relies on Image.At() reading back rendered pixels. Real Ebiten
-// panics with "ReadPixels cannot be called before the game starts" because
-// no game loop is running under `go test`.
+// Render with the generated spec matches ButtonStyle.Draw pixel for pixel. Stub only: real Ebiten cannot
+// ReadPixels before the game loop starts.
 func TestRenderProducesNoVisualRegression(t *testing.T) {
 	r := image.Rect(0, 0, 64, 32)
 
@@ -35,22 +28,8 @@ func TestRenderProducesNoVisualRegression(t *testing.T) {
 	}
 }
 
-// TestRenderAllocationCeiling asserts (rather than merely reports) the
-// per-call heap allocation count of Render across its three hot paths.
-// Each ceiling matches the value the benchmarks observed at the time of
-// Phase 4 PR1; raising one requires a deliberate update here so the bump
-// is visible in code review.
-//
-// Numbers are intentionally pinned, not "<= small". A regression to e.g.
-// 5 allocs/call would still look "small" in an isolated benchmark but
-// triple the GC pressure at realistic chrome-surface counts (~hundreds
-// per 60 Hz frame). Pin and review.
-//
-// Stub-only: real Ebiten's image pipeline allocates per-call buffers
-// (~22-37 allocs/call observed) that have nothing to do with Render's
-// own design and would drown out the signal these ceilings exist to
-// catch. Stub mode strips that pipeline, leaving only the allocations
-// Render itself produces.
+// Pinned exactly, not "small": 5 allocs/call still looks small but triples GC pressure at hundreds of surfaces per
+// frame; raise one only deliberately. Stub only: real Ebiten's pipeline allocations would drown the signal.
 func TestRenderAllocationCeiling(t *testing.T) {
 	dst := ebiten.NewImage(64, 32)
 	r := image.Rect(0, 0, 64, 32)

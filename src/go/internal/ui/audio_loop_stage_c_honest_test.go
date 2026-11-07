@@ -13,16 +13,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestStageCObservesRequestedTimeNotTheClampedOne pins the honest Stage C
-// observation on the browser profile. audioLoop floors a late sequencer
-// request to audioNow+MinDispatchLeadSec (12 ms) so WebAudio still gets a
-// start time in the future — but it used to OBSERVE the clamped value, so a
-// note dispatched 100 ms late was recorded as lead=+12 ms: `overdue` could
-// never fire on WASM, and every lateness gate built on it (three-stage,
-// timing_stress, perf_e2e, bench_startup) passed by construction.
-//
-// The dispatch itself must still carry the clamped `when` (the floor is what
-// keeps the note audible); only the measurement changes.
+// audioLoop floors a late request to audioNow + 12 ms so WebAudio gets a future start, but Stage C must observe
+// the REQUESTED time: observing the clamped one let every lateness gate pass by construction.
 func TestStageCObservesRequestedTimeNotTheClampedOne(t *testing.T) {
 	restoreProfile := SetRuntimeProfileForTest(browserRuntimeProfile())
 	t.Cleanup(restoreProfile)

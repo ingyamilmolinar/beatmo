@@ -11,11 +11,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
-// TestSynthParamDisplayName_EveryReachableParamResolves enumerates EVERY
-// ParamDef of the engine schema and asserts each resolves to a
-// non-empty display NAME that is NOT its raw snake_case id. This is the guard
-// against the "bare value / leaked raw id" caption bugs — no knob may ever show
-// "osc_detune" or render anonymous.
+// Every ParamDef resolves to a non-empty name that is not its raw snake_case id.
 func TestSynthParamDisplayName_EveryReachableParamResolves(t *testing.T) {
 	seen := map[string]bool{}
 	checked := 0
@@ -34,8 +30,7 @@ func TestSynthParamDisplayName_EveryReachableParamResolves(t *testing.T) {
 			if name == d.Name && strings.Contains(d.Name, "_") {
 				t.Errorf("instrument %q param %q: display name leaks the raw snake_case id (%q)", id, d.Name, name)
 			}
-			// No display name should contain an underscore (the prettifier
-			// replaces them with spaces; the override table never uses them).
+			// The prettifier replaces underscores and the override table never uses them.
 			if strings.Contains(name, "_") {
 				t.Errorf("instrument %q param %q: display name %q still contains an underscore", id, d.Name, name)
 			}
@@ -47,8 +42,6 @@ func TestSynthParamDisplayName_EveryReachableParamResolves(t *testing.T) {
 	t.Logf("resolved %d unique params to display names", checked)
 }
 
-// TestSynthParamDisplayName_KnownOverrides spot-checks the curated table for
-// the ids the bug report called out by name.
 func TestSynthParamDisplayName_KnownOverrides(t *testing.T) {
 	cases := map[string]string{
 		"osc_detune":       "Detune",
@@ -62,8 +55,7 @@ func TestSynthParamDisplayName_KnownOverrides(t *testing.T) {
 		"fm_op1_ratio":     "Op1 Ratio",
 		"kick_click":       "Click",
 		"noise_seed":       "Seed",
-		// The two-decay disambiguation: the generic post `decay` is the
-		// multiplier ("Decay ×"); amp_decay is the envelope seconds knob.
+		// Two decays: the generic post `decay` is a multiplier, amp_decay the envelope seconds.
 		"decay": "Decay ×",
 	}
 	for id, want := range cases {
@@ -73,9 +65,7 @@ func TestSynthParamDisplayName_KnownOverrides(t *testing.T) {
 	}
 }
 
-// TestSynthParamDisplayName_FallbackPrettifier exercises the fallback path on
-// genN_ family ids (the bulk of the param universe) and assorted family
-// prefixes — the result is prefix-stripped, underscore-free, Title-Cased.
+// genN_ and family prefixes come out prefix-stripped, underscore-free, Title-Cased.
 func TestSynthParamDisplayName_FallbackPrettifier(t *testing.T) {
 	cases := map[string]string{
 		"gen1_kick_click":  "Kick Click",
@@ -92,9 +82,7 @@ func TestSynthParamDisplayName_FallbackPrettifier(t *testing.T) {
 	}
 }
 
-// TestFormatParamValue is the table-driven unit formatter test: every supported
-// unit must produce the documented shape (SI Hz, seconds, signed cents/st/dB,
-// multiplier, percent, unitless).
+// SI Hz, seconds, signed cents/st/dB, multiplier, percent, unitless.
 func TestFormatParamValue(t *testing.T) {
 	cases := []struct {
 		value float64
@@ -138,9 +126,7 @@ func TestFormatParamValue(t *testing.T) {
 	}
 }
 
-// TestFormatSynthParamValue_GenericPostControls pins the generic post knobs whose
-// semantic unit isn't carried in ParamDef.Unit (decay → ×, drive/body/bright →
-// %, pitch → st).
+// Their unit is not in ParamDef.Unit: decay ×, drive/body/bright %, pitch st.
 func TestFormatSynthParamValue_GenericPostControls(t *testing.T) {
 	cases := []struct {
 		name  string

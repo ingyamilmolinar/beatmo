@@ -10,9 +10,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// Spec 2026-10-31 §1.3: the lane keeps the instrument it last committed for a
-// row until the new instrument's voice is rendered — no note late, dropped,
-// silent or doubled by a switch — and the drum view knows nothing of it.
+// The lane keeps a row's committed instrument until the new one's voice is rendered: no note late, dropped,
+// silent or doubled, and the drum view knows nothing of it.
 
 func heardByAbs(sink *fakeSink) map[int]laneNote {
 	out := map[int]laneNote{}
@@ -89,8 +88,7 @@ func TestLaneSwitchKeepsOldVoiceWhileNewNeverReady(t *testing.T) {
 	}
 }
 
-// A render that never lands must not keep the row on the old instrument
-// forever: after the bounded wait the user's choice takes effect.
+// After the bounded wait the user's choice takes effect.
 func TestLaneSwitchGivesUpAfterTheBoundedWait(t *testing.T) {
 	l, src, sink, now := newGridLane(t, 1)
 	l.Tick()
@@ -107,9 +105,7 @@ func TestLaneSwitchGivesUpAfterTheBoundedWait(t *testing.T) {
 	}
 }
 
-// Readiness is per note (a melodic instrument renders each pitch apart): a
-// note whose own voice is not rendered keeps the old instrument even after
-// other notes switched.
+// A melodic instrument renders each pitch apart, so a note whose own voice is not ready keeps the old instrument.
 func TestLaneSwitchIsDecidedPerNote(t *testing.T) {
 	l, src, sink, now := newGridLane(t, 1)
 	l.Tick()
@@ -166,10 +162,8 @@ func TestLaneFirstNoteIsNeverRetargeted(t *testing.T) {
 	}
 }
 
-// TestDrumViewHasNoSwitchState: switching belongs to the audio lane (spec
-// 2026-10-31 instruction 1). The drum view holds only the instrument a row
-// plays — no "sounding" or pending-switch state for export, undo, row delete
-// or import to keep in step.
+// Switching belongs to the lane: the drum view holds only the instrument a row plays, with nothing for export,
+// undo, row delete or import to keep in step.
 func TestDrumViewHasNoSwitchState(t *testing.T) {
 	for _, typ := range []reflect.Type{reflect.TypeOf(DrumRow{}), reflect.TypeOf(DrumView{})} {
 		for i := range typ.NumField() {

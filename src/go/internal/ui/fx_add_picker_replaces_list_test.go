@@ -13,23 +13,11 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// fx_add_picker_replaces_list_test.go — the "+ Add Effect" picker is a
-// SUB-PAGE of the FX panel, not a footer appended under the effect list.
-//
-// Reported bug: clicking "+ Add Effect" rendered the picker (Back row, category
-// headers, effect-type rows) directly BELOW the existing effect cards, so the
-// cards, their toggles/remove × and their param sliders stayed on screen and
-// stayed clickable while the user was picking a type. The picker must instead
-// REPLACE the list in the same panel frame — title, pinned search band, Back
-// row first, then the scrollable type list — and Back must return to the list
-// exactly as it was.
-//
-// Every test drives real presses through dv.Update (the portal dispatch path),
-// never OnClick directly.
+// The picker is a sub-page that REPLACES the effect list in the same frame (title, search band, Back, type
+// list), so no card control stays clickable under it, and Back returns to the list as it was. Real presses
+// through dv.Update.
 
-// fxPickerTestPanel opens row 0's FX panel with two enabled effects (delay +
-// reverb, both with inline param sliders on desktop) and settles the frames
-// that guard the opening click.
+// Delay and reverb with inline sliders on desktop, past the frames that guard the opening click.
 func fxPickerTestPanel(t *testing.T) (*DrumView, string) {
 	t.Helper()
 	dv := newTestDV(t)
@@ -47,8 +35,6 @@ func fxPickerTestPanel(t *testing.T) (*DrumView, string) {
 	return dv, string(instID)
 }
 
-// fxPressButton clicks the center of btn through the real input loop and
-// releases on the next frame.
 func fxPressButton(t *testing.T, dv *DrumView, btn *Button, what string) {
 	t.Helper()
 	if btn == nil {
@@ -63,8 +49,7 @@ func fxPressButton(t *testing.T, dv *DrumView, btn *Button, what string) {
 // fxOpenPickerViaClick presses "+ Add Effect" and asserts the picker opened.
 func fxOpenPickerViaClick(t *testing.T, dv *DrumView) {
 	t.Helper()
-	// The Add button sits at the bottom of the list; scroll there first so it
-	// is built (rows outside the viewport carry no button).
+	// Rows outside the viewport have no button, so scroll the Add row into view.
 	if dv.fxScroll != nil {
 		dv.fxScroll.ScrollBehavior().VS.First = dv.fxScroll.ScrollBehavior().VS.Total
 		dv.buildFXPanel()
@@ -76,8 +61,6 @@ func fxOpenPickerViaClick(t *testing.T, dv *DrumView) {
 	}
 }
 
-// fxEffectListControls returns the effect-card controls currently built: the
-// enable toggles, the remove × buttons and the param sliders.
 func fxEffectListControls(dv *DrumView) (toggles, removes, sliders int) {
 	for _, btn := range dv.fxPanelBtns {
 		if btn == nil {
@@ -93,9 +76,7 @@ func fxEffectListControls(dv *DrumView) (toggles, removes, sliders int) {
 	return toggles, removes, len(dv.fxPanelSliders)
 }
 
-// TestFXAddPicker_ReplacesEffectList — while the picker is open, none of the
-// effect list's controls exist: no toggles, no remove ×, no sliders. They used
-// to be built above the Back row and stayed clickable under the picker.
+// No toggles, remove × or sliders exist under the open picker.
 func TestFXAddPicker_ReplacesEffectList(t *testing.T) {
 	dv, _ := fxPickerTestPanel(t)
 
@@ -116,9 +97,7 @@ func TestFXAddPicker_ReplacesEffectList(t *testing.T) {
 	}
 }
 
-// TestFXAddPicker_BackRowIsFirstRowUnderSearch — the picker's layout is
-// title → pinned search band → Back row → type list, with nothing between the
-// search band and Back. Before the fix the effect cards sat in that gap.
+// Nothing between the search band and Back.
 func TestFXAddPicker_BackRowIsFirstRowUnderSearch(t *testing.T) {
 	dv, _ := fxPickerTestPanel(t)
 	fxOpenPickerViaClick(t, dv)
@@ -153,9 +132,7 @@ func TestFXAddPicker_BackRowIsFirstRowUnderSearch(t *testing.T) {
 	}
 }
 
-// TestFXAddPicker_ScrollCoversOnlyPickerContent — the picker's scroll extent
-// is the picker's own content (Back + group headers + type rows), not the
-// effect list stacked on top of it.
+// Only the picker's own content.
 func TestFXAddPicker_ScrollCoversOnlyPickerContent(t *testing.T) {
 	dv, _ := fxPickerTestPanel(t)
 	fxOpenPickerViaClick(t, dv)
@@ -170,9 +147,7 @@ func TestFXAddPicker_ScrollCoversOnlyPickerContent(t *testing.T) {
 	}
 }
 
-// TestFXAddPicker_CoversListFrame — the picker opens ON TOP of the effect
-// list: same horizontal frame, and the picker panel fully covers the rect the
-// list occupied so no part of the list frame peeks out around it.
+// The same horizontal frame, fully covering the list's rect.
 func TestFXAddPicker_CoversListFrame(t *testing.T) {
 	dv, _ := fxPickerTestPanel(t)
 	listRect := dv.fxPanelRect
@@ -186,9 +161,7 @@ func TestFXAddPicker_CoversListFrame(t *testing.T) {
 	}
 }
 
-// TestFXAddPicker_DrawPaintsNoEffectCards — the draw pass agrees with build:
-// with the picker open, no effect card body (the surface-2 rounded card that
-// spans an effect's header + param rows) is painted.
+// Draw agrees with build: no card body is painted.
 func TestFXAddPicker_DrawPaintsNoEffectCards(t *testing.T) {
 	dv, instID := fxPickerTestPanel(t)
 	m := fxPanelMetrics()
@@ -223,8 +196,7 @@ func TestFXAddPicker_DrawPaintsNoEffectCards(t *testing.T) {
 	}
 }
 
-// TestFXAddPicker_BackReturnsToList — pressing Back (real click) returns to
-// the effect list in the same frame and scroll position it was left at.
+// In the same frame and scroll position it was left at.
 func TestFXAddPicker_BackReturnsToList(t *testing.T) {
 	dv := newTestDrumViewWithRows(t, 6)
 	dv.layoutForTest()
@@ -259,8 +231,7 @@ func TestFXAddPicker_BackReturnsToList(t *testing.T) {
 	}
 }
 
-// TestFXAddPicker_ReplacesEffectListMobile — same contract on the mobile
-// bottom-sheet layout, driven through the full Game.
+// The mobile bottom sheet, through the full Game.
 func TestFXAddPicker_ReplacesEffectListMobile(t *testing.T) {
 	setupMobileTest(t, true)
 	g := New(game_log.New(testLogOutput(), game_log.LevelError))

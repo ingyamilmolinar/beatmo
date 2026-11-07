@@ -15,18 +15,11 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
-// TestEveryDialMovesItsMetric is the authority on the dial catalogue's
-// directions (spec 2026-10-13 §6.3): for every shipped instrument and every
-// dial resolved on its root, render the REAL C voice at the dial's 0 and 100
-// (Turn from the shipped values). Some end must change the render, and a dial
-// that declares a metric must move that fingerprint descriptor the declared
-// way from the shipped sound toward each end.
+// Through the real C voice at each dial's 0 and 100: some end changes the render, and a declared metric moves the
+// declared way from the shipped sound toward each end.
 func TestEveryDialMovesItsMetric(t *testing.T) {
-	// The PLAYED voice (RenderAsPlayed: cached, length-gated, peak-normalised),
-	// the same sound TestEveryDialIsMeasurable judges and a soloed row plays:
-	// the dials' range caps and gates are about that voice, so a raw
-	// four-second render measures a sound no trigger produces (a Tail that
-	// acts on a 0.75 s guitar note lands where a 4 s render is already silent).
+	// The played voice, the sound a soloed row plays: the caps and gates are about it, and a raw 4 s render measures a
+	// sound no trigger produces.
 	g := buildTestGame(t)
 	withPrivateInstrumentLibrary(t)
 	audio.ResetInstrumentDocs()
@@ -56,11 +49,8 @@ func TestEveryDialMovesItsMetric(t *testing.T) {
 		if !ok {
 			return 0, false // TestSynthDialStringsAndMetricsExist owns this rule
 		}
-		// The played voice, converted (windowed sinc, ~-95 dB) to the rate the
-		// fingerprint descriptors were calibrated at: several count samples
-		// (noise.fraction's notches are ±1 bin of a fixed FFT), so at the
-		// engine's 48 kHz the soprano's Breath read the wrong way while the
-		// sound itself moved the right way.
+		// Converted to the rate the fingerprint descriptors were calibrated at: several count samples, so at 48 kHz a
+		// metric can read backwards while the sound moves the right way.
 		conv := audio.ResampleToRate(buf, sr, wavref.Rate)
 		s := make([]float64, len(conv))
 		for i, v := range conv {
@@ -98,8 +88,7 @@ func dialMetricCheck(t *testing.T, id string, schema []audio.ParamDef, anchor au
 		if plain == nil {
 			t.Fatalf("%s: the instrument does not render", id)
 		}
-		// Resolved as the Synth root resolves them: with the played voice's
-		// length (the range caps and the "settles" gate read it).
+		// With the played voice's length, which the caps and the "settles" gate read.
 		for _, g := range buildMacroGroupsForVoice(schema, anchor, secs) {
 			for _, d := range g.Dials {
 				r0 := synthDialPercent(d.Reading(anchor))
@@ -123,13 +112,8 @@ func dialMetricCheck(t *testing.T, id string, schema []audio.ParamDef, anchor au
 				if !ok1 || !ok2 || !ok0 {
 					continue // the descriptor does not apply to this sound
 				}
-				// Judge EACH end against the shipped sound (the reading the dial
-				// shows untouched), and only an end ≥ dialMeasurableMinGap away:
-				// a sound already at an end has nowhere to go. A metric equal
-				// across a side is saturated (a kick's attack is already
-				// instant) or below the descriptor's frame resolution — the
-				// dial is still audible (TestEveryDialIsMeasurable), the metric
-				// just cannot see it.
+				// Each end against the shipped sound, only when ≥ 10 away. A metric flat across a side is saturated or below its
+				// frame resolution; the dial's audibility is TestEveryDialIsMeasurable's.
 				tolOf := func(ref float64) float64 {
 					if tol := 0.05 * math.Abs(ref); tol >= 0.021 {
 						return tol
@@ -167,14 +151,9 @@ func dialMetricCheck(t *testing.T, id string, schema []audio.ParamDef, anchor au
 	}
 }
 
-// dialMetricExceptions are the (instrument, dial, side) whose declared
-// metric moves the wrong way, with the reason. A ratchet: a new wrong-way side
-// fails, and a listed side that moves the right way must be removed.
+// A ratchet: a new wrong-way side fails, and a listed side that now moves the right way must go.
 var dialMetricExceptions = map[string]string{
-	// Empty since the test measures the PLAYED voice (2026-10-14): the bowed
-	// models' fade-in exceptions healed, and Tail lost its env.release metric
-	// (the descriptor reads 0 when the release ramp spans the capped half of
-	// the voice — TestEveryDialIsMeasurable owns its audibility).
+	// Empty: on the played voice every declared metric moves the declared way.
 }
 
 func samePCM(a, b []float32) bool {

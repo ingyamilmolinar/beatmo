@@ -23,9 +23,7 @@ func filterState() *analyzer.State {
 	}
 }
 
-// collectDrawnTexts runs fn while intercepting BOTH text-draw paths (the
-// styled role API the meters now render through, plus the legacy scaled
-// path) and returns the set of strings that were drawn.
+// Both the styled role path and the legacy scaled path.
 func collectDrawnTexts(t *testing.T, fn func()) map[string]bool {
 	t.Helper()
 	out := map[string]bool{}
@@ -41,8 +39,7 @@ func collectDrawnTexts(t *testing.T, fn func()) map[string]bool {
 	return out
 }
 
-// With a visibleIDs set of one instrument, only that instrument's strip text
-// plus the Master strip text should be drawn; hidden instrument names must not.
+// The visible instrument's strip and Master; hidden names are not drawn.
 func TestLevelsVisibleFilter_OnlyVisibleStrips(t *testing.T) {
 	rect := image.Rect(0, 0, 800, 120)
 	dst := ebiten.NewImage(rect.Dx(), rect.Dy())
@@ -75,9 +72,7 @@ func TestLevelsVisibleFilter_NilShowsAll(t *testing.T) {
 	}
 }
 
-// Driving the real EQ panel Lvl Draw with one soloed row should restrict the
-// Levels strips to that instrument + Master (kick is muted-by-solo; hat has
-// no row, so neither should appear as a strip label).
+// Solo restricts the strips to that instrument and Master.
 func TestEQPanelLevels_SoloRestrictsStrips(t *testing.T) {
 	withDefaultAudio(t)
 	withDefaultStart(t, false)

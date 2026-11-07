@@ -6,8 +6,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// The synth-tab stage subtitles ("what makes this sound", …) must follow the
-// active locale. Under es-419 every stage shows its Spanish gloss.
 func TestSynthSectionSubtitleLocalized(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	i18n.SetLocale(i18n.LocaleES)
@@ -34,8 +32,7 @@ func TestSynthSectionSubtitleEnglishUnchanged(t *testing.T) {
 	}
 }
 
-// The displayed stage chip labels follow the active locale. Universal audio
-// abbreviations (OSC, FM, LFO) intentionally stay identical in Spanish.
+// OSC, FM and LFO stay the same in Spanish.
 func TestSynthSectionLabelLocalizedDisplay(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	i18n.SetLocale(i18n.LocaleES)
@@ -58,9 +55,7 @@ func TestSynthSectionLabelLocalizedDisplay(t *testing.T) {
 	}
 }
 
-// sectionLabel stays the stable canonical English identifier under ANY locale.
-// It backs hit-area tags ("synth-chip-VOICE") and the selectSynthSection JS
-// lookup, which must not shift when the user changes language.
+// It backs hit-area tags and the selectSynthSection lookup, which must not shift with the language.
 func TestSynthSectionLabelCanonicalAcrossLocales(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	want := map[synthSectionID]string{
@@ -79,9 +74,7 @@ func TestSynthSectionLabelCanonicalAcrossLocales(t *testing.T) {
 	}
 }
 
-// In the default English locale, the localized label is byte-identical to the
-// canonical label — proving the i18n EN catalog mirrors the canonical strings,
-// so existing English-locale tests and layouts see no behavior change.
+// The EN catalogue mirrors the canonical strings.
 func TestSynthSectionLabelLocalizedMatchesCanonicalInEnglish(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	i18n.SetLocale(i18n.LocaleEN)

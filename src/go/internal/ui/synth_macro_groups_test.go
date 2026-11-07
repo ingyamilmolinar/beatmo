@@ -22,8 +22,7 @@ func groupsFor(t *testing.T, id instrument.ID) []macroGroup {
 	return buildMacroGroups(defs, merged)
 }
 
-// A solo bowed string (violin): shows the universal concepts + Movement (vibrato
-// LFO on) + Body (resonator on); hides Voice (no formant) and Width (one voice).
+// Movement (vibrato) and Body (resonator) on; Voice (no formant) and Width (one voice) hidden.
 func TestMacroGroups_Melodic_ViolinCoreConcepts(t *testing.T) {
 	gs := groupsFor(t, roster.Violin)
 	ids := macroIDs(gs)

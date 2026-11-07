@@ -4,16 +4,10 @@ package ui
 
 import "testing"
 
-// synth_armed_numeric_test.go — manual numeric text entry from the armed control
-// is DISABLED for now (2026-07-25). Any stationary click anywhere on the armed
-// card — including the value-lane center readout band that used to open numeric
-// entry — now LOCKS the control. A drag anywhere still spins the lane (untouched;
-// see synth_armed_input_test.go). openArmedNumericEditor remains defined but has
-// no interaction path, so re-enabling later is a one-line change in OnRelease.
+// Typed entry from the armed control is off: any still click on the card locks it, a drag still spins the lane.
+// openArmedNumericEditor stays, one line away from re-enabling in OnRelease.
 
-// TestArmedReadoutTapLocks: a stationary tap inside the armed value lane's CENTER
-// readout band LOCKS the control and does NOT open the numeric editor (text entry
-// disabled).
+// Locks, and opens no numeric editor.
 func TestArmedReadoutTapLocks(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	dv := g.drum
@@ -55,9 +49,7 @@ func TestArmedReadoutTapLocks(t *testing.T) {
 	}
 }
 
-// TestArmedTapOutsideReadoutLocks: a stationary tap on the armed card outside the
-// center readout band (the header band at the card's top) also LOCKS the control
-// and opens no numeric editor.
+// The header band locks too.
 func TestArmedTapOutsideReadoutLocks(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	dv := g.drum

@@ -9,11 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// TestStageChipShortLabelNoEllipsis verifies that when a stage's full localized
-// label does not fit the available chip width, sectionLabelChipFitted falls back
-// to the designed short label (ENS/FRM/RES) rather than a mid-word ellipsis.
-// Covers the three long-named stages added in Phase-15 (voice/choir) across the
-// shipped locales.
+// Too narrow, a stage chip shows its designed short label (ENS/FRM/RES), never a mid-word ellipsis, in every locale.
 func TestStageChipShortLabelNoEllipsis(t *testing.T) {
 	t.Cleanup(func() { i18n.SetLocale(i18n.LocaleEN) })
 

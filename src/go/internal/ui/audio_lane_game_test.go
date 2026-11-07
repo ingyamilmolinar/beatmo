@@ -11,9 +11,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 )
 
-// laneRun advances the fake audio clock in `step` increments for `secs`,
-// running one real Game.Update per increment (the test path drives the
-// sequencer — and with it the audio lane — from Update).
+// One real Game.Update per increment: under test Update drives the sequencer and the lane.
 func laneRun(t *testing.T, g *Game, secs, step float64) {
 	t.Helper()
 	now := laneTestNow(g)
@@ -25,9 +23,8 @@ func laneRun(t *testing.T, g *Game, secs, step float64) {
 	}
 }
 
-// newLaneGame runs under the BROWSER profile (H = 1.0 s): the lane exists
-// for the single-threaded WASM build, and the desktop horizon (0.25 s) is
-// shorter than the stalls these tests inject.
+// The browser profile (H = 1 s): the lane exists for single-threaded WASM, and the desktop horizon is shorter
+// than the stalls injected here.
 func newLaneGame(t *testing.T) (*Game, *fakeSink) {
 	t.Helper()
 	restore := SetRuntimeProfileForTest(browserRuntimeProfile())
@@ -38,8 +35,7 @@ func newLaneGame(t *testing.T) (*Game, *fakeSink) {
 	return g, sink
 }
 
-// The whole point: while the main thread is stalled (no Update at all), the
-// notes due during the stall are ALREADY committed to the engine.
+// With no Update at all during the stall, the notes due in it are already committed.
 func TestLaneStallToleranceGame(t *testing.T) {
 	g, sink := newLaneGame(t)
 	laneRun(t, g, 0.02, 0.004) // a few frames: the lane commits the horizon
@@ -162,8 +158,7 @@ func TestLaneMuteNodeUsesStopAt(t *testing.T) {
 	}
 }
 
-// Trigger-driven UI (synth glow, sampler playhead) must light up when the
-// note is DUE, not when the lane commits it up to the horizon early.
+// Glow and playhead light when the note is DUE, not when the lane commits it early.
 func TestLaneVoiceTriggerFiresAtGridTimeNotCommit(t *testing.T) {
 	g, sink := newLaneGame(t)
 	inst := g.drum.Rows[0].Instrument
@@ -178,8 +173,6 @@ func TestLaneVoiceTriggerFiresAtGridTimeNotCommit(t *testing.T) {
 		t.Fatal("setup: nothing committed 0.5 s ahead")
 	}
 	stamp := audio.LastTriggerAt(inst)
-	// Run up to just before the far note's grid moment: its trigger must not
-	// have been stamped early by the commit.
 	laneRun(t, g, far.Grid-*laneTestNow(g)-0.05, 0.004)
 	early := audio.LastTriggerAt(inst)
 	laneRun(t, g, 0.2, 0.004)
@@ -200,11 +193,8 @@ func TestLegacyPathUnchangedWhenLaneOff(t *testing.T) {
 	waitForChan(t, plays, 10000)
 }
 
-// A seek moves the abs↔time mapping without a new transport generation. Every
-// note the lane committed under the OLD mapping must go: after the seek, each
-// future committed voice must be exactly the note its (row, abs) makes under
-// current state. Found by TestLaneHeardEqualsLegacyDispatched: the pre-seek
-// timeline kept playing for a whole horizon, interleaved with the new one.
+// A seek moves abs↔time without a new generation, so every note committed under the old mapping goes, or the
+// old timeline plays on for a whole horizon.
 func TestLaneSeekCancelsTheOldTimeline(t *testing.T) {
 	for _, beats := range []int{40, 0} { // forward far past the window; back to the start
 		g, sink := newLaneGame(t)
@@ -233,11 +223,8 @@ func TestLaneSeekCancelsTheOldTimeline(t *testing.T) {
 	}
 }
 
-// An edit made OUTSIDE Update (a JS-bridge call) must reach the lane at
-// once: on WASM the sequencer ticker is a JS timer, so a UI stall right after
-// the edit would hold the edit back from every note starting inside the
-// stall (edit-storm e2e: stale notes up to 60 ms after their edit). A kick
-// makes the sequencer goroutine runnable immediately, without the ticker.
+// On WASM the ticker is a JS timer, so a bridge edit must kick the lane at once, or a stall right after it holds
+// the edit back from every note inside the stall.
 func TestLaneKickTicksWithoutTheTicker(t *testing.T) {
 	t.Setenv("SEQ_TICK_MS", "600000") // the ticker never fires during the test
 	g, sink := newLaneGame(t)
@@ -257,10 +244,8 @@ func TestLaneKickTicksWithoutTheTicker(t *testing.T) {
 	}
 }
 
-// A BACKWARD seek (and every undo/redo while playing: undoRestore re-imports
-// and seeks back to the start of the current beat) replays abs values the lane
-// already committed and played. Those old entries are history, not a reason
-// to skip the cell: every replayed cell must be committed again.
+// A backward seek (every undo/redo while playing) replays cells already played; their old entries are history,
+// so each replayed cell commits again.
 func TestLaneBackwardSeekReplaysCells(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -305,11 +290,8 @@ func TestLaneBackwardSeekReplaysCells(t *testing.T) {
 	}
 }
 
-// Play pressed while the audio clock still read 0 (no context yet / a context
-// that has not rendered its first quantum — plausible when the first gesture
-// IS Play) leaves no audio-clock anchor. The lane maps notes through that
-// anchor, so it must anchor itself once the clock runs, not stay silent for
-// the whole session.
+// Play pressed while the clock still read 0 (the first gesture IS Play) leaves no anchor; the lane must anchor
+// once the clock runs, not stay silent.
 func TestLaneAnchorsWhenPlayStartedBeforeTheAudioClock(t *testing.T) {
 	g, sink := newLaneGame(t)
 	g.state.SetAudioStartForTest(0)
