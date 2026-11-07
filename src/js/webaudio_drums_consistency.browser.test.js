@@ -11,10 +11,8 @@ import { setupFullWasm } from "./real_input_test_helpers.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 
-// Every voice renders from the param block Go pushes for its instrument
-// document (window.setInstrumentBlock); a page without Go has none. Read the
-// `modular` instrument's block once from the real app, install it on the bare
-// page below, and render the direct-C reference from the SAME block.
+// A page without Go has no instruments: the block is read once from the real app and the C reference rendered from
+// the SAME block.
 let MODULAR;
 {
   const app = await setupFullWasm({ logLevel: "ERROR" });
@@ -97,14 +95,8 @@ await page.waitForFunction(() => window.__audioCtx && window.__audioCtx.state ==
 
 // Now play via the high-level API and capture its buffer.
 await page.evaluate(() => { window.__samples = []; window.__done = false; window.__captureSamples = true; });
-// EVERY legacy family migrated to the modular engine — kick/tom/snare/cymbal/bass
-// through Phase-6, and FM in Phase-7 (the LAST). render_hihat / render_fm_bass etc.
-// are all deleted; those WebAudio paths now flow through render_modular (their
-// param-block parity is covered by the xplat audio-compare suite). The ONLY
-// remaining bespoke C renderer is render_modular itself, so the base `modular`
-// instrument takes both direct-render JS↔C consistency slots: a default render
-// here and a second modular render below. This still exercises the playSound →
-// renderToCache → WebAudio path against a direct C render reference.
+// Every family renders through render_modular, the only C renderer, so the base modular voice fills both direct-render
+// slots; the families' blocks are covered by the xplat audio-compare suite.
 await page.evaluate(() => window.playSound('modular', 1.0));
 await page.waitForFunction(() => window.__done === true, {}, { timeout: 10000 });
 await page.waitForFunction(() => window.__renderMeta && window.__renderMeta['modular'], {}, { timeout: 5000 });
@@ -163,12 +155,7 @@ if (c < 0.98) { throw new Error(`miniaudio JS render mismatch (modular): corr=${
 }
 console.log('drums.js consistency verified (modular)', { corr: c.toFixed(4) });
 
-// Repeat with a second modular render to keep two direct-render JS↔C consistency
-// checks. EVERY legacy family (incl. FM, Phase-7) migrated to the modular engine;
-// their render_X C exports were deleted — those WebAudio paths now flow through
-// render_modular, whose seeded param blocks are covered by the xplat audio-compare
-// suite. render_modular is the only remaining bespoke C renderer, so it serves
-// both consistency slots (deterministic, so the second render correlates too).
+// A second modular render: deterministic, so it correlates too.
 await (async () => {
   await page.evaluate(() => { window.__samples = []; window.__done = false; window.__captureSamples = true; });
   await page.evaluate(() => window.playSound('modular', 1.0));

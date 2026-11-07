@@ -1,11 +1,4 @@
-/**
- * Real Input Circuit Build Test
- *
- * Tests circuit building and playback workflow using a hybrid approach:
- * nodes are created via API (for reliability), then edge creation via
- * shift-drag, playback control, and BPM changes are tested via real
- * Playwright mouse events.
- */
+/** Nodes via the API for reliability; edges (shift-drag), playback and BPM through real mouse events. */
 
 import { setupFullWasm } from "./real_input_test_helpers.js";
 import {
@@ -32,9 +25,6 @@ try {
   });
   await page.waitForTimeout(300);
 
-  // ─────────────────────────────────────────────────────────────────────
-  // Step 1: Create 4 nodes via API and center camera on them
-  // ─────────────────────────────────────────────────────────────────────
   console.log("real_input_circuit_build: Creating 4 test nodes via API...");
   const positions = [[30, 0], [34, 0], [34, 4], [30, 4]];
   await page.evaluate((pos) => {
@@ -60,9 +50,6 @@ try {
   await page.evaluate(([pdx, pdy]) => { panBy?.(pdx, pdy); forceDraw?.(); }, [dx, dy]);
   await page.waitForTimeout(200);
 
-  // ─────────────────────────────────────────────────────────────────────
-  // Step 2: Create edges via real shift-drag to form a loop
-  // ─────────────────────────────────────────────────────────────────────
   console.log("real_input_circuit_build: Creating edges via shift-drag...");
   for (let k = 0; k < positions.length; k++) {
     const [i1, j1] = positions[k];
@@ -85,18 +72,12 @@ try {
     throw new Error(`Too few edges created: expected 4, got ${edgeCount}`);
   }
 
-  // ─────────────────────────────────────────────────────────────────────
-  // Step 3: Start playback on the demo circuit (rows 0-5 already set up)
-  // ─────────────────────────────────────────────────────────────────────
   console.log("real_input_circuit_build: Starting playback...");
   await clickPlayBtn(page);
   await page.waitForTimeout(500);
   await assertPlaying(page, true, "Expected playback to start");
   console.log("real_input_circuit_build: Playback running");
 
-  // ─────────────────────────────────────────────────────────────────────
-  // Step 4: Check for node highlights during playback
-  // ─────────────────────────────────────────────────────────────────────
   console.log("real_input_circuit_build: Checking for node highlights...");
   // Check the demo circuit nodes (0,0) is a common position
   let highlightSeen = false;
@@ -117,9 +98,6 @@ try {
     console.log("  WARNING: no highlight observed (timing dependent)");
   }
 
-  // ─────────────────────────────────────────────────────────────────────
-  // Step 5: Change BPM during playback via real button clicks
-  // ─────────────────────────────────────────────────────────────────────
   console.log("real_input_circuit_build: Changing BPM during playback...");
   const bpmBefore = await page.evaluate(() => getBPM?.());
   for (let i = 0; i < 3; i++) {
@@ -132,17 +110,11 @@ try {
   }
   await assertPlaying(page, true, "Playback should continue after BPM change");
 
-  // ─────────────────────────────────────────────────────────────────────
-  // Step 6: Stop playback
-  // ─────────────────────────────────────────────────────────────────────
   console.log("real_input_circuit_build: Stopping playback...");
   await clickStopBtn(page);
   await page.waitForTimeout(200);
   await assertPlaying(page, false, "Expected playback to stop");
 
-  // ─────────────────────────────────────────────────────────────────────
-  // Step 7: Check for parity mismatches
-  // ─────────────────────────────────────────────────────────────────────
   const mismatches = await page.evaluate(() => recentSchedulerMismatches?.());
   const mismatchCount = mismatches?.length ?? 0;
   console.log(`real_input_circuit_build: Parity mismatches: ${mismatchCount}`);

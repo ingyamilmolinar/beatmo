@@ -1,24 +1,6 @@
-// wasm_load_startup.browser.test.js
-//
-// Measures the browser load waterfall and time-to-interactivity (TTI) for the
-// real WASM build, and gates them with hard, env-overridable budgets.
-//
-// TTI ("first frame + input wired") == window.__beatmoBoot.firstFrame: the
-// rAF fired right after setSimpleDraw(false), i.e. WASM instantiated, go.run()
-// executed, Go-registered JS exports callable, loading indicator hidden, and
-// the first full-UI frame painted. The boot waterfall is instrumented in
-// src/js/index.html (window.__beatmoBoot, see bootMark()).
-//
-// The test server serves .wasm/.js/.html with Content-Encoding: gzip, exactly
-// mirroring the production GCS deploy after compression (deploy-wasm-gcs.sh).
-// This makes the measured transfer size + load time representative AND doubles
-// as a guard that WebAssembly.instantiateStreaming works through a gzip-encoded
-// response (de-risking the deploy change).
-//
-// Budgets (override to widen headroom on slow CI; defaults are the tight gate):
-//   WASM_LOAD_TTI_MAX_MS          navigation -> firstFrame (TTI)
-//   WASM_LOAD_INSTANTIATE_MAX_MS  fetch start -> instantiateStreaming resolved
-//   WASM_LOAD_TRANSFER_MAX_BYTES  compressed main.wasm bytes on the wire
+// The real build's load waterfall and TTI (window.__beatmoBoot.firstFrame: instantiated, running, exports callable,
+// first full frame painted), served gzip like the deploy, which also proves instantiateStreaming works through gzip.
+// Budgets: WASM_LOAD_TTI_MAX_MS, WASM_LOAD_INSTANTIATE_MAX_MS, WASM_LOAD_TRANSFER_MAX_BYTES.
 
 import { chromium } from "playwright";
 import http from "http";
@@ -34,17 +16,11 @@ const jsDir = __dirname;
 const goDir = path.resolve(jsDir, "../go");
 const GO = resolveGoBinary();
 
-// TRANSFER size is deterministic and machine-independent, so it is the TIGHT
-// gate: 6.55 MiB, matching the Go asset-size gate (defaultWasmGzipMaxBytes).
-// An unstripped/uncompressed build exceeds it.
+// Transfer size is deterministic, so it is the TIGHT gate, matching the Go asset-size gate; an unstripped or
+// uncompressed build exceeds it.
 const TRANSFER_MAX_BYTES = Number(process.env.WASM_LOAD_TRANSFER_MAX_BYTES || 6868172);
-//
-// TIMING is wall-clock and varies wildly by hardware (a CPU-throttled headless
-// software-GL box measured ~22s TTI / ~10s fetch+compile for the same bytes a
-// real machine loads in a few seconds). A single hardcoded "tight" number is
-// therefore not portable. The defaults below are HARD CI-safe ceilings that
-// catch hangs and gross regressions; tune them down per-runner via the env
-// overrides once a target-hardware budget is agreed.
+// Timing varies wildly by hardware (a throttled software-GL box takes ~22 s for what a real machine loads in a few), so
+// these are CI-safe ceilings against hangs and gross regressions; tighten per runner through the env.
 const TTI_MAX_MS = Number(process.env.WASM_LOAD_TTI_MAX_MS || 30000);
 const INSTANTIATE_MAX_MS = Number(process.env.WASM_LOAD_INSTANTIATE_MAX_MS || 18000);
 
@@ -101,8 +77,7 @@ try {
   const page = await browser.newPage();
   await page.goto(`http://localhost:${port}/`);
 
-  // Wait for TTI: the firstFrame milestone is set after the first painted
-  // full-UI frame. 30s ceiling guards against a hung boot.
+  // The ceiling guards against a hung boot.
   await page.waitForFunction(
     () => window.__beatmoBoot && window.__beatmoBoot.firstFrame != null, null,
     { timeout: 30000 }

@@ -1,19 +1,6 @@
-// landing_server.js — serves src/js/ the way beatmo.io serves the deployed
-// site (scripts/deploy-wasm-gcs.sh), so the landing page behaves exactly as it
-// does in production:
-//   - main.wasm is served under its content-hashed name (main.<sha16>.wasm)
-//     and index.html is stamped with that name — a stamped page is what tells
-//     the head script it is a deployed page, so the landing shows;
-//   - text and the wasm are compressed (gzip, or br for the wasm);
-//   - the landing videos are served raw with HTTP Range (seeking needs it).
-//
-// Used by `make serve-landing` (run directly) and by the landing browser tests
-// (landing_load / landing_behavior import createLandingServer).
-//
-// Run: node src/js/landing_server.js
-//   BEATMO_LANDING_PORT (default 8090), BEATMO_LANDING_HOST (default 127.0.0.1;
-//   0.0.0.0 to open it from a phone on the LAN), WASM_FILE (default
-//   src/js/main.wasm), LANDING_ENCODING=gzip|br|identity (default gzip).
+// Serves src/js/ the way the deploy does, so the landing behaves as in production: a content-hashed wasm stamped into
+// index.html (which is what makes the landing show), compression, raw video with Range. Run: node src/js/landing_server.js
+// (BEATMO_LANDING_PORT, BEATMO_LANDING_HOST=0.0.0.0 for a phone, WASM_FILE, LANDING_ENCODING).
 
 import http from "http";
 import zlib from "zlib";
@@ -43,15 +30,8 @@ export function stampIndex(html, wasmName) {
   return html.replace(/(["'])main\.wasm\1/g, `$1${wasmName}$1`);
 }
 
-/**
- * createLandingServer returns an http.Server serving `root` like production.
- * The wasm is re-read (and re-hashed) whenever its file changes, so a
- * `make wasm` while the server runs is picked up on the next page load.
- *
- * opts: wasmFile, encoding ("gzip" | "br" | "identity"), level (gzip level,
- * default 6; the deploy uses 9), stamp (false serves an unstamped dev page),
- * baselineIndex (served for ?arm=baseline), root.
- */
+/** Re-hashes the wasm when its file changes, so a `make wasm` is picked up on the next load. opts: wasmFile, encoding,
+ * level (default 6; the deploy uses 9), stamp (false = unstamped dev page), baselineIndex (?arm=baseline), root. */
 export function createLandingServer(opts = {}) {
   const root = opts.root || jsDir;
   const wasmFile = opts.wasmFile || path.join(root, "main.wasm");
@@ -123,10 +103,8 @@ export function createLandingServer(opts = {}) {
       res.end(data);
     });
   });
-  // Hash + compress now, not on the first request: a cold first page would
-  // otherwise wait seconds for index.html (a 30 MB gzip) and every benchmark's
-  // first run would measure the server. A rebuilt wasm is redone on the next
-  // request after it changes.
+  // Now, not on first request: otherwise a cold first page waits seconds and every benchmark's first run measures the
+  // server.
   try { currentWasm(); } catch (_) {}
   server.wasmName = () => currentWasm().name;
   server.wasmBytes = () => currentWasm().body.length;

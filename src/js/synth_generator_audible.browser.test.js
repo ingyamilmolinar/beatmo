@@ -1,29 +1,6 @@
-/**
- * Generator audible regression test (WASM — primary platform), post
- * native-synth-deprecation model.
- *
- * Waveform choice lives in two places:
- *   - every config-first instrument: the gen-slot `gen1_wave` knob
- *     (Sine/Saw/Square/Triangle) in the modular param block, rendered by
- *     render_modular_p;
- *   - FM + Noise generators: the unified `modular` voice's `osc_type`
- *     (0=Sine … 4=FM 5=Noise White 6=Noise Pink) via render_modular_p.
- *
- * REGRESSION GUARD: user reported that switching the oscillator off the
- * native waveform in WASM produced SILENCE. This drives the real
- * synth→Go→JS→C path (setInstrumentParam → platformInstrumentParamsChanged →
- * updateInstrumentParams → renderToCache → render_X_p) and asserts every
- * generator produces an audible buffer, that the per-stage enable flags land
- * on the right C fields (the exact heap region — osc_enabled..drive_enabled,
- * modular indices 27-31 — whose stale-ABI misalignment caused the silence),
- * and that the native render is bit-stable across a knob round-trip.
- *
- * COVERED-BY-GO (C render correctness — NOT re-tested here):
- *   internal/audio/native_wave_knob_test.go (wave knob mutates per family),
- *   internal/audio/modular_render_test.go + modular_stage_io_test.go
- *   (osc bypass = documented silence, env bypass = audible no-ADSR render).
- * This test owns ONLY the WASM↔JS↔C bridge boundary for those params.
- */
+/** Every generator must be audible through the real synth → Go → JS → C path: the gen1_wave knob on config-first
+ * instruments, osc_type on the modular voice, and the per-stage enable flags landing on the right C fields (the region a
+ * stale ABI misaligned). COVERED-BY-GO: native_wave_knob_test.go, modular_render_test.go, modular_stage_io_test.go */
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";
@@ -95,18 +72,13 @@ try {
   await page.waitForFunction(() => window.audioReady !== undefined);
   await waitForAudioReady(page);
 
-  // Early ABI sanity: a stale synth_param_abi.gen.js is the root cause of the
-  // "silent generator" bug — surface it before the audio assertions.
+  // A stale ABI is the root cause of a silent generator, so it is surfaced first.
   const abi = await page.evaluate(() => window.__synthABI || null);
   console.log("[TEST] __synthABI =", JSON.stringify(abi));
   if (abi && abi.stale) fail("synth_param_abi.gen.js is STALE — modular-voiced instruments will be silent (run `make gen-synth-abi`).");
   if (abi && !abi.hasModularFields) fail("ABI is missing the modular enable-flag fields — stage toggles cannot reach C.");
 
-  // fm-bass is a config-first modular instrument (render_modular_p, FM voice):
-  // setInstrumentParam("fm-bass","gen1_wave",v) writes the modular block's
-  // gen1_wave column directly. The other families' wave knobs are covered by the
-  // xplat audio-compare suite (kick-wave-square / fm-bass-wave-saw /
-  // snare-wave-triangle paramCases) and the Go native wave knob test.
+  // The other families' wave knobs are covered by the xplat audio-compare suite and the Go wave-knob test.
   const INST = "fm-bass"; // config-first FM instrument (render_modular_p)
   const MOD = "modular"; // the unified modular voice (render_modular_p)
 
@@ -117,12 +89,8 @@ try {
   console.log(`[TEST] Native peak=${native.peak} rms=${native.rms} tailRMS=${native.tailRMS}`);
   if (!(native.peak > 0)) fail(`Native ${INST} is silent (peak=${native.peak})`);
 
-  // ── Per-recipe wave knob: every non-default waveform must be audible AND
-  //    actually change the render (renders are peak-normalized to 0.8, so the
-  //    head SHAPE — not the peak — is the discriminator). ──
-  // gen1_wave enum: 0=Sine (fm-bass default) 1=Saw 2=Square 3=Triangle. Sweep
-  // the three NON-default waveforms (avoid 0 = the native default). Writing a
-  // value the instrument's document lacks is a silent no-op, so assert it has it.
+  // Renders are peak-normalized, so the head SHAPE discriminates. 0=Sine is the default; writing a value the document lacks
+  // is a silent no-op, so its presence is asserted.
   const WAVE = "gen1_wave";
   const hasWave = await page.evaluate(([id, k]) => k in (getInstrumentParams(id) || {}), [INST, WAVE]);
   if (!hasWave) throw new Error(`${INST}'s document has no ${WAVE} value`);
@@ -145,9 +113,7 @@ try {
     }
   }
 
-  // ── Modular generator sweep: every osc_type must produce an audible buffer
-  //    (this is the post-deprecation home of the FM + Noise generators). ──
-  // osc_type enum: 0=Sine 1=Saw 2=Square 3=Triangle 4=FM 5=Noise White 6=Noise Pink.
+  // osc_type: 0=Sine 1=Saw 2=Square 3=Triangle 4=FM 5=Noise White 6=Noise Pink.
   await page.evaluate((id) => resetInstrumentParams(id), MOD);
   const OSCS = [
     [0, "Sine"], [1, "Saw"], [2, "Square"], [3, "Triangle"],
@@ -166,9 +132,7 @@ try {
     }
   }
 
-  // ── LIVE PLAYBACK: capture the REAL master output (post channel chain +
-  //    limiter) for a triggered hit. This is the path the user actually hears —
-  //    render being audible doesn't prove the graph output is. ──
+  // The REAL master output for a hit: an audible render does not prove the graph output is.
   const captureHit = async (id) => {
     await page.evaluate((i) => { window.startOutputCapture(); window.playSound(i, 1.0); }, id);
     await page.waitForTimeout(700);
@@ -197,9 +161,7 @@ try {
   console.log(`[TEST] LIVE modular osc_type=5 (Noise White) master peak=${liveNoise.peak.toFixed(5)} rms=${liveNoise.rms.toFixed(5)} n=${liveNoise.n}`);
   if (!(liveNoise.peak > 0)) fail(`LIVE modular noise master output is SILENT (peak=${liveNoise.peak})`);
 
-  // ── Per-stage enable flags must reach the C voice through the modular ABI.
-  //    This is the exact heap region (osc_enabled..drive_enabled, indices 27-31)
-  //    whose stale-ABI misalignment caused the silence — exercise it directly. ──
+  // The region a stale ABI misaligned, exercised directly.
   await page.evaluate((id) => { resetInstrumentParams(id); setInstrumentParam(id, "osc_type", 1); }, MOD); // Saw (deterministic)
   const sawAll = await page.evaluate((id) => window.__testCaptureSynthRender(id), MOD);
   // Envelope bypass → constant level (no ADSR): different render, still audible.
@@ -208,17 +170,14 @@ try {
   console.log(`[TEST] env_enabled=0 peak=${envOff.peak.toFixed(5)} rms=${envOff.rms.toFixed(5)}`);
   if (!(envOff.peak > 0)) fail("env_enabled=0 silenced the voice — bypass must pass audio (enable flag not reaching C?)");
   if (headDiff(sawAll, envOff) < 1e-6) fail("env_enabled=0 produced an identical render — the enable flag did not reach the C voice");
-  // Oscillator bypass → silence by design (the generator is the source). This
-  // confirms the osc_enabled index lands on the right C field (a stale ABI
-  // would silence the voice regardless of this flag).
+  // Silence by design (the generator is the source), which confirms osc_enabled lands on the right field.
   await page.evaluate((id) => { setInstrumentParam(id, "env_enabled", 1); setInstrumentParam(id, "osc_enabled", 0); }, MOD);
   const oscOff = await page.evaluate((id) => window.__testCaptureSynthRender(id), MOD);
   console.log(`[TEST] osc_enabled=0 peak=${oscOff.peak.toFixed(5)}`);
   if (oscOff.peak > 0) fail(`osc_enabled=0 should silence the generator (it is the source); got peak=${oscOff.peak}`);
   await page.evaluate((id) => resetInstrumentParams(id), MOD);
 
-  // ── Back to defaults restores an audible bespoke voice, bit-identical to the
-  //    original Native render (selector default is bit-stable). ──
+  // Bit-identical to the original render.
   await page.evaluate((id) => resetInstrumentParams(id), INST);
   const restored = await page.evaluate((id) => window.__testCaptureSynthRender(id), INST);
   if (!restored || !(restored.peak > 0)) fail(`Native not restored after wave-knob round-trip (peak=${restored && restored.peak})`);

@@ -1,13 +1,5 @@
-// webaudio_output_capture.browser.test.js
-//
-// Tests the output capture API for recording audio pipeline output.
-//
-// Scenario bodies live in src/js/scenarios/webaudio_output_capture.js so the
-// same assertions can also run inside test_runner.html on a real phone via
-// the LAN serve mode (`make serve-lan`). This file is the Playwright shell
-// that drives them in CI.
-//
-// Usage: GO=/path/to/.tools/go/bin/go node src/js/webaudio_output_capture.browser.test.js
+// The Playwright shell for scenarios/webaudio_output_capture.js, which also runs on a real phone through
+// test_runner.html. Usage: GO=… node src/js/webaudio_output_capture.browser.test.js
 
 import { setupFullWasm } from "./real_input_test_helpers.js";
 import { flushCoverage, isCoverageEnabled, waitForAudioReady } from "./browser_test_helpers.js";

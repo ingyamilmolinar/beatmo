@@ -1,26 +1,6 @@
-// recording_capture_backpressure.browser.test.js
-//
-// Protocol-level backpressure test for recording_capture_worklet.js. The
-// happy path (configure → batches → flush/stop → done) is covered by
-// recording_capture.browser.test.js / recording_lifecycle.browser.test.js
-// through the full WASM pipeline; what was UNTESTED is the bounded-outbox
-// discipline the worklet header documents:
-//
-//   - pending >= maxPending → batch dropped, {type:'drop', n} posted on the
-//     worker port, _drops incremented
-//   - 'ack' from the worker decrements pending → flow resumes (recovery)
-//   - final 'done' on the main port reports droppedBatches
-//
-// A regression here silently loses recorded audio under encoder stalls —
-// the desktop pipeline's dropsTotal.Add(1) discipline has Go tests; this is
-// the browser-side equivalent.
-//
-// The test drives the REAL worklet on a real audio rendering thread
-// (oscillator → AudioWorkletNode), with the test page playing the encoder
-// worker's role via a MessageChannel it never (then eventually) acks.
-// No WASM build needed — this is a pure worklet-protocol test.
-//
-// Usage: node src/js/recording_capture_backpressure.browser.test.js
+// The worklet's bounded outbox, which a regression would turn into silently lost audio: full → batch dropped and a
+// 'drop' posted; acks resume flow; the final 'done' reports drops. The REAL worklet on a real audio thread, the page
+// playing the encoder; no WASM. Usage: node src/js/recording_capture_backpressure.browser.test.js
 
 import { chromium } from "playwright";
 import http from "http";
@@ -82,8 +62,7 @@ try {
     osc.connect(node).connect(sink).connect(ctx.destination);
     osc.start();
 
-    // The test page plays the encoder worker: it owns port1 of the channel
-    // whose port2 is transferred to the worklet as workerPort.
+    // It owns port1; port2 goes to the worklet as workerPort.
     const chan = new MessageChannel();
     const state = {
       batches: 0,
@@ -137,17 +116,12 @@ try {
         tick();
       });
 
-    // Phase 1 — starve: never ack. First batch occupies the outbox
-    // (pending=1); every subsequent full batch must be dropped.
+    // Never ack: the first batch fills the outbox, every later one must drop.
     const sawDrops = await waitUntil(() => state.drops >= 5, 5000);
     const batchesDuringStarve = state.batches;
 
-    // Phase 2 — recover: ack everything received so far and keep acking.
-    // ALSO raise maxPending to the production depth (8): at batchFrames=128 a
-    // batch ships every ~2.7ms, faster than an ack can round-trip
-    // audio-thread → main thread → audio-thread, so with maxPending=1 a few
-    // steady-state drops are physics, not a protocol bug. With depth 8 the
-    // ack loop keeps pending well under the bound and drops must stop.
+    // maxPending back to production depth (8): a batch ships every ~2.7 ms, faster than an ack round trip, so at depth 1 a
+    // few steady drops are physics, not a bug.
     state.acking = true;
     state.dropsAtRecovery = state.drops;
     state.batchesAtRecovery = state.batches;
@@ -159,14 +133,13 @@ try {
       () => state.batches >= state.batchesAtRecovery + 5,
       5000,
     );
-    // Let the reconfigure + ack loop settle, then measure drop growth over a
-    // fresh observation window.
+    // A fresh observation window after the settle.
     await new Promise((r) => setTimeout(r, 200));
     const dropsBaseline2 = state.drops;
     await new Promise((r) => setTimeout(r, 500));
     const dropsAfterRecovery = state.drops - dropsBaseline2;
 
-    // Phase 3 — stop: main-port done must carry the drop count.
+    // The main-port done carries the drop count.
     const doneMsg = await new Promise((resolve) => {
       node.port.onmessage = (e) => {
         if (e.data && e.data.type === "done") resolve(e.data);
@@ -175,16 +148,8 @@ try {
       setTimeout(() => resolve(null), 3000);
     });
 
-    // The worklet posts 'done' on the worker port (chan.port2 → port1) BEFORE
-    // the main-port 'done' (see _postWorkerDone before _postMainDone in the
-    // worklet's stop handler), but the two messages travel on independent
-    // channels with no cross-channel ordering guarantee. Resolving on the
-    // main-port 'done' above does NOT imply port1 has already received the
-    // worker-port 'done'. Wait for it explicitly before tearing the context
-    // down — otherwise ctx.close() can race ahead of the cross-thread delivery
-    // and drop the message (flaky "worker port received done" under load). If
-    // the worklet genuinely never posts it, this times out and the assertion
-    // still fails.
+    // The two 'done' messages travel on independent channels with no ordering guarantee, so the worker-port one is awaited
+    // explicitly or ctx.close() can race it away.
     await waitUntil(() => state.workerDone, 2000);
 
     osc.stop();

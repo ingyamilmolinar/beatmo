@@ -1,20 +1,7 @@
-/**
- * Layout Parity Helpers
- *
- * Pure functions (no Playwright deps) operating on fullLayoutSnapshot() output.
- * Reusable across visual_mobile_parity, visual_device_parity, and
- * visual_regression test suites.
- */
+/** Pure functions over fullLayoutSnapshot(), shared by the visual parity and regression suites. */
 
 // ─── Rect Utilities ─────────────────────────────────────────────────
 
-/**
- * Check if a rect is within the viewport bounds.
- * @param {{x:number,y:number,w:number,h:number}} rect
- * @param {number} canvasW
- * @param {number} canvasH
- * @returns {boolean}
- */
 export function rectInBounds(rect, canvasW, canvasH) {
   if (!rect || rect.w <= 0 || rect.h <= 0) return false;
   return rect.x >= 0 && rect.y >= 0 &&
@@ -22,12 +9,7 @@ export function rectInBounds(rect, canvasW, canvasH) {
     rect.y + rect.h <= canvasH + 2;
 }
 
-/**
- * Check if two rects overlap (share area).
- * @param {{x:number,y:number,w:number,h:number}} a
- * @param {{x:number,y:number,w:number,h:number}} b
- * @returns {boolean}
- */
+/** Overlap means shared area. */
 export function rectsOverlap(a, b) {
   if (!a || !b || a.w <= 0 || a.h <= 0 || b.w <= 0 || b.h <= 0) return false;
   const overlapX = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
@@ -35,12 +17,6 @@ export function rectsOverlap(a, b) {
   return overlapX > 1 && overlapY > 1; // 1px overlap tolerance for rounding
 }
 
-/**
- * Check if inner rect is fully contained within outer rect.
- * @param {{x:number,y:number,w:number,h:number}} outer
- * @param {{x:number,y:number,w:number,h:number}} inner
- * @returns {boolean}
- */
 export function rectContains(outer, inner) {
   if (!outer || !inner) return false;
   return inner.x >= outer.x - 1 &&
@@ -49,45 +25,24 @@ export function rectContains(outer, inner) {
     inner.y + inner.h <= outer.y + outer.h + 1;
 }
 
-/**
- * Check if rect meets minimum dimension.
- * @param {{x:number,y:number,w:number,h:number}} rect
- * @param {number} minSize
- * @returns {boolean}
- */
 export function rectMinSize(rect, minSize) {
   if (!rect) return false;
   return rect.w >= minSize && rect.h >= minSize;
 }
 
-/**
- * Check if rect `a` is above rect `b`.
- * @param {{x:number,y:number,w:number,h:number}} a
- * @param {{x:number,y:number,w:number,h:number}} b
- * @returns {boolean}
- */
 export function isAbove(a, b) {
   if (!a || !b) return false;
   return a.y + a.h <= b.y + 2; // 2px tolerance
 }
 
-/**
- * Check if rect `a` is left of rect `b`.
- * @param {{x:number,y:number,w:number,h:number}} a
- * @param {{x:number,y:number,w:number,h:number}} b
- * @returns {boolean}
- */
 export function isLeftOf(a, b) {
   if (!a || !b) return false;
   return a.x + a.w <= b.x + 2; // 2px tolerance
 }
 
-// ─── Composite Checks ───────────────────────────────────────────────
-// Each returns {ok: boolean, errors: string[]}
+// Each returns {ok, errors}.
 
-/**
- * Verify grid + drum pane tile the entire canvas (no >2px gaps).
- */
+/** No gap over 2 px. */
 export function assertFullCanvasCoverage(snap) {
   const errors = [];
   const { canvasWidth: cw, canvasHeight: ch, gridPane, drumPane, layoutHorizontal } = snap;
@@ -140,9 +95,7 @@ export function assertFullCanvasCoverage(snap) {
   return { ok: errors.length === 0, errors };
 }
 
-/**
- * Verify widget rects (transport, rack, timeline, wave) don't overlap.
- */
+/** Transport, rack, timeline and wave. */
 export function assertNoWidgetOverlaps(snap) {
   const errors = [];
   const w = snap.widgets;
@@ -165,9 +118,7 @@ export function assertNoWidgetOverlaps(snap) {
   return { ok: errors.length === 0, errors };
 }
 
-/**
- * Verify all non-null buttons are within viewport with positive area.
- */
+/** Inside the viewport with positive area. */
 export function assertButtonsAccessible(snap) {
   const errors = [];
   const { buttons, canvasWidth: cw, canvasHeight: ch } = snap;
@@ -190,24 +141,14 @@ export function assertButtonsAccessible(snap) {
   return { ok: errors.length === 0, errors };
 }
 
-/**
- * When isSmallScreen, verify interactive elements aren't broken/collapsed.
- *
- * Uses the LARGEST dimension (max of w, h) rather than requiring both dims
- * >= 44px, because many controls are intentionally narrow (mute/solo toggles)
- * or compact (BPM +/-). The check catches truly broken elements (zero-sized,
- * collapsed to 4x4 placeholders) while accepting the current UI design.
- *
- * Controls with both dimensions < 8px are treated as collapsed/placeholder
- * (e.g., rows beyond the visible scroll area) and skipped.
- */
+/** The LARGEST dimension, since mute/solo and BPM ± are narrow by design; this catches truly broken controls
+ * (zero-sized, collapsed placeholders). Both dimensions under 8 px is a placeholder off the visible scroll and skipped. */
 export function assertTouchTargetSizes(snap) {
   const errors = [];
   const dl = snap.drumLayout;
   if (!dl || !dl.isSmallScreen) return { ok: true, errors }; // skip for desktop
 
-  // Minimum for the largest dimension — catches broken elements but
-  // accepts narrow-by-design controls like mute/solo toggles.
+  // Catches broken elements, accepts narrow-by-design toggles.
   const minDim = 20;
 
   // Check buttons
@@ -244,9 +185,6 @@ export function assertTouchTargetSizes(snap) {
   return { ok: errors.length === 0, errors };
 }
 
-/**
- * Verify mobile viewport activates mobile sizing constants.
- */
 export function assertResponsiveBreakpoints(snap) {
   const errors = [];
   const dl = snap.drumLayout;
@@ -261,12 +199,8 @@ export function assertResponsiveBreakpoints(snap) {
     if (tc.minTarget < 40) {
       errors.push(`Small screen but minTarget=${tc.minTarget} (expected >= 40)`);
     }
-    // minCellWidth is no longer screen-class-divergent: since the design-token
-    // migration it is a DESIGN.md profileOverride that resolves to 2px on BOTH
-    // desktop and mobile (see design_profile.gen.go / touchMinCellWidthPx). It is
-    // the floor a grid cell may shrink to when zoomed all the way out, not a
-    // touch-target size, so a mobile-specific ">= 15" expectation is stale. Keep
-    // a sanity floor (> 0) so a regression that zeroes the token still trips.
+    // minCellWidth is the zoom-out floor, the same on both screen classes, not a touch size; > 0 still catches a zeroed
+    // token.
     if (tc.minCellWidth < 1) {
       errors.push(`Small screen but minCellWidth=${tc.minCellWidth} (expected >= 1)`);
     }
@@ -280,11 +214,7 @@ export function assertResponsiveBreakpoints(snap) {
   return { ok: errors.length === 0, errors };
 }
 
-/**
- * Verify component spatial ordering.
- * Stacked: grid above drum, transport above timeline above rows.
- * Side-by-side: grid left of drum.
- */
+/** Stacked: grid above drum, transport above timeline above rows. Side by side: grid left of drum. */
 export function assertComponentOrdering(snap) {
   const errors = [];
   const { gridPane, drumPane, layoutHorizontal, widgets } = snap;
@@ -323,9 +253,7 @@ export function assertComponentOrdering(snap) {
   return { ok: errors.length === 0, errors };
 }
 
-/**
- * Verify splitter is at 25-75% of canvas dimension.
- */
+/** 25-75 % of the canvas dimension. */
 export function assertSplitterRange(snap) {
   const errors = [];
   const { canvasWidth: cw, canvasHeight: ch, layoutHorizontal, splitterY, splitterX } = snap;
@@ -349,14 +277,7 @@ export function assertSplitterRange(snap) {
   return { ok: errors.length === 0, errors };
 }
 
-/**
- * Compare two snapshots for layout parity within pixel tolerance.
- * Compares widget rects, button rects, row rects, and drum/grid pane proportions.
- * @param {object} reference - Reference layout snapshot (e.g., desktop-at-same-size)
- * @param {object} device - Device layout snapshot
- * @param {number} [tolerance=5] - Max pixel difference per coordinate
- * @returns {{ok: boolean, errors: string[]}}
- */
+/** Widget, button and row rects and pane proportions within tolerance px (default 5) of the reference. */
 export function assertLayoutParity(reference, device, tolerance = 5) {
   const errors = [];
 
@@ -451,11 +372,7 @@ export function assertLayoutParity(reference, device, tolerance = 5) {
   return { ok: errors.length === 0, errors };
 }
 
-/**
- * Run all applicable layout checks based on snapshot content.
- * @param {object} snap - fullLayoutSnapshot() output
- * @returns {{ok: boolean, errors: string[], results: object}}
- */
+/** Only the checks the snapshot's content applies to. */
 export function runAllLayoutChecks(snap) {
   if (!snap) {
     return { ok: false, errors: ["Snapshot is null/undefined"], results: {} };

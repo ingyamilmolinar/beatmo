@@ -62,12 +62,7 @@ try { browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gestur
   await assertSimpleDrawMode(page, true, "batch audio");
   await clearSchedulerMismatches(page);
 
-  // Wrap bridge calls to count invocations. Go's PlayBatch prefers
-  // playSoundsBatchFlat over playSoundsBatch when both exist (see
-  // src/go/internal/audio/batch_wasm.go), so both paths count as "batch".
-  // `notes` counts what each crossing carried, so batching is measured at the
-  // bridge itself — on the audio lane (the browser default) and the legacy
-  // audioLoop path alike.
+  // Go prefers playSoundsBatchFlat when both exist, so both count; `notes` measures batching at the bridge, lane or legacy.
   await page.evaluate(() => { window.__counts = { batch: 0, notes: 0, params: 0 };
     const ob = window.playSoundsBatch;
     const obf = window.playSoundsBatchFlat;
@@ -79,8 +74,7 @@ try { browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gestur
     if (typeof window.playSoundParams === 'function') { window.playSoundParams = (id, vol, pitch, dur, when) => { window.__counts.params++; return op.call(window, id, vol, pitch, dur, when); };
     }
   });
-  // The audio lane commits notes against the AudioContext clock, so nothing is
-  // sent until a context runs; audio.js creates it on the first user gesture.
+  // The lane commits against the context clock, so nothing is sent until a context runs.
   await page.evaluate(() => { document.dispatchEvent(new Event('pointerdown')); window.resumeAudio?.(); });
   await page.waitForFunction(() => window.__audioCtx && window.__audioCtx.state === 'running', null, { timeout: 15000 });
 

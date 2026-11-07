@@ -1,26 +1,6 @@
-/**
- * Template-load audio-panel data (WASM regression).
- *
- * Bug: loading a template circuit (which ships WITHOUT per-instrument
- * EQ blocks) and playing it produced audible audio but the audio-panel
- * tabs showed NO per-instrument data on WASM, while desktop was fine.
- *
- * Root cause: on WASM each per-instrument WebAudio AnalyserNode is only
- * wired when that instrument is EQ'd (applyRowEQ) or selected as the EQ
- * channel. The startup demo EQ's every instrument so its analysers are
- * wired; templates don't, so their per-instrument analysers stayed
- * unwired → channelAnalyzerSnapshot(id) returned all-zero even while the
- * master (summed) analyser saw signal. Desktop is unaffected because the
- * mixer's analyzer Service feeds every instrument slot unconditionally.
- *
- * COVERED-BY-GO (dispatcher rule unit): src/go/internal/ui/
- *   audio_panel_dispatcher_test.go TestAnalyzerInstrumentTapsForTab.
- * This file verifies the live WASM↔WebAudio integration.
- *
- * The discriminator is robust to scheduling jitter: an UNWIRED analyser
- * returns EXACTLY 0 forever; a wired analyser on an audible instrument
- * reports a non-zero peak at some point in the polling window.
- */
+/** A template carries no per-instrument EQ, and on WASM a channel analyser is wired only when EQ'd or selected, so
+ * templates showed no per-instrument data. An unwired analyser reads EXACTLY 0 forever, a wired one non-zero at some
+ * point. COVERED-BY-GO: audio_panel_dispatcher_test.go TestAnalyzerInstrumentTapsForTab */
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";
@@ -48,17 +28,7 @@ function buildWasmSafely() {
   if (build.status !== 0) throw new Error("go build main.wasm failed");
 }
 
-// The template ships no per-instrument "eq" blocks — the exact shape that
-// left the analysers unwired. (Every built-in template has that shape now;
-// they are all derived from public-domain scores and none carries an "eq"
-// block, so any of them exercises the same wiring.)
-//
-// This was rock.json until the public-domain template curation replaced the
-// 32 hand-written kit templates with 24 score-derived ones; rock.json no
-// longer exists and the test died on ENOENT before reaching a single
-// assertion. A string quartet is if anything the better subject here: the
-// analysers are read per channel, and a sustained instrument carries signal
-// between onsets where a percussive one is silent for most frames.
+// No built-in template carries an "eq" block. Strings carry signal between onsets where percussion is mostly silent.
 const TEMPLATE = "bach-brandenburg-3.json";
 const TEMPLATE_INSTR = ["violin", "viola", "cello", "harpsichord"];
 const templateJSON = fs.readFileSync(
@@ -92,8 +62,7 @@ try {
     {}, { timeout: 10000 });
   await waitForAudioReady(page);
 
-  // Load the template, open the Levels tab (shows per-instrument
-  // strips), and play via the SEQUENCER — exactly the user flow.
+  // The user's flow: Levels open, played through the sequencer.
   const importErr = await page.evaluate((json) => {
     try { return importJSON(json); } catch (e) { return String(e); }
   }, templateJSON);
@@ -102,8 +71,7 @@ try {
   await page.evaluate(() => runScene?.("crop_eq_tab_levels"));
   await settle(page, 300);
 
-  // Poll over ~4s. Accumulate the max peak per instrument (sequencer
-  // hits are intermittent), plus the master to prove audio is flowing.
+  // Hits are intermittent, so the max per instrument is kept.
   const maxPeak = Object.fromEntries(TEMPLATE_INSTR.map((id) => [id, 0]));
   let masterLive = false;
   for (let i = 0; i < 50; i++) {
@@ -131,21 +99,14 @@ try {
   console.log("master live (audio flowing):", masterLive);
   console.log("per-instrument max peak:", JSON.stringify(maxPeak));
 
-  // Sanity: audio must actually be playing, else the per-instrument
-  // check would pass/fail for the wrong reason.
+  // Otherwise the per-instrument check passes or fails for the wrong reason.
   if (!masterLive) {
     console.error("FAIL: master analyser saw no signal — audio never played (test setup issue)");
     failures++;
   }
 
-  // The fix: every audible template instrument must report a live
-  // per-instrument analyser (NON-ZERO peak). Pre-fix every value is EXACTLY 0
-  // (the analyser node is never wired into the graph), so the only robust
-  // discriminator is "non-zero vs exactly zero". Use a tiny epsilon well above
-  // float dust but far below any real signal: quiet/transient instruments are
-  // legitimately low (e.g. a hi-hat reads ~1.2e-4, ~20x quieter than the kick
-  // at ~2.3e-3) yet are clearly wired — the old 0.0005 cutoff false-failed them
-  // even though they are not the unwired-analyser bug this test guards.
+  // Non-zero vs exactly zero: quiet instruments are legitimately low (a hi-hat ~1.2e-4), so the epsilon sits just above
+  // float dust.
   const SIGNAL = 1e-5;
   const silent = TEMPLATE_INSTR.filter((id) => maxPeak[id] <= SIGNAL);
   if (silent.length > 0) {

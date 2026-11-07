@@ -1,35 +1,6 @@
-// landing_behavior.browser.test.js
-//
-// The landing page (the tutorial demo shown before the game; spec
-// docs/superpowers/specs/2026-10-23-landing-page-design.md) end to end in a
-// real browser, served exactly like beatmo.io (landing_server.js: hashed wasm
-// stamped into index.html, compression, Range for the video). Real input only
-// (mouse, keyboard, touch); state read from the DOM, the network log and the
-// game's own exports.
-//
-//   1. Desktop first visit: the shell paints at once; the Play button walks
-//      the honest phases and enables only when the game is ready; the video
-//      is not requested before the game's download is done; cues → chapter
-//      chips, captions; keys drive the landing and NEVER reach the game;
-//      chapters seek; sound unmutes; the crystal draws and plants on a click.
-//   2. "Do not show tutorial demo again": unticked by default; ticking stores
-//      it; Space / Enter with the box focused never untick it; Enter plays;
-//      the next visit skips the landing and fetches none of it; ?landing=1
-//      still shows it (ticked) and unticking brings it back on every visit.
-//   3. Every visit: without the opt-out, the landing shows again after a full
-//      play (no "you've seen it" skip of any kind).
-//   4. Phone cut: portrait layout, controls inside the screen and not
-//      overlapping, touch on the opt-out and on Play.
-//   5. Fallbacks: ?landing=0, an unstamped dev page, no H.264, Save-Data, no
-//      OffscreenCanvas (main-thread crystal), storage that throws.
-//
-// Run: GO=… node src/js/landing_behavior.browser.test.js
-//   WASM_FILE=<main.wasm>  serve this build (default: build src/js/main.wasm
-//                          unless WASM_PREBUILT=1)
-//   LANDING_CHANNEL=chrome browser channel (default chrome — Playwright's
-//                          bundled Chromium has no H.264, so the video checks
-//                          are skipped, loudly, without it)
-//   LANDING_SHOTS=<dir>    save screenshots of each layout for inspection
+// The landing end to end in real Chrome, served like beatmo.io, real input only: readiness phases, the video only after
+// the wasm, cues, keys never reaching the game, the opt-out, every-visit, three phone sizes and every fallback.
+// Run: GO=… node src/js/landing_behavior.browser.test.js (WASM_FILE=, LANDING_CHANNEL=chrome, LANDING_SHOTS=<dir>)
 
 import { chromium } from "playwright";
 import fs from "fs";
@@ -164,13 +135,8 @@ try {
       if (!s.ready && !s.disabled) disabledEarly = false;
       if (s.ready) break;
       if (!pokedEarly && !s.ready) {
-        // Play does nothing before ready. A scripted click is no user
-        // gesture, so the video's muted start is still checked below (a real
-        // key or pointer press unmutes it — by design).
-        // One evaluate: landing.js's readiness poll cannot run between the
-        // read, the click and the result (three round trips let it enable the
-        // button in between under load, and the late read failed a page that
-        // was right). If it became ready since `s`, there is nothing to poke.
+        // One evaluate: across three round trips the readiness poll could enable the button in between and the late read
+        // failed a correct page. A scripted click is no gesture, so the muted start is still checked below.
         const poke = await page.evaluate(() => {
           const b = document.getElementById("lc-play");
           if (b.classList.contains("ready")) return null;
@@ -337,8 +303,7 @@ try {
 
   // ───────────────────────────────────────────────────────────────────────
   section("phone cut");
-  // Every control inside the screen and none overlapping another — the
-  // caption included once the recording shows one — on three phone sizes.
+  // Inside the screen and not overlapping, the caption included, on three phone sizes.
   for (const [w, hgt] of [[390, 844], [375, 667], [360, 780]]) {
     const ctx = await browser.newContext({ ...PHONE, viewport: { width: w, height: hgt } });
     const page = await open(ctx, BASE + "/?landing=1");
@@ -465,8 +430,7 @@ try {
     noErrors(page, "no OffscreenCanvas");
     await ctx.close();
 
-    // Storage that throws (some private modes): the landing still shows, and
-    // ticking the box says honestly that it cannot be remembered.
+    // Some private modes throw: the landing still shows and says honestly it cannot remember.
     ctx = await browser.newContext(DESKTOP);
     page = await open(ctx, BASE + "/", { init: () => { Storage.prototype.getItem = Storage.prototype.setItem = Storage.prototype.removeItem = () => { throw new Error("denied"); }; } });
     check(await shown(page), "throwing storage: the landing did not show");

@@ -1,39 +1,13 @@
-// audio_probe_analysis.js — pure analysis of a playback-probe log.
-//
-// Input: the raw log from `stopAudioProbe()` / `audioProbeRaw()` (audio.js):
-//   requests[]  one per sequencer note that reached audio.js
-//               {pk, id, row, abs, when, ideal, grid, ctx, perf}
-//                 grid  = predictor trigger time (ctx s, groove, NO lookahead)
-//                 ideal = scheduler's requested start, before any clamp
-//                 when  = start after Go's dispatch floor
-//                 ctx/perf = clocks when the request ARRIVED in audio.js
-//   starts[]    one per BufferSource.start() of such a note
-//               {pk, id, startWhen, ctx, perf, path}
-//   reports{}   per tapped bus ('__master__' = final output) — the audio-thread
-//               probe reports (audio_probe_worklet.js): onsets, clicks, cuts,
-//               clipped, drift.
-//   loopGaps[]  main-thread event-loop stalls > 25 ms {ctx, ms}
-//
-// Output: one report answering "what did the listener hear, and when,
-// relative to what the predictor said should fire?" All times in ms.
-//
-// No DOM / WebAudio dependencies: Node benches import this directly and the
-// page imports it lazily (audioProbeReport), so both run the same code.
+// "What did the listener hear, and when, relative to what the predictor said?" from a raw probe log: requests (grid =
+// trigger time, ideal = request before any clamp, when = after Go's floor), starts, per-bus worklet reports and loop
+// gaps. No DOM or WebAudio, so Node benches and the page run the same code. All times in ms.
 
 const DEFAULTS = {
   preTolSec: 0.004,    // an onset may be detected this much before start()
-  // …and at most this long after it. BufferSource.start(when) is sample-
-  // accurate, so a real onset sits within the 5 ms anti-pop ramp + detector
-  // latency of `startWhen`; anything later is some other event.
-  // A channel whose insert chain delays its whole signal (a pitch shifter is
-  // a 20-100 ms delay line) extends this per note by the latency audio.js
-  // recorded at start() (starts[].fxLatency): the onset is then matched — the
-  // note is HEARD, with its real lag in the lag stats — instead of being
-  // called silent. Only a declared latency widens the window.
+  // Starts are sample-accurate, so a real onset sits within the fade-in plus detector latency. A channel whose insert
+  // chain declared latency (starts[].fxLatency) extends it per note: heard, with its real lag, never called silent.
   maxLagSec: 0.02,
-  // Unmatched note with the bus louder than this right after startWhen had
-  // its onset MASKED by a still-sounding note (heard, just not separable);
-  // below it the note is SILENT — the audio is genuinely missing.
+  // Louder than this right after the start: masked by a still-sounding note; below it the audio is genuinely missing.
   silentDb: -50,
   // A note requested at (near-)zero volume can't be told from a missing one.
   minJudgedVol: 0.05,
@@ -41,11 +15,9 @@ const DEFAULTS = {
   mergeSec: 0.03,      // notes closer than the detector's refractory share an onset
   levelOutlierDb: 3,   // per-note level deviating more than this = inconsistent
   slipStepMs: 4,       // a clock-slip step smaller than this is device-burst noise
-  // A note starting within this of an edit is "already started" for the
-  // edit-staleness metric (the lane's cancel guard).
+  // The lane's cancel guard.
   editGuardSec: 0.008,
-  // Notes this long after a vol edit are certainly fresh on every arm
-  // (legacy lookahead ≤ 150 ms): they teach the channel's node volumes.
+  // Certainly fresh on every arm (legacy lookahead ≤ 150 ms), so they teach the node volumes.
   editSettleSec: 0.3,
 };
 
@@ -65,18 +37,15 @@ function median(v) {
   return s.length ? s[Math.floor(s.length / 2)] : NaN;
 }
 
-// Clock slips (audible dropouts): the per-report MINIMUM of wall-minus-audio
-// drift is flat while the device is fed in time, and rises for good by the
-// length of every underrun. A forward-min over a few reports rejects the
-// device-burst jitter; each rise past slipStepMs is one dropout.
+// The per-report MINIMUM of wall-minus-audio drift is flat while the device is fed and rises for good by each
+// underrun's length; a forward-min rejects device-burst jitter.
 export function clockSlips(reports, slipStepMs = DEFAULTS.slipStepMs) {
   const d = (reports || []).map((r) => r.minDriftMs).filter((x) => Number.isFinite(x));
   if (d.length < 4) return { count: 0, totalMs: 0, maxMs: 0, driftMs: 0 };
   const W = 3;
   const env = [];
   for (let i = 0; i + W <= d.length; i++) env.push(Math.min(...d.slice(i, i + W)));
-  // A rise spread over consecutive windows (the smoothing straddling one
-  // underrun) is ONE dropout, sized from where it started.
+  // A rise spread over consecutive windows is ONE dropout.
   let count = 0, total = 0, max = 0, floor = env[0], evBase = null;
   for (let i = 1; i < env.length; i++) {
     const step = env[i] - floor;
@@ -140,8 +109,7 @@ export function analyzeAudioProbe(raw, opts = {}) {
   const sr = raw.sampleRate || 48000;
   const reqByPk = new Map();
   for (const r of raw.requests || []) reqByPk.set(r.pk, r);
-  // Lane voices cancelled BEFORE they started are intentionally silent: they
-  // are neither "missed" nor "dropped".
+  // Cancelled before starting: intentionally silent, neither missed nor dropped.
   const cancelAt = new Map();
   for (const c of raw.cancels || []) if (!cancelAt.has(c.pk)) cancelAt.set(c.pk, c.ctx);
   let cancelledCount = 0;
@@ -149,8 +117,7 @@ export function analyzeAudioProbe(raw, opts = {}) {
   let duplicateStarts = 0;
   for (const s of raw.starts || []) {
     if (startByPk.has(s.pk)) {
-      // A lane voice swapped onto its fresh render re-starts at the same
-      // `when`: the later start is the one heard, not a duplicate.
+      // The later start is the one heard, not a duplicate.
       if (s.path === "lane-fresh") startByPk.set(s.pk, s);
       else duplicateStarts++;
       continue;
@@ -196,8 +163,7 @@ export function analyzeAudioProbe(raw, opts = {}) {
       const n = list[i];
       if (n.startWhen < judgeFrom || n.startWhen > judgeTo) continue;
       pc.notes++;
-      // A note starting within the detector's refractory of the previous
-      // heard note shares its onset (a chord on one instrument, a flam).
+      // Within the detector's refractory a note shares the previous onset (a chord, a flam).
       if (lastHeard && n.startWhen - lastHeard.startWhen < o.mergeSec) {
         n.merged = true;
         n.onset = lastHeard.onset;
@@ -242,10 +208,7 @@ export function analyzeAudioProbe(raw, opts = {}) {
   const dropped = (raw.requests || []).filter((r) => !startedPks.has(r.pk) && !cancelAt.has(r.pk) &&
     Number.isFinite(r.ctx) && r.ctx >= judgeFrom && r.ctx <= judgeTo).length;
 
-  // ── Timing ──
-  // Engine timing is judged on notes whose channel adds no latency of its
-  // own. A note behind a pitch shifter (starts[].fxLatency) sounds up to one
-  // window late, and unevenly so — that is the EFFECT, reported on its own as
+  // Engine timing is judged on notes whose channel adds no latency; a note behind a pitch shifter is reported as
   // fxDelayed, never as the scheduler being late.
   const timed = heard.filter((n) => !(n.fxLatency > 0));
   const fxDelayedNotes = heard.filter((n) => n.fxLatency > 0 && n.ideal != null);
@@ -254,17 +217,13 @@ export function analyzeAudioProbe(raw, opts = {}) {
   const startLate = judged.filter((n) => n.ideal != null).map((n) => ms(n.startWhen - n.ideal));
   const detect = timed.filter((n) => !n.merged).map((n) => ms(n.onset - n.startWhen));
   const arrivalLead = judged.filter((n) => n.ideal != null).map((n) => ms(n.ideal - n.ctx));
-  // Notes that audio.js can start synchronously (render-cache hit, raw sample,
-  // neighbour-pitch fallback) vs ones that legitimately wait for a worker
-  // render (cold miss, stale-while-revalidate race).
+  // These start synchronously; the others legitimately wait for a worker render.
   const SYNC_PATHS = new Set(['hit', 'sample', 'neighbor']);
   const jsQueue = judged.filter((n) => SYNC_PATHS.has(n.path)).map((n) => n.startPerf - n.perf);
   const renderWait = judged.filter((n) => !SYNC_PATHS.has(n.path)).map((n) => n.startPerf - n.perf);
   const lateBy = (thr) => lagVsIdeal.filter((x) => x > thr).length;
 
-  // Evenness: inter-onset interval error vs the predictor's intervals, per
-  // channel. A late note, a lookahead jump, a slip — all make the rhythm
-  // uneven, which is what "stutter" sounds like.
+  // A late note, a lookahead jump or a slip all make the rhythm uneven: what "stutter" sounds like.
   const ioiErr = [];
   for (const list of byChannel.values()) {
     let prev = null;
@@ -275,8 +234,7 @@ export function analyzeAudioProbe(raw, opts = {}) {
     }
   }
 
-  // Lookahead retargets: the cushion (ideal - grid) changing mid-play shifts
-  // every later note by the delta — a tempo hiccup even with a perfect engine.
+  // A cushion change mid-play shifts every later note: a tempo hiccup even with a perfect engine.
   const byTime = judged.filter((n) => n.grid != null && n.ideal != null).sort((a, b) => a.grid - b.grid);
   let lookaheadShifts = 0, maxLookaheadShiftMs = 0;
   const lookaheads = [];
@@ -289,9 +247,7 @@ export function analyzeAudioProbe(raw, opts = {}) {
     }
   }
 
-  // ── Playback quality ──
-  // Per-note level consistency: identical notes (id|vol|pitch) should peak at
-  // the same level; a truncated, stale, neighbour-pitch or cut voice won't.
+  // Identical notes should peak alike; a truncated, stale, neighbour or cut voice will not.
   const groups = new Map();
   for (const n of heard) {
     if (n.merged || !(n.peak > 0)) continue;
@@ -321,16 +277,9 @@ export function analyzeAudioProbe(raw, opts = {}) {
   const pathCounts = {};
   for (const n of judged) pathCounts[n.path] = (pathCounts[n.path] || 0) + 1;
 
-  // ── Edit staleness ── notes that START after an edit (+ guard) yet still
-  // reflect the pre-edit state. Per kind:
-  //   mute   — a sounding note on the muted channel (heard or masked)
-  //   unmute — nothing is stale (missing notes show up as `missed`)
-  //   vol    — a note whose vol is explained by the PREVIOUS row volume
-  //            (prev × k) and not by the new one (value × k), for a node
-  //            volume k of that channel. K is learned from SETTLED notes —
-  //            ≥ editSettleSec after a vol edit (and before the next) or
-  //            before the first one — so node volumes ≠ 1 are never mistaken
-  //            for staleness; a note explained by neither stays unjudged.
+  // Notes starting after an edit that still reflect the pre-edit state: mute = sounding on the muted channel; vol =
+  // explained by the PREVIOUS volume × a node volume learned from settled notes, not the new one. A note explained by
+  // neither stays unjudged.
   const marks = (o.editMarks || []).slice().sort((a, b) => a.t - b.t);
   const r6 = (x) => Math.round(x * 1e6) / 1e6;
   const nodeVolsByChannel = new Map();
@@ -382,8 +331,7 @@ export function analyzeAudioProbe(raw, opts = {}) {
       judged: judged.length,
       // onset detected and matched → timing measured
       heard: heard.length,
-      // …of which arrived after maxLagSec on a channel whose insert chain
-      // declared latency (starts[].fxLatency): heard, its lag in the stats
+      // Heard, with the lag in the stats.
       heardLate: heard.filter((n) => n.heardLate).length,
       // no separable onset but the bus was sounding → present, untimed
       masked,
@@ -396,15 +344,11 @@ export function analyzeAudioProbe(raw, opts = {}) {
       spurious: Object.values(perChannel).reduce((a, c) => a + c.spurious, 0),
       paths: pathCounts,
     },
-    // onset − predictor trigger time: the full "predicted → heard" latency,
-    // including the deliberate lookahead cushion (add outputLatencyMs for
-    // the speaker). Its spread, not its level, is the defect signal.
+    // Includes the deliberate cushion; its spread, not its level, is the defect signal.
     lagVsGridMs: stats(lagVsGrid),
     // onset − scheduler's request: unplanned lateness only.
     lagVsIdealMs: stats(lagVsIdeal),
-    // Notes on channels whose insert chain delays the sound (a pitch shifter):
-    // how late they are HEARD vs the scheduler request. Kept out of the engine
-    // timing above; an effect with latency makes its row audibly late.
+    // Kept out of engine timing: an effect with latency makes its row audibly late.
     fxDelayed: { notes: fxDelayedNotes.length, lagMs: stats(fxDelayedNotes.map((n) => ms(n.onset - n.ideal))) },
     late: { over5ms: lateBy(5), over10ms: lateBy(10), over20ms: lateBy(20), over50ms: lateBy(50) },
     // BufferSource.start(when) − request: lateness introduced before audio.
@@ -412,8 +356,7 @@ export function analyzeAudioProbe(raw, opts = {}) {
     // how early the request reached audio.js (negative = already late)
     arrivalLeadMs: stats(arrivalLead),
     arrivedLate: arrivalLead.filter((x) => x < 0).length,
-    // request arrival → start() call for notes audio.js can start at once:
-    // pure queueing behind the main thread (should be ~0 — sync flush)
+    // Pure queueing behind the main thread; ~0 with the sync flush.
     jsQueueMs: stats(jsQueue),
     // request → start() for notes that waited on a worker render
     renderWaitMs: stats(renderWait),

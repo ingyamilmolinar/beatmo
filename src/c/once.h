@@ -1,17 +1,6 @@
-/* once.h — a thread-safe one-time initialiser for the engine's lazily built
- * tables.
- *
- * The voice prewarm pool renders on several threads at once from the moment a
- * circuit loads, so the FIRST renders of a session are concurrent. A plain
- * `if (!ready) { build(); ready = 1; }` let two of them build the same table
- * at the same time: the generators memset a table and then SUM harmonics into
- * it, so one render zeroed what another was summing (or both summed — a
- * doubled table), and the flag then froze the corrupted table for the rest of
- * the process. Guard: TestColdConcurrentRendersMatchSerial.
- *
- * beatmo_once runs fn exactly once; every other caller waits until it has
- * finished. Compiler __atomic builtins (gcc / clang / emscripten); in the
- * single-threaded browser build they are plain loads and stores. */
+/* The prewarm pool's first renders of a session are concurrent, and the table generators memset then SUM harmonics: a
+ * plain ready flag let two cold renders build at once and froze a corrupted table for the whole process. beatmo_once
+ * runs fn exactly once; every other caller waits. Plain loads and stores in the single-threaded browser. */
 #ifndef BEATMO_ONCE_H
 #define BEATMO_ONCE_H
 
@@ -32,8 +21,7 @@ static inline void beatmo_once(beatmo_once_t *o, void (*fn)(void)) {
         __atomic_store_n(&o->state, 2, __ATOMIC_RELEASE);
         return;
     }
-    /* Another thread is building the tables: they take a few milliseconds,
-     * once per process. */
+    /* The build takes a few milliseconds, once per process. */
     while (__atomic_load_n(&o->state, __ATOMIC_ACQUIRE) != 2) {
     }
 }

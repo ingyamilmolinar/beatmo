@@ -1,22 +1,6 @@
-// channel_residency.browser.test.js
-//
-// Audio resources follow use (spec
-// docs/superpowers/specs/2026-10-31-versioned-objects-and-residency-revisions-design.md
-// §1.2), in the real app:
-//
-//   boot      channels exist only for what the circuit uses (it was one
-//             WebAudio chain per registered instrument: 151).
-//   playing   only the instruments the rows play keep a chain; one nothing
-//             plays is released once silent.
-//   tail      a row switched away while its delay rings keeps the channel
-//             until the echoes have died away (never cut), then releases it.
-//   A→B→A     switching back within the hold releases nothing.
-//   budget    over the render budget, renders of instruments no row plays go
-//             first; the rows' renders stay.
-//
-// Run:
-//   GO=$(pwd)/.tools/go/bin/go node src/js/channel_residency.browser.test.js
-// Env: WASM_PREBUILT=1, WASM_FILE=<wasm>.
+// Audio resources follow use, in the real app: channels only for what the circuit uses; a released row's channel waits
+// for its delay to die away; switching back within the hold releases nothing; over budget, unplayed renders go first.
+// Run: GO=$(pwd)/.tools/go/bin/go node src/js/channel_residency.browser.test.js (WASM_PREBUILT=1, WASM_FILE=)
 
 import http from "http";
 import { spawnSync } from "child_process";
@@ -88,10 +72,7 @@ try {
     `only the rows' instruments keep a channel: ${JSON.stringify(playing.liveChannelIds)}, rows play ${JSON.stringify(used)}`);
 
   console.log("a ringing tail keeps its channel");
-  // The hi-hat row (a short voice: its echoes have silent gaps between them,
-  // which a release that ignored the delay's memory would fall into) gets a
-  // 1 s delay with feedback 0.3, plays a while, then is switched to an
-  // instrument no row plays.
+  // A short voice: its echoes have silent gaps a release ignoring the delay's memory would fall into.
   const tailRow = await page.evaluate(() => {
     for (let r = 0; r < drumRowCount(); r++) if (/hihat/.test(rowInstrument(r))) return r;
     return 0;
@@ -139,8 +120,7 @@ try {
   check(keptLive, `A→B→A keeps ${back}'s channel live throughout`);
 
   console.log("render budget");
-  // A render of an instrument no row plays is evicted first when the budget
-  // is exceeded; the rows' renders are never evicted.
+  // The rows' renders are never evicted.
   const spare = await page.evaluate(async (playing) => {
     for (const id of ["shaker", "conga", "tambourine", "rim"]) {
       if (playing.includes(id)) continue;

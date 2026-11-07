@@ -1,65 +1,6 @@
-/**
- * Recording Capture AudioWorkletProcessor.
- *
- * Per-channel capture worklet for the WASM recording pipeline. One instance
- * is instantiated per instrument (and one for the master tap). Runs on the
- * audio rendering thread, NOT the main thread — so per-quantum work cannot
- * stall the JS game loop or the Go-WASM goroutine scheduler.
- *
- * Data path (per processor instance) — zero main-thread cost in steady state:
- *
- *   audio thread ──128-frame quantum──▶  copy via Float32Array.set()
- *                                          │
- *                                          ▼
- *                                       batch buffer (BATCH_FRAMES)
- *                                          │
- *                                  full?   │  no  → keep accumulating
- *                                          ▼  yes
- *                       workerPort.postMessage(buf, [buf.buffer])
- *                                          │  ZERO-COPY transferable
- *                                          ▼
- *                                  Web Worker (encoder)  ◀─── direct
- *                                                              (main thread
- *                                                              not in path)
- *
- * The worklet receives a transferred MessagePort (the "worker end" of a
- * MessageChannel created on the main thread) via its built-in this.port.
- * It then posts sample batches directly on that worker port — bypassing
- * the main thread entirely once the channel is wired.
- *
- * Bounded outbox: the worklet keeps a `pending` counter (incremented on
- * post, decremented on `ack` from worker). If pending > maxPending the
- * batch is dropped and a `drop` notice fires on this.port. This mirrors
- * the desktop pipeline's `dropsTotal.Add(1)` discipline.
- *
- * Acoustically transparent: this is a pure CAPTURE tap, so its output is
- * left as silence (the render quantum's output buffer is pre-zeroed). It must
- * NOT pass its input through to its output — the tapped source is already
- * wired to ctx.destination, so re-emitting the same signal would sum a second
- * copy at the speakers (+6 dB → audibly louder and distorting). The node is
- * still connected to ctx.destination by the caller purely to keep it in the
- * active render graph so process() is pulled; emitting silence contributes
- * nothing to the mix.
- *
- * Communication via MessagePort (this.port — to/from main thread):
- *   Main → Worklet (this.port):
- *     { type: 'configure', channelId, batchFrames?, maxPending?,
- *       workerPort: MessagePort }     // [transfer workerPort]
- *     { type: 'flush' }                // post any partial batch immediately
- *     { type: 'stop' }                 // stop accepting input; post 'done'
- *
- *   Worker → Worklet (workerPort, after configure):
- *     { type: 'ack' }                  // worker consumed a batch
- *
- *   Worklet → Worker (workerPort, hot path):
- *     ArrayBuffer (transferable Float32 samples)
- *     { type: 'done' }                 // sent on stop, after flush
- *     { type: 'drop', n }              // back-pressure signal
- *
- *   Worklet → Main (this.port):
- *     { type: 'configured', channelId }
- *     { type: 'done', samplesCaptured, droppedBatches }
- */
+/** One per instrument plus the master, on the audio thread: 128-frame quanta batch into a buffer that is TRANSFERRED to
+ * the encoder worker over its own port, so the main thread is out of the path; a bounded outbox drops on overflow. Its
+ * output stays silent: the tapped source already reaches the speakers, and passing it through would add +6 dB. */
 
 /* eslint-disable no-undef */
 
@@ -139,8 +80,7 @@ class RecordingCaptureProcessor extends AudioWorkletProcessor {
     if (this._batchOffset === this._batch.length) {
       out = this._batch;
     } else {
-      // Partial batch (only on stop/flush): copy to a right-sized array
-      // so the transferable detach doesn't invalidate the unfilled tail.
+      // Copied to a right-sized array so the transfer does not invalidate the unfilled tail.
       out = new Float32Array(this._batch.subarray(0, this._batchOffset));
     }
     this._pending++;
@@ -171,10 +111,7 @@ class RecordingCaptureProcessor extends AudioWorkletProcessor {
   process(inputs, _outputs, _parameters) {
     const input = inputs[0];
 
-    // NOTE: we deliberately do NOT write to `_outputs`. This is a capture-only
-    // tap; the source it reads is already routed to ctx.destination, so any
-    // pass-through here would double the signal at the speakers. Leaving the
-    // output as the pre-zeroed silence keeps the tap acoustically transparent.
+    // Never write the outputs: a pass-through would double the signal at the speakers.
 
     if (this._stopped) {
       return false; // tear down processor

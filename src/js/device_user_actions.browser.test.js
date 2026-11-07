@@ -1,37 +1,6 @@
-/**
- * Real-device USER-ACTION bridge tests — exercise the browser/OS-boundary user
- * actions with REAL OS APIs at maximum fidelity (no export-as-action shortcuts;
- * exports are used ONLY to assert results).
- *
- * Scenarios:
- *   - JSON import / export (+ re-import round-trip) and WAV import via the REAL
- *     OS file path — the app mounts a real transparent <input type=file> over the
- *     Import/Upload buttons (index.html `_fpRegisterRect`), driven by Playwright's
- *     real file API (`setInputFiles`) → real `change` → `_fpStart{Import,Upload}`
- *     → `openJSONFile`/`openWAVFile` → Go import. (Desktop layout: tap the button
- *     and fill the real OS file chooser via `page.on('filechooser')`.)
- *   - Mobile native keyboard (BPM) via the real native <input> overlay.
- *   - Recording start/stop (real capture → real OS download where surfaced).
- *   - Audio unlock (AudioContext resumes after a real gesture).
- *   - Media Session API populated during playback.
- *
- * Runs the SAME scenarios on:
- *   - local emulation (default): chromium + iPhone 12 / Pixel 5 (fast, free).
- *   - REAL devices: TEST_PLATFORM=browserstack (BrowserStack iOS/Android).
- *
- * COVERAGE / KNOWN LIMITATION: green on real Android Chrome + local emulation.
- * Real iOS Safari via BrowserStack is NOT covered — the Ebiten WASM run loop
- * never executes a frame on that automation session, so the game never lays out
- * and the suite SKIPS the device (see the long comment at the GAME-ready gate
- * for the full diagnosis + the kicks that were tried). It is an environment
- * limitation of automating this game on BrowserStack iOS, not a product bug.
- *
- * Run locally:  GO=$(pwd)/.tools/go/bin/go node src/js/device_user_actions.browser.test.js
- * Run real:     make test-device-actions   (needs BROWSERSTACK_USERNAME/ACCESS_KEY)
- *
- * Charter §6 (real input dispatch through the canvas, mobile) + browser-only
- * platform features (file pickers, downloads, native keyboard, media session).
- */
+/** Browser/OS-boundary user actions with REAL OS APIs (file chooser, native keyboard, recording download, audio
+ * unlock, Media Session); exports only assert results. Local emulation by default, real devices with
+ * TEST_PLATFORM=browserstack (real iOS Safari is skipped: its automation session never runs a frame). */
 
 import { chromium, devices } from "playwright";
 import { buildWasm, startServer, waitForWasmReady } from "./visual_test_helpers.js";
@@ -88,35 +57,13 @@ async function runUserActions(page, label) {
   const settle = (ms) => page.waitForTimeout(ms);
   const center = (r) => [r.x + r.w / 2, r.y + r.h / 2];
   const validRect = (r) => !!(r && typeof r.w === "number" && r.w > 1 && r.h > 1);
-  // Since the "Pop Up Controls / Modes" overhaul the transport kebab was removed;
-  // the File menu (Upload / Import / Export) now opens from the grid-pane folder
-  // button (dv.OpenFileMenu → overflowModeFile), whose screen-space rect is
-  // exported as fileMenuBtnRect(). filePickerCandidates only arms the Upload/
-  // Import overlays while that File menu is open on page 0.
+  // The File menu opens from the grid-pane folder button; its Upload/Import overlays exist only while it is open.
   const fileMenuRect = () => read("fileMenuBtnRect");
 
   const overflowArmed = async () => (await page.locator('input[data-fp-id="import"]').count()) > 0;
-  // Open the File menu until its Import/Upload file-input overlays are mounted
-  // (registered by syncNativeGestures while the menu is open on page 0). Those
-  // overlays are what pickFile's real setInputFiles targets — that is the real OS
-  // file-path fidelity this test exists to exercise.
-  //
-  // Opening the menu itself, however, must NOT be flaky. The folder button that
-  // opens it is dispatched off the touch→mouse override, sampled once per rAF
-  // Update frame. Under headless automation rAF is throttled/variable, so a real
-  // 150 ms tap can fall entirely between two slow Update frames and be missed —
-  // and because the folder button sits OUTSIDE the menu popup (which has a scrim),
-  // a blind re-tap while the menu is already open lands on the scrim and CLOSES
-  // it, giving an open↔close oscillation. That was the flaky "no import/upload
-  // affordance found" failure. (A real device paints at 60 fps so a real tap is
-  // always sampled there — this is purely an automation artifact.)
-  //
-  // So: try a REAL tap first (covers the genuine touch→open path when rAF is
-  // healthy — the common case), then fall back to the openOverflowMenu() bridge
-  // export, which opens the menu via QueueAction with NO canvas tap — no scrim,
-  // no click-outside race, deterministic. It reaches the same page-0 menu state,
-  // so syncNativeGestures mounts the identical overlays and the real setInputFiles
-  // path downstream is unchanged.
+  // A real tap first; under throttled headless rAF a tap can fall between frames and a blind re-tap lands on the scrim
+  // and closes the menu, so the openOverflowMenu() bridge is the fallback. The same overlays mount, so the real
+  // setInputFiles path is unchanged.
   async function openOverflow() {
     const r = await fileMenuRect();
     if (r && r.w > 1) await cdpTap(page, Math.round(r.x + r.w / 2), Math.round(r.y + r.h / 2)).catch(() => {});
@@ -127,8 +74,7 @@ async function runUserActions(page, label) {
     }
     return await overflowArmed();
   }
-  // forceDraw advances a frame (it also re-runs g.Layout from the live window
-  // size); the natural rAF Update loop processes queued actions (file import).
+  // forceDraw advances a frame; the natural rAF loop processes queued actions.
   const pump = async () => { await read("forceDraw").catch(() => {}); };
   const poll = async (predFn, ms = 16000) => {
     const deadline = Date.now() + ms;
@@ -139,8 +85,7 @@ async function runUserActions(page, label) {
     }
     return false;
   };
-  // Real-tap a control (rect from a geometry export), then poll for an outcome,
-  // pumping frames. Re-taps at most a few times to ride out dropped taps.
+  // Re-taps a few times to ride out dropped taps.
   const tapUntil = async (rectFn, predFn) => {
     for (let i = 0; i < 4; i++) {
       const r = await rectFn();
@@ -150,13 +95,8 @@ async function runUserActions(page, label) {
     return false;
   };
 
-  // Pick a file through the REAL OS path, layout-agnostic. Returns {ok, path}:
-  //  - mobile: the real transparent <input type=file> OVERLAY the app mounts over
-  //    the Import/Upload buttons (`_fpRegisterRect`); filled via setInputFiles
-  //    (fires the real change → _fpStart* → openJSONFile/openWAVFile → Go import).
-  //  - desktop: tap the real top-level Import/Upload button → openJSONFile/
-  //    openWAVFile creates a real <input> whose OS chooser Playwright fills
-  //    (page.once('filechooser')). Both are the real OS file API.
+  // Both paths are the real OS file API: mobile fills the transparent <input type=file> overlay; desktop taps the button
+  // and fills the chooser it opens.
   async function pickFile(kind /* 'import'|'upload' */, file, predFn) {
     const sel = `input[data-fp-id="${kind}"]`;
     await openOverflow();
@@ -196,38 +136,9 @@ async function runUserActions(page, label) {
     return { pass, fail, skip };
   }
 
-  // GAME-ready gate. The JS exports register (so waitForWasmReady passes) as soon
-  // as ui.New() runs, but the game is only usable once Ebiten's run loop has
-  // called Layout() — that's what creates g.split and sets the screen size, after
-  // which fullLayoutSnapshot() returns a real canvasWidth. Pump forceDraw and
-  // poll for that. If the loop never runs, skip the device (NOT a failure).
-  //
-  // ── KNOWN LIMITATION: real iOS Safari via BrowserStack ──────────────────────
-  // On the BrowserStack iOS-Safari automation session this gate times out: the
-  // Ebiten run loop never executes a frame, so Layout() never runs, g.split stays
-  // nil, and the game is permanently half-initialized (exports are present and
-  // return null/NaN; no reload/crash — goExited stays false). Ebiten's web loop
-  // is requestAnimationFrame-driven and iOS Safari does not schedule rAF for the
-  // non-painting WebGL canvas in that headless-style automation session. This is
-  // an ENVIRONMENT limitation, not a product bug — on a physical iPhone the page
-  // paints continuously so rAF fires and the game initializes normally.
-  //
-  // Things tried to kick the loop on the real-iOS session, NONE of which worked
-  // (don't re-attempt without new information — see the design spec + the
-  // project_device_user_action_tests memory):
-  //   1. forceGameTick() — runs g.Update() manually; Layout is separate, so
-  //      g.split was still never created.
-  //   2. page.screenshot() to force a paint — a tight loop overran the iOS CDP
-  //      socket ("Socket idle"); a single screenshot didn't make Layout run.
-  //   3. window 'resize' dispatch + a real cdpTap "user gesture" wake — no effect.
-  //   4. forceInit(w,h) export (explicit g.Layout+g.Update) — came back undefined
-  //      on the device even though it's in the freshly-built binary, i.e. the
-  //      session wasn't reliably running the served build (removed afterwards).
-  //   5. no-cache server headers (in case a stale main.wasm was served) — kept as
-  //      correct hygiene, but did not change the iOS result.
-  // Net: real-device coverage is delivered on real Android Chrome + local
-  // emulation; real-iOS-via-BrowserStack is documented here and skipped. (The
-  // same limitation makes visual_device_parity flaky on iPhones.)
+  // Exports register before Ebiten's loop has run Layout, which is what makes the game usable, so this polls for a real
+  // canvas width and SKIPS a device whose loop never runs. On BrowserStack's iOS session rAF never fires for the WebGL
+  // canvas: an environment limit (forceGameTick, screenshots, resize, gestures, no-cache were all tried).
   let gameReady = false;
   {
     const deadline = Date.now() + 30000;
@@ -243,9 +154,7 @@ async function runUserActions(page, label) {
     return { pass, fail, skip: skip + 3 };
   }
 
-  // ── Diagnostics: record the device's actual layout reality (real iOS/Android
-  //    can differ from emulation — e.g. high-DPR width or viewport handling). The
-  //    scenarios below are layout-agnostic (pickFile handles overlay OR desktop). ─
+  // Real devices can differ from emulation (DPR, viewport); the scenarios are layout-agnostic.
   const ts = await read("getTouchScreenSize").catch(() => null);
   const dpr = await read("getDevicePixelRatio").catch(() => null);
   const snapW = await read("fullLayoutSnapshot").then((s) => s?.canvasWidth).catch(() => null);
@@ -264,18 +173,11 @@ async function runUserActions(page, label) {
     const exported = await read("exportJSON");
     let parsed = null;
     try { parsed = JSON.parse(exported); } catch (_) {}
-    // schema_version, NOT the retired integer "version": the 2026-07-27 schema
-    // versioning change moved every Beatmo document onto schema.Version and left
-    // the integer as a READ-ONLY legacy marker (projectFile.LegacyVersion,
-    // `json:"version,omitempty"`, never set by the exporter). Asserting
-    // `parsed.version >= 1` therefore read `undefined >= 1` and failed on a
-    // perfectly good export — the bpm and the round-trip below were always right.
+    // schema_version, not the read-only legacy integer "version".
     ok(parsed && typeof parsed.schema_version === "string" && parsed.schema_version !== "" && parsed.bpm === 123,
       `${label} json-export: exportJSON() reflects current state (schema_version=${parsed?.schema_version} bpm=${parsed?.bpm})`);
 
-    // Real Export ACTION: tap the Export button → real downloadJSON (blob+anchor).
-    // Capture the OS download where the platform surfaces it; iOS webkit /
-    // overflow-only layouts may not — log, don't fail.
+    // Some platforms do not surface the OS download: logged, not failed.
     const exRect = await read("exportBtnRect");
     if (exRect && exRect.w > 1) {
       const dlP = page.waitForEvent("download", { timeout: 4000 }).then((d) => d).catch(() => null);
@@ -288,8 +190,7 @@ async function runUserActions(page, label) {
       note(`${label} json-export: Export is overflow-only at this layout; correctness + round-trip cover it`);
     }
 
-    // Round-trip: import a DIFFERENT project (bpm=90), then re-import the EXPORTED
-    // bytes — both via the real OS path — and confirm state restores.
+    // Import a DIFFERENT project first, both through the real OS path.
     if (exported) {
       const r90 = await pickFile("import", { name: "other.json", mimeType: "application/json", buffer: jsonFixture(90) },
         async () => await read("getBPM") === 90);
@@ -309,16 +210,9 @@ async function runUserActions(page, label) {
   }
 
   try {
-  // ── Scenario 4: mobile NATIVE KEYBOARD (text field) — real tap on the
-  //    instrument-menu search opens a real <input>; real typing reaches Go
-  //    through the OS keyboard path. (BPM no longer takes typed input — its
-  //    readout opens the BPM value wheel — so the text field is the target.) ──
+  // The instrument-menu search, since BPM is a value wheel, not a typed field.
   {
-    // Mirror mobile_native_input.browser.test.js: do NOT pump here. A live
-    // TextField's rect is (re)registered every natural Update frame and
-    // mobileInputClear() runs each Layout — so a forced Layout (pump) between tap
-    // and touchend races the registration and the input is never created. Let
-    // the natural rAF loop register it; re-tap to ride out dropped taps.
+    // No pump: a forced Layout between tap and touchend races the field's registration and the input is never created.
     await read("openInstMenu", 0);
     await page.waitForFunction(() => { const r = typeof instMenuSearchRect === "function" && instMenuSearchRect(); return r && r.w > 0; },
       null, { timeout: 5000, polling: 50 }).catch(() => {});
@@ -341,21 +235,17 @@ async function runUserActions(page, label) {
       const applied = await page.waitForFunction(() => typeof instMenuSearchState === "function" && instMenuSearchState()?.text === "kick", null, { timeout: 6000, polling: 50 }).then(() => true).catch(() => false);
       ok(applied, `${label} native-kbd(text): real OS keyboard typing reached the search field (text→"kick", got ${JSON.stringify((await read("instMenuSearchState"))?.text)})`);
     } else {
-      // NON-gating: the native <input> overlay opens reliably on emulation but is
-      // environment-sensitive on some real devices' on-screen-keyboard handling.
-      // The path is covered deterministically by mobile_native_input.browser.test.js.
+      // Non-gating: environment-sensitive on some real keyboards; mobile_native_input covers the path deterministically.
       note(`${label} native-kbd(text): native keyboard <input> did not open via automation here (non-gating; covered by mobile_native_input.browser.test.js)`);
     }
-    // Dismiss any native input + on-screen keyboard so it can't overlay/block the
-    // recording/audio/media scenarios below.
+    // So an on-screen keyboard cannot block the scenarios below.
     await page.keyboard.press("Escape").catch(() => {});
     await page.evaluate(() => { for (const inp of document.querySelectorAll('input[style*="z-index"]')) if (inp.style.zIndex === "10000") { try { inp.blur(); inp.remove(); } catch (_) {} } }).catch(() => {});
     await read("closeAllPopups").catch(() => {});
     await settle(200);
   }
 
-  // ── Scenario 5: RECORDING — real tap on Record toggles capture; stop produces
-  //    a real OS download (zip) where the platform surfaces it. ──
+  // Stop produces a real zip download where the platform surfaces it.
   {
     const r = await read("recBtnRect");
     if (validRect(r)) {
@@ -382,8 +272,7 @@ async function runUserActions(page, label) {
     }
   }
 
-  // ── Scenario 6: AUDIO UNLOCK — after real user gestures, the AudioContext must
-  //    be running (the real iOS/Android autoplay-unlock OS behavior). ──
+  // The real autoplay-unlock behaviour.
   {
     await tapUntil(() => read("playBtnRect"), async () => await read("isPlaying") === true, "play-for-audio").catch(() => {});
     await settle(300); await pump();
@@ -391,9 +280,7 @@ async function runUserActions(page, label) {
     ok(ctxState === "running", `${label} audio-unlock: AudioContext is running after real play gesture (state=${ctxState})`);
   }
 
-  // ── Scenario 7: MEDIA SESSION — playback wires the Media Session API (lock-
-  //    screen controls). Best-effort: the OS lock-screen UI itself isn't
-  //    automatable, so assert the API is populated; log if absent. ──
+  // The lock-screen UI is not automatable, so the API being populated is asserted.
   {
     const ms = await page.evaluate(() => {
       if (!("mediaSession" in navigator)) return { supported: false };
@@ -404,10 +291,7 @@ async function runUserActions(page, label) {
     await tapUntil(() => read("stopBtnRect"), async () => await read("isPlaying") === false, "stop-after-audio").catch(() => {});
   }
   } catch (e) {
-    // A throw in a Phase-2 scenario becomes a recorded fail, NOT a lost result —
-    // the accumulated pass/fail counts above are still returned. `fail` is the
-    // counter, not a reporter: record through ok(false, …) so the throw shows up
-    // as a normal FAIL line instead of a TypeError that kills the whole run.
+    // Recorded through ok(false, …), so a throw is a FAIL line, not a TypeError that kills the run.
     ok(false, `${label}: Phase-2 scenario threw: ${e.message}`);
   }
 
@@ -489,6 +373,5 @@ try {
 console.log("\n" + "=".repeat(56));
 console.log(`DEVICE USER-ACTIONS: ${totalPass} passed, ${totalFail} failed, ${totalSkip} skipped`);
 console.log("=".repeat(56));
-// Force a clean exit: a connected BrowserStack session can leave lingering
-// handles (sockets/timers) that keep the Node event loop alive past the summary.
+// A BrowserStack session can leave handles that keep Node alive past the summary.
 process.exit(totalFail > 0 ? 1 : 0);

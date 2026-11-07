@@ -46,8 +46,7 @@ static void build_modular_tables(void) {
     wt_generate_glottal(&modular_glottal_wt, modular_glottal_buf, WT_DEFAULT_LENGTH, MODULAR_WT_HARMONICS);
 }
 
-/* Thread-safe: the first renders of a session run on several prewarm workers
- * at once (once.h). */
+/* Thread-safe: a session's first renders run on several prewarm workers at once. */
 static void ensure_modular_tables(void) {
     beatmo_once(&modular_tables_once, build_modular_tables);
 }
@@ -62,20 +61,13 @@ static const wavetable_t *modular_table_for(int osc_type) {
     }
 }
 
-/* Non-static accessor for the gen-bank slot oscillators (modular_stages.c):
- * lazily builds the shared tables then returns the SAME wavetable object the
- * legacy osc stage uses, so a slot sine is byte-identical to the legacy osc. */
+/* The SAME wavetable the osc stage uses, so a slot sine is byte-identical to it. */
 const wavetable_t *modular_shared_table_for(int wave) {
     ensure_modular_tables();
     return modular_table_for(wave);
 }
 
-/* The RBJ biquad (mod_biquad + mod_biquad_set + mod_biquad_tick_f) lives in
- * modular_stages.c/.h now — shared with the gen-bank slot filters. */
-
-/* Build an fm_preset from live params for osc_type == FM. Operators run with a
- * steady (sustain=1) internal envelope so the voice-level amp ADSR shapes the
- * whole sound uniformly. */
+/* Operators run a steady internal envelope so the voice amp ADSR shapes the whole sound uniformly. */
 static void build_fm_preset(const modular_params *p, double base_freq,
                             fm_preset *out) {
     memset(out, 0, sizeof(*out));
@@ -98,12 +90,10 @@ static void build_fm_preset(const modular_params *p, double base_freq,
         out->ops[i].release_sec = 0.0f;
         out->ops[i].is_carrier = 0;
     }
-    /* op1 is always a carrier. Its level (fm_op1_level) controls output gain;
-     * we do NOT force it audible, so the level knob has real authority. */
+    /* Not forced audible, so the level knob has real authority. */
     out->ops[0].is_carrier = 1;
 
-    /* op1 self-feedback makes fm_op1_depth meaningful (DX7-style operator
-     * feedback adds harmonics) instead of being an inert final-carrier knob. */
+    /* op1 self-feedback (DX7-style) gives fm_op1_depth meaning on a final carrier. */
     out->mod_matrix[0][0] = depth[0];
 
     int alg = (int)lrint(p->fm_algorithm);
@@ -127,47 +117,12 @@ static void build_fm_preset(const modular_params *p, double base_freq,
     }
 }
 
-/* KNOWN GAP (2026-09-01): this model cannot produce a bow BITE, and that is a
- * signal-chain limitation rather than a tuning one.
- *
- * Measured per-frame noise fraction over eighths of one note:
- *
- *   reference violin  0.201 0.013 0.011 0.010 0.010 0.009 0.013 0.011
- *   synth violin      0.021 0.019 0.017 0.017 0.017 0.017 0.018 0.018
- *
- * In STEADY STATE the synth is already close (0.017 vs 0.010). What it lacks
- * entirely is the ATTACK: the reference's broadband 0.20 scrape as the hair
- * grabs the string before Helmholtz motion locks in. A note that fades in
- * without a bite is what a BLOWN instrument does, and the listener reported the
- * viola and violin as "a wind instrument, like a flute instead of a string" and
- * the cello as "too airy" -- see noise.persistence in
- * internal/audio/fingerprint/registry_perceptual.go, which agrees with that
- * wording on 5 of the 6 families where it was used.
- *
- * Three fixes were tried and MEASURED, and none moved the onset past 0.023:
- *   1. scaling the multiplicative friction term 0.03 -> 0.35. It perturbs bow
- *      VELOCITY, and the waveguide shapes the result into tone, not noise.
- *   2. injecting broadband noise additively into newVel (the string state).
- *      The string is a resonator: energy put in comes back out AT THE
- *      HARMONICS.
- *   3. adding it directly to the radiated output y. Removed by the voice's own
- *      low-pass -- the violin runs filter_cutoff 3100 Hz, and a scrape is
- *      mostly above that. Confirmed by rendering at filter_cutoff 1200, which
- *      drops the onset further to 0.011.
- *
- * The blocker is ORDER: every noise source in the modular pipeline is injected
- * PRE-filter (see the Phase-15 breath stage), so nothing broadband can survive
- * to the output of a voice that low-passes for its tone. Producing a bite needs
- * a POST-filter transient/noise stage, which is a new pipeline stage with
- * schema and ABI consequences -- deliberately not attempted blind. Until then
- * the bowed strings will keep reading as blown, and noise.persistence is the
- * axis that will show it moving when the stage lands.
- */
+/* No bow BITE, a signal-chain limit, not tuning: every noise source is PRE-filter, so a broadband scrape cannot survive
+ * a voice that low-passes for its tone (scaling friction or injecting noise into the string only adds tone). A bite
+ * needs a post-filter transient stage. */
 
 
-/* Linear-interpolated fractional read from a circular delay buffer (so non-integer
- * delay lengths don't quantize the pitch — required by the bowed-string,
- * wind and brass waveguides). */
+/* So a non-integer delay does not quantize the pitch. */
 static inline double pm_frac_read(const float *buf, int len, int wi, double delay) {
     double rp = (double)wi - delay;
     while (rp < 0.0) rp += (double)len;
@@ -177,47 +132,17 @@ static inline double pm_frac_read(const float *buf, int len, int wi, double dela
     return (double)buf[i0] * (1.0 - frac) + (double)buf[i1] * frac;
 }
 
-/* ── Digital-waveguide bowed string (osc_type 7) ───────────────────────────
- * STK "Bowed" model (Smith 1986, after McIntyre-Schumacher-Woodhouse): the
- * string is two VELOCITY delay lines split at the bow point; the bow applies a
- * nonlinear stick-slip FRICTION (the bow grips the string, drags it, then slips)
- * driven continuously by a constant bow velocity. A bridge reflection LOSS
- * filter sets decay/brightness. Continuous excitation produces a SUSTAINED bowed
- * Helmholtz tone with the organic, self-oscillating character a static saw can't
- * make — this is what actually sounds like a bowed string vs. an electronic tone.
- * Bow position/pressure/brightness are sensible hardcoded defaults for now. */
+/* STK "Bowed" (Smith 1986): two velocity delay lines split at the bow, a nonlinear stick-slip friction driven by a
+ * constant bow velocity and a bridge loss filter. The continuous excitation self-oscillates into a sustained
+ * Helmholtz tone a static saw cannot make. */
 static void render_bowed_string(float *out, int sampleRate, int samples,
                                 double freq, double bow_pos, double slope,
                                 double bowVel, double loss, unsigned int noise_seed) {
     enum { DMAX = 4096 };
     float neck[DMAX], bridge[DMAX];
-    /* Round-trip delay. The -2 models the loss filter's own phase delay, which
-     * is why the two delay lines are SHORTER than the raw period.
-     *
-     * Both lengths are FRACTIONAL and read through pm_frac_read, exactly as the
-     * brass/flute/clarinet waveguides in this file do. They used to be rounded
-     * to integers (`(int)(x + 0.5)`) with a `% len` circular read, which
-     * quantised the pitch: the realised period came out a roughly CONSTANT ~1.2
-     * samples short, so the error stayed inaudible on low notes and grew with
-     * frequency as that deficit became a larger fraction of a shorter period.
-     * Measured on the shipped violin before this change: +12 cents at node
-     * pitch 0, +26 at +15, +39 at +22, +48 at +27 — nearly a quarter tone sharp
-     * at the top of the range, against flute/oboe/piano holding within 2 cents.
-     * Cello showed about half the error, as expected: it renders an octave
-     * lower, so the same sample deficit spans half the cents.
-     *
-     * The subtracted constant is 1, not the 2 it used to be. With the pitch no
-     * longer quantised the loop's true extra delay can be solved for directly
-     * from the rendered audio, and it comes out at 1.02-1.08 samples across the
-     * whole range (one sample for the write-then-read structure, plus the
-     * one-pole loss filter's small phase) — flat enough to model as a constant.
-     * Subtracting 2 therefore made every bowed note about one sample short,
-     * which is precisely the sharpening described above.
-     *
-     * This is a ONE-TIME fractional length, not per-sample modulation — the
-     * read pointer still advances by exactly one sample per step — so it does
-     * not reopen the numerical-stability question the vibrato note below
-     * discusses. Guard: TestEveryPitchedInstrumentSoundsInTune. */
+    /* FRACTIONAL lengths, as in the other waveguides: an integer length leaves each period a constant ~1 sample short,
+     * which sharpens high notes by up to a quarter tone. −1 is the loop's measured extra delay (write-then-read plus the
+     * loss filter's phase). A one-time length, not per-sample modulation, so loop stability is unaffected. */
     double L = (double)sampleRate / freq - 1.0; /* round-trip delay; -1 = loop + loss-filter phase */
     if (L < 4.0) L = 4.0;                        /* bow_pos: ~1/8 from the bridge (STK betaRatio) */
     double bridgeLen = L * bow_pos;
@@ -229,59 +154,23 @@ static void render_bowed_string(float *out, int sampleRate, int samples,
     for (int k = 0; k < DMAX; k++) { neck[k] = 0.0f; bridge[k] = 0.0f; }
     int ni = 0, bi = 0;
 
-    /* slope (bow pressure), bowVel (bow speed), loss (brightness) are now config
-     * params. offset + refl stay literals (numerical loop stability, not voice). */
+    /* offset and refl stay literals: they hold the loop numerically stable, they are not voice. */
     const double offset = 0.001;
     const double refl   = 0.99;   /* slight per-round-trip energy loss for stability */
     double lp = 0.0;
     noise_gen ng; noise_init(&ng, noise_seed);
-    /* Bow ramp-in. This is a MODE-SELECTION control, not just a click guard.
-     *
-     * The stick-slip friction below is a NONLINEAR self-oscillator, and a
-     * waveguide loop of length L is resonant at EVERY k*SR/L, not just the
-     * fundamental. Which limit cycle the string settles into therefore depends
-     * on how the bow is brought up to speed: ramp it too fast from rest and the
-     * string locks onto its 2nd or 3rd mode and stays there, exactly as a real
-     * player produces an unintended harmonic by attacking too hard. At the
-     * previous ~25 ms the shipped strings did this over wide contiguous bands —
-     * cello sounded a TWELFTH high across node pitch +1..+6, viola/violin/
-     * double-bass across -11..-7 — with the notated fundamental absent from the
-     * spectrum entirely (measured: energy only at 3f and 6f). Templates built
-     * from a score then leapt registers mid-phrase, which is what made those
-     * circuits sound dissonant rather than merely mistuned.
-     *
-     * The ramp below establishes the Helmholtz fundamental across the whole
-     * playable range (verified -20..+28 semitones on all four bowed voices). It
-     * costs nothing audible, because the pre-warm below is sized to OUTLAST it:
-     * out[0] still begins at the established steady tone and the amp ADSR still
-     * shapes the onset the listener actually hears. The only cost is render
-     * time, and the deepest note (the longest ramp) measures ~18 ms/render
-     * against ~14 ms for an untouched flute.
-     *
-     * The ramp is measured in PERIODS, not milliseconds. What must happen
-     * during it is that the Helmholtz corner completes enough round trips of
-     * the string for that motion to establish itself, and one round trip is L
-     * samples — so a fixed 250 ms buys ~110 periods at 440 Hz but only ~14 at
-     * 55 Hz, and the low notes were exactly the ones still locking after a
-     * flat 250 ms (cello -13..-7, double-bass -20..-19: a notated 52-73 Hz).
-     * Scaling with L fixes the bottom of the range without making the top
-     * wasteful. Guard: TestSelfOscillatingVoicesHoldTheirFundamental. */
+    /* A MODE-SELECTION control, not a click guard: the stick-slip loop is resonant at every k·SR/L, and a bow brought up to
+     * speed too fast locks onto the 2nd or 3rd mode (a cello a twelfth high, the fundamental absent). Measured in PERIODS,
+     * since establishing Helmholtz motion takes round trips; the pre-warm outlasts it, so nothing is heard. */
     const double bowRampPeriods = 110.0; /* round trips to establish Helmholtz motion */
     int attack = (int)(bowRampPeriods * L);
-    /* Both floors are load-bearing and neither subsumes the other: 110 periods
-     * is only ~125 ms at 880 Hz (where the high notes relocked), while 250 ms is
-     * only ~14 periods at 55 Hz (where the low ones did). Take whichever is
-     * longer. */
+    /* Both floors bind: 110 periods is short at high notes, 250 ms short at low ones. The longer wins. */
     if (attack < sampleRate / 4) attack = sampleRate / 4;   /* >=250 ms in absolute time */
     if (attack > 2 * sampleRate) attack = 2 * sampleRate;   /* ceiling on render cost */
     if (attack < 1) attack = 1;
 
-    /* PRE-WARM: a self-oscillating bowed string takes ~0.5-1 s to build its
-     * Helmholtz limit cycle from silence — without this the RENDERED note swells
-     * over ~1 s then the raw buildup reads as a slow attack + fake decay (the amp
-     * ADSR can't shape a tone that isn't there yet). Run the loop SILENTLY for
-     * `warm` samples so out[0] starts at the established full-amplitude tone (same
-     * trick as render_sax). The amp ADSR then shapes the audible onset. */
+    /* A bowed string takes ~0.5-1 s to build its limit cycle; running the loop silently first means out[0] starts at the
+     * established tone and the amp ADSR shapes the onset. */
     int warm = attack + sampleRate / 4;                /* ramp, then ~0.25 s settled */
     if (warm < sampleRate / 2) warm = sampleRate / 2;  /* never below the old ~0.5 s */
     if (warm < 1) warm = 1;
@@ -310,12 +199,8 @@ static void render_bowed_string(float *out, int sampleRate, int samples,
     }
 }
 
-/* ── Brass lip-reed waveguide (osc_type 8) ─────────────────────────────────
- * STK "Brass" (Cook): a TUBE delay line + a 2nd-order LIP RESONATOR (BiQuad at
- * the lip frequency) + a SQUARED nonlinearity (lip opening area ∝ displacement²,
- * which also rectifies). Self-oscillates into a real brass tone. The tube length
- * uses STK's ·2+3 (the note rides on the lip↔tube interaction). bore_refl is the
- * brightness/loss knob; lip_radius the lip Q; max_pressure the blow strength. */
+/* STK "Brass" (Cook): a tube delay, a lip resonator and a squared nonlinearity (lip area ∝ displacement², which
+ * rectifies). The tube length uses STK's ·2+3: the note rides on the lip-tube interaction. */
 static void render_brass(float *out, int sampleRate, int samples, double freq,
                          double bore_refl, double lip_radius, double lip_gain,
                          double max_pressure) {
@@ -351,15 +236,8 @@ static void render_brass(float *out, int sampleRate, int samples, double freq,
     }
 }
 
-/* ── Reed-woodwind waveguide (osc_type 9) ──────────────────────────────────
- * STK "Clarinet" (Cook/Smith): a single BORE delay line + a nonlinear REED
- * TABLE (reflection coefficient = clamp(offset + slope·Δp, ±1) — the reed slaps
- * shut as breath pressure rises) + a one-zero bell LOSS filter. Self-oscillates
- * into a sustained reed tone. Oboe (double reed, conical bore → ALL harmonics)
- * uses a NON-inverting bell (bell_refl > 0, open-pipe round-trip = SR/f);
- * clarinet (single reed, cylindrical → ODD harmonics) uses an inverting bell
- * (bell_refl < 0, closed-open round-trip = SR/2f). reed_slope = reed stiffness,
- * loss_b0 = bell brightness, breath_target = blow strength. */
+/* STK "Clarinet": a bore delay, a reed table (reflection = clamp(offset + slope·Δp, ±1)) and a one-zero bell loss. A
+ * non-inverting bell is an open pipe (all harmonics, round trip SR/f); an inverting one closed-open (odd, SR/2f). */
 static void render_reed(float *out, int sampleRate, int samples, double freq,
                         double bell_refl, double reed_offset, double reed_slope,
                         double breath_target, double loss_b0, unsigned int noise_seed) {
@@ -380,8 +258,7 @@ static void render_reed(float *out, int sampleRate, int samples, double freq,
     for (int i = 0; i < samples; i++) {
         double env = (i < attack) ? (double)i / (double)attack : 1.0;
         double breath = breath_target * env;
-        /* STK breath turbulence — also breaks the static fixed point so the reed
-         * actually KICKS INTO self-oscillation rather than settling to silence. */
+        /* Also breaks the static fixed point, so the reed kicks into self-oscillation instead of settling to silence. */
         breath += breath * 0.2 * (double)noise_white_tick(&ng);
         double lf = loss_b0 * lastOut + loss_b1 * lossPrevX; /* one-zero bell loss */
         lossPrevX = lastOut;
@@ -393,8 +270,7 @@ static void render_reed(float *out, int sampleRate, int samples, double freq,
         double tout = pm_frac_read(bore, LEN, wi, delay);
         sp_delay_write(bore, LEN, &wi, in); /* breath DC stays in the loop = the drive */
         lastOut = tout;
-        /* DC-block the OUTPUT only (not the loop — the breath pressure is a DC
-         * term that DRIVES the bore; blocking it in-loop kills self-oscillation). */
+        /* The OUTPUT only: the breath pressure is a DC term that DRIVES the bore; blocking it in-loop kills oscillation. */
         double dy = sp_dcblock_tick(&dc, tout, 0.995);
         double y = dy * 0.3;
         if (!(y > -8.0 && y < 8.0)) y = 0.0;
@@ -402,20 +278,14 @@ static void render_reed(float *out, int sampleRate, int samples, double freq,
     }
 }
 
-/* ── Air-jet (flute) waveguide (osc_type 10) ───────────────────────────────
- * STK "Flute" (Cook): a BORE delay + a shorter JET delay + a cubic jet
- * nonlinearity (the air sheet saturating, x³−x) + multiplicative BREATH NOISE
- * (flutes are breathy) + an inverting one-pole bore loss filter. Self-oscillates
- * into a breathy flute tone. jet_ratio = timbre/register, noise_gain =
- * breathiness, pole = brightness (higher → darker). */
+/* STK "Flute": a bore delay, a shorter jet delay, a cubic jet nonlinearity (x³−x), multiplicative breath noise and
+ * an inverting one-pole bore loss. */
 static void render_flute(float *out, int sampleRate, int samples, double freq,
                          double jet_ratio, double noise_gain, double pole,
                          double max_pressure, unsigned int noise_seed) {
     enum { LEN = 8192, JLEN = 4096 };
     float bore[LEN], jet[JLEN];
-    /* STK Flute pre-scales the bore by 0.66666 (the played note rides on the
-     * jet↔bore interaction, not the bare bore resonance). Omitting it renders
-     * ~1.5× sharp; with it the fundamental lands on `freq`. */
+    /* STK pre-scales the bore by 2/3: the note rides on the jet-bore interaction. Without it the voice renders ~1.5× sharp. */
     double boreLen = (double)sampleRate / freq - 0.5;
     if (boreLen > (double)(LEN - 2)) boreLen = (double)(LEN - 2);
     if (boreLen < 1.0) boreLen = 1.0;
@@ -455,15 +325,9 @@ static void render_flute(float *out, int sampleRate, int samples, double freq,
     }
 }
 
-/* ── Saxofony reed-cone waveguide (osc_type 11) ─────────────────────────────
- * STK "Saxofony" (Cook/Scavone): the SAME inverting reed loop as the clarinet,
- * but the bore is split into TWO delay lines at a BLOW POSITION and the reed is
- * injected OFF-CENTRE (position < 0.5). That asymmetry restores the EVEN
- * harmonics → the full even+odd series of a CONICAL bore (sax/oboe) instead of
- * the clarinet's odd-only. It stays stable because the inverting half-wave
- * resonator still pins the pitch (a NON-inverting "cone" reflection has no node
- * to lock onto → chaos — that was the earlier mistake). Reed slope is POSITIVE
- * for a sax. The output is tapped at the reed junction, NOT a delay read. */
+/* STK "Saxofony": the clarinet's inverting reed loop with the bore split at a BLOW POSITION and the reed injected
+ * off-centre, which restores the even harmonics of a conical bore; the inverting resonator still pins the pitch (a
+ * non-inverting cone reflection has nothing to lock onto: chaos). Tapped at the reed junction. */
 static void render_sax(float *out, int sampleRate, int samples, double freq,
                        double position, double reed_offset, double reed_slope,
                        double reflect, double breath_target, double loss_b0,
@@ -479,9 +343,7 @@ static void render_sax(float *out, int sampleRate, int samples, double freq,
     if (delay0 < 1.0) delay0 = 1.0;
     if (delay1 < 1.0) delay1 = 1.0;
     noise_gen ng; noise_init(&ng, noise_seed);
-    /* Seed the delay lines with energy so the limit cycle starts near full
-     * amplitude — the loop gain is barely >1, so building from pure silence
-     * takes ~2 s. The pre-warm below then settles this into the steady tone. */
+    /* The loop gain is barely above 1, so from pure silence the limit cycle takes ~2 s to build. */
     for (int k = 0; k < LEN; k++) {
         d0[k] = (float)(0.8 * (double)noise_white_tick(&ng));
         d1[k] = (float)(0.8 * (double)noise_white_tick(&ng));
@@ -491,10 +353,7 @@ static void render_sax(float *out, int sampleRate, int samples, double freq,
     sp_dcblock dc = {0.0, 0.0};
     double vibPhase = 0.0, vibInc = 2.0 * M_PI * 5.2 / (double)sampleRate;
     int attack = sampleRate / 100; if (attack < 1) attack = 1; /* ~10 ms breath ramp */
-    /* PRE-WARM: a self-oscillating reed takes ~0.2 s to build its limit cycle from
-     * silence (and the timbre differs while it settles). Run the loop SILENTLY for
-     * `warm` samples so out[0] starts at the established full-amplitude tone — no
-     * initial quiet/different gap. (The amp ADSR shapes the audible onset.) */
+    /* So out[0] starts at the established tone; the amp ADSR shapes the audible onset. */
     int warm = sampleRate / 2; if (warm < 1) warm = 1; /* ~0.5 s */
     int saxN = warm + samples;
     for (int i = 0; i < saxN; i++) {
@@ -522,10 +381,7 @@ static void render_sax(float *out, int sampleRate, int samples, double freq,
     }
 }
 
-/* ── Source-stage primitives (Phase-15 decomposition). Each renders the OSC
- * stage's buffer for one branch of the osc_type dispatch. Bodies are verbatim
- * transplants from the render_modular_p ladder — byte-identity is gated by
- * TestSynthGoldenByteIdentity. ── */
+/* Each renders the OSC stage for one branch of the osc_type dispatch. */
 static void modular_source_noise(float *out, int samples, int osc_type,
                                  unsigned int noise_seed) {
     noise_gen ng;
@@ -543,108 +399,39 @@ static void modular_source_fm(float *out, int sampleRate, int samples,
     fm_preset preset;
     build_fm_preset(p, freq, &preset);
     if (!fm_on) {
-        /* FM disabled → carrier-only: drop all modulation routing (incl.
-         * op1 self-feedback) so only the base carrier sounds. */
+        /* Carrier-only, including op1's self-feedback. */
         memset(preset.mod_matrix, 0, sizeof(preset.mod_matrix));
     }
     if (pe_on) {
-        /* PITCH ENV on the FM core: the fm_preset already carries the
-         * exponential semitone sweep (pitch_env_amount / pitch_env_decay,
-         * fm_render lines ~127-129); build_fm_preset zeroes them, so the
-         * stage just fills them in. Stage off ⇒ fields stay 0 ⇒ the exact
-         * pre-Phase-8C preset. */
+        /* build_fm_preset zeroes the preset's pitch sweep, so stage off leaves it at 0. */
         preset.pitch_env_amount = pe_amt;
         preset.pitch_env_decay  = pe_decay;
     }
     fm_render(&preset, out, sampleRate, samples);
-    /* fm_render applies its own steady envelope + softsat; we still shape
-     * with the voice amp ADSR below. */
+    /* fm_render applies its own steady envelope and softsat; the voice amp ADSR still shapes it. */
 }
 
-/* ── Vibrato for the physical-model waveguides (osc_type 7-11) ─────────────
- *
- * THE BUG THIS FIXES
- * ------------------
- * The oscillator dispatch below is a strict if/else-if chain, and the
- * waveguide branch sits AHEAD of both the vibrato branch
- * (modular_source_wt_modulated) and the unison branch. Every waveguide voice
- * therefore returned before either could run, so `lfo_target:1` vibrato was
- * silently DEAD on every physical-model instrument. Four shipped instruments
- * configure it and got nothing: cello (4.0 Hz / 0.025 st), violin (3.6 /
- * 0.025), viola (4.4 / 0.030) and double-bass (3.8 / 0.025) -- the entire
- * bowed-string family, whose seeds document the effect in prose
- * ("Vibrato sweeps harmonics across the sharp modes") that never happened.
- * A dead-straight bowed tone is a known synthesis tell, and the listener's
- * verdicts on three of those four were "breathy and soft" / "needs
- * refinement".
- *
- * WHY A DELAY RATHER THAN RETUNING THE WAVEGUIDE
- * ---------------------------------------------
- * render_bowed_string and friends derive their delay-line length ONCE from
- * freq and run a self-oscillating limit cycle over it. Modulating that length
- * per sample means fractional-delay interpolation inside a loop whose
- * numerical stability is load-bearing (see render_brass's chaos note), for no
- * perceptual gain: a modulated read pointer over the OUTPUT is the textbook
- * equivalent for the depths in play here, and leaves the model untouched.
- *
- * The excursion is small. A sinusoidal vibrato of D semitones at f Hz needs a
- * peak delay swing of D*ln2/(12*2*pi*f) seconds -- for the cello's 0.025 st at
- * 4 Hz that is 57 us, about 2.5 samples at 44.1 kHz.
- *
- * IDENTITY: returns immediately unless depth and rate are both positive, so
- * every instrument that does not configure vibrato renders byte-identically.
- */
+/* The waveguide branch returns before the generic vibrato and unison branches, so vibrato is applied here, as a
+ * modulated read over the OUTPUT: retuning the loop per sample would risk its stability for no perceptual gain at these
+ * depths. Identity unless depth and rate are both positive. */
 enum { MODULAR_VIB_DMAX = 4096 };
 
-/* ln2 / (12 * 2*pi): converts a semitone depth into a peak delay in seconds
- * once divided by the vibrato rate. */
+/* Divided by the rate, converts a semitone depth to a peak delay in seconds. */
 #define MODULAR_VIB_SEMI_TO_SEC 0.0091938185
 
-/* Vibrato humanisation.
- *
- * A vibrato at an exactly constant rate and depth reads as a machine. The
- * analysis battery measures this directly as VibratoFingerprint.Jitter
- * (cycle-to-cycle period irregularity): the corpus double-bass REFERENCE
- * measures 0.411, and the first cut of modular_apply_vibrato_delay measured
- * 0.000 -- perfectly metronomic. The listener heard it on the first pass and
- * moved double-bass from "sounds like the real thing" to "the synth one has
- * some vibrato or something that goes up and down in time".
- *
- * The rate is therefore modulated by two SLOW, mutually incommensurate sines
- * so the period never repeats exactly, and the depth by a third. Deterministic
- * by construction -- no RNG -- so renders stay reproducible and the goldens
- * stay meaningful. The frequencies are irrational-ish multiples of each other
- * (0.37, 0.61, 0.29 Hz) precisely so their sum has no short period.
- */
+/* A constant rate and depth reads as a machine, so the rate wanders by two slow incommensurate sines and the depth by
+ * a third. No RNG: renders stay reproducible. */
 #define MODULAR_VIB_RATE_JITTER_A   0.13   /* +/-13% rate wander */
 #define MODULAR_VIB_RATE_JITTER_B   0.08
-/* Wander frequencies must be fast enough that a NOTE contains several cycles.
- *
- * The first values (0.37 / 0.61 Hz) had periods of 2.7 s and 1.6 s against
- * one-shot renders of 1-2 s, so a note only ever saw the first, rising half of
- * the modulation. The mean rate over the note came out ~12% high -- exactly
- * MODULAR_VIB_RATE_JITTER_A -- and every bowed string rendered about 0.5 Hz
- * fast: cello measured 4.50 against a configured 4.0, violin 4.10 against 3.6.
- * A seed that says lfo_rate 4.0 must produce 4.0 Hz.
- *
- * At 1.7 and 2.9 Hz a 1 s note contains 2-3 cycles of each, so the modulation
- * averages out and the mean rate converges on the nominal, while still being
- * far slower than the 4 Hz vibrato it modulates -- it reads as an unsteady hand
- * rather than as a second vibrato. Still mutually incommensurate, so the
- * combined period is long and no cycle repeats exactly. */
+/* Fast enough that a note holds several cycles, so the mean rate stays the nominal one; far slower than the vibrato, so
+ * it reads as an unsteady hand, not a second vibrato. */
 #define MODULAR_VIB_RATE_HZ_A       1.70
 #define MODULAR_VIB_RATE_HZ_B       2.90
 #define MODULAR_VIB_DEPTH_JITTER    0.18   /* +/-18% depth breathing */
 #define MODULAR_VIB_DEPTH_HZ        1.30
 
-/* modular_vibrato_phase integrates the jittered rate to a phase.
- *
- * Integrating the RATE (rather than perturbing the phase directly) is what
- * makes this a genuine tempo wander: perturbing phase would leave the average
- * period untouched and merely add a wobble on top, which measures as a second
- * vibrato rather than as irregularity of the first. The integral of
- * rate*(1 + a*sin(wa*t) + b*sin(wb*t)) is closed-form, so this stays exact and
- * allocation-free. */
+/* Integrating the RATE makes a genuine tempo wander; perturbing phase would add a second vibrato on top. The integral is
+ * closed-form: exact and allocation-free. */
 static double modular_vibrato_phase(double t, double rate) {
     double wa = 2.0 * M_PI * MODULAR_VIB_RATE_HZ_A;
     double wb = 2.0 * M_PI * MODULAR_VIB_RATE_HZ_B;
@@ -661,9 +448,7 @@ static void modular_apply_vibrato_delay(float *out, int sampleRate, int samples,
 
     double peak = (double)lfo_depth * MODULAR_VIB_SEMI_TO_SEC
                 / (double)lfo_rate * (double)sampleRate;
-    /* Keep centre +/- peak strictly inside the ring buffer. A very deep, very
-     * slow vibrato would otherwise ask for a delay longer than the buffer;
-     * clamping degrades the depth rather than reading out of bounds. */
+    /* A deep, slow vibrato would ask for more than the ring buffer: the depth degrades rather than reading out of bounds. */
     const double maxPeak = (double)(MODULAR_VIB_DMAX / 2 - 4);
     if (peak > maxPeak) peak = maxPeak;
     if (!(peak > 0.0)) return;
@@ -678,9 +463,7 @@ static void modular_apply_vibrato_delay(float *out, int sampleRate, int samples,
         double t = (double)i / (double)sampleRate;
         /* Same delay-ramp semantics as modular_source_wt_modulated. */
         double ramp = (lfo_delay > 0.0f) ? fmin(t / (double)lfo_delay, 1.0) : 1.0;
-        /* HUMANISED phase: see modular_vibrato_phase. A metronomic vibrato is
-         * the single most recognisable "this is an LFO, not a player" tell, and
-         * shipping one is a regression the listener caught immediately. */
+        /* A metronomic vibrato is the most recognisable "LFO, not a player" tell. */
         double d = centre + peak * ramp * cos(modular_vibrato_phase(t, (double)lfo_rate))
                  * (1.0 + MODULAR_VIB_DEPTH_JITTER * sin(2.0 * M_PI * MODULAR_VIB_DEPTH_HZ * t + 0.7));
 
@@ -708,29 +491,17 @@ static void modular_source_physical(float *out, int sampleRate, int samples,
                             p->osc_bow_loss,
                             noise_seed);
     } else if (osc_type == 8) {
-        /* Brass lip-reed waveguide. NOTE: not yet a clean self-oscillator — the
-         * lip BiQuad + squared nonlinearity tends to chaos rather than a locked
-         * tone, so no instrument ships on it yet (trumpet stays subtractive). The
-         * output is GUARDED finite/bounded (see test TestWaveguideOscTypesAreFinite
-         * + the y-guard below) so it's safe; the low lip_gain is the documented
-         * starting point for future stabilisation. See reference_instrument_synth_tuning. */
+        /* Not yet a clean self-oscillator (it tends to chaos), so no instrument ships on it; the output is guarded finite. */
         render_brass(out, sampleRate, samples, freq, 0.85, 0.997, 0.012, 0.5);
     } else if (osc_type == 9) {
-        /* Reed-woodwind waveguide (single-delay, inverting bell → CLARINET timbre:
-         * odd harmonics only). NOTE: this is NOT a correct oboe (a conical double
-         * reed needs even+odd). The oboe is synthesized ADDITIVELY instead (stable
-         * pitch + exact harmonic profile) — routing it through the conical sax
-         * model gave even+odd but the limit cycle wanders 20–140 cents at the
-         * oboe's short bore. Kept for clarinet-family use. */
+        /* Clarinet timbre (odd harmonics only). The oboe is additive: through the conical model its limit cycle wanders 20-140
+         * cents at an oboe's short bore. */
         render_reed(out, sampleRate, samples, freq, -0.95, 0.7, -0.3, 0.8, 0.5, noise_seed);
     } else if (osc_type == 10) {
-        /* Air-jet (flute) waveguide. Hardcoded breathy-flute defaults; higher
-         * drive + lower loss so it sustains oscillation at the prescaled bore. */
+        /* Higher drive and lower loss so it sustains at the prescaled bore. */
         render_flute(out, sampleRate, samples, freq, 0.4, 0.2, 0.7, 1.0, noise_seed);
     } else if (osc_type == 11) {
-        /* Saxofony reed-cone waveguide. Hardcoded BARITONE-SAX defaults: off-centre
-         * blow position (all harmonics), positive reed slope, hard breath + low
-         * offset for the dense honking low tone, bright loss filter. */
+        /* Baritone-sax values: off-centre blow, positive reed slope, hard breath and low offset for a dense honk. */
         render_sax(out, sampleRate, samples, freq,
                    p->osc_sax_blow,
                    p->osc_sax_reed_off,
@@ -747,12 +518,8 @@ static void modular_source_wt_modulated(float *out, int sampleRate, int samples,
                                         int pe_active, double pe_amt, double pe_decay,
                                         int vib_on, double lfo_depth, double lfo_rate,
                                         double lfo_delay) {
-    /* Wavetable OSC with per-sample frequency modulation: pitch-env
-     * (exp semitone sweep) and/or LFO vibrato (sinusoidal semitone wobble),
-     * summed in semitones then applied as a 2^(st/12) multiplier. When
-     * vib_on is false this is bit-identical to the legacy pitch-env branch;
-     * when both are off control never reaches here (the plain branch below
-     * runs), preserving byte-identity for every pre-change instrument. */
+    /* Pitch env and vibrato summed in semitones, applied as 2^(st/12); with both off the plain branch runs, so every other
+     * instrument is byte-identical. */
     ensure_modular_tables();
     wt_osc_t osc;
     wt_osc_init(&osc, modular_table_for(osc_type), freq, sampleRate);
@@ -782,15 +549,11 @@ static void modular_source_unison(float *out, int sampleRate, int samples,
     double ens_vr      = p->ens_vib_rate;
     double ens_vd      = p->ens_vib_depth;
     double ens_hum     = p->ens_humanize;
-    /* Phase-16 ensemble cycle jitter: per-voice fast pitch roughness. Identity
-     * 0 = no jitter (exact bypass of everything jitter-related below). */
+    /* 0 is an exact bypass of everything jitter-related. */
     double ens_jitter  = p->ens_jitter;
     int   ens_vib_on  = (ens_vr > 0.0f && ens_vd > 0.0f);
-    /* Phase-8E unison: N detuned wt_osc copies with decorrelated phases.
-     * Center voice (i=0) runs at exact pitch; side voices (i=1..nv-1) are
-     * detuned symmetrically ±detune_cents/2 with phase offset i*π/nv for
-     * decorrelation. Sum all voices and normalize by 1/sqrt(nv) for RMS
-     * stability. unison_mix blends from center-only (0) to ensemble (1). */
+    /* Centre at exact pitch; side voices detuned ±detune/2 with phase offsets i·π/nv; the sum normalised by 1/√nv.
+     * unison_mix blends centre-only (0) to ensemble (1). */
     ensure_modular_tables();
     const wavetable_t *wt = modular_table_for(osc_type);
     wt_osc_t osc;
@@ -800,9 +563,7 @@ static void modular_source_unison(float *out, int sampleRate, int samples,
     double side_freq[6];
     int ns = unison_nv - 1; /* number of side voices */
     for (int v = 0; v < ns; v++) {
-        /* Spread ns side voices evenly across [-1, +1].
-         * For ns==1 (voices==2) the old code gave spread=0 (no detuning).
-         * Fix: use max(ns-1,1) so one side voice lands at -detune, not center. */
+        /* max(ns-1, 1) so a single side voice lands at -detune, not the centre. */
         double spread = -1.0 + 2.0 * (double)v / (double)(ns > 1 ? ns - 1 : 1);
         double cents_v = (double)unison_detune * spread;
         side_freq[v] = freq * pow(2.0, cents_v / 1200.0);
@@ -813,11 +574,8 @@ static void modular_source_unison(float *out, int sampleRate, int samples,
     double norm = 1.0 / sqrt((double)unison_nv);
     double mix_blend = (double)unison_mix;
     int drift_on = (unison_drift_rate > 0.0f && unison_drift_depth > 0.0f);
-    /* Per-voice drift LFO parameters (rate/phase only used when drift_on).
-     * drift_base_cents mirrors the static detune spread computed above for
-     * side_freq[v]; it is read whenever mod_on runs the per-sample set_freq
-     * path (drift_on, ens_scatter, or ens_vib_on), so it must be populated
-     * unconditionally — NOT gated behind drift_on like the rate/phase are. */
+    /* drift_base_cents is read whenever the per-sample path runs (drift, scatter or vibrato), so it is filled
+     * unconditionally, unlike the drift rate and phase. */
     double drift_rate_v[6] = {0}, drift_phase_v[6] = {0}, drift_base_cents[6] = {0};
     for (int v = 0; v < ns; v++) {
         double spread = -1.0 + 2.0 * (double)v / (double)(ns > 1 ? ns - 1 : 1);
@@ -830,9 +588,7 @@ static void modular_source_unison(float *out, int sampleRate, int samples,
             drift_phase_v[v] = 2.0 * M_PI * (double)(v + 1) / (double)unison_nv;
         }
     }
-    /* Deterministic per-voice randoms: LCG seeded by (noise_seed, voice).
-     * lcg_norm ∈ [-1,1], lcg_unit ∈ [0,1). Never rand()/time — byte-identity
-     * and xplat parity depend on renders being pure functions of the seed. */
+    /* Never rand()/time: byte-identity and cross-platform parity need renders to be pure functions of the seed. */
     double scat_cents[7] = {0}, vib_rate_v[7] = {0}, vib_phase_v[7] = {0};
     if (ens_scatter > 0.0f || ens_vib_on) {
         for (int v = 0; v < unison_nv; v++) {
@@ -845,19 +601,13 @@ static void modular_source_unison(float *out, int sampleRate, int samples,
             double u3 = (double)(r >> 8) / (double)(1u << 24);
             /* Center voice keeps exact pitch center: scatter applies to sides only. */
             scat_cents[v] = (v == 0) ? 0.0 : (double)ens_scatter * n1;
-            /* humanize spreads rate ±15% and randomizes phase; at 0 all voices
-             * share rate ens_vr and phase 0 (one synchronized singer). */
+            /* At 0 every voice shares one rate and phase: one synchronized singer. */
             vib_rate_v[v]  = (double)ens_vr * (1.0 + 0.15 * (double)ens_hum * n2);
             vib_phase_v[v] = 2.0 * M_PI * (double)ens_hum * u3;
         }
     }
-    /* Phase-16 cycle jitter: per-voice fast pitch roughness, INCLUDING the
-     * center voice. jit_onepole[0] = center, jit_onepole[v+1] = side v — same
-     * indexing convention as scat_cents/vib_rate_v/vib_phase_v above. A
-     * deterministic per-voice LCG stream (seeded off noise_seed) advances once
-     * every 16 samples and is smoothed by a one-pole (coef 0.008 ≈ 60 Hz
-     * bandwidth at 48k) into jit_onepole; ens_jitter==0 never touches these
-     * arrays, so they stay exactly 0.0 for the whole render. */
+    /* Includes the centre voice (index 0, sides at v+1). An LCG stepped every 16 samples through a ~60 Hz one-pole; at 0
+     * these stay exactly 0.0. */
     double jit_onepole[7] = {0};
     unsigned int jit_r[7] = {0};
     if (ens_jitter > 0.0f) {
@@ -920,10 +670,8 @@ static void modular_source_plain(float *out, int sampleRate, int samples,
     }
 }
 
-/* Thread-local scratch for the FINISH resample. Grows lazily, never freed: the
- * render thread reuses it on every cache-miss render, bounded by the longest
- * single render. _Thread_local gives each cgo-crossing goroutine its own copy;
- * under single-threaded Emscripten it is a plain static. */
+/* Grows lazily, never freed, bounded by the longest render. _Thread_local gives each cgo-crossing goroutine its own;
+ * single-threaded Emscripten makes it a plain static. */
 static _Thread_local float *g_finish_scratch = NULL;
 static _Thread_local size_t g_finish_scratch_cap = 0;
 
@@ -937,20 +685,9 @@ static float *finish_scratch(size_t want) {
     return g_finish_scratch;
 }
 
-/* ── FINISH resampler ──
- * Resample plays the finished voice at 2^(st/12) speed. Reading it back with
- * linear interpolation folded every partial pushed past Nyquist back down as an
- * inharmonic tone at full level (a 15 kHz partial shifted +12 st at 44.1 kHz
- * landed on 14.1 kHz) and dulled the top of the passband by up to 4 dB. It is a
- * band-limited interpolator now: a Kaiser-windowed sinc, its cutoff scaled
- * down by the speed when shifting UP (so content that would land past Nyquist
- * is removed, not folded). The kernel spans FINISH_RS_ZC zero crossings each
- * side (β 5.65: ≈60 dB stopband, passband flat to ≈0.8 of Nyquist), tabulated
- * at FINISH_RS_OS points per crossing and read at the nearest point (that
- * rounding error sits at the stopband floor, and interpolating the table cost
- * as much again as the whole read). Guards:
- * TestFinishResampleDoesNotAlias, TestFinishResampleKeepsThePassbandFlat,
- * TestFinishResampleShiftsPitchExactly. */
+/* A Kaiser-windowed sinc with the cutoff scaled down by the speed when shifting up, so partials past Nyquist are removed
+ * rather than folded back as inharmonic tones. Tabulated and read at the nearest point: that error sits at the
+ * stopband floor, and interpolating cost as much again as the whole read. */
 #define FINISH_RS_ZC 16
 #define FINISH_RS_OS 2048
 #define FINISH_RS_ROLLOFF 0.9
@@ -983,8 +720,7 @@ static void build_rs_kernel(void) {
 
 static void finish_resample(float *out, int samples, double rate, const float *in) {
     beatmo_once(&g_rs_kernel_once, build_rs_kernel);
-    /* Cutoff as a fraction of the input's Nyquist: shifting up by `rate` must
-     * remove everything above Nyquist/rate before it is read faster. */
+    /* Shifting up by rate must remove everything above Nyquist/rate before it is read faster. */
     double fc = FINISH_RS_ROLLOFF / (rate > 1.0 ? rate : 1.0);
     double half = FINISH_RS_ZC / fc;      /* kernel half-width, input samples */
     double tabPerSample = fc * FINISH_RS_OS;
@@ -1005,9 +741,7 @@ static void finish_resample(float *out, int samples, double rate, const float *i
     }
 }
 
-/* finish_shelf_set: an RBJ (Audio EQ Cookbook) shelf, slope S = 1, gainDB at
- * the shelved end and 0 dB at the other — the same curve at every engine
- * rate (the corner clamp below Nyquist only bites far below 22.05 kHz). */
+/* RBJ shelf, slope 1, gain at the shelved end and 0 dB at the other: the same curve at every engine rate. */
 static void finish_shelf_set(sp_biquad *q, int high, double f0, double gainDB, int sampleRate) {
     double nyq = 0.5 * (double)sampleRate;
     if (f0 > 0.45 * nyq) f0 = 0.45 * nyq;
@@ -1037,28 +771,16 @@ static void finish_shelf_set(sp_biquad *q, int high, double f0, double gainDB, i
     q->x1 = q->x2 = q->y1 = q->y2 = 0.0;
 }
 
-/* The shelves' corners and their gain at a knob's full travel. Low Boost lifts
- * the body (kick boom, cello weight) below FINISH_BODY_HZ; Crisp lifts the
- * presence/air above FINISH_CRISP_HZ. Each lifts ONLY its end: the rest keeps
- * its level, so the knob changes the balance, not the loudness. Gain is linear
- * in dB with the knob (a first step does a first step's worth). */
+/* Each lifts ONLY its end, so the knob changes the balance, not the loudness; gain is linear in dB with the knob. */
 #define FINISH_BODY_HZ 200.0
 #define FINISH_CRISP_HZ 3000.0
 #define FINISH_SHELF_MAX_DB 12.0
 
-/* modular_finish — the FINISH stage, a pure function of the post_* fields,
- * always run, in this order: resample (post_pitch), fade (post_decay at
- * post_decay_rate), low boost (post_body, a low shelf), crisp (post_brightness,
- * a high shelf), darken (post_darken), crunch (post_drive), then the output
- * limit (out_clamp). Each op is a no-op at its identity, so a voice that leaves
- * them alone renders exactly as without the stage. Darken and Crunch crossfade
- * their wet signal by their own amount, so a knob's first step does a first
- * step's worth of work. Response contract: finish_stage_response_test.go. */
+/* Always run, in this order: resample, fade, low boost, crisp, darken, crunch, then the limit. Each is a no-op at its
+ * identity; Darken and Crunch crossfade by their own amount, so a first step does a first step's work. */
 static void modular_finish(float *out, int sampleRate, int samples, const modular_params *p) {
-    /* A non-finite sample from upstream is dropped HERE, before any recursive
-     * filter sees it: a biquad / one-pole that takes in one NaN holds it in its
-     * state forever, and the output guard below then silenced the whole rest
-     * of the voice. */
+    /* Dropped BEFORE any recursive filter: a biquad that takes one NaN holds it forever, and the output guard then
+     * silences the rest of the voice. */
     for (int i = 0; i < samples; i++) {
         if (!isfinite(out[i])) out[i] = 0.0f;
     }
@@ -1074,9 +796,7 @@ static void modular_finish(float *out, int sampleRate, int samples, const modula
     }
 
     double decayMul = p->post_decay;
-    /* Structural bounds, not defaults: at 0 the exponent is 0·Inf = NaN, which
-     * poisons every BiquadFilter downstream; above 1 the exponent turns
-     * positive and the "fade" grows without bound (Inf within a second). */
+    /* Structural bounds, not defaults: at 0 the exponent is 0·Inf = NaN; above 1 the fade grows without bound. */
     if (decayMul < 0.01f) decayMul = 0.01f;
     if (decayMul > 1.0) decayMul = 1.0;
     if (decayMul != 1.0) {
@@ -1134,17 +854,14 @@ static void modular_finish(float *out, int sampleRate, int samples, const modula
         }
     }
 
-    /* A non-finite sample is never audio: it poisons the browser's peak
-     * normaliser and every BiquadFilter on the channel. Structural guard. */
+    /* A non-finite sample poisons the browser's peak normaliser and every filter on the channel. */
     for (int i = 0; i < samples; i++) {
         if (!isfinite(out[i])) out[i] = 0.0f;
     }
 }
 
-/* modular_param_count: the param count this engine was COMPILED with. Go and
- * JS compare it with their own (generated) layout at load, so a header
- * regenerated without rebuilding the engine fails loudly instead of reading
- * every later field at a shifted offset. */
+/* Go and JS compare it with their generated layout at load, so a stale engine fails loudly instead of reading later
+ * fields at shifted offsets. */
 EXPORT int modular_param_count(void) { return MODULAR_PARAM_COUNT; }
 
 void modular_finish_apply(float *buf, int sampleRate, int samples,
@@ -1158,8 +875,7 @@ EXPORT void render_modular_p(float *out, int sampleRate, int samples,
     if (!out || samples <= 0 || sampleRate <= 0) return;
     memset(out, 0, (size_t)samples * sizeof(float));
 
-    /* Every param is read directly: there is no "absent → built-in default"
-     * path. A NULL block is a caller bug; render silence. */
+    /* No "absent → default" path: a NULL block is a caller bug and renders silence. */
     if (!params) return;
     const modular_params *p = params;
 
@@ -1187,9 +903,7 @@ EXPORT void render_modular_p(float *out, int sampleRate, int samples,
     int drive_on = p->drive_enabled >= 0.5f;
     unsigned int noise_seed = (unsigned int)lrint(p->noise_seed);
 
-    /* Phase-8C modulator stages. Each enable's identity is 0 (off); enabled=0
-     * skips the stage code entirely (the numeric knobs are never read) — an
-     * exact bypass. */
+    /* Off skips the stage entirely: its numeric knobs are never read. */
     int   pe_on     = p->pitchenv_enabled >= 0.5f;
     double pe_amt    = p->pitchenv_amt;
     double pe_decay  = p->pitchenv_decay;
@@ -1207,9 +921,7 @@ EXPORT void render_modular_p(float *out, int sampleRate, int samples,
     double body_mix       = p->body_mix;
     double bow_dynamics   = p->bow_dynamics;
 
-    /* Phase-15 formant stage. enabled/mix gate everything; vowel/voice_type/
-     * morph_to are enum values (0 is a valid one); shift is clamped >= 0.01
-     * below (a structural guard against a zero/negative frequency scale). */
+    /* Enum values may be 0; shift is clamped ≥ 0.01, a structural guard against a zero frequency scale. */
     int   formant_on   = p->formant_enabled >= 0.5f;
     double formant_vowel = p->formant_vowel;
     int   formant_vt   = (int)lrint(p->formant_voice_type);
@@ -1243,26 +955,20 @@ EXPORT void render_modular_p(float *out, int sampleRate, int samples,
                 * pow(2.0, (double)detune / 1200.0);
     if (freq < 1.0) freq = 1.0;
 
-    /* voice_freq_hz override (Phase 2): >0 sets the voice freq to an EXACT Hz,
-     * applied AFTER the pow derivation. Identity 0 keeps the derived freq, so
-     * every pre-Phase-2 preset is byte-unchanged. Used by migrated family
-     * presets whose fundamental (e.g. 45 Hz) is not reachable via 220·2^x. */
+    /* > 0 sets an EXACT Hz after the pow derivation, for fundamentals 220·2^x cannot reach (a 45 Hz kick). */
     {
         double vfh = (double)p->voice_freq_hz;
         if (vfh > 0.0) freq = vfh;
     }
 
-    /* osc_wrote tracks whether the legacy osc stage ASSIGNED into out[] this
-     * call. When it did not (osc disabled / no source), the gen bank's first
-     * active slot must ASSIGN rather than accumulate into the zeroed buffer —
-     * otherwise 0.0f + (-0.0f) would flip a legacy -0.0 sample to +0.0f. */
+    /* When the osc stage did not write, the first active slot ASSIGNS rather than accumulating, or 0.0f + (-0.0f) would
+     * flip a -0.0 sample to +0.0. */
     int osc_wrote = 0;
     int vib_on = lfo_on && lfo_target == 1 && lfo_depth > 0.0f && lfo_rate > 0.0f;
 
     /* ── Oscillator / generator stage ── */
     if (!osc_on) {
-        /* Generator disabled by the user → silence (out[] is already zeroed).
-         * The generator is the sound source, so "bypass" means no source. */
+        /* The generator is the source, so bypassing it means silence. */
     } else if (osc_type == 5 || osc_type == 6) {
         modular_source_noise(out, samples, osc_type, noise_seed);
         osc_wrote = 1;
@@ -1271,10 +977,7 @@ EXPORT void render_modular_p(float *out, int sampleRate, int samples,
         osc_wrote = 1;
     } else if (osc_type == 7 || osc_type == 8 || osc_type == 9 || osc_type == 10 || osc_type == 11) {
         modular_source_physical(out, sampleRate, samples, p, osc_type, freq, noise_seed);
-        /* The waveguide branch returns before the vibrato branch below could
-         * ever run, so vibrato has to be applied here or not at all. Identity
-         * unless depth and rate are both positive -- see
-         * modular_apply_vibrato_delay. */
+        /* The waveguide returns before the vibrato branch could run, so it is applied here or not at all. */
         if (vib_on) {
             modular_apply_vibrato_delay(out, sampleRate, samples, lfo_depth, lfo_rate, lfo_delay);
         }
@@ -1295,21 +998,14 @@ EXPORT void render_modular_p(float *out, int sampleRate, int samples,
         osc_wrote = 1;
     }
 
-    /* ── Gen bank (Phase 1, modular unification): parallel slots accumulate
-     * into the mix AFTER the legacy osc stage writes. All-identity params ⇒
-     * no active slot ⇒ exact no-op (byte-identity invariant). Runs even when
-     * osc_enabled == 0 (slots are independent of the legacy osc gate). ── */
+    /* Parallel slots added after the osc stage, independent of its gate; no active slot is an exact no-op. */
     modular_gen_bank_render(out, sampleRate, samples, p, freq, noise_seed, osc_wrote);
 
-    /* ── WAV-clone stages: MODAL (+ STRIKE) resonators and NOISEBAND rows add
-     * into the mix after the gen bank, PRE-envelope/filter like every source.
-     * Disabled (the default) => exact no-op. ── */
+    /* PRE-envelope/filter like every source; disabled is an exact no-op. */
     modular_modal_render(out, sampleRate, samples, p, freq, noise_seed);
     modular_noiseband_render(out, sampleRate, samples, p, noise_seed);
 
-    /* ── Phase-15 breath: white noise mixed into the source PRE-envelope so the
-     * ADSR shapes it and the filter + formant bank color it. Whisper = osc off
-     * + breath 1. Gated on the formant stage (it is that card's knob). ── */
+    /* PRE-envelope so the ADSR shapes it and the filter and formants colour it (whisper = osc off + breath 1). */
     if (formant_on && formant_breath > 0.0f) {
         noise_gen bng;
         noise_init(&bng, noise_seed ^ 0x9E3779B9u);
@@ -1317,11 +1013,7 @@ EXPORT void render_modular_p(float *out, int sampleRate, int samples,
             out[i] = (float)(out[i] + noise_white_tick(&bng) * formant_breath * 0.5f);
     }
 
-    /* ── Phase-8C LFO stage: post-mix amp wobble. Multiplies the FULL mix
-     * (legacy osc + gen-bank family voices), so it is a real stage on every
-     * instrument. gain(t) = 1 - depth·(0.5 - 0.5·sin(2πft)) wobbles in
-     * [1-depth, 1] — never exceeds unity, starts at the midpoint heading up.
-     * Disabled (the default) ⇒ the loop never runs ⇒ exact bypass. ── */
+    /* Multiplies the FULL mix, so it shapes every voice: 1 - depth·(0.5 - 0.5·sin(2πft)) stays in [1-depth, 1]. */
     if (lfo_on && lfo_target == 0 && lfo_depth > 0.0f && lfo_rate > 0.0f) {
         for (int i = 0; i < samples; i++) {
             double t = (double)i / (double)sampleRate;
@@ -1333,12 +1025,8 @@ EXPORT void render_modular_p(float *out, int sampleRate, int samples,
         }
     }
 
-    /* ── Phase-8C BURST stage: post-mix multi-burst gate (clap-style staggered
-     * transients on any source). env(t) = Σ_j amp_j·e^(-sharp·(t-off_j)) for
-     * t ≥ off_j; out is multiplied by the summed envelope. With every amp at 0
-     * (the identity) an ENABLED burst stage gates to silence — the UI defaults
-     * (modular_recipe.go) ship amp1=1 + staggered 2/3 so enabling is audible.
-     * Disabled (the default) ⇒ exact bypass. ── */
+    /* env(t) = Σ amp_j·e^(-sharp·(t-off_j)) multiplies the mix; with every amp 0 an enabled burst is silence, so the UI
+     * defaults ship audible amps. */
     if (burst_on) {
         double sharp = p->burst_sharp;
         double boff[4] = {
@@ -1364,13 +1052,8 @@ EXPORT void render_modular_p(float *out, int sampleRate, int samples,
     /* ── Amplitude ADSR stage ── */
     if (env_on) {
         int rel_samples = (int)(rel * (float)sampleRate);
-        /* Cap release to at most half the note so attack/decay/sustain always
-         * get the first half — otherwise a note shorter than the release time
-         * would collapse straight into release and the decay knob would do
-         * nothing. A capped release ramps over the half it is given: keeping
-         * the full release time left the note loud at its end, where the voice
-         * hard-cut (a release value past half the note sounded LOUDER, not
-         * longer). An uncapped release is untouched. */
+        /* Release takes at most half the note, so attack/decay/sustain keep the first half; a capped release ramps over the
+         * half it is given, or the note would still be loud where the voice hard-cuts. */
         double rel_ramp = rel;
         if (rel_samples > samples / 2) {
             rel_samples = samples / 2;
@@ -1394,11 +1077,7 @@ EXPORT void render_modular_p(float *out, int sampleRate, int samples,
         int cut_sweep   = lfo_on && lfo_target == 2 && lfo_depth > 0.0f && lfo_rate > 0.0f;
         int filt_env_on = filtenv_on && filtenv_amt > 0.0f && filtenv_decay > 0.0f;
         if (cut_sweep) {
-            /* LFO cutoff sweep: ± lfo_depth octaves around the base cutoff,
-             * recomputed every 64 samples with the state-preserving coeff
-             * setter (no click). Target 0/1 take the static path above, so this
-             * branch is reached ONLY for cutoff-target instruments — every
-             * pre-change instrument is byte-identical. */
+            /* ± lfo_depth octaves, recomputed every 64 samples with the state-preserving setter (no click). */
             mod_biquad_set(&filt, filt_type, (double)cutoff, (double)q, sampleRate);
             for (int i = 0; i < samples; i++) {
                 if ((i & 63) == 0) {
@@ -1412,19 +1091,13 @@ EXPORT void render_modular_p(float *out, int sampleRate, int samples,
                 out[i] = mod_biquad_tick_f(&filt, out[i]);
             }
         } else if (filt_env_on) {
-            /* Filter envelope: cutoff brightens by filtenv_amt octaves at onset,
-             * decaying exponentially with time constant filtenv_decay seconds.
-             * Recomputed every 64 samples with the state-preserving coeff setter
-             * (no click). When filtenv_on is false, control falls through to the
-             * existing static path below — byte-identical. */
+            /* Brightens by filtenv_amt octaves at onset and decays over filtenv_decay s; recomputed every 64 samples, no click. */
             mod_biquad_set(&filt, filt_type, (double)cutoff, (double)q, sampleRate);
             double atk = (double)filtenv_attack;
             for (int i = 0; i < samples; i++) {
                 if ((i & 63) == 0) {
                     double t = (double)i / (double)sampleRate;
-                    /* With attack>0: RISE 0→amt octaves over `atk` seconds (the
-                     * brass crescendo bloom), then decay/hold. attack==0 reduces
-                     * EXACTLY to the legacy onset-bloom-then-decay (byte-identical). */
+                    /* attack > 0 rises over atk seconds first (a brass bloom); 0 is the plain onset-then-decay. */
                     double oct;
                     if (atk > 0.0 && t < atk) {
                         oct = (double)filtenv_amt * (t / atk);
@@ -1446,8 +1119,7 @@ EXPORT void render_modular_p(float *out, int sampleRate, int samples,
     }
     /* filter disabled → passthrough. */
 
-    /* ── Phase-15 FORMANT stage (vowel bank) — before the body resonator so
-     * FORMANT (mouth) and RESONATOR (instrument body) compose in that order. */
+    /* Before the body resonator: mouth, then instrument body. */
     if (formant_on) {
         modular_formant_process(out, sampleRate, samples, formant_vt,
                                 formant_vowel, formant_mix, formant_shift,
@@ -1455,60 +1127,32 @@ EXPORT void render_modular_p(float *out, int sampleRate, int samples,
                                 formant_dry);
     }
 
-    /* ── Body-resonator bank ── (organic string/violin body)
-     * out = dry + Σ_k (bandpass_k(out) · g_k) · body_mix. The narrow band-passes
-     * are an instrument body's signature modes; vibrato sweeping the harmonics
-     * across these fixed peaks modulates each harmonic = the timbre shimmer.
-     * body_model 0 (default) skips this entirely → byte-identical. */
+    /* out = dry + Σ bandpass_k(out)·g_k·body_mix: vibrato sweeping harmonics across fixed body peaks is the shimmer. */
     if (body_model >= 1 && body_mix > 0.0f) {
-        /* Violin signature modes: air/body (A0/B1) + a dense series up through the
-         * ~2.6 kHz "bridge hill" (Hz, Q, relative gain). */
-        /* MODERATE Q = body COLORATION (the violin's formant/resonance shape) without
-         * ringing into a metallic/organ-like drone. (The dramatic per-note "shimmer"
-         * is the PLAYER'S bowing, handled by bow_dynamics — not the static body.)
-         * ~22 modes, dense in the 600-4000Hz region where bowed-string harmonics live;
-         * the bridge-hill region (2.2-3kHz) carries the brightness. */
+        /* Moderate Q colours without ringing into a metallic drone; dense in 600-4000 Hz, the 2.2-3 kHz bridge hill carries the
+         * brightness. */
         static const double violinF[] = {280, 460, 540, 660, 800, 950, 1100, 1280, 1500, 1700, 1950, 2200,
                                          2450, 2700, 2950, 3250, 3550, 3900, 4300, 4800, 5400, 6000};
         static const double violinQ[] = {  6,   7,   7,   8,   8,   9,    9,   10,   10,   10,    9,    9,
                                           10,   11,  11,   9,    8,    8,    7,    7,    6,    6};
         static const double violinG[] = {0.1, 0.12, 0.15, 0.2, 0.35, 0.45, 0.6, 0.65, 0.7, 0.7, 0.65, 0.85,
                                          0.9, 0.95, 0.9, 0.75, 0.6, 0.5, 0.4, 0.3, 0.25, 0.2};
-        /* Classical guitar body modes: Helmholtz air resonance (~100 Hz), top-plate
-         * monopole (~195 Hz), back-plate coupling (~270 Hz), then body modes tapering
-         * up. The low-mid emphasis is the guitar "box" character; the upper modes
-         * (1.6–3.4 kHz) carry the bright nylon "presence" the real reference has —
-         * without them (and with the post-LP opened up) the render reads too dull
-         * (centroid ~990 vs the real ~1710). */
-        /* NYLON character: the upper modes (1.6–3.4 kHz) are kept for presence but
-         * given LOW Q (broad, ~2 not ~4) so they color the attack WITHOUT a high-Q
-         * metallic RING — a high-Q upper resonance is exactly what makes a render
-         * read as a bright STEEL/acoustic string. Nylon = warm sustain, bright but
-         * non-ringing top. (User feedback: bright bank read "metallic acoustic".) */
+        /* Helmholtz air (~100 Hz), top plate, back plate, then tapering modes; the 1.6-3.4 kHz modes give nylon presence at LOW
+         * Q, since a high-Q upper resonance is what reads as a steel string. */
         static const double guitarF[] = {100, 195, 270, 400, 540, 700, 900, 1200, 1600, 2100, 2700, 3400};
         static const double guitarQ[] = { 12,  14,  12,   9,   8,   7,   6,    5,  2.2,  2.0,  1.8,  1.5};
         static const double guitarG[] = {0.9, 1.0, 0.7, 0.5, 0.4, 0.3, 0.25, 0.20, 0.16, 0.12, 0.08, 0.06};
-        /* Cello body modes: the cello box is ~2x the violin, so its resonances sit
-         * roughly an octave LOWER and broader. A0 air (~104 Hz) + the main wood
-         * resonances (B1-/B1+, ~140-190 Hz) carry the woody warmth and REINFORCE the
-         * low harmonics (the real cello's dominant 2nd partial), tapering up through a
-         * broad low-mid formant; the cello "bridge hill" (~1.3-1.7 kHz) is much lower
-         * than the violin's 2.5 kHz, so the cello reads dark/woody, not bright/buzzy. */
+        /* About an octave below the violin's and broader: the low wood modes reinforce the dominant 2nd partial, and the
+         * bridge hill sits near 1.3-1.7 kHz, so the cello reads dark and woody. */
         static const double celloF[] = {104, 140, 190, 260, 350, 460, 600, 780, 1000, 1300, 1650, 2050, 2500, 3100};
-        /* LOW Q (gentle body COLORATION, not ringing) — high Q here made it a humming
-         * metallic/radio drone, not a bowed string (see the moderate-Q note above). */
+        /* High Q made it a humming metallic drone. */
         static const double celloQ[] = {  4,   5,   4,   4,    3,   3,   3,   3,    3,    3,    3,    3,    3,    2};
         static const double celloG[] = {0.7, 1.0, 0.95, 0.7, 0.55, 0.5, 0.45, 0.4, 0.45, 0.5, 0.5, 0.4, 0.3, 0.18};
-        /* STEEL-string acoustic guitar body (body_model:4): the SAME box as the
-         * classical guitar but with HIGH-Q, STRONG upper modes (1.6–4.2 kHz) — that
-         * bright, RINGING top is the "metallic" steel zing (exactly what made the
-         * nylon read as steel before its upper modes were broadened). Nylon
-         * (body_model:2) keeps those modes low-Q/warm; steel rings. */
+        /* The guitar box with HIGH-Q, strong upper modes: the ringing top is the steel zing nylon avoids. */
         static const double steelF[] = {100, 195, 270, 400, 540, 700, 900, 1200, 1600, 2100, 2700, 3400, 4200};
         static const double steelQ[] = { 10,  12,  10,   8,   7,   7,   6,    6,    5,    5,    4,    4,    3};
         static const double steelG[] = {0.6, 0.7, 0.55, 0.5, 0.45, 0.42, 0.4, 0.38, 0.35, 0.32, 0.28, 0.24, 0.18};
-        /* Select mode table by body_model: 2 = classical/nylon guitar, 4 = steel
-         * guitar (bright/ringing), 3 = cello, 1 (or any other) = violin. */
+        /* 2 nylon, 4 steel, 3 cello, 1 (or any other) violin. */
         const double *mF, *mQ, *mG;
         int nM;
         if (body_model == 2) {
@@ -1528,9 +1172,7 @@ EXPORT void render_modular_p(float *out, int sampleRate, int samples,
         for (int k = 0; k < nM; k++) {
             mod_biquad_set(&body[k], 2 /* band-pass */, mF[k], mQ[k], sampleRate);
         }
-        /* As body_mix rises the BODY shapes the tone (the harmonics move THROUGH
-         * the resonances) rather than peaks merely added onto a steady dry saw —
-         * so suppress the dry as mix grows. dryAmt(0)=1 → byte-identical off. */
+        /* The body shapes the tone rather than adding peaks onto a dry saw, so the dry drops as mix grows. */
         double dryAmt = 1.0 - 0.85 * fmin((double)body_mix, 1.0);
         for (int i = 0; i < samples; i++) {
             double x = (double)out[i];
@@ -1540,11 +1182,8 @@ EXPORT void render_modular_p(float *out, int sampleRate, int samples,
             }
             out[i] = (float)(x * dryAmt + wet * (double)body_mix);
         }
-        /* Cello (body_model 3): gentle one-pole high-pass (~100 Hz) to suppress the
-         * boomy fundamental — on a real cello the low fundamental radiates poorly, so
-         * the 2nd harmonic dominates. This removes the low "hum" and gives the dominant-
-         * 2nd-harmonic signature. Note-safe: cello range bottoms at C2 (~65 Hz) whose
-         * weak fundamental is realistically attenuated; higher notes are unaffected. */
+        /* A real cello radiates its low fundamental poorly, so the 2nd harmonic dominates; the range bottom (~65 Hz) is
+         * realistically attenuated, higher notes unaffected. */
         if (body_model == 3) {
             const double hp_a = 0.987; /* fc ≈ 100 Hz @ 48k */
             double prevX = 0.0, prevY = 0.0;
@@ -1558,12 +1197,8 @@ EXPORT void render_modular_p(float *out, int sampleRate, int samples,
         }
     }
 
-    /* ── Bow dynamics (bowing expression) ──
-     * A slow smoothed random walk m(t) (the bow pressure/speed wandering) drives
-     * BOTH loudness and brightness together (more bow pressure → louder AND
-     * brighter), giving the organic, non-repeating performance motion a steady
-     * synth tone lacks. Brightness = a one-pole LP whose cutoff follows m.
-     * bow_dynamics 0 (default) skips this → byte-identical. */
+    /* A slow random walk drives loudness AND brightness together (more bow pressure, louder and brighter): the
+     * non-repeating motion a steady synth tone lacks. */
     if (bow_dynamics > 0.0f) {
         unsigned int rng = noise_seed * 2654435761u + 2246822519u;
         double m = 0.0, target = 0.0, lp = 0.0;

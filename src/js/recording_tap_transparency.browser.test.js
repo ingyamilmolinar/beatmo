@@ -1,30 +1,6 @@
-// recording_tap_transparency.browser.test.js
-//
-// Regression test for the "audio gets louder/distorted while recording" bug.
-//
-// The WASM recording pipeline taps the audible graph by inserting one
-// `recording-capture-processor` AudioWorkletNode per channel (and one for the
-// master) as a PARALLEL branch — see startMultiChannelCapture in audio.js:
-//
-//     setup.source.connect(node);        // limiter/channel-gain → capture node
-//     node.connect(c.destination);       // capture node → speakers
-//
-// A capture tap MUST be acoustically transparent: starting a recording must
-// not change one sample of what the user hears. The bug is that the worklet
-// used to copy its input to its output verbatim (`output[0].set(input[0])`)
-// AND was connected straight to ctx.destination. Because the tapped source
-// (the master limiter) is ALSO already wired to ctx.destination, the limiter
-// signal reaches the speakers TWICE and is summed → +6 dB, i.e. doubled
-// amplitude → audibly louder and clipping/distorting against the soft-clip
-// knee. The same parallel re-injection happens for every per-instrument tap.
-//
-// This test drives the REAL worklet on an OfflineAudioContext (whose
-// `destination` renders to a readable buffer — unlike a live AudioContext
-// where the final mix is unobservable). It compares the rendered output peak
-// WITH and WITHOUT the recording tap wired exactly as audio.js wires it. The
-// peaks must match: a transparent tap adds nothing. No WASM build needed.
-//
-// Usage: node src/js/recording_tap_transparency.browser.test.js
+// A recording tap must be acoustically TRANSPARENT: it is a parallel branch whose node reaches ctx.destination, and a
+// worklet that copied input to output summed the master twice (+6 dB, distorting). Rendered on an OfflineAudioContext
+// with and without the tap wired as audio.js wires it; the peaks must match. Usage: node src/js/recording_tap_transparency.browser.test.js
 
 import { chromium } from "playwright";
 import http from "http";
@@ -81,18 +57,14 @@ try {
     const FRAMES = SR / 10; // 0.1 s — plenty of steady-state quanta
     const DC = 0.25; // steady DC level fed through the "limiter"
 
-    // Render a graph through an OfflineAudioContext and return the peak abs
-    // sample over the second half of the buffer (skip the worklet/source
-    // startup transient). `wireTap` receives (ctx, limiter, captureNode) and
-    // is responsible for wiring the recording tap — or doing nothing.
+    // The second half of the buffer, past the startup transient; wireTap(ctx, limiter, captureNode) wires the tap or not.
     async function renderPeak(wireTap) {
       const ctx = new OfflineAudioContext(1, FRAMES, SR);
       await ctx.audioWorklet.addModule(`${origin}/recording_capture_worklet.js`);
 
       // Steady DC source standing in for the live signal.
       const src = new ConstantSourceNode(ctx, { offset: DC });
-      // "limiter" == the last audible node before the speakers, mirroring
-      // _buildMasterTap()'s tap point. Gain 1 so it is a pass-through.
+      // The last audible node before the speakers, where the master tap sits. Gain 1: a pass-through.
       const limiter = new GainNode(ctx, { gain: 1 });
       src.connect(limiter);
       limiter.connect(ctx.destination); // the normal audible path
@@ -120,8 +92,7 @@ try {
     // Baseline: no recording tap. Peak should be ~DC.
     const baseline = await renderPeak(null);
 
-    // With the recording tap wired EXACTLY as startMultiChannelCapture does:
-    //   setup.source.connect(node);  node.connect(c.destination);
+    // Exactly as startMultiChannelCapture wires it.
     const withTap = await renderPeak((ctx, limiter, captureNode) => {
       limiter.connect(captureNode);
       captureNode.connect(ctx.destination);
@@ -142,8 +113,7 @@ try {
     `expected ~${result.DC}, got ${result.baseline.toFixed(4)}`,
   );
 
-  // THE BUG: starting a recording tap must not change the audible output.
-  // Pre-fix this fails with withTap ≈ 2×baseline (the doubled, distorting mix).
+  // Starting a recording must not change the audible output.
   check(
     "recording tap is acoustically transparent (output unchanged)",
     Math.abs(result.withTap - result.baseline) < 0.02,

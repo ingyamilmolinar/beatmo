@@ -15,8 +15,7 @@ const chromiumPath = path.join(jsDir, "node_modules", ".cache", "ms-playwright",
 if (!fs.existsSync(chromiumPath)) { spawnSync("npx", ["playwright", "install", "chromium"], { cwd: jsDir, stdio: "inherit" });
 }
 
-// Build a minimal UI harness WASM that exports control hooks without running
-// the full Ebiten game window. This avoids headless WebGL quirks in CI.
+// A minimal harness with control hooks, no game window: avoids headless WebGL quirks.
 const goDir = path.resolve(jsDir, "../go");
 const GO = resolveGoBinary();
 if (!shouldSkipWasmBuild("play_ui.wasm")) {

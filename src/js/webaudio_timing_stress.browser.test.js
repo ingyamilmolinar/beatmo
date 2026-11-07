@@ -47,13 +47,8 @@ const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gestur
 let failed = false;
 const errors = [];
 
-// Gate readiness on REAL exports that only register after Game.New() finishes
-// installing the full JS bridge. Go's init() (js_bootstrap_wasm.go) installs a
-// no-op placeholder `startPlay` BEFORE Game.New() runs, so gating on
-// `typeof startPlay === "function"` races ahead of full init and leaves
-// resetPerfStats / buildPerfRect undefined. These two are registered in the
-// post-init export pass (js_exports_harness.go / js_exports_playback_perf.go),
-// so they are a reliable "fully initialized" signal.
+// A no-op startPlay placeholder is installed before Game.New(), so readiness is gated on exports registered only after
+// full init.
 async function waitForFullInit(page) {
   await page.waitForFunction(
     () =>
@@ -87,29 +82,17 @@ function printAudioMetrics(label, m) {
   console.log(`  ${label}: count=${m.count} overdue=${m.overdue} smallLead=${m.smallLeadCount} minLead=${fmtMs(m.minLead)} avgLag=${fmtMs(m.avgLag)} lagP90=${fmtMs(m.lagP90)} lagP99=${fmtMs(m.lagP99)} maxLag=${fmtMs(m.maxLag)}`);
 }
 
-// Minimum scheduler events we require to have observed before judging timing.
-// Each scenario runs 8-10s of playback at >=260 BPM across >=1 row, so a
-// healthy scheduler emits hundreds of events. A sane floor proves the
-// scheduler actually ran rather than stalling silently. Kept conservative so
-// it gates on "did real work happen" without being brittle to machine speed.
+// Proves the scheduler ran rather than stalled; conservative so it does not depend on machine speed.
 const MIN_EVENTS = 50;
 
-// Lateness gates. The schedule metrics observe the REQUESTED start time (before
-// audio.js's 4 ms / Go's 12 ms floor clamps): observed after the clamps, a late
-// note read as lead=+4ms, so overdue/smallLead/minLead could never fail and
-// these gates were vacuous. Honest, they measure how often the Go sequencer
-// ran too late — which in headless Chromium is dominated by software-GL frames
-// of 400-600 ms starving the single WASM thread, not by a code regression. So
-// they REPORT by default and fail only with AUDIO_PROBE_STRICT=1; the probe's
-// structural gates (no silent / dropped notes, start() not queued behind a
-// frame) stay hard.
+// On the REQUESTED start, before the 4 ms / 12 ms floors (after them a late note read as +4 ms lead). Headless
+// software GL dominates lateness, so these report and fail only with AUDIO_PROBE_STRICT=1; the probe's structural
+// gates stay hard.
 function latenessAssert(cond, msg) {
   if (PROBE_STRICT) hardAssert(cond, msg);
   else if (!cond) console.log(`  [lateness info] ${msg}`);
 }
-// syntheticCircuit: buildPerfRect rows have no mute nodes, so every started
-// note must sound. A real project (Scenario C) can legitimately silence one —
-// a mute node stops the voice before it starts — so there it is reported.
+// Synthetic rows have no mute nodes, so every started note must sound; a real project can legitimately silence one.
 function probeAssert(label, report, { syntheticCircuit = true } = {}) {
   hardAssert(report && report.notes.judged > 0, `${label}: probe judged no notes`);
   hardAssert(report.notes.dropped === 0, `${label}: ${report.notes.dropped} notes requested but never started`);
@@ -120,9 +103,6 @@ function probeAssert(label, report, { syntheticCircuit = true } = {}) {
   for (const m of probeGateFailures(report, PROBE_LIMITS_DEFAULT, label)) latenessAssert(false, m);
 }
 
-// ---------------------------------------------------------------------------
-// Scenario A: Single-row extreme BPM
-// ---------------------------------------------------------------------------
 console.log("\n=== Scenario A: Single-row extreme (BPM=300, 1 row, 10s) ===");
 {
   const page = await browser.newPage();
@@ -159,17 +139,13 @@ console.log("\n=== Scenario A: Single-row extreme (BPM=300, 1 row, 10s) ===");
   latenessAssert(m.overdue === 0, `A: ${m.overdue} overdue events (lead<0 — scheduler firing late)`);
   latenessAssert(m.smallLeadCount === 0, `A: ${m.smallLeadCount} events with <3ms lead (scheduler cushion too thin)`);
   latenessAssert(m.minLead != null && m.minLead * 1000 >= 3, `A: minLead ${fmtMs(m.minLead)} < 3ms`);
-  // lagP90/lagP99 are null on a healthy scheduler (no overdue events ⇒ empty
-  // lag samples). Keep as WARN-only; they only carry signal when overdue>0.
+  // Null on a healthy scheduler: they carry signal only when something is overdue.
   softAssert(m.lagP90 == null || m.lagP90 <= 0.008, `A: lagP90 ${fmtMs(m.lagP90)} > 8ms`);
   softAssert(m.lagP99 == null || m.lagP99 <= 0.015, `A: lagP99 ${fmtMs(m.lagP99)} > 15ms`);
 
   await page.close();
 }
 
-// ---------------------------------------------------------------------------
-// Scenario B: Multi-row stress
-// ---------------------------------------------------------------------------
 console.log("\n=== Scenario B: Multi-row stress (BPM=280, 6 rows, 10s) ===");
 {
   const page = await browser.newPage();
@@ -214,9 +190,6 @@ console.log("\n=== Scenario B: Multi-row stress (BPM=280, 6 rows, 10s) ===");
   await page.close();
 }
 
-// ---------------------------------------------------------------------------
-// Scenario C: Real project extreme BPM
-// ---------------------------------------------------------------------------
 console.log("\n=== Scenario C: Real project extreme (BPM=260, beatmo.json, 8s) ===");
 {
   const page = await browser.newPage();
@@ -267,9 +240,6 @@ console.log("\n=== Scenario C: Real project extreme (BPM=260, beatmo.json, 8s) =
   await page.close();
 }
 
-// ---------------------------------------------------------------------------
-// Scenario D: BPM ramp 120 → 320
-// ---------------------------------------------------------------------------
 console.log("\n=== Scenario D: BPM ramp (120 -> 320, 4 rows, 2s/step) ===");
 {
   const page = await browser.newPage();
@@ -343,13 +313,10 @@ console.log("\n=== Scenario D: BPM ramp (120 -> 320, 4 rows, 2s/step) ===");
     console.log("\n  No breakpoint found up to BPM=320");
   }
 
-  // Each ramp step runs only 2s with a 0.5s scheduler warmup, so far fewer
-  // events accrue per step than the long single-BPM scenarios. Use a lower
-  // per-step floor that still proves the scheduler ran at each BPM.
+  // A 2 s step accrues far fewer events than the long scenarios.
   const MIN_EVENTS_PER_STEP = 10;
 
-  // Hard gates: timing must hold across the whole sweep up to BPM=280.
-  // Gate on metrics that POPULATE on a healthy scheduler.
+  // Up to BPM 280, on metrics that populate on a healthy scheduler.
   for (const r of rampResults) {
     if (r.bpm > 280) continue;
     hardAssert(r.count >= MIN_EVENTS_PER_STEP,
@@ -371,9 +338,6 @@ console.log("\n=== Scenario D: BPM ramp (120 -> 320, 4 rows, 2s/step) ===");
   await page.close();
 }
 
-// ---------------------------------------------------------------------------
-// Summary
-// ---------------------------------------------------------------------------
 await browser.close();
 server.close();
 

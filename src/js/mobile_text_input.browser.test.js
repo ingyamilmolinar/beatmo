@@ -51,13 +51,8 @@ function assert(cond, msg) {
 async function setupMobilePage() {
   const context = await browser.newContext({ ...iPhone });
   const page = await context.newPage();
-  // Force the page to be treated as focused. In the 4-job parallel batch this
-  // context is usually NOT the OS-foreground window, so a freshly-created native
-  // <input>'s .focus() does not stick — a spurious `blur` fires within ~1 frame,
-  // our blur handler commits + tears the <input> down, and the detection poll
-  // never sees it. setFocusEmulationEnabled makes document.hasFocus()==true so
-  // focus() holds and the spurious blur never fires. (Pure test-harness fix —
-  // production runs in a real focused tab.) Mirrors mobile_native_input.
+  // In the parallel batch this context is not the OS-foreground window, so a fresh input's focus() did not stick; focus
+  // emulation makes hasFocus() true. A harness-only fix, as in mobile_native_input.
   const focusCdp = await context.newCDPSession(page);
   await focusCdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
   await page.goto(`http://localhost:${port}/`);
@@ -75,9 +70,7 @@ async function setupMobilePage() {
   return { context, page };
 }
 
-// The text field under test is the instrument-menu SEARCH box (TextField
-// "inst-search"). It used to be the BPM box, but BPM no longer takes typed
-// input — its readout opens the BPM value wheel.
+// The instrument-menu search box: BPM is a value wheel.
 async function openSearchTarget(page) {
   await page.evaluate(() => openInstMenu(0));
   await page.waitForFunction(() => { const r = instMenuSearchRect(); return r && r.w > 0; },
@@ -93,27 +86,9 @@ async function searchText(page) {
   return await page.evaluate(() => instMenuSearchState?.()?.text);
 }
 
-// tapAwaitInput taps the search field and waits for the mobile native <input>
-// (z-index:10000) to appear, re-tapping a few times if needed. A live
-// TextField's rect is (re)registered every Update() frame (syncNativeGestures),
-// but under headless software-GL — especially in the parallel test batch — the
-// rAF Update loop is throttled, so the first tap's touchend can fire before any
-// Update has registered it, and the JS gesture handler then creates no input.
-// Re-tapping after a short window lets the natural loop tick and register it;
-// once registered it stays registered. We deliberately do NOT force manual Update
-// ticks (forceGameTick), which can stall the WASM run loop. Returns true if the
-// input appeared.
-//
-// CRITICAL: poll on a FIXED 50 ms interval, not Playwright's default `polling:
-// 'raf'`. Under the 4-job parallel software-GL batch the page's rAF is throttled
-// hard; a rAF-driven waitForFunction starves and can miss an input that *was*
-// created (the documented detection race — input IS created+registered, the poll
-// just never evaluates in time). A timer-driven poll fires independently of the
-// page's rAF. The per-attempt window is widened to 1500 ms (touchend->gesture->
-// register creation latency can exceed 600 ms under load) with 12 re-tap
-// attempts. This mirrors mobile_native_input.browser.test.js EXACTLY — keep the
-// two helpers in lockstep; the polling:50 fix must live in both or whichever file
-// keeps the rAF default flakes alone in the batch.
+// Throttled rAF can fire the first touchend before any Update registered the field, so it re-taps (no forceGameTick,
+// which can stall the loop), and polls every 50 ms, since a rAF-driven poll starves. Keep it in lockstep with
+// mobile_native_input's helper, or whichever keeps the rAF default flakes alone.
 async function tapAwaitInput(page, rect) {
   const cx = rect.x + rect.w / 2;
   const cy = rect.y + rect.h / 2;
@@ -144,13 +119,10 @@ console.log("Test 1: Search soft keyboard — native input focused with inputmod
     const rect = await targetRect(page);
     assert(rect && rect.w > 0, "instMenuSearchRect returned empty");
 
-    // Tap the search field (retry-aware: native input creation races the
-    // throttled rAF Update loop that registers its rect).
+    // Retry-aware: creation races the throttled loop that registers the rect.
     assert(await tapAwaitInput(page, rect), "native input did not appear after tap");
 
-    // On mobile, the native input system creates a real <input> overlay
-    // instead of focusing the hidden proxy. Check that the native input
-    // is focused and has the correct inputmode.
+    // On mobile a real <input> overlay is focused instead of the hidden proxy.
     const nativeInputInfo = await page.evaluate(() => {
       const active = document.activeElement;
       if (active && active.tagName === 'INPUT' && active.style.zIndex === '10000') {
@@ -221,8 +193,7 @@ console.log("Test 3: Type into the search field via keyboard");
     const rect = await targetRect(page);
     assert(rect && rect.w > 0, "instMenuSearchRect returned empty");
 
-    // Focus the field (retry-aware: a single tap races the throttled rAF
-    // Update loop that registers its rect; the typed keys would go nowhere).
+    // A single tap races the throttled loop, and the typed keys would go nowhere.
     assert(await tapAwaitInput(page, rect), "native input did not appear after tap");
     await page.evaluate(() => forceDraw?.());
 
@@ -336,21 +307,9 @@ console.log("Test 6: Proxy input element attributes");
   }
 }
 
-// Test 7: Desktop HARDWARE keyboard fully edits a text field on WebKit/Safari.
-//
-// Bug ("click, see the cursor, no key does anything" on Safari): text fields
-// capture keys through the hidden soft-keyboard proxy <input>. Backspace was
-// derived from the proxy's `beforeinput(deleteContentBackward)` event — which
-// WebKit/Safari does NOT fire on an EMPTY input (the proxy is kept empty; the app
-// draws its own text). So a hardware-keyboard user could never clear the prefill
-// and editing was dead. Chromium/Firefox fire beforeinput even when empty, hiding
-// it. Fix (src/js/index.html): buffer Backspace from the proxy KEYDOWN event
-// (fires on every engine, immune to the empty-input quirk AND to short presses
-// that Ebiten's per-frame isKeyPressed would drop).
-//
-// This runs on WEBKIT specifically — chromium can't exhibit the bug. Uses NORMAL
-// (short) key presses, exactly like a user, since that is what was dropped. Skips
-// gracefully if the WebKit browser binary is unavailable.
+// Text fields capture keys through an EMPTY hidden proxy, and WebKit fires no beforeinput(deleteContentBackward) on
+// an empty input, so Backspace is buffered from keydown. WebKit only (Chromium cannot show it), normal short presses as a
+// user; skips if WebKit is missing.
 console.log("Test 7: Desktop hardware-keyboard edit on WebKit (Safari backspace)");
 {
   let wkBrowser = null;
@@ -380,10 +339,7 @@ console.log("Test 7: Desktop hardware-keyboard edit on WebKit (Safari backspace)
         assert(rect && rect.w > 0, "instMenuSearchRect empty");
         const cx = rect.x + rect.w / 2, cy = rect.y + rect.h / 2;
 
-        // Focus + edit end-to-end, retrying the whole cycle until it lands. A
-        // quick mouse.click can be missed by the throttled headless rAF loop, so
-        // hold the FOCUSING press ~400ms. The KEY PRESSES are NORMAL/short — that
-        // is exactly the input that Safari dropped, and what must now work.
+        // The focusing press is held ~400 ms for the throttled loop; the KEY presses stay short, which is what must work.
         let edited = false;
         for (let attempt = 0; attempt < 6 && !edited; attempt++) {
           await page.mouse.move(cx, cy);
@@ -392,8 +348,7 @@ console.log("Test 7: Desktop hardware-keyboard edit on WebKit (Safari backspace)
           await page.mouse.up();
           await page.waitForTimeout(150);
 
-          // Clear whatever is there with NORMAL short Backspaces (the dead key
-          // on Safari), type a word plus a stray letter, delete the stray.
+          // Short Backspaces clear it, a word plus a stray letter is typed, the stray deleted.
           for (let i = 0; i < 8; i++) { await page.keyboard.press("Backspace"); await page.waitForTimeout(90); }
           await page.keyboard.type("kickx");
           await page.waitForTimeout(120);
@@ -419,20 +374,8 @@ console.log("Test 7: Desktop hardware-keyboard edit on WebKit (Safari backspace)
   }
 }
 
-// Test 7b: MOBILE LAYOUT on a TOUCH-CAPABLE device driven with a MOUSE.
-//
-// THE reported bug: in mobile layout (narrow viewport) on a touch-capable device
-// — a touchscreen laptop, or Chrome DevTools device-mode — a MOUSE click opens a
-// text editor (cursor shows) but no key does anything. The native <input> overlay
-// is created only inside a `touchend` handler; a mouse fires no touchend, so it
-// never appears, and the editor previously gated the native path on device touch
-// CAPABILITY (maxTouchPoints>0, true here) → it sat inert.
-//
-// Fix: gate on the OPENING GESTURE's pointer type (pointerdown pointerType), not
-// capability. A mouse-opened editor uses the buffered keyboard path. This context
-// sets hasTouch:true (maxTouchPoints>0) but interacts with page.mouse, so it
-// reproduces the exact failing combination. Runs on chromium (the shared browser),
-// which exhibited the bug.
+// Mobile layout on a touch-capable device driven by a MOUSE: the native input is created only on touchend, which a mouse
+// never fires, so the path is chosen by the OPENING gesture's pointerType, not touch capability.
 console.log("Test 7b: Mobile-layout + touch-capable device + MOUSE edits a text field");
 {
   // Narrow viewport => mobile LAYOUT; hasTouch:true => touch-CAPABLE device.
@@ -492,13 +435,11 @@ console.log("Test 8: Text input gesture system present");
     );
     assert(hasFuncs, "Expected focus-rect and mobile native input functions");
 
-    // After WASM starts and forceDraw, tapping the search field should create
-    // a native input (on mobile, the native input system handles text inputs).
+    // On mobile the native input system handles text inputs.
     const rect = await targetRect(page);
     assert(rect && rect.w > 0, "instMenuSearchRect returned empty");
 
-    // Tap the search field — the native input system creates a real <input>
-    // (retry-aware: creation races the throttled rAF Update loop).
+    // Retry-aware: creation races the throttled loop.
     assert(await tapAwaitInput(page, rect), "native input did not appear after tap");
 
     const nativeActive = await page.evaluate(() => {
@@ -529,9 +470,7 @@ console.log("Test 9: DPR coordinate correctness (DPR=3)");
     const rect = await targetRect(page);
     assert(rect && rect.w > 0, "instMenuSearchRect returned empty");
 
-    // Verify rect coords are in game coordinate range (not DPR-scaled).
-    // Game Layout returns CSS viewport dims (390x844 for iPhone 12).
-    // If rects were DPR-scaled, they'd be 3x larger (>1170).
+    // Layout returns CSS dims (390×844); DPR-scaled rects would be 3× larger.
     assert(rect.x < 500, `search rect x=${rect.x} looks DPR-scaled (expected < 500 for CSS coords)`);
     assert(rect.y < 900, `search rect y=${rect.y} looks DPR-scaled (expected < 900 for CSS coords)`);
 
@@ -557,9 +496,7 @@ console.log("Test 9: DPR coordinate correctness (DPR=3)");
 
     const tapX = rect.x + rect.w / 2;
     const tapY = rect.y + rect.h / 2;
-    // Retry-aware tap: native input creation races the throttled rAF Update loop
-    // that registers the field's rect. The touchend listener above captures the
-    // coordinates of the (final) tap, which are identical on every attempt.
+    // The touchend listener captures the final tap's coordinates, identical on every attempt.
     assert(await tapAwaitInput(page, rect), `Expected native input after cdpTap at DPR=${dpr}`);
 
     // Verify the native input was created (hit test worked with CSS coords)
@@ -589,10 +526,7 @@ console.log("Test 9: DPR coordinate correctness (DPR=3)");
   }
 }
 
-// Test: Escape via the keyboard proxy forwards to Go and dismisses the keyboard.
-// Regression for the browser bug where Esc did nothing on text inputs: the
-// hidden proxy holds keyboard focus, so the canvas never saw Esc. The proxy now
-// forwards Escape to Go via window._kbProxyEscapeGo (registered in softKeyboardInit).
+// The hidden proxy holds focus, so the canvas never sees Esc; the proxy forwards it to Go.
 console.log("Test: Escape via proxy forwards to Go and blurs the proxy");
 {
   const { context, page } = await setupMobilePage();

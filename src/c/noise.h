@@ -1,21 +1,8 @@
 #ifndef NOISE_H
 #define NOISE_H
 
-/* ================================================================
- * Deterministic noise generators for the modular synth voice.
- *
- * The state is a 32-bit integer LCG, and the integer→float
- * conversion uses only exact IEEE-754 operations, so emcc (WASM)
- * and native gcc/clang produce a BIT-IDENTICAL stream for the same
- * seed. This is why the modular voice does NOT use miniaudio's
- * ma_noise here: ma_noise is not guaranteed identical across the
- * two toolchains, which would break the cross-platform audio parity
- * test (src/js/xplat_audio_compare.browser.test.js).
- *
- * A single render with a fixed seed is reproducible (golden-stable);
- * the voice cache renders three round-robin variants by passing
- * distinct seeds (variant index), so repeated noise hits vary.
- * ================================================================ */
+/* An integer LCG with an exact integer→float conversion, so emcc and native compilers produce a BIT-IDENTICAL stream;
+ * ma_noise is not guaranteed identical across the two toolchains. A fixed seed is reproducible; distinct seeds vary. */
 
 typedef struct {
     unsigned int state;                       /* LCG state */
@@ -31,14 +18,8 @@ float noise_white_tick(noise_gen *g);
 /* Pink noise sample (~[-1, 1], 1/f spectrum) via the Paul Kellet filter. */
 float noise_pink_tick(noise_gen *g);
 
-/* ── miniaudio-compatible Lehmer white noise ──────────────────────────────
- * Bit-identical transplant of ma_noise's white stream (ma_lcg: A=48271,
- * M=2^31-1, C=0; ma_noise_config_init replaces seed 0 with 4321). The
- * legacy drum renderers were captured against ma_noise with seed 0; their
- * modular-preset replacements MUST consume this stream. Verified against
- * real ma_noise by TestNoiseMaParity (noise_ma_parity_test.go).
- * The LCG step intentionally reproduces miniaudio's int32 multiply
- * overflow (state may go negative); do not "fix" it. */
+/* A bit-identical transplant of ma_noise's white stream (Lehmer 48271, 2^31-1; seed 0 becomes 4321). It
+ * reproduces miniaudio's int32 overflow on purpose (state may go negative): do not "fix" it. */
 typedef struct {
     int state; /* ma_int32 */
 } noise_ma_gen;

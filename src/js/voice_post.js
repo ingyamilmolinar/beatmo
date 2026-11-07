@@ -1,25 +1,6 @@
-/**
- * voice_post.js — what happens to a synth voice between the C render and the
- * Sampler edit, on both browser render paths: the render worker
- * (synth_render_worker.js) and the main-thread fallback (audio.js
- * renderVoiceSync). It is desktop's renderDocBlock + normalizeAndScaleAmp
- * (internal/audio/doc_voice_native.go, export.go) step for step:
- *
- *   1. the document's voice FX, in order, each through the SAME C effect
- *      desktop runs (fx_host.c ifx_create / ifx_run, from drums.single.js —
- *      dsp_host.js), with the complete parameter set Go pushed,
- *   2. the gate tail: silence from floor(gateTail × length) on,
- *   3. peak-normalise, × amplitude, then a linear fade over the last 5 %
- *      (64…512 frames) so a voice never ends on a click.
- *
- * Step 3 is float32 arithmetic exactly like Go's: a Float32Array element times
- * a float32-valued number is an exact double product rounded once on store,
- * and Math.fround of a double quotient/difference of float32 values equals the
- * float32 operation. So the post-processing itself is bit-identical across
- * platforms; only the C (libm, compiler) can differ, by float rounding.
- *
- * post = { amp, gateTail, fx: [{ type, params }] } (setInstrumentBlock).
- */
+/** Between the C render and the Sampler edit, on both browser render paths, step for step desktop's renderDocBlock:
+ * voice FX through the same C effects, silence from floor(gateTail × length), peak-normalise × amp, a linear end fade
+ * over the last 5 % (64-512 frames). Float32 arithmetic exactly as Go's, so only the C can differ. post = {amp, gateTail, fx}. */
 
 import { applyEffectsToBuffer } from "./dsp_host.js";
 

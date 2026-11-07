@@ -1,11 +1,5 @@
-/**
- * Pins the browser warm bridge: warmInstrumentBatch must render every
- * requested (instrument, pitch) and report completion, and voiceCachedFor must
- * report TRUE for an item that is already in renderCache.
- *
- * Before this change voice_prewarm_js.go stubbed VoiceCached to a hardcoded
- * false, so the browser re-rendered voices it already held.
- */
+/** warmInstrumentBatch renders every requested (instrument, pitch) and reports completion, and voiceCachedFor reports TRUE
+ * for an item already in renderCache, so warm voices are not re-rendered. */
 import assert from "assert";
 import { setupFullWasm, clickAt } from "./real_input_test_helpers.js";
 

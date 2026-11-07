@@ -1,24 +1,9 @@
-/**
- * LLM Visual Testing — HTML Report Generator
- *
- * Generates a self-contained HTML report from an agent session, including:
- * - Summary (task, duration, actions, cost, issues)
- * - Annotated screenshot timeline filmstrip
- * - Issues list from Claude's observations
- * - Embedded video link
- * - Collapsible raw agent log
- */
+/** A self-contained HTML report of an agent session: summary, screenshot filmstrip, issues, video link, raw log. */
 
 import fs from "fs";
 import path from "path";
 
-/**
- * Generate an HTML report from a recording directory that contains
- * agent session data (recording.json + agent_log.json + frames).
- *
- * @param {string} dirPath - Path to the recording directory
- * @param {string} outputPath - Where to write the HTML file
- */
+/** From recording.json, agent_log.json and the frames in dirPath. */
 export function generateReport(dirPath, outputPath) {
   const recordingPath = path.join(dirPath, "recording.json");
   const agentLogPath = path.join(dirPath, "agent_log.json");
@@ -82,10 +67,7 @@ export function generateReport(dirPath, outputPath) {
   return outputPath;
 }
 
-/**
- * Select frames for the report. Similar to evaluator's selectKeyFrames
- * but tuned for report display.
- */
+/** Like the evaluator's selection, tuned for display. */
 function selectReportFrames(frames, maxFrames) {
   if (frames.length <= maxFrames) return [...frames];
 
@@ -113,16 +95,7 @@ function selectReportFrames(frames, maxFrames) {
     .map((i) => frames[i]);
 }
 
-/**
- * Parse a raw issue string into a structured object.
- * Handles:
- *   "ISSUE: P1 Bug - description"
- *   "Bug: description"
- *   raw string (fallback)
- *
- * @param {string} raw
- * @returns {{ priority: string, type: string, description: string }}
- */
+/** "ISSUE: P1 Bug - description", "Bug: description", or a raw string. */
 function parseStructuredIssue(raw) {
   // Structured format: "ISSUE: P1 Bug - description"
   const structuredMatch = raw.match(/^ISSUE:\s*(P[0-3])\s+(Bug|Glitch|Suggestion)\s*[-–—]\s*(.+)/i);
@@ -150,13 +123,7 @@ function parseStructuredIssue(raw) {
   return { priority: "P2", type: "Bug", description: raw };
 }
 
-/**
- * Extract phase results from the agent summary text.
- * Parses lines like: "- Phase 1: PASS — all controls visible"
- *
- * @param {string} summary
- * @returns {Array<{ phase: number, result: string, note: string }>}
- */
+/** The agent's per-phase "PASS — note" result lines. */
 function extractPhaseResults(summary) {
   if (!summary) return [];
   const results = [];
@@ -174,9 +141,6 @@ function extractPhaseResults(summary) {
   return results;
 }
 
-/**
- * Extract metadata from agent_log.json.
- */
 function extractAgentMeta(agentLog) {
   if (!agentLog) {
     return { task: "", model: "", iterations: 0, cost: 0, issues: [], structuredIssues: [], phaseResults: [], checkpoints: [], gate: null, summary: "", error: "", actions: [] };
@@ -211,10 +175,7 @@ function extractAgentMeta(agentLog) {
   };
 }
 
-/**
- * Extract a timeline of agent actions from the conversation log.
- * Each entry in agentLog has { iteration, t, response: { content: [...] } }
- */
+/** Each entry is {iteration, t, response: {content: [...]}}. */
 function extractAgentActions(logEntries) {
   const actions = [];
   for (const entry of logEntries) {
@@ -273,9 +234,6 @@ function formatMs(ms) {
   return `${min}m ${sec}s`;
 }
 
-/**
- * Build the complete HTML string.
- */
 function buildHTML(data) {
   const {
     name, createdAt, durationMs, viewport, mode, eventCount, frameCount,

@@ -3,8 +3,7 @@
 
 #define FM_MAX_OPS 4
 
-/* A single FM operator. The engine routes operator outputs through a
- * mod_matrix; carriers contribute to the mix, modulators only feed others. */
+/* Carriers contribute to the mix; modulators only feed others through the mod_matrix. */
 typedef struct {
     double freq_ratio;     /* frequency = base_freq * freq_ratio + freq_offset */
     double freq_offset;    /* Hz, for inharmonic metallic sounds              */
@@ -28,10 +27,7 @@ typedef struct {
                   * static presets and build_fm_preset zero-init it. */
 } fm_preset;
 
-/* Core wavetable-based FM render. Shared with the modular voice engine
- * (src/c/modular.c osc_type==4 FM stage + src/c/modular_stages.c source==10
- * FM-family voice), which assemble a preset from live params. This is the
- * single compiled FM core every FM sound flows through. */
+/* The single compiled FM core every FM sound flows through (the modular FM stage and the FM-family voice). */
 void fm_render(const fm_preset *p, float *out, int sampleRate, int samples);
 
 #endif

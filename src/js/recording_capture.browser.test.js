@@ -1,10 +1,4 @@
-/**
- * Recording Capture Browser Tests
- *
- * Functional tests for the multi-channel recording system via WASM.
- * Tests: recording start/stop, state queries, encoder format listing,
- * file download interception, and recording with playback.
- */
+/** Multi-channel recording through WASM: start/stop, state, formats, the download, and recording during playback. */
 
 import { setupFullWasm } from "./real_input_test_helpers.js";
 import {
@@ -30,12 +24,7 @@ function assert(cond, msg) {
   passed++;
 }
 
-// ─── Audio-content decode helpers ────────────────────────────────────────
-// Ported from recording_lifecycle.browser.test.js so the capture scenarios
-// can decode the actual encoded WAV bytes (via the auto-downloaded zip) and
-// assert REAL signal — not just size>0. A silent (all-zero PCM) but
-// valid-header WAV would pass size>0; these helpers give the assertions
-// teeth by proving non-zero RMS energy + a sane onset/peak count.
+// Decoding the downloaded WAVs proves REAL signal: an all-zero WAV with a valid header passes size > 0.
 
 // Minimal stored-only PKZIP reader. Returns map { name → Uint8Array }.
 function parseZip(buf) {
@@ -141,16 +130,10 @@ function countPeaks(samples, threshold, minSepSamples) {
   return n;
 }
 
-// Minimum RMS floor for "real audio" — matches recording_lifecycle's threshold.
-// A silent (all-zero PCM) WAV has RMS exactly 0, so anything > this floor
-// proves real captured signal. 0.001 is permissive (volume normalization may
-// scale the signal) but orders of magnitude above numeric noise.
+// Silence is exactly 0; 0.001 tolerates normalization yet sits far above numeric noise.
 const RMS_FLOOR = 0.001;
 
-// Await the auto-triggered zip download that fires when stopRecording()
-// finalizes, read its bytes, and return them. Retries the wait once with a
-// longer timeout to absorb first-run encoder-worker warmup flake. Returns
-// null if no download fired (then the caller skips the decode teeth).
+// One retry with a longer timeout absorbs first-run encoder warm-up. null if no download fired.
 async function awaitDownloadedZipBytes(downloadPromise) {
   let download = await downloadPromise;
   if (!download) return null;
@@ -161,8 +144,7 @@ async function awaitDownloadedZipBytes(downloadPromise) {
   return bytes;
 }
 
-// Decode the captured zip and return decoded WAV channels keyed by entry name.
-// Asserts the zip is a valid PKZIP archive with master.wav + session.json.
+// Must be a valid PKZIP with master.wav + session.json.
 function decodeCapturedZip(zipBytes) {
   const entries = parseZip(zipBytes);
   assert("master.wav" in entries, `zip should contain master.wav, got ${Object.keys(entries)}`);
@@ -268,9 +250,7 @@ try {
     console.log("  PASS: Stop-when-idle rejected");
   }
 
-  // ─── Test 6: Recording Session With Playback ──────────────────────────
-  // Recording bridges to JS outputCapture on WASM, so playback audio is
-  // captured via ScriptProcessorNode and returned as the master channel.
+  // Playback audio is captured as the master channel.
   console.log("\n--- Test 6: Recording session with playback ---");
   {
     const r = await page.evaluate(() => startRecording("wav16"));
@@ -282,9 +262,7 @@ try {
     await page.waitForTimeout(1500);
     await page.evaluate(() => stopPlay?.());
 
-    // stopRecording() finalizes asynchronously and auto-triggers the zip
-    // download; arm the listener BEFORE stopping so we can decode the real
-    // encoded bytes and prove the capture contains audio (not just size>0).
+    // Armed BEFORE stopping, so the real encoded bytes can be decoded.
     const downloadPromise = page
       .waitForEvent("download", { timeout: 20000 })
       .catch(() => null);
@@ -310,8 +288,7 @@ try {
       console.log(`    - ${ch.id} (${ch.filename}): ${ch.size} bytes`);
     }
 
-    // ── Audio-content teeth: decode the captured master WAV and assert
-    //    real signal. size>0 alone passes for an all-zero (silent) WAV.
+    // size > 0 alone passes a silent WAV.
     const zipBytes = await awaitDownloadedZipBytes(downloadPromise);
     assert(zipBytes !== null, "master capture: auto-download zip should fire on stop");
     assert(zipBytes.length > 1024, `master capture: zip too small (${zipBytes.length} bytes)`);
@@ -374,9 +351,7 @@ try {
     console.log("  PASS: Invalid format rejected");
   }
 
-  // ─── Test 10: Save Recording API ──────────────────────────────────────
-  // With WASM capture bridge, saveRecording() should stop recording,
-  // encode captured audio, and trigger a zip download.
+  // saveRecording() stops, encodes and triggers a zip download.
   console.log("\n--- Test 10: Save recording API ---");
   {
     const r = await page.evaluate(() => startRecording("wav24"));
@@ -489,8 +464,6 @@ try {
     console.log("  PASS: Recording state persists");
   }
 
-  // ─── Test 14: Save After Stop Uses Cached Result ──────────────────────
-  // Calling stopRecording() then saveRecording() should work via cached result.
   console.log("\n--- Test 14: Save after stop uses cached result ---");
   {
     const r = await page.evaluate(() => startRecording("wav24"));
@@ -527,9 +500,7 @@ try {
     console.log("  PASS: Stop-then-save works via cached result, second save correctly rejected");
   }
 
-  // ─── Test 15: Per-Instrument Channels in Recording ──────────────────
-  // WASM recording should capture per-instrument channels, not just master.
-  // The zip file should contain individual WAVs for each active instrument.
+  // The zip must hold a WAV per active instrument, not only master.
   console.log("\n--- Test 15: Per-instrument channels captured ---");
   {
     // Get total rows (instruments) to know what to expect
@@ -543,8 +514,7 @@ try {
     await page.waitForTimeout(2000);
     await page.evaluate(() => stopPlay?.());
 
-    // Arm the auto-download listener BEFORE stop so we can decode the
-    // per-instrument WAV bytes and prove they carry real signal.
+    // Armed BEFORE stop.
     const downloadPromise = page
       .waitForEvent("download", { timeout: 20000 })
       .catch(() => null);
@@ -569,8 +539,7 @@ try {
 
     console.log(`  Total channels: ${result.channelCount} (master + ${instruments.length} instruments)`);
 
-    // ── Audio-content teeth: decode the captured zip and assert the master
-    //    plus at least one per-instrument channel carry REAL signal.
+    // The master and at least one instrument channel carry REAL signal.
     const zipBytes = await awaitDownloadedZipBytes(downloadPromise);
     assert(zipBytes !== null, "per-instrument capture: auto-download zip should fire on stop");
     const { wavs } = decodeCapturedZip(zipBytes);
@@ -584,8 +553,7 @@ try {
       `per-instrument capture: master is silent (RMS=${masterRMS} <= ${RMS_FLOOR})`
     );
 
-    // Per-instrument WAVs: each must have a valid header + matching SR, and
-    // AT LEAST ONE must carry real signal (the instrument(s) that played).
+    // Every one valid with a matching rate; AT LEAST ONE loud (the instruments that played).
     let loudestInstRMS = 0;
     let loudestInstName = "";
     let instWithSignal = 0;
@@ -615,9 +583,6 @@ try {
     console.log(`  PASS: Per-instrument channels carry REAL audio (${instWithSignal} with signal; loudest=${loudestInstName} RMS=${loudestInstRMS.toFixed(5)}, ${loudestPeaks} onsets)`);
   }
 
-  // ─── Test 16: Save ZIP Contains Per-Instrument Files ──────────────────
-  // The saved ZIP should contain individual WAV files for each instrument
-  // plus master, not just master.wav.
   console.log("\n--- Test 16: Save ZIP contains per-instrument files ---");
   {
     const r = await page.evaluate(() => startRecording("wav24"));
@@ -640,10 +605,7 @@ try {
     }
     console.log(`  Save path: ${saveResult.path}`);
 
-    // Verify the stop result had per-instrument channels by checking
-    // through the saveRecording API (it internally stops + saves)
-    // We already verified in Test 15 that stopRecording returns per-instrument data.
-    // This test verifies saveRecording completes without error with that data.
+    // saveRecording stops and saves internally; that it completes is what this adds.
     console.log("  PASS: Save ZIP triggered with per-instrument data");
   }
 

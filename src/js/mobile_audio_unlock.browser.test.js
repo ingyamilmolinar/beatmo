@@ -1,13 +1,5 @@
-// mobile_audio_unlock.browser.test.js
-//
-// Verifies mobile browser audio unlock with deferred AudioContext creation.
-// Tests four scenarios:
-//   1. AudioContext not created until user gesture (touch unlock)
-//   2. Channel ops queued before gesture are applied after unlock
-//   3. Re-suspension recovery (context re-suspends, next gesture re-unlocks)
-//   4. Playback produces audible output on mobile after touch unlock
-//
-// Usage: GO=/path/to/.tools/go/bin/go node src/js/mobile_audio_unlock.browser.test.js
+// No context until a gesture, channel ops queued before it applied after, a re-suspended context unlocking on the next
+// gesture, and audible playback after a touch unlock. Usage: GO=… node src/js/mobile_audio_unlock.browser.test.js
 
 import { chromium, devices } from "playwright";
 import http from "http";
@@ -54,18 +46,12 @@ const iPhone = devices['iPhone 12 landscape'];
 let exitCode = 0;
 let browser;
 try {
-  // ========================================================================
-  // Scenario 1: AudioContext not created until user gesture
-  // Verifies that Go WASM init does NOT create an AudioContext prematurely.
-  // After the fix, setChannelVolume calls from Go init are queued, and the
-  // context is only created on the first user gesture (touch/click).
-  // ========================================================================
+  // Go init must not create a context: its channel calls queue until the first gesture.
   console.log("--- Scenario 1: AudioContext deferred until gesture ---");
   {
     const b = await chromium.launch({
       args: [
-        // Do NOT include --autoplay-policy=no-user-gesture-required
-        // so we can verify the context is truly deferred.
+        // No --autoplay-policy flag, so deferral is real.
       ],
     });
     const context = await b.newContext({
@@ -81,8 +67,7 @@ try {
       typeof audioNow === "function"
     , null, { timeout: 30000 });
 
-    // Check that AudioContext was NOT created during WASM init.
-    // audioNow() should return 0 without creating a context.
+    // audioNow() returns 0 without creating a context.
     const preGesture = await page.evaluate(() => {
       const now = audioNow?.() ?? -1;
       const hasCtx = !!window.__audioCtx;
@@ -91,9 +76,7 @@ try {
     console.log(`  Pre-gesture: audioNow=${preGesture.now}, hasCtx=${preGesture.hasCtx}`);
 
     if (preGesture.hasCtx) {
-      // Context may exist in headless Chromium due to autoplay policy differences,
-      // but it should NOT have been created by our code if the fix works.
-      // Log a warning but check the state.
+      // Headless may create one through its own autoplay policy; the state is checked and logged.
       const state = await page.evaluate(() => window.__audioCtx?.state || 'no-context');
       console.log(`  WARN: AudioContext exists pre-gesture (state=${state}). Headless may auto-allow.`);
     } else {
@@ -133,11 +116,6 @@ try {
     await b.close();
   }
 
-  // ========================================================================
-  // Scenario 2: Channel ops queued before gesture are applied after unlock
-  // Verifies that setChannelVolume calls made before context creation are
-  // queued and applied once the context is running.
-  // ========================================================================
   console.log("\n--- Scenario 2: Queued channel ops applied after unlock ---");
   browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
   {
@@ -154,8 +132,7 @@ try {
       typeof playSound === "function"
     , null, { timeout: 30000 });
 
-    // Delegate to the shared scenario module so test_runner.html on a real
-    // phone can run the same assertions.
+    // A shared scenario module, so test_runner.html runs the same assertions on a real phone.
     await waitForAudioReady(page, { allowReject: true });
     const r2 = await page.evaluate(async () => {
       const m = await import("/scenarios/mobile_audio_unlock.js");
@@ -169,11 +146,7 @@ try {
     await context.close();
   }
 
-  // ========================================================================
-  // Scenario 3: Re-suspension recovery
-  // Verifies that if AudioContext re-suspends (e.g., tab switch, phone call),
-  // the next user gesture re-unlocks it because unlock listeners are persistent.
-  // ========================================================================
+  // Unlock listeners are persistent, so after a tab switch or call the next gesture re-unlocks.
   console.log("\n--- Scenario 3: Re-suspension recovery ---");
   {
     const context = await browser.newContext({
@@ -231,8 +204,7 @@ try {
     } else if (result.finalState === 'running') {
       console.log("  PASS: Context re-unlocked after re-suspension");
     } else {
-      // In headless Chromium, synthetic events may not count as "user gestures"
-      // for AudioContext.resume(). Log warning but don't fail.
+      // Headless synthetic events may not count as gestures for resume().
       console.log(`  WARN: Context still ${result.finalState} after re-gesture (headless limitation)`);
       console.log("  NOTE: Persistent unlock listeners ARE registered; real mobile will re-unlock.");
     }
@@ -240,11 +212,6 @@ try {
     await context.close();
   }
 
-  // ========================================================================
-  // Scenario 4: Playback produces audible output on mobile after touch unlock
-  // Full end-to-end: mobile emulation, touch gesture to unlock, build circuit,
-  // start playback, verify audio output.
-  // ========================================================================
   console.log("\n--- Scenario 4: Playback produces audio after touch unlock ---");
   {
     const context = await browser.newContext({
@@ -265,8 +232,7 @@ try {
       typeof stopOutputCapture === "function"
     , null, { timeout: 30000 });
 
-    // Delegate to the shared scenario module — same assertions are run on
-    // a real phone via test_runner.html.
+    // The same assertions run on a real phone via test_runner.html.
     await waitForAudioReady(page, { allowReject: true });
     const s4 = await page.evaluate(async () => {
       const m = await import("/scenarios/mobile_audio_unlock.js");

@@ -1,24 +1,6 @@
-/**
- * Synth-slider extremes regression — proves the deployed WASM binary
- * carries the C-side decay/attack clamp.
- *
- * Bug class: dragging a Synth-tab slider to its Min (esp. `decay = 0` or
- * `attack = 0`) on the default startup circuit silences WASM audio
- * permanently and emits "BiquadFilterNode: state is bad" warnings. The
- * envelope formula `exp(-t * rate * (1/decayMul - 1))` evaluates to NaN
- * at decayMul=0, t=0, and the NaN propagates through AudioBuffer →
- * BufferSourceNode → BiquadFilterNode, corrupting the EQ chain.
- *
- * The C source (drums.c:1709 apply_post_params + six inline _p clamps)
- * already pins decayMul ≥ 0.01. This test mechanically distinguishes
- * "C source has the clamp" (Go test passes) from "the WASM binary the
- * user is running has the clamp" (THIS test passes) — the user's
- * symptom persists when main.wasm + drums.single.js are stale.
- *
- * Mirrors the structure of instrument_params_e2e_audio.browser.test.js
- * but drives every default-circuit instrument to its decay/attack
- * Min instead of sweeping `pitch` on snare alone.
- */
+/** A Synth slider at its Min (decay or attack 0) must never silence the browser or poison the EQ with NaN: exp(-t ·
+ * rate · (1/L − 1)) is NaN at L = 0. Proves the DEPLOYED wasm and C glue carry the structural bound, which a Go test of
+ * the source cannot. */
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";
@@ -41,11 +23,7 @@ const repoRoot = path.resolve(jsDir, "..", "..");
 const goDir = path.resolve(repoRoot, "src/go");
 const GO = resolveGoBinary();
 
-// A fixed set of shipped drum + melodic instruments (one per voice family). Each is
-// driven through the bridge with `decay = 0` then `attack = 0` then a
-// compound all-min snapshot to lock down the failure class end-to-end.
-// Every id must be a shipped instrument so __testCaptureSynthRender resolves
-// a real document.
+// One shipped instrument per voice family, so __testCaptureSynthRender resolves a real document.
 const STARTUP_INSTRUMENTS = ["kick-snap", "snare", "hihat", "clap", "cowbell", "fm-epiano-drive"];
 
 if (!shouldSkipWasmBuild("main.wasm")) {
@@ -148,9 +126,7 @@ try {
   );
   await waitForAudioReady(page);
 
-  // Confirm the bridge sees an instrument document for every startup-demo
-  // instrument — guards against a renamed default circuit silently skipping
-  // the assertions.
+  // Guards against a renamed instrument silently skipping the assertions.
   const bindings = await page.evaluate((ids) => {
     return ids.map((id) => ({ id, origin: (JSON.parse(getInstrumentDoc(id) || "{}").origin || "") }));
   }, STARTUP_INSTRUMENTS);
@@ -161,12 +137,8 @@ try {
   }
   console.log("[TEST] startup-demo documents:", JSON.stringify(bindings));
 
-  // Condition-based capture: under a parallel `make test-browser` the page is
-  // starved for seconds at a time (4 SwiftShader Chromium instances share the
-  // host), so a single fixed 800ms window can land entirely between sequencer
-  // hits (observed: baseline peak=0.0003 on a 4-job run vs 0.0789 solo). Poll
-  // capture windows until one is audible; a genuinely silent chain still fails
-  // after the deadline. NaN/Inf anywhere fails immediately.
+  // Under a parallel run a fixed window can land between hits, so windows are polled until one is audible; a silent
+  // chain still fails at the deadline, NaN/Inf at once.
   const captureAudibleWindow = async (label, { windowMs = 800, deadlineMs = 20000 } = {}) => {
     const start = Date.now();
     for (let attempt = 1; ; attempt++) {
@@ -185,8 +157,7 @@ try {
     }
   };
 
-  // ─── Phase A: warm up the sequencer ───
-  // Play is ignored while the warm-up gate is closed; press it once it opens.
+  // Play is ignored while the warm-up gate is closed.
   await startPlaybackWhenReady(page);
   await page.waitForTimeout(800);
 
@@ -199,9 +170,7 @@ try {
     throw new Error(`baseline is silent (peak=${basePeak}). Sequencer is not actually playing — fix the test harness before trusting the rest.`);
   }
 
-  // The cases each instrument is driven through. `decay=0` is the
-  // canonical NaN trigger; the rest cover sibling envelope/saturation
-  // extremes so a regression in any one knob fails loudly.
+  // decay=0 is the canonical NaN trigger; the rest cover sibling envelope and saturation extremes.
   const PARAM_CASES = [
     { name: "decay=0",  patch: { decay: 0 } },
     { name: "attack=0", patch: { attack: 0 } },
@@ -214,9 +183,7 @@ try {
     for (const tc of PARAM_CASES) {
       const tag = `${id} / ${tc.name}`;
 
-      // Drive the bridge at ~60 Hz (one OnDrag tick) — single setInstrumentParam
-      // per knob, then let the sequencer fire a few more notes so the
-      // re-rendered _p variant is what the AudioBuffer carries.
+      // One write per knob (one drag tick), then a few notes so the re-render is what plays.
       await page.evaluate(
         ([instId, patch]) => {
           for (const [k, v] of Object.entries(patch)) {
@@ -247,24 +214,17 @@ try {
           `First: ${sample}\nThe biquad chain saw NaN/Inf samples and corrupted its internal state.`,
         );
       }
-      // Per-case audibility check is intentionally omitted: the global mix
-      // captured here aggregates *all* instruments, and the sequencer fires
-      // some instruments sparsely (e.g. hihat) — a 700ms window can legitimately
-      // land between hits without indicating a broken channel. The end-of-sweep
-      // tail capture below catches "chain permanently silenced" by checking
-      // the same mix after every case completes and every instrument is reset.
+      // No per-case audibility: the mix spans every instrument and sparse ones legitimately miss a window; the tail capture
+      // after every reset catches a permanently silenced chain.
       void peak; void energy;
 
-      // Reset this instrument before driving the next case so changes
-      // don't accumulate across iterations.
+      // So changes do not accumulate across iterations.
       await page.evaluate((instId) => resetInstrumentParams(instId), id);
       await page.waitForTimeout(150);
     }
   }
 
-  // Final tail capture: after every instrument has been driven through every
-  // extreme and reset, the channel chain must still be producing audio.
-  // (NaN/Inf in any window throws inside captureAudibleWindow.)
+  // After every extreme and reset the chain must still produce audio.
   const tail = await captureAudibleWindow("post-sweep tail");
   const tailPeak = peakOf(tail);
   const tailEnergy = energyOf(tail);
@@ -272,13 +232,7 @@ try {
   if (tailPeak < 0.001) {
     throw new Error(`post-sweep tail is silent (peak=${tailPeak}, baseline=${basePeak}) — chain did not recover after the sweep`);
   }
-  // Per-instrument render-level recovery check. The previous assertion here
-  // compared wall-clock capture ENERGY to the baseline (tail/baseline >= 20%),
-  // which is load-sensitive: under a parallel `make test-browser` the capture
-  // windows stretch and land between sequencer hits, collapsing the measured
-  // energy without any real audio defect (observed: 16.9% on a 4-job run that
-  // passes solo). The render layer is deterministic: after every reset, each
-  // instrument's one-shot must re-render audibly.
+  // At the render level, which is deterministic: a capture-energy ratio collapses under parallel load with no defect.
   void tailEnergy; void baseEnergy;
   for (const id of STARTUP_INSTRUMENTS) {
     const rec = await page.evaluate(async (instId) => {

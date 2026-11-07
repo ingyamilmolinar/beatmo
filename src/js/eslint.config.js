@@ -35,10 +35,7 @@ export default [
       "no-empty": ["error", { allowEmptyCatch: true }],
     },
   },
-  // Browser test files and helpers: disable no-undef because page.evaluate()
-  // runs code in the browser WASM context where globals like startPlay,
-  // stopPlay, forceDraw, etc. are injected by the Go WASM runtime.
-  // ESLint cannot reason about cross-context evaluate() scope.
+  // page.evaluate() runs in the page, where the Go runtime injects globals ESLint cannot see.
   {
     files: ["**/*.browser.test.js", "**/*_helpers.js", "**/*_actions.js"],
     rules: {

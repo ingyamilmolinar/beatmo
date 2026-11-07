@@ -1,15 +1,5 @@
-/**
- * Transport Controls Real Input Test
- *
- * Tests that Play/Stop buttons and BPM controls work via real canvas clicks.
- * Uses the FULL WASM build (main.wasm) with Playwright's native mouse methods.
- *
- * The Play/Stop/BPM scenario bodies live in
- * src/js/scenarios/e2e_transport.js so the same assertions can run via
- * test_runner_overlay.js on a real phone (`make serve-lan`). The user-tap
- * reproduction scenario is exposed only via the in-page runner — it requires
- * a real finger and cannot be automated through Playwright in CI.
- */
+/** The scenario bodies live in scenarios/e2e_transport.js so the same assertions run on a real phone through
+ * test_runner_overlay.js (`make serve-lan`); the real-finger repro runs only there. */
 import { setupFullWasm } from "./real_input_test_helpers.js";
 import { flushCoverage, isCoverageEnabled } from "./coverage_helpers.js";
 
@@ -36,9 +26,7 @@ try {
   });
   await page.waitForTimeout(200);
 
-  // CI runs the synthetic-input scenarios. The user-tap reproduction
-  // scenario is skipped here — it lives in scenarios/e2e_transport.js and
-  // is invoked by test_runner_overlay.js on a real device.
+  // The user-tap repro needs a real finger.
   const cases = [
     ["PlayButtonSyntheticClick",  "Test 1: Play button"],
     ["StopButtonSyntheticClick",  "Test 2: Stop button"],

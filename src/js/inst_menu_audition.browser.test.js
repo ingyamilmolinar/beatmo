@@ -1,36 +1,10 @@
-/**
- * Instrument-menu audition (cross-platform parity)
- *
- * Pins the WASM-compiled audition flow: clicking an instrument item must
- * not close the menu, so the user can rapidly try multiple sounds without
- * reopening it. The menu only closes via explicit dismissal (X / Escape /
- * click-outside / row switch).
- *
- * COVERED-BY-GO:
- *   - Stay-open after one selection, multi-select session, repeated clicks,
- *     during-playback selection, X/Escape/click-outside close paths,
- *     favorites star non-selecting, row-switch closes prior:
- *     internal/ui/inst_menu_audition_test.go
- *   - Component-level OnSelect callback contract:
- *     internal/ui/drumview_overlay_inst_comp_test.go
- *   - Full DrumView.Update() flow:
- *     internal/ui/inst_menu_interaction_test.go
- *
- * What this test owns (per JS Test Charter §6 — "real input dispatch
- * through the canvas" and §5 — "cross-platform parity"):
- *   1. The WASM-compiled menu component honors the same stay-open contract
- *      as the native build when driven by real Playwright mouse events.
- *   2. The Go→JS export surface (`openInstMenu`, `instMenuItemRects`,
- *      `instMenuOpenState`, `rowInstrument`) routes a real canvas click
- *      to a row-instrument mutation without dismissing the menu.
- */
+/** Through the WASM build and real mouse events, clicking an item changes the row without closing the menu, so the user
+ * can try sounds rapidly. COVERED-BY-GO: inst_menu_audition_test.go, drumview_overlay_inst_comp_test.go,
+ * inst_menu_interaction_test.go */
 
 import { setupFullWasm, clickAndHold } from "./real_input_test_helpers.js";
 
-// Real Ebiten/WASM input loop needs a non-trivial press-hold to register
-// both press and release edges. Use clickAndHold(50ms+) instead of
-// page.mouse.click(), which often coalesces the down/up before the WASM
-// game loop can sample either edge.
+// page.mouse.click() can coalesce down and up before the WASM loop samples either edge.
 async function realClickAt(page, x, y) {
   await clickAndHold(page, Math.floor(x), Math.floor(y), 80);
   await page.waitForTimeout(150);
@@ -71,10 +45,7 @@ try {
     if (!ok) throw new Error(`required JS export missing: ${name}`);
   }
 
-  // ─── Step 1: open the instrument menu for row 0 via a REAL canvas click
-  // on the row label. This both opens the menu and lets the press→release
-  // cycle clear suppressClicksUntilRelease, so subsequent menu-item clicks
-  // are not eaten by the suppression guard.
+  // A real click also lets the press→release clear the click suppression, so later item clicks are not eaten.
   console.log("inst_menu_audition: opening menu via real canvas click on row 0 label");
   const labelRect = await page.evaluate(() => rowLabelRect(0));
   if (!labelRect || labelRect.w <= 0 || labelRect.h <= 0) {
@@ -150,12 +121,7 @@ try {
     `inst_menu_audition: row instrument=${rowInst}, menu still open after 2nd pick`,
   );
 
-  // ─── Step 4: explicit dismissal via Escape closes the menu ───────────
-  // Hold Escape long enough for the WASM game loop's rAF to sample the
-  // key as pressed. Under CPU contention (parallel browser tests), rAF
-  // can be delayed past a fast keydown→keyup pair, leaving Ebiten's
-  // polled IsKeyPressed(KeyEscape) false on every frame. Mirrors the
-  // hold-then-poll pattern documented for clickAndHold().
+  // Held until rAF samples it: under contention a fast keydown→keyup can fall between frames.
   await page.keyboard.down("Escape");
   await page.waitForTimeout(150);
   await page.keyboard.up("Escape");

@@ -1,8 +1,5 @@
-// Observation harness: reproduce "row-rack controls dead after Sampler->Pads"
-// in a DESKTOP browser at a MOBILE (narrow) viewport with PLAIN MOUSE
-// (no touch emulation) — matching the user's report.
-//
-// Run: GO=$(pwd)/.tools/go/bin/go WASM_PREBUILT=1 node src/js/zz_rowrack_sampler_pads.browser.test.js
+// Row-rack controls dead after Sampler → Pads, reproduced in a desktop browser at a phone viewport with a plain mouse,
+// as reported. Run: GO=… WASM_PREBUILT=1 node src/js/zz_rowrack_sampler_pads.browser.test.js
 import { chromium } from "playwright";
 import http from "http";
 import fs from "fs";
@@ -122,9 +119,7 @@ await page.waitForTimeout(100);
 
 const vmFreshPads = await viewMode();
 
-// 1. Sampler tab. Its segment is disabled while the master bus is the selected
-// channel (samplerViewDisabled) — a fresh page's state — so pick row 0's
-// instrument first, as a user does before opening the Sampler.
+// The Sampler segment is disabled while master is the channel, a fresh page's state.
 await page.evaluate(() => { setEQChannel(rowInstrument(0)); forceDraw(); });
 await page.waitForTimeout(100);
 const vmSampler = await tapSegment(7, "Sampler");
@@ -161,8 +156,7 @@ if (saveAsBtn) {
   for (let i = 0; i < 10; i++) { await page.waitForTimeout(60); st = await page.evaluate(() => synthSaveAsDialogState()); if (st) break; }
   console.log(`  saveAs click (${x},${y}) -> dialogState:`, JSON.stringify(st));
   if (st) {
-    // VARIANT: leave the Save As dialog OPEN and abandon it via the tab switch
-    // (do NOT confirm). This mirrors "I started Save As, then tapped Pads".
+    // Save As left OPEN and abandoned by the tab switch.
     await page.evaluate(() => { synthSaveAsDialogSetValue("mychop"); forceDraw(); });
     await page.waitForTimeout(120);
     console.log("  Save As dialog left OPEN (abandoning via tab switch); dialogOpen=", await page.evaluate(() => synthSaveAsDialogState() != null));
@@ -180,21 +174,8 @@ await probeRowControls("after Sampler->Pads");
 // 4. The repro check.
 const reproOk = await clickMuteCheckToggle("after Sampler->Pads");
 
-// ---- Gate evaluation ------------------------------------------------------
-// We need to distinguish three outcomes and fail on two of them:
-//   PASS  : controls are positively confirmed live AFTER the Sampler->Pads
-//           transition (reproOk === true), AND we actually drove the scenario.
-//   FAIL  (bug reproduced): controls were live on fresh Pads (ctrlOk) but DEAD
-//           after the transition (reproOk === false).
-//   FAIL  (broken/inconclusive harness): we could not toggle mute even on the
-//           fresh control Pads (!ctrlOk), or the transition itself never
-//           happened (viewMode never reached Sampler / never returned to Pads).
-//           An inconclusive run must NOT count as a pass.
-//
-// viewMode encoding (mobile bottom-nav): segment 0 == Pads, segment 7 ==
-// Sampler. We require vmSampler != vmFreshPads (we left Pads for Sampler) and
-// vmBackToPads == vmFreshPads (we came back to the same Pads view), so a "PASS"
-// genuinely exercised the cross-tab path rather than never leaving Pads.
+// PASS only when controls are confirmed live after the round trip AND the scenario really ran (Pads → Sampler → the same
+// Pads); dead after it is the bug, and a harness that never drove the transition is inconclusive, never a pass.
 const drove =
   vmFreshPads !== null && vmFreshPads !== -1 &&
   vmSampler !== null && vmSampler !== -1 &&

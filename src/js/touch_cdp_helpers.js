@@ -1,13 +1,6 @@
-/**
- * Chrome DevTools Protocol touch simulation utilities for Playwright tests.
- * CDP events are "trusted" and behave like real touches, unlike synthetic TouchEvents.
- */
+/** CDP touch events are "trusted" and behave like real touches, unlike synthetic TouchEvents. */
 
-/**
- * Gets canvas coordinates accounting for position and device pixel ratio.
- * @param {import('playwright').Page} page - Playwright page
- * @returns {Promise<{left: number, top: number, width: number, height: number, dpr: number}>}
- */
+/** {left, top, width, height, dpr}. */
 export async function getCanvasInfo(page) {
   return await page.evaluate(() => {
     const canvas = document.querySelector('canvas');
@@ -23,13 +16,6 @@ export async function getCanvasInfo(page) {
   });
 }
 
-/**
- * Converts canvas-relative coordinates to page coordinates.
- * @param {import('playwright').Page} page - Playwright page
- * @param {number} canvasX - X coordinate relative to canvas
- * @param {number} canvasY - Y coordinate relative to canvas
- * @returns {Promise<{x: number, y: number}>}
- */
 export async function canvasToPageCoords(page, canvasX, canvasY) {
   const info = await getCanvasInfo(page);
   return {
@@ -41,12 +27,7 @@ export async function canvasToPageCoords(page, canvasX, canvasY) {
 // Auto-incrementing touch ID to avoid conflicts
 let nextTouchId = 1;
 
-/**
- * Simulates a tap using CDP Input.dispatchTouchEvent.
- * @param {import('playwright').Page} page - Playwright page
- * @param {number} x - X coordinate (canvas-relative)
- * @param {number} y - Y coordinate (canvas-relative)
- */
+/** Canvas-relative coordinates. */
 export async function cdpTap(page, x, y) {
   const cdp = await page.context().newCDPSession(page);
   const coords = await canvasToPageCoords(page, x, y);
@@ -76,13 +57,7 @@ export async function cdpTap(page, x, y) {
   }
 }
 
-/**
- * Simulates a long press using CDP Input.dispatchTouchEvent.
- * @param {import('playwright').Page} page - Playwright page
- * @param {number} x - X coordinate (canvas-relative)
- * @param {number} y - Y coordinate (canvas-relative)
- * @param {number} duration - Hold duration in ms (default 600ms)
- */
+/** Canvas-relative; duration default 600 ms. */
 export async function cdpLongPress(page, x, y, duration = 600) {
   const cdp = await page.context().newCDPSession(page);
   const coords = await canvasToPageCoords(page, x, y);
@@ -111,20 +86,8 @@ export async function cdpLongPress(page, x, y, duration = 600) {
   }
 }
 
-/**
- * Simulates a pinch gesture using CDP Input.dispatchTouchEvent.
- * @param {import('playwright').Page} page - Playwright page
- * @param {number} cx - Center X coordinate (canvas-relative)
- * @param {number} cy - Center Y coordinate (canvas-relative)
- * @param {number} startDist - Initial distance between fingers
- * @param {number} endDist - Final distance between fingers
- * @param {number} steps - Number of intermediate steps (default 10)
- * @param {number} stepDelay - Delay between steps in ms (default 20)
- * @param {number} initDelay - Delay after touchStart before first touchMove (default 80ms).
- *   The Go game loop needs at least one frame to initialize two-finger tracking
- *   before seeing distance changes. Under CPU load (~30fps), 80ms guarantees
- *   2-3 frames of initialization time.
- */
+/** Canvas-relative centre. initDelay (default 80 ms) gives the Go loop 2-3 frames under load to start two-finger tracking
+ * before distances change. */
 export async function cdpPinch(page, cx, cy, startDist, endDist, steps = 10, stepDelay = 20, initDelay = 80) {
   const cdp = await page.context().newCDPSession(page);
   const info = await getCanvasInfo(page);
@@ -146,8 +109,7 @@ export async function cdpPinch(page, cx, cy, startDist, endDist, steps = 10, ste
       touchPoints: getTouchPoints(startDist),
     });
 
-    // Wait for Go loop to process the two-finger initialization frame
-    // before sending distance changes.
+    // Before any distance change.
     if (initDelay > 0) {
       await page.waitForTimeout(initDelay);
     }
@@ -177,20 +139,7 @@ export async function cdpPinch(page, cx, cy, startDist, endDist, steps = 10, ste
   }
 }
 
-/**
- * Simulates a drag gesture using CDP Input.dispatchTouchEvent.
- * @param {import('playwright').Page} page - Playwright page
- * @param {number} startX - Starting X coordinate (canvas-relative)
- * @param {number} startY - Starting Y coordinate (canvas-relative)
- * @param {number} endX - Ending X coordinate (canvas-relative)
- * @param {number} endY - Ending Y coordinate (canvas-relative)
- * @param {number} steps - Number of intermediate steps (default 10)
- * @param {number} stepDelay - Delay between steps in ms (default 20)
- * @param {number} initDelay - Delay after touchStart before first touchMove (default 80ms).
- *   The Go game loop needs at least one frame to process the touchStart at the
- *   correct position before touchMove events shift it. Under CPU load (~30fps),
- *   80ms guarantees 2-3 frames of initialization time.
- */
+/** Canvas-relative. initDelay (default 80 ms) lets the Go loop see the touchStart at the right spot before a move shifts it. */
 export async function cdpDrag(page, startX, startY, endX, endY, steps = 10, stepDelay = 20, initDelay = 80) {
   const cdp = await page.context().newCDPSession(page);
   const info = await getCanvasInfo(page);
@@ -246,17 +195,7 @@ export async function cdpDrag(page, startX, startY, endX, endY, steps = 10, step
   }
 }
 
-/**
- * Simulates a two-finger pan gesture using CDP Input.dispatchTouchEvent.
- * @param {import('playwright').Page} page - Playwright page
- * @param {number} startX - Starting center X coordinate (canvas-relative)
- * @param {number} startY - Starting center Y coordinate (canvas-relative)
- * @param {number} deltaX - Horizontal movement
- * @param {number} deltaY - Vertical movement
- * @param {number} fingerDist - Distance between fingers (default 100)
- * @param {number} steps - Number of intermediate steps (default 10)
- * @param {number} stepDelay - Delay between steps in ms (default 20)
- */
+/** Canvas-relative centre; fingerDist default 100. */
 export async function cdpTwoFingerPan(page, startX, startY, deltaX, deltaY, fingerDist = 100, steps = 10, stepDelay = 20) {
   const cdp = await page.context().newCDPSession(page);
   const info = await getCanvasInfo(page);
@@ -305,18 +244,8 @@ export async function cdpTwoFingerPan(page, startX, startY, deltaX, deltaY, fing
   }
 }
 
-/**
- * Simulates a long press followed by a slide to a target position and release.
- * Used for the long-press popup workflow where the user long-presses a node,
- * the popup appears, and then the user slides to a button (e.g., Delete) and releases.
- * @param {import('playwright').Page} page - Playwright page
- * @param {number} x - Start X coordinate (canvas-relative)
- * @param {number} y - Start Y coordinate (canvas-relative)
- * @param {number} targetX - Target X coordinate to slide to (canvas-relative)
- * @param {number} targetY - Target Y coordinate to slide to (canvas-relative)
- * @param {number} holdDuration - How long to hold before sliding in ms (default 700)
- * @param {number} slideDelay - How long to hold on target before releasing in ms (default 100)
- */
+/** The long-press popup flow: hold until the popup opens, slide to a button (e.g. Delete), release. holdDuration default
+ * 700 ms, slideDelay 100 ms. */
 export async function cdpLongPressAndSlide(page, x, y, targetX, targetY, holdDuration = 700, slideDelay = 100) {
   const cdp = await page.context().newCDPSession(page);
   const coordsStart = await canvasToPageCoords(page, x, y);
@@ -343,17 +272,7 @@ export async function cdpLongPressAndSlide(page, x, y, targetX, targetY, holdDur
   }
 }
 
-/**
- * Verifies that a touch was received by the Go layer.
- * @param {import('playwright').Page} page - Playwright page
- * @param {object} options - Options for verification
- * @param {string} [options.expectedGesture] - Expected gesture type (tap, longPress, etc.)
- * @param {number} [options.expectedX] - Expected X coordinate (approximate)
- * @param {number} [options.expectedY] - Expected Y coordinate (approximate)
- * @param {number} [options.tolerance] - Coordinate tolerance in pixels (default 10)
- * @param {number} [options.timeout] - Timeout in ms to wait for gesture (default 1000)
- * @returns {Promise<{success: boolean, state: object, error?: string}>}
- */
+/** options: expectedGesture, expectedX/Y, tolerance (10 px), timeout (1000 ms). Returns {success, state, error?}. */
 export async function verifyTouchReceived(page, options = {}) {
   const { expectedGesture, expectedX, expectedY, tolerance = 10, timeout = 1000 } = options;
 

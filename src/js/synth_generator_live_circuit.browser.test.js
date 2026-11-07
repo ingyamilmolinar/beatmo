@@ -1,15 +1,5 @@
-/**
- * Generator-selector LIVE-CIRCUIT regression test (WASM).
- *
- * Reproduces the user report: with the default circuit PLAYING, changing the
- * Snare's generator off Native makes the audio stop. The earlier tests rendered
- * a single hit in isolation; this drives the real Go engine/sequencer (startPlay
- * → scheduled playSoundsBatchFlat → enqueueAudioEvents → processAudioEvent) and
- * captures the live master output before and after the generator change.
- *
- * Debug logging (window.__beatmoDebugSynthDispatch + BEATMO_AUDIO_DEBUG) is
- * enabled so a failure surfaces WHICH render path each scheduled hit took.
- */
+/** With the default circuit PLAYING, changing the snare's generator must not stop the audio: the real sequencer, live
+ * master captured before and after. Debug logging shows which render path each hit took. */
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";
@@ -104,9 +94,8 @@ try {
   await page.evaluate(() => { if (typeof forceDraw === "function") forceDraw(); });
   await startPlaybackWhenReady(page); // Play is ignored while the warm-up gate is closed
 
-  // Open the Synth tab so its live re-layout (the section-schema swap on
-  // re-voicing) runs every frame against the playing engine — the exact UI
-  // state the user is in. A panic/hang here would stop the engine → all audio.
+  // The Synth tab's live re-layout runs every frame against the playing engine, the user's exact state; a panic there
+  // would stop all audio.
   const opened = await page.evaluate(() => (typeof setActiveEQTab === "function" ? setActiveEQTab("synth") : "no-export"));
   console.log(`[TEST] setActiveEQTab('synth') => ${opened}`);
 

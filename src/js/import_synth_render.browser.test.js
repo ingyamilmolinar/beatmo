@@ -1,27 +1,12 @@
-// import_synth_render.browser.test.js
-//
-// Render-level guards for synth instrument state across the WASM bridge —
-// closing the gap where param/recipe state reached the Go manager but the
-// JS-side render (the sound the browser actually plays) stayed wrong.
-//
-// 1) ONE KNOB EDIT KEEPS THE WHOLE VOICE: an edit re-pushes the instrument's
-//    complete flattened block (window.setInstrumentBlock), so the pad keeps its
-//    120 ms attack; before documents the browser merged a sparse overlay over a
-//    seeded defaults map and one edit could drop the whole seed.
-// 2) IMPORT ROUNDTRIP GUARD: importing a project whose instrument_docs carry
-//    an edited document must reproduce the pre-export render in the browser.
-//
-// COVERED-BY-GO: import/export document logic (internal/ui/
-// synth_render_roundtrip_test.go, project_docs_test.go). JS-owned here: the
-// block push and the rendered output of the C render_modular_p.
+// The sound the browser PLAYS must follow synth state: one knob edit re-pushes the whole block (the pad keeps its slow
+// attack), and an imported edited document reproduces its render. COVERED-BY-GO: synth_render_roundtrip_test.go,
+// project_docs_test.go
 
 import { setupFullWasm } from "./real_input_test_helpers.js";
 
 const PAD_ID = "modular-pad";
 
-// Mean absolute head amplitude relative to peak: the attack discriminator.
-// Pad seed amp_attack=0.12 s → first 64 samples ≈ silent (ratio < ~0.02).
-// Modular identity amp_attack=0.005 s → ratio ≈ 0.1+.
+// The pad's 0.12 s attack leaves the first 64 samples near silent (< ~0.02); a 5 ms attack reads ≈ 0.1+.
 function headRatio(cap) {
   if (!cap || !cap.head || !cap.peak) return Infinity;
   let sum = 0;
@@ -65,8 +50,7 @@ async function main() {
           `(want < 0.05 — the pad's 120 ms attack; got the base modular 5 ms attack instead)`
       );
     }
-    // Gain 0.9→0.8 must scale the render, not re-voice it: tail energy stays
-    // within a generous band of baseline×(0.8/0.9).
+    // A gain change scales the render; it must not re-voice it.
     const wantTail = baseline.tailRMS * (0.8 / 0.9);
     if (baseline.tailRMS > 1e-4 && Math.abs(edited.tailRMS - wantTail) > 0.35 * baseline.tailRMS) {
       failures.push(
@@ -75,10 +59,7 @@ async function main() {
     }
     await page.evaluate((id) => window.resetInstrumentParams(id), PAD_ID);
 
-    // --- Case 2: import roundtrip of an edited document reproduces the render ---
-    // modular-pad is not a default row, so build the project explicitly: the
-    // current project plus a modular-pad row and its edited document (exactly
-    // what export emits for an edited pad row).
+    // The pad is not a default row, so the project is built with its row and edited document, as export emits.
     await page.evaluate((id) => window.setInstrumentParam(id, "gain", 0.8), PAD_ID);
     const preExport = await page.evaluate((id) => window.__testCaptureSynthRender(id), PAD_ID);
     const exported = await page.evaluate((id) => {
@@ -115,16 +96,9 @@ async function main() {
       failures.push(`post-import render lost the pad attack: headRatio=${postRatio.toFixed(4)} (want < 0.05)`);
     }
 
-    // --- Case 2b: plain builtin delta round-trips at the render level ---
-    // The everyday scenario: a drum row with edited knobs exported to
-    // beatmo.json must sound identical after importing that file back.
-    // Any drum row on a BUILTIN recipe: the POST ops always run, so post_decay
-    // (Fade) is live wherever it audibly changes the voice — this case tests the
-    // export/import PLUMBING, which carries every param.
+    // The everyday case: a drum row with edited knobs exported and re-imported must sound the same.
     const builtinTarget = await page.evaluate(async () => {
-      // Chosen by EFFECT, not by recipe name: a row qualifies only if moving
-      // post_decay audibly changes its voice (a tail-RMS comparison on an
-      // inert knob would pass vacuously).
+      // Chosen by EFFECT: a tail comparison on an inert knob would pass vacuously.
       const proj = JSON.parse(window.exportJSON());
       for (const inst of proj.instruments || []) {
         if (!window.getInstrumentDoc(inst.id) || window.isMelodicInstrumentJS(inst.id)) continue;
@@ -142,9 +116,7 @@ async function main() {
     const builtinPre = await page.evaluate((id) => window.__testCaptureSynthRender(id), builtinTarget);
     const builtinExported = await page.evaluate(() => window.exportJSON());
     await page.evaluate((id) => window.setInstrumentParam(id, "post_decay", 0.2), builtinTarget);
-    // Precondition: the file is only proven to carry the tone if the other
-    // value actually sounds different (a tail-RMS check alone is vacuous on a
-    // kick, whose tail is silent either way).
+    // The file proves it carries the tone only if the other value sounds different.
     const builtinOther = await page.evaluate((id) => window.__testCaptureSynthRender(id), builtinTarget);
     const voiceFP = (r) => JSON.stringify({ rms: r.rms, peak: r.peak, head: r.head, tail: r.tail, len: r.length });
     if (voiceFP(builtinOther) === voiceFP(builtinPre)) {
@@ -164,11 +136,7 @@ async function main() {
     }
     await page.evaluate((id) => window.resetInstrumentParams(id), builtinTarget);
 
-    // --- Case 3 (GAP C): a document REPLACED at import must reach the JS renderer ---
-    // A project whose instrument_docs give a drum row a completely different
-    // voice (here: the bare modular voice's document) changes the Go document
-    // at import, so the pushed block — and the JS render — must change too: the
-    // drum renders the sustained modular voice, not its own percussive voice.
+    // A document REPLACED at import must reach the renderer: the drum then renders the sustained modular voice.
     const drumTarget = await page.evaluate(() => {
       const proj = JSON.parse(window.exportJSON());
       for (const inst of proj.instruments || []) {
@@ -198,8 +166,7 @@ async function main() {
     console.log(
       `[test] replaced render: peak=${migRender.peak.toFixed(4)} tailRMS=${migRender.tailRMS.toFixed(4)} (drum baseline tailRMS=${drumBaseline.tailRMS.toFixed(4)})`
     );
-    // The modular voice sustains where the drum decays to ~nothing — tail
-    // energy is the renderer discriminator.
+    // Tail energy tells the sustained voice from the decaying drum.
     if (!(migRender.tailRMS > Math.max(0.05, 5 * drumBaseline.tailRMS))) {
       failures.push(
         `replaced instrument still renders its old drum voice: tailRMS=${migRender.tailRMS.toFixed(4)} ` +
@@ -207,11 +174,8 @@ async function main() {
       );
     }
 
-    // --- Case 4 (GAP D): a Saved library entry must reach the JS render ---
-    // Synth-tab Save writes the tone into the user library; Reset afterwards
-    // returns the project copy to that SAVED entry, and the pushed block must
-    // follow (pre-documents the browser reverted to shipped).
-    // Runs LAST: it saves into the session's user library.
+    // A saved library entry must reach the render: a reset returns the copy to that SAVED entry and the block follows.
+    // Runs LAST: it saves into the session's library.
     const saveTarget = await page.evaluate((skip) => {
       const proj = JSON.parse(window.exportJSON());
       for (const inst of proj.instruments || []) {
@@ -222,8 +186,7 @@ async function main() {
     }, drumTarget);
     if (!saveTarget) throw new Error("no second percussive builtin instrument for the Save case");
     const saveBaseline = await page.evaluate((id) => window.__testCaptureSynthRender(id), saveTarget);
-    // Length (post_decay) below 1 shortens the voice; the capture is peak-
-    // normalised, so a shorter voice reads as LOWER whole-render RMS.
+    // The capture is peak-normalised, so a shorter voice reads as lower RMS.
     await page.evaluate((id) => window.setInstrumentParam(id, "post_decay", 0.15), saveTarget);
     const savedTone = await page.evaluate((id) => window.__testCaptureSynthRender(id), saveTarget);
     console.log(

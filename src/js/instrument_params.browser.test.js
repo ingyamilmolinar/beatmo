@@ -1,30 +1,5 @@
-/**
- * Instrument Params Browser Test — Phase 5
- *
- * Exercises the Go-WASM ↔ JS bridge for the SynthRecipe per-instrument
- * parameter manager. Specifically:
- *
- *   1. setInstrumentParam(id, name, value) — Go-side mutation flows
- *      through the instrument document push → window.setInstrumentBlock,
- *      which mirrors the JS-side params map and invalidates renderCache.
- *
- *   2. getInstrumentParams(id) — returns the merged param map as a
- *      plain JS object (no JSON.parse needed).
- *
- *   3. getInstrumentDoc(id) — every instrument crosses as its document JSON
- *      (id + origin), see Test 1.
- *
- *   4. instrumentParamDefs(id) — the knob schema of the instrument's
- *      document (the Synth tab's controls), see Test 2.
- *
- *   5. resetInstrumentParams(id) — returns the document to its library entry.
- *
- * What this test does NOT do (intentionally):
- *   - Capture WebAudio output and assert audible param change. That
- *     covers the C-side _p() variants, which Go's native suite already
- *     verifies bit-identically in TestPhase2Native_RecipeRenderHonorsParamMutations.
- *     The WASM-equivalent parity check lives in xplat_synth_recipe_parity.
- */
+/** The bridge for per-instrument params: set/get, each instrument's document JSON, its knob schema, and reset. No
+ * audio capture: the C render is verified natively and cross-platform elsewhere. */
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";
@@ -114,10 +89,7 @@ await page.waitForFunction(() => typeof window.setInstrumentBlock === "function"
 
 console.log("[TEST] All synth-recipe exports present.");
 
-// Test 1: getInstrumentDoc crosses each instrument's document as JSON — its
-// id, the library entry it came from, and its modules. Which values a document
-// holds is Go-owned (internal/audio instrument_docs tests); the BRIDGE owes a
-// parseable document for every instrument the app plays.
+// Which values a document holds is Go's; the BRIDGE owes a parseable document for every instrument the app plays.
 {
   const got = await page.evaluate(() => Object.fromEntries(
     ["snare", "kick", "fm-bass", "fm-pluck-tight"].map((id) => [id, getInstrumentDoc(id)]),
@@ -136,8 +108,7 @@ console.log("[TEST] All synth-recipe exports present.");
   console.log("[TEST] getInstrumentDoc OK.");
 }
 
-// Test 2: instrumentParamDefs returns the snare's knob schema with the expected
-// shape. The exact set is Go-owned (COVERED-BY-GO: instrument_param_defs_test.go).
+// The exact set is Go's (instrument_param_defs_test.go).
 {
   snareDefs = await page.evaluate(() => instrumentParamDefs("snare"));
   if (!Array.isArray(snareDefs) || snareDefs.length < 10) {
@@ -147,8 +118,7 @@ console.log("[TEST] All synth-recipe exports present.");
   for (const name of ["gen1_snare_tune", "post_decay", "gain"]) {
     if (!names.has(name)) throw new Error(`instrumentParamDefs(snare) missing ${name}`);
   }
-  // Spot-check a ParamDef shape. post_decay is the FINISH fade, range [0,1]
-  // (1 = no fade).
+  // The FINISH fade, [0, 1] (1 = no fade).
   const decayDef = snareDefs.find((p) => p.name === "post_decay");
   if (decayDef.min !== 0 || decayDef.max !== 1) {
     throw new Error(`post_decay range=[${decayDef.min},${decayDef.max}], want [0,1]`);
@@ -158,15 +128,13 @@ console.log("[TEST] All synth-recipe exports present.");
   console.log(`[TEST] instrumentParamDefs OK (${snareDefs.length} defs).`);
 }
 
-// Test 3: setInstrumentParam → getInstrumentParams round-trip + every edit
-// pushes the instrument document's block through window.setInstrumentBlock.
+// Every edit pushes the document's block through setInstrumentBlock.
 let snareLibrary;
 {
   await page.evaluate(() => resetInstrumentParams("snare"));
   snareLibrary = await page.evaluate(() => getInstrumentParams("snare"));
 
-  // Install a probe on window.setInstrumentBlock so we can see the platform
-  // push fire. The original handler still runs (we wrap, not replace).
+  // Wrapped, not replaced: the original still runs.
   await page.evaluate(() => {
     window.__synthParamUpdates = [];
     const orig = window.setInstrumentBlock;
@@ -198,8 +166,7 @@ let snareLibrary;
   );
 }
 
-// Test 4: resetInstrumentParams returns the document to its library entry +
-// pushes it once.
+// Pushed once.
 {
   await page.evaluate(() => (window.__synthParamUpdates = []));
   await page.evaluate(() => resetInstrumentParams("snare"));
@@ -216,9 +183,7 @@ let snareLibrary;
   console.log("[TEST] resetInstrumentParams OK.");
 }
 
-// Test 5: instrumentParamDefs and getInstrumentParams read ONE document: each
-// def's default is the document's value (the Synth tab shows the instrument's
-// own values as its knobs' defaults).
+// Each def's default is the document's value.
 {
   const vals = await page.evaluate(() => getInstrumentParams("snare"));
   for (const d of snareDefs) {

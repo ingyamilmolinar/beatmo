@@ -1,16 +1,5 @@
-/**
- * Identity-defaults regression — Phase 5 follow-up.
- *
- * Reproduces the user-reported bug: in the browser, moving a single
- * synth slider (e.g. pitch) silences the audio because the JS-side
- * heap-fill code zeroes out every other knob. decay=0 and attack=0
- * clamp to 0.01s in the C `_p` variants, producing near-silent output.
- *
- * The fix is to use IDENTITY defaults (decay=1, attack=1, others=0) for
- * unset knobs — matching the Go `recipeParamsToSynth` adapter exactly.
- *
- * This test FAILS without the fix and PASSES with it.
- */
+/** Moving one synth slider must not silence the voice: every other value stays the document's, never a 0 the C engine
+ * would honour (decay 0 and attack 0 render near silence). */
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";
@@ -79,15 +68,12 @@ await page.waitForFunction(() => typeof window.__testCaptureSynthRender === "fun
 await page.waitForFunction(() => window.audioReady !== undefined);
 await waitForAudioReady(page);
 
-// Capture the baseline render with NO user params — the C unparameterized
-// `render_snare` is used, all knobs at their hardcoded identity.
+// The library document's render.
 await page.evaluate(() => resetInstrumentParams('snare'));
 const baseline = await page.evaluate(() => window.__testCaptureSynthRender('snare'));
 if (!baseline) throw new Error('baseline snapshot is null');
 
-// Energy of a snare: integrate the absolute amplitude across the buffer.
-// The unparameterized snare runs ~0.5s of noise + body — its integrated
-// energy is far above silence.
+// Integrated absolute amplitude: a snare's ~0.5 s of noise and body is far above silence.
 const assertFinite = (buf, label) => {
   for (const v of buf) {
     if (!Number.isFinite(v)) {
@@ -109,10 +95,7 @@ if (baselineHeadEnergy < 0.001) {
   throw new Error(`baseline head is silent? energy=${baselineHeadEnergy}; expected > 0.001`);
 }
 
-// THE REPRO: set ONLY pitch (matching the user's slider drag pattern).
-// Decay and attack are unset → JS should fall back to their identity
-// values (decay=1, attack=1), NOT zero. Otherwise the C code clamps
-// decay→0.01 and attack→0.01, producing a near-silent buffer.
+// Only pitch, as the user's drag: everything else must keep the document's values.
 await page.evaluate(() => setInstrumentParam('snare', 'pitch', 5));
 const pitchOnly = await page.evaluate(() => window.__testCaptureSynthRender('snare'));
 if (!pitchOnly) throw new Error('pitchOnly snapshot is null');
@@ -123,8 +106,7 @@ const pitchHeadEnergy = energy(pitchOnly.head);
 const pitchTailEnergy = energy(pitchOnly.tail);
 console.log(`[TEST] pitch=5 head energy=${pitchHeadEnergy.toFixed(6)} tail energy=${pitchTailEnergy.toFixed(6)}`);
 
-// The pitch shift changes the spectrum but should NOT silence the
-// instrument. Head energy should stay within 75%-200% of baseline.
+// Pitch changes the spectrum, not the level: within 75-200 % of baseline.
 const headRatio = pitchHeadEnergy / Math.max(baselineHeadEnergy, 1e-12);
 if (headRatio < 0.25) {
   throw new Error(
@@ -135,8 +117,7 @@ if (headRatio < 0.25) {
 }
 console.log(`[TEST] pitch shift preserves head energy (${(headRatio * 100).toFixed(1)}% of baseline)`);
 
-// Also verify the user's exact pattern: drag pitch through extreme values.
-// At each step, the output must remain audible.
+// Audible at every step of an extreme drag.
 for (const semis of [3, 7, 12, 19]) {
   await page.evaluate((s) => setInstrumentParam('snare', 'pitch', s), semis);
   const snap = await page.evaluate(() => window.__testCaptureSynthRender('snare'));

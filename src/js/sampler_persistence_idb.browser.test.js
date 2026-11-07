@@ -1,18 +1,6 @@
-// sampler_persistence_idb.browser.test.js
-//
-// Validates the browser cross-session persistence boundary for the Sampler tab:
-// a sample written via idbPutSample survives a page reload and reads back
-// byte-identical via idbGetAllSamples, and idbDeleteSample removes it. This is
-// the IndexedDB storage layer the wasm userprefs.SampleStore backend uses;
-// localStorage can't hold PCM, so this can only be exercised in a real browser.
-//
-// COVERED-BY-GO:
-//   internal/userprefs/sample_store_test.go   (desktop file round-trip)
-//   internal/audio/user_samples_test.go        (ApplySavedSamples re-register)
-//   internal/ui/sampler_export_test.go          (export/import embed)
-//
-// Reuses the playtest.wasm harness so audio.js (which defines the idb* shim)
-// loads in its normal Go-WASM context.
+// A sample written to IndexedDB survives a reload byte-identical and can be deleted; localStorage cannot hold PCM, so
+// only a real browser can check it. COVERED-BY-GO: userprefs/sample_store_test.go, audio/user_samples_test.go,
+// ui/sampler_export_test.go
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";

@@ -1,49 +1,6 @@
-/**
- * Live synth + sampler parameter-update performance stress (WASM).
- *
- * THE BUG THIS GUARDS
- * -------------------
- * Updating a live synth parameter (e.g. the oscillator wave / `osc_type`) on a
- * MELODIC instrument while the sequencer is playing makes the game lag, jitter,
- * and the audio break up — especially in WASM where everything shares one
- * thread.
- *
- * Root cause: every param push runs `evictRenderCache(id)` in audio.js, which
- * for a melodic instrument drops the bare render AND every per-pitch
- * (`id:<pitch>`) variant. The next sequencer note is then a cache miss and runs
- * a SYNCHRONOUS `render_modular_p` ccall on the main thread (~30–40 ms for a
- * 2.0 s physical-model / orchestral voice). During a knob drag the params push
- * at ~60 Hz, so EVERY note re-renders → the main thread is blocked 24–69 ms
- * over and over → dropped frames + audio-scheduling jank.
- *
- * The pre-existing `instrument_params_playback_stability.browser.test.js` does
- * NOT catch this: it spams params on `snare` (a drum: single cache key, no
- * per-pitch storm) and only asserts the audio is not silenced — it never
- * measures main-thread blocking or redundant re-renders. The instruments that
- * actually break are the new melodic ones (violin / cello / guitar / piano /
- * winds / brass — all `paramBlock:'modular'`, 1.5–2.0 s, per-pitch rendered).
- *
- * WHAT THIS TEST MEASURES
- * -----------------------
- * For each instrument it plays notes at several distinct pitches at a realistic
- * sequencer cadence for a couple of seconds, while spamming the param at 60 Hz,
- * and records:
- *   - render count   (window.__audioMetrics.renders[id]) vs note count
- *   - event-loop gaps (an 8 ms self-check interval; a blocked main thread shows
- *                      up as a large gap) → max gap + count of >50 ms stalls
- *   - audio schedule health (getAudioScheduleMetrics: overdue / small-lead)
- *
- * PRIMARY (machine-independent) ASSERTION: the render/note RATIO. With the bug
- * every note re-renders (ratio ≈ 1.0). A correct fix keeps the cache warm
- * between param changes so notes reuse it (ratio well below 1.0). This is a
- * structural fact, independent of CPU speed.
- *
- * SECONDARY (behavioural, env-tunable) ASSERTION: no main-thread stall over
- * SYNTH_STRESS_MAX_BLOCK_MS, and a bounded worst-case event-loop gap.
- *
- * This test is EXPECTED TO FAIL until the live-param re-render path stops
- * forcing a synchronous full re-render per note.
- */
+/** Live param pushes on MELODIC instruments during playback evict every per-pitch render, so each following note is a
+ * miss; a synchronous main-thread render then blocks the loop on every note. Measures renders vs notes, event-loop gaps
+ * and schedule health; the definitive gate is that the renders run OFF the main thread. */
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";
@@ -68,17 +25,12 @@ const GO = resolveGoBinary();
 const NOTE_INTERVAL_MS = Number(process.env.SYNTH_STRESS_NOTE_MS || 80);
 const STRESS_DURATION_MS = Number(process.env.SYNTH_STRESS_DURATION_MS || 2500);
 const SPAM_INTERVAL_MS = Number(process.env.SYNTH_STRESS_SPAM_MS || 16); // ~60 Hz
-// A correct fix keeps the cache warm across rapid param pushes, so notes reuse
-// it instead of re-rendering. With the bug renders ≈ notes (ratio ≈ 1.0).
+// With synchronous re-renders renders ≈ notes.
 const MAX_RENDER_RATIO = Number(process.env.SYNTH_STRESS_MAX_RENDER_RATIO || 0.6);
 // No single synchronous render should stall the main thread this long.
 const MAX_BLOCK_MS = Number(process.env.SYNTH_STRESS_MAX_BLOCK_MS || 50);
-// Worst-case event-loop gap ceiling. With the bug a synchronous melodic render
-// blocks the loop ~64–69 ms; with the off-thread fix the only residual main-
-// thread cost is the transferred-buffer receipt + occasional GC (observed
-// ≤~35 ms). 55 ms cleanly separates the two while leaving GC headroom so the
-// behavioural cross-check does not flake on slower CI. The definitive gate is
-// the machine-independent mainThreadRenders==0 assertion below.
+// A synchronous melodic render blocks ~65 ms; off-thread the residue (buffer receipt, GC) stays ≤ ~35 ms. 55 separates the
+// two with GC headroom; mainThreadRenders == 0 is the definitive gate.
 const MAX_GAP_MS = Number(process.env.SYNTH_STRESS_MAX_GAP_MS || 55);
 
 // Melodic, modular, per-pitch-rendered "new" instruments — the ones that break.
@@ -142,8 +94,7 @@ if (ctxState !== "running") {
 }
 console.log(`[TEST] AudioContext running; note=${NOTE_INTERVAL_MS}ms spam=${SPAM_INTERVAL_MS}ms dur=${STRESS_DURATION_MS}ms`);
 
-// runStress drives notes across pitches + a param spammer for `id`.
-// kind: "synth" → setInstrumentParam(osc_type) ; "sampler" → updateSampleEdit.
+// kind "synth" spams osc_type, "sampler" updateSampleEdit.
 async function runStress(id, kind, spam) {
   return await page.evaluate(async ({ id, kind, spam, NOTE_INTERVAL_MS, STRESS_DURATION_MS, SPAM_INTERVAL_MS, PITCHES, MAX_BLOCK_MS }) => {
     const ctx = window.__audioCtx;
@@ -209,19 +160,14 @@ function evaluate(label, kind, base, spam) {
   console.log(`[TEST]   baseline: renders=${base.renders} (worker=${base.workerRenders} main=${base.mainThreadRenders}) maxGap=${base.maxGapMs.toFixed(1)}ms`);
   console.log(`[TEST]   +spam   : renders=${spam.renders}/${spam.notes} ratio=${ratio.toFixed(2)} worker=${spam.workerRenders} main=${spam.mainThreadRenders} maxGap=${spam.maxGapMs.toFixed(1)}ms p90Gap=${spam.p90GapMs.toFixed(1)}ms blocked>${MAX_BLOCK_MS}ms=${spam.blockedOverMax} audio=${JSON.stringify(spam.audio)}`);
 
-  // PRIMARY (machine-independent): the heavy C renders triggered by the param
-  // spam must run OFF the main thread. With the bug every render is a
-  // synchronous main-thread ccall (mainThreadRenders == renders, workerRenders
-  // == 0); with the off-thread fix the renders go to the worker.
+  // Machine-independent: the spam's renders must run on the worker.
   if (spam.renders > 0 && spam.workerRenders === 0) {
     failures.push(`${label}: NO renders went off-thread (workerRenders=0 of ${spam.renders}). Live param edits still render synchronously on the main thread.`);
   }
   if (spam.mainThreadRenders > 0) {
     failures.push(`${label}: ${spam.mainThreadRenders} render(s) ran on the MAIN THREAD during param spam (each ~30–40ms blocks the UI + audio scheduler). Expected 0 — renders must be off-thread.`);
   }
-  // SECONDARY (behavioural, env-tunable): no long main-thread stall, no overdue
-  // audio. These cross-check that off-thread rendering actually unblocked the
-  // event loop. Kept generous so they don't flake on slow CI.
+  // Cross-checks that off-thread rendering really unblocked the loop; generous for slow CI.
   if (spam.blockedOverMax > 0) {
     failures.push(`${label}: main thread stalled >${MAX_BLOCK_MS}ms ${spam.blockedOverMax} time(s) (maxGap ${spam.maxGapMs.toFixed(1)}ms).`);
   }
@@ -231,10 +177,7 @@ function evaluate(label, kind, base, spam) {
   if (spam.audio && spam.audio.overdue > 0) {
     failures.push(`${label}: ${spam.audio.overdue} overdue audio event(s) scheduled in the past during param spam.`);
   }
-  // INFO only: the render-storm ratio is expected to stay high with the chosen
-  // off-thread approach (renders happen ~per change, just not on the main
-  // thread). Logged for visibility, not gated. MAX_RENDER_RATIO is referenced
-  // here so the knob stays documented.
+  // INFO only: renders still happen ~once per change, just off the main thread.
   if (ratio > MAX_RENDER_RATIO) {
     console.log(`[TEST]   (info) render/note ratio ${ratio.toFixed(2)} > ${MAX_RENDER_RATIO} — renders happen per change but off-thread.`);
   }

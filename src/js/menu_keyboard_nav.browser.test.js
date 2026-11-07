@@ -1,21 +1,6 @@
-/**
- * Menu keyboard navigation — REAL key events through the canvas.
- *
- * COVERED-BY-GO (logic + wiring):
- *   internal/ui/menu_keynav_test.go             — MenuKeyNav movement, header
- *       skipping, clamping, carry of the hover/keyboard cursor.
- *   internal/ui/menu_keynav_integration_test.go — every list menu, driven
- *       through the real Game.Update loop with injected keys.
- *   internal/ui/menu_keynav_discipline_test.go  — a new menu cannot ship
- *       without keyboard nav or an explicit exemption.
- *
- * WHAT ONLY THIS TEST CAN COVER (per the JS Test Charter, § "Real input
- * dispatch through the canvas"): that real browser keydown events actually
- * reach the Go key handlers at all. The Go tests inject through the
- * `isKeyPressed` func var, so they prove the LOGIC but never that a physical
- * ArrowDown in a browser is delivered to it — the Ebiten JS keyboard path, the
- * canvas focus, and any page-level key interception are all invisible to them.
- */
+/** Real browser keydowns must reach Go's key handlers at all: the Go tests inject through isKeyPressed and never see
+ * the Ebiten JS path or canvas focus. COVERED-BY-GO: menu_keynav_test.go, menu_keynav_integration_test.go,
+ * menu_keynav_discipline_test.go */
 import { setupFullWasm } from "./real_input_test_helpers.js";
 import { flushCoverage, isCoverageEnabled } from "./coverage_helpers.js";
 
@@ -28,29 +13,8 @@ async function navState(menu) {
   return await page.evaluate((m) => menuKeyNavState(m), menu);
 }
 
-/**
- * Press a key as a REAL browser key event, then wait for the frame that
- * CONSUMED it instead of guessing at a fixed delay.
- *
- * The old form slept a flat 120 ms. That is an arbitrary timeout, and under
- * the parallel browser suite (4 jobs, software WebGL, "GPU stall due to
- * ReadPixels" in the log, a 7.4 s circuit warm-up) a single frame can outlast
- * it — so the state read landed BEFORE the frame that processed the key and
- * the test reported "second ArrowDown did not advance the highlight (2 -> 2)"
- * while passing every time in isolation. The key was never lost: Ebiten 2.9
- * timestamps presses (internal/ui/input.go inputStatePressed), so even a
- * keydown+keyup inside one tick still reads as pressed on that tick.
- *
- * So poll for the effect, mirroring clickUntilStateChanges in
- * real_input_test_helpers.js — and press exactly ONCE, never retrying: a
- * repeated ArrowDown would advance the highlight twice and corrupt the very
- * thing under test. On timeout it returns quietly and lets the caller's own
- * assertion produce the real message.
- *
- * @param {string}   key    - Playwright key name
- * @param {Function} until  - async predicate; resolves true once the frame
- *                            that consumed the key has run
- */
+/** Polls for the frame that CONSUMED the key: a fixed sleep read state before a slow frame processed it. Presses
+ * exactly once (a retry would advance twice); on timeout returns quietly so the caller's assertion speaks. */
 async function pressKey(key, until) {
   await page.keyboard.press(key);
   const deadline = Date.now() + 5000;

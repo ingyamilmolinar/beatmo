@@ -1,39 +1,6 @@
-/**
- * Audio-tab source of truth: browser vs the native golden (WASM)
- *
- * The programmatic replacement for eyeballing a screenshot of the audio
- * panel. Three checks, ordered so the first failure already names the layer
- * that broke:
- *
- *  1. CROSS-PLATFORM, BYTE FOR BYTE. `audioTabTapDigest()` runs the SAME Go
- *     derivations (internal/ui/audio_tab_tap.go) over the SAME canonical
- *     fixture that produced testdata/audio_tab_tap_golden.json natively.
- *     Identical code + identical input must give identical bytes, so every
- *     section digest must match exactly. This is what makes the comparison
- *     apples-to-apples: it does NOT compare a live browser analyser against
- *     a live native one, which would be comparing a Blackman-windowed FFT
- *     against a Hann-windowed one and calling the difference a bug.
- *
- *  2. DETERMINISM IN THE BROWSER. Called twice, same bytes. Catches state
- *     leaking across calls under wasm specifically.
- *
- *  3. LIVE SHAPE. `audioTabTapLiveShape(id)` measures what the real
- *     AnalyserNode bridge actually delivers for a real channel, and asserts
- *     every display band contains at least one FFT bin. THIS is the check
- *     that would have caught the 2026-09-19 blank Spectrum: the bridge
- *     delivered 64 bins spanning 0..Nyquist (375 Hz apart at 48 kHz) while
- *     the narrowest band is 24 Hz wide, so the four lowest bands — a kick's
- *     entire spectrum — held nothing and reported the reference floor. The
- *     audio was perfect. Desktop was perfect. Only the shape was wrong, and
- *     nothing compared shapes.
- *
- * Charter fit (CLAUDE.md § JS Test Charter): cross-platform parity (§5) plus
- * the WASM<->WebAudio analyser boundary (§1/§4) — neither reachable from Go.
- *
- * Regenerating: if a change to the derivations is intended, run
- *   AUDIO_TAP_GOLDEN_UPDATE=1 go test -tags test -run TestAudioTabTapMatchesGolden ./internal/ui/
- * and re-run this test. Both halves read the same file.
- */
+/** The audio tab's source of truth against the native golden, ordered so the first failure names the layer: the SAME Go
+ * derivations over the SAME fixture must give identical bytes; the same bytes twice; and the LIVE analyser shape must put
+ * a bin in every display band. Regenerate: AUDIO_TAP_GOLDEN_UPDATE=1 go test -tags test -run TestAudioTabTapMatchesGolden ./internal/ui/ */
 
 import { readFileSync } from "node:fs";
 import { setupFullWasm } from "./real_input_test_helpers.js";
@@ -81,20 +48,12 @@ try {
       continue;
     }
     if (have.count !== want.count) {
-      // Called out separately: a length change means the data's SHAPE moved,
-      // which silently redraws everything downstream of it.
+      // A length change moves the data's SHAPE, which silently redraws everything downstream.
       failures.push(`${want.name}: length ${have.count}, want ${want.count} — the data's SHAPE differs between platforms`);
       continue;
     }
-    // digest_q, NOT digest: raw IEEE-754 bits are not reproducible between
-    // amd64 and wasm downstream of a transcendental. Measured on this very
-    // fixture, math.Exp(-1000/90) is 0.034329453106454272 natively and
-    // 0.03432945310645428 under GOOS=js — one ULP, because amd64 uses FMA
-    // and wasm does not, reaching ~8e-15 dB. digest_q is the same byte-for-
-    // byte comparison over values snapped to a 1e-6 grid: nine orders above
-    // that noise, four orders below anything a pixel could show. Sections
-    // made only of integers or of +-*/ carry an IDENTICAL digest and
-    // digest_q, so for those this is still an exact-bits comparison.
+    // digest_q, NOT digest: raw bits differ between amd64 and wasm downstream of a transcendental (FMA, one ULP); a 1e-6
+    // grid sits far above that noise and below anything a pixel shows. Integer and +-*/ sections are still exact bits.
     if (have.digest_q !== want.digest_q) {
       failures.push(`${want.name}: ${have.count} elements, values differ (${have.digest_q.slice(0, 12)} != ${want.digest_q.slice(0, 12)})`);
     }
@@ -137,9 +96,7 @@ try {
   await page.evaluate(() => { setActiveEQTab?.("spectrum"); startPlay?.(); });
   await new Promise((r) => setTimeout(r, 1500));
 
-  // Master plus one instrument channel. The defect emptied BOTH platforms'
-  // bass bands but only ever showed on an instrument channel, because
-  // master is broadband and its mid/high bands kept the plot looking alive.
+  // Master is broadband, so its mid/high bands keep a plot alive while an instrument's bass bands are empty.
   const probes = ["main", rowIDs[0]];
   const shapeFailures = [];
   for (const id of probes) {

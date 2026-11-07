@@ -1,34 +1,6 @@
-/**
- * Edit → Synth-tab SAVE / SAVE AS → export → import: the browser must play
- * back exactly what the user tuned, byte for byte.
- *
- * JS Test Charter §1/§4: the browser renders every voice from the param block
- * Go pushes for each instrument document (window.setInstrumentBlock, spec
- * 2026-10-04 §8). Whether that pushed block survives Save, Save As, an export
- * and an import — into the same page, a reloaded profile, and a clean machine
- * — is only visible here; the native identity tests
- * (internal/ui/export_import_master_audio_identity_test.go) render natively.
- *
- * History: before instrument documents the browser kept its own merged mirror
- * of recipe defaults + overlay, and a rebind left it rendering a hybrid of two
- * recipes, so a Save moved the voice and an export → import brought back the
- * post-Save sound instead of the tuned one. The checks below are what caught it.
- *
- * WHAT IS COMPARED: the full PCM of every row's voice (a hash over every
- * float32 sample the JS render produced, sample-edit applied), not a peak/RMS
- * fingerprint. The master mix is not — EQ, sends and pan are browser-built
- * WebAudio nodes; the file's master-mix identity is pinned on native against
- * the real C DSP (export_import_master_audio_identity_test.go), and the config
- * those nodes are built from is pinned here through the re-export bytes.
- *
- * Three import targets, because they fail differently:
- *   - the SAME page (the user re-opens the file they just saved),
- *   - a RELOADED page in the same browser profile (the Saves persisted to the
- *     instrument library and are re-loaded at boot),
- *   - a CLEAN browser context (another machine: an empty instrument library).
- *
- * Run: GO=/abs/path/.tools/go/bin/go node src/js/synth_save_export_import.browser.test.js
- */
+/** Whether the pushed block survives Save, Save As, export and import is visible only here: every row's full voice PCM
+ * (hashed) in the same page, a reloaded profile (Saves reloaded at boot) and a clean context (an empty library). The
+ * master mix is pinned natively; here its config is pinned through the re-export bytes. */
 import * as pw from "playwright";
 import { buildMainWasm, createServer } from "./real_input_test_helpers.js";
 
@@ -49,11 +21,7 @@ const READY = () =>
   typeof window.captureInstrumentPCM === "function" &&
   typeof window.__testCaptureSynthRender === "function";
 
-/**
- * Installed into every page: renders each row's voice fresh and hashes all of
- * its samples. FNV-1a over the float32 bit patterns — any single-sample change
- * moves the hash.
- */
+/** FNV-1a over the float32 bits: any single-sample change moves the hash. */
 const INSTALL_HELPERS = () => {
   window.__rowIDs = () => {
     const ids = [];
@@ -115,8 +83,7 @@ try {
     out.ids = ids;
     out.origins = Object.fromEntries(ids.map((id) => [id, (JSON.parse(window.getInstrumentDoc(id) || "{}").origin || "")]));
     out.steps.loaded = await window.__voices();
-    // The circuit as it opened, before any edit: reopened later in a profile
-    // holding the user's Saves, the Saved instruments must play the SAVED tone.
+    // Reopened later in a profile with the user's Saves, the Saved instruments must play the SAVED tone.
     out.original = window.exportJSON();
 
     // "Selected instruments": swap the LAST row to a different instrument.
@@ -124,9 +91,7 @@ try {
     window.setRowInstrument(ids.length - 1, swapTo);
     out.swapped = window.rowInstrument(ids.length - 1);
 
-    // Synth knobs on every row: move a handful of the document's values, one
-    // SetInstrumentParam at a time (what the Synth tab writes). Keys walked in
-    // sorted order, stride chosen so every module gets touched several times.
+    // One write at a time, as the Synth tab does; sorted keys with a stride so every module is touched several times.
     const knob = (id, stride, bump) => {
       const defs = window.getInstrumentParams(id) || {};
       const keys = Object.keys(defs).sort().filter((k) => !/(_enabled|_on|_type|variant|order|voices)$/.test(k));
@@ -143,20 +108,14 @@ try {
     for (const id of window.__rowIDs()) window.saveActiveRecipe(id);
     out.steps.saved = await window.__voices();
 
-    // Synth-tab SAVE AS on the third row: more knobs, then Save As (a new user
-    // instrument; the row's copy is repointed at it). On a clean machine the
-    // file is the only carrier of that tone.
+    // On a clean machine the file is the only carrier of a Save As tone.
     const rows = window.__rowIDs();
     knob(rows[2], 5, 0.3);
     out.steps.beforeSaveAs = await window.__voiceHash(rows[2]);
     out.saveAsID = window.saveActiveRecipeAs(rows[2], "My Tuned " + rows[2]);
     out.steps.afterSaveAs = await window.__voiceHash(rows[2]);
 
-    // Live edits AFTER the Save, then Saved again. A user's Save trumps the
-    // document a circuit carries for the same instrument on every open, so an
-    // unsaved edit would (by design) come back as the Saved tone in this
-    // profile; Saving it keeps the same-page / reloaded-page identity checks
-    // meaningful, and the clean profile still proves the FILE carries it.
+    // Saved again: a user's Save trumps the circuit's document on open, so an unsaved edit would come back as the Saved tone.
     knob(rows[0], 11, -0.2);
     window.saveActiveRecipe(rows[0]);
 
@@ -189,9 +148,7 @@ try {
   if (edited.steps.final[edited.ids[1]] === edited.steps.saved[edited.ids[1]]) fail(`the sample edit on ${edited.ids[1]} did not change its voice`);
   if (!edited.exported) fail("exportJSON returned nothing");
 
-  // ── 2. Save must not change the sound ────────────────────────────────────
-  // It copies the ALREADY-HEARD document into the library; the row's document
-  // (and so the pushed block) does not change.
+  // Save copies the ALREADY-HEARD document; the row's block does not change.
   for (const d of voiceDiff(edited.steps.edited, edited.steps.saved)) fail(`Synth-tab Save changed the voice: ${d}`);
   if (!edited.saveAsID) fail("Save-As (saveActiveRecipeAs) saved nothing");
   if (edited.steps.beforeSaveAs !== edited.steps.afterSaveAs) {
@@ -226,10 +183,7 @@ try {
     return { err, voices: await window.__voices(), exported: window.exportJSON(), fx: window.getInsertEffects(window.__rowIDs()[0]) };
   }, edited.exported));
 
-  // ── 4b. The reloaded profile reopens the ORIGINAL circuit ───────────────
-  // Its Saves persisted to localStorage and were loaded at boot: every Saved
-  // instrument the circuit carries plays the user's saved tone, not the
-  // circuit's (rows 0..2 kept their ids; the last row was swapped away).
+  // Saves loaded at boot: each Saved instrument the circuit carries plays the user's tone, not the circuit's.
   const reopened = await b.evaluate(async (doc) => {
     const err = window.importJSON(doc);
     return { err, voices: await window.__voices() };

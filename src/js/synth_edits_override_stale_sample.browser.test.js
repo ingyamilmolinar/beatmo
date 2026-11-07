@@ -1,29 +1,6 @@
-/**
- * Regression: synth edits must take effect on a recipe-bound builtin even when
- * a STALE persisted sample (legacy destructive Sampler-Save PCM in IndexedDB)
- * exists for that instrument id (WASM, production build).
- *
- * Bug class (user-reported "knobs / stage toggles / Save do nothing on WASM,
- * desktop fine — tested with snare"): pre-descriptor Sampler-Save baked PCM
- * over a builtin and persisted it. On every later browser session,
- * audio.ApplySavedSamples re-registers that PCM (registerSamplePCM →
- * DELETES RENDER['snare'], plants frozen PCM in renderCache) while
- * bindBuiltinInstrumentRecipes restores the snare's recipe binding. The
- * Synth tab then shows live knobs (binding intact) and every edit flows
- * through the Go→JS bridge — but _updateInstrumentParams skips cache
- * invalidation for sample instruments (no RENDER[id]) and ensureRenderedSample
- * can't re-render, so the sound NEVER changes. Desktop in the identical state
- * takes the recipe path as soon as params exist, so edits are audible there.
- *
- * Intended semantics (2026-06-03): synths remain synths — a recipe-bound
- * builtin must never be frozen by a stale PCM registration; synth edits win
- * on both platforms.
- *
- * This test seeds the legacy state end-to-end (IndexedDB → reload →
- * ApplySavedSamples) and asserts synth knob edits still re-render audibly.
- *
- * Run: GO=/abs/path/.tools/go/bin/go node src/js/synth_edits_override_stale_sample.browser.test.js
- */
+/** Synths remain synths: a stale persisted sample (old destructive Sampler-Save PCM) re-registered at startup froze the
+ * browser's synth, so knobs, stages and Save did nothing while desktop kept responding. Seeds that state end to end
+ * (IndexedDB → reload) and asserts knob edits still re-render audibly. */
 import { chromium } from "playwright";
 import { buildMainWasm, createServer } from "./real_input_test_helpers.js";
 import { waitForAudioReady } from "./browser_test_helpers.js";
@@ -87,11 +64,7 @@ try {
       sig: r.head.slice(0, 8).map((v) => v.toFixed(6)).join(","),
     } : null;
 
-    // Synth knob edits — the user gesture that must always be audible on a
-    // recipe-bound builtin. decay extremes produce visibly different tails.
-    // Decay renders through the shared FINISH stage (post_decay, [0,1], 1 =
-    // no fade). This test is about the edit REACHING the render past a stale
-    // sample, so any live value proves it.
+    // The FINISH fade ([0, 1], 1 = no fade): any live value proves the edit reaches the render past the stale sample.
     const DECAY = "post_decay";
     setInstrumentParam(id, DECAY, 0.25);
     await new Promise((r) => setTimeout(r, 100));
@@ -101,9 +74,7 @@ try {
     await new Promise((r) => setTimeout(r, 100));
     const longDecay = summarize(await window.__testCaptureSynthRender(id));
 
-    // What will the NEXT trigger actually play? (renderCache is what
-    // processAudioEvent reads.) A frozen 330 Hz sine chop means the edits are
-    // audibly dead even if a render could be forced elsewhere.
+    // renderCache is what the next trigger plays; a frozen 330 Hz chop means the edits are dead.
     const played = window.getCachedRenderData(id);
     let playedPeak = 0;
     if (played) for (let i = 0; i < played.length; i++) { const a = Math.abs(played[i]); if (a > playedPeak) playedPeak = a; }
@@ -122,8 +93,7 @@ try {
     if (!(result.shortDecay.peak > 1e-3) || !(result.longDecay.peak > 1e-3)) {
       fail(`synth renders are silent (short.peak=${result.shortDecay.peak}, long.peak=${result.longDecay.peak})`);
     }
-    // decay=0.25 vs decay=4 must differ materially: the long-decay render keeps
-    // far more tail energy. Render-level (deterministic), not wall-clock capture.
+    // Render-level, deterministic: the long-decay render keeps far more tail.
     const ratio = result.longDecay.tailRMS / Math.max(result.shortDecay.tailRMS, 1e-9);
     if (!(ratio > 1.5)) {
       fail(
@@ -131,8 +101,7 @@ try {
         `long=${result.longDecay.tailRMS}, ratio=${ratio.toFixed(3)}) — knob edits are not reaching the synth.`,
       );
     }
-    // And the playback cache must hold the (long-decay) SYNTH render, not the
-    // frozen 330 Hz chop: same length as the fresh render, not the seeded 19200.
+    // The cache must hold the synth render, not the seeded 19200-sample chop.
     if (result.playedLen !== result.longDecay.length) {
       fail(
         `playback cache holds a different buffer than the fresh synth render ` +

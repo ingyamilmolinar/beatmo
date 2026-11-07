@@ -1,19 +1,5 @@
-/**
- * Visual Regression Test
- *
- * Stores golden baseline PNGs for specific viewports. On each run, takes
- * a screenshot and compares with pixelmatch. If the diff exceeds a
- * threshold (0.5% of pixels), fails and saves a diff image for debugging.
- *
- * Also runs layout sanity checks via fullLayoutSnapshot() and saves the
- * layout JSON alongside golden PNGs for debugging.
- *
- * First run bootstraps golden files automatically.
- *
- * Golden update workflow:
- *   make test-visual-update   # Delete old goldens and re-bootstrap
- *   make test-visual          # Run regression check
- */
+/** Golden PNGs per viewport compared with pixelmatch (fails above 0.5 % of pixels, saving a diff), plus layout checks.
+ * The first run bootstraps goldens; make test-visual-update re-bootstraps, make test-visual checks. */
 
 import { chromium } from "playwright";
 import fs from "fs";

@@ -1,30 +1,6 @@
-// dev_server_boot.browser.test.js
-//
-// The page must BOOT when served by `make serve` -- the server a developer
-// actually runs (scripts/serve_nocache.py), not a Node replica of it.
-//
-// Every other browser test serves src/js/ from Node (real_input_test_helpers'
-// createServer, landing_server.js, wasm_load_startup's gzip server), and Node
-// answers requests concurrently. `make serve` was a ONE-connection-at-a-time
-// Python server, and index.html's first <head> script (landing page spec,
-// "boot order is game-first") starts fetch("main.wasm") before audio.js and its
-// static imports have loaded. Chromium stops reading an unconsumed body after a
-// few MB, the single-threaded server blocks writing the wasm, audio.js's
-// imports (synth_param_abi.gen.js, chain_spec.gen.js, dsp_host.js) are
-// never answered, and the module that would consume the wasm never runs: the
-// page sits on "Loading..." forever with NO console error. Firefox and WebKit
-// buffer the whole body, so only Chromium-family browsers hung.
-//
-// Checked, per engine (Chromium, Firefox, WebKit):
-//   - the plain dev page (no landing) reaches its first frame (TTI);
-//   - ?landing=1 shows the landing and its Play button becomes ready.
-// Fast, browser-free half of the same guard (the server answers while another
-// response is unread): src/go/internal/deploy/dev_server_concurrency_test.go.
-//
-// Run: GO=$(pwd)/.tools/go/bin/go node src/js/dev_server_boot.browser.test.js
-//   WASM_PREBUILT=1 serves the existing src/js/main.wasm;
-//   DEV_BOOT_ENGINES=chromium,firefox,webkit picks engines;
-//   DEV_BOOT_TIMEOUT_MS (default 60000) bounds each boot.
+// The page must BOOT under `make serve`'s real server, not a Node replica: index.html fetches main.wasm before
+// audio.js's imports, Chromium stops reading an unread body after a few MB, and a one-connection server then never
+// answers the imports (a silent "Loading..."). Run: GO=… node src/js/dev_server_boot.browser.test.js (DEV_BOOT_ENGINES=)
 
 import { chromium, firefox, webkit } from "playwright";
 import { spawn, spawnSync } from "child_process";
@@ -80,8 +56,7 @@ function check(ok, msg) {
   if (!ok) { failures.push(msg); console.error(`  FAIL ${msg}`); } else console.log(`  ok   ${msg}`);
 }
 
-// What the page reached, for the failure message: which boot milestone it
-// stopped at and which requests never completed.
+// Which boot milestone it stopped at and which requests never completed.
 async function bootState(page) {
   return page.evaluate(() => ({
     boot: window.__beatmoBoot || null,
@@ -109,8 +84,7 @@ try {
         page.on("requestfailed", (r) => pending.delete(r));
         const errors = [];
         page.on("pageerror", (e) => errors.push(e.message));
-        // "commit", not "load": a hung boot never fires load, and the
-        // diagnosis below is the point of the test.
+        // "commit", not "load": a hung boot never fires load, and the diagnosis is the point.
         await page.goto(`http://127.0.0.1:${port}/${variant.query}`, { waitUntil: "commit" });
         const ready = variant.landing
           ? () => document.documentElement.hasAttribute("data-landing") &&

@@ -1,18 +1,5 @@
-/**
- * Logs-panel search caret editing via REAL keyboard events.
- *
- * Reproduces the reported bug: open the logs panel, focus its search bar, type a
- * query, move the caret back to the START with ArrowLeft, and type a character —
- * the character must insert AT the caret (not at the end, and not be dropped).
- * Also exercises Home/End (jump to start/end) and Delete (forward delete), which
- * the "full navigation" requirement demands. Exercises the browser keyboard path
- * (canvas focus, soft-keyboard proxy) that Go's stubbed-input tests cannot reach.
- * Charter: real input dispatch through the canvas (item 6).
- *
- * Go-side coverage of the same contract with stubbed input:
- *   internal/ui/logs_search_caret_repro_test.go
- *   internal/ui/textinput_test.go
- */
+/** Through REAL keyboard events in the logs panel: a character typed after ArrowLeft lands AT the caret, and Home, End
+ * and Delete work. COVERED-BY-GO: logs_search_caret_repro_test.go, textinput_test.go */
 import { setupFullWasm, clickAndHold } from "./real_input_test_helpers.js";
 
 let cleanup;

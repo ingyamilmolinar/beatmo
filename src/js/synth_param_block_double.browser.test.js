@@ -1,19 +1,6 @@
-/**
- * The modular param block is DOUBLE (config-only engine refactor, Phase A —
- * docs/superpowers/plans/2026-10-02-config-only-synth-engine.md).
- *
- * C reads `modular_params` as 8-byte doubles, so BOTH JS render paths must
- * write the block as a Float64Array into HEAPF64 at an 8-byte-aligned pointer:
- * the off-thread worker (synth_render_worker.js) and the synchronous fallback
- * (audio.js renderVoiceSync). A path left on Float32Array/HEAPF32 hands C a
- * reinterpreted block — wrong variant, wrong pitch, silence or NaN.
- *
- * For a spread of shipped modular voices this asserts:
- *   1. the render is finite and audible (peak in a sane range), and
- *   2. the worker render and the forced-sync render are BIT-IDENTICAL.
- * The native side is pinned by Go's TestModularParamsAreDouble + the render
- * parity tool; cross-platform agreement by xplat_audio_compare.
- */
+/** C reads the block as doubles, so BOTH render paths (the worker and the sync fallback) must write a Float64Array at an
+ * 8-byte-aligned pointer; a Float32 path hands C a reinterpreted block. Each voice must render finite and audible, the two
+ * paths bit-identical. */
 import * as pw from "playwright";
 import { buildMainWasm, createServer } from "./real_input_test_helpers.js";
 
@@ -23,9 +10,7 @@ const IDS = ["kick-boom-bap", "kick-fat", "kick-acoustic", "cello", "fm-bell", "
 let failed = false;
 const fail = (m) => { failed = true; console.error("[FAIL] " + m); };
 
-// Wait for the circuit warm-up gate: recipe defaults are seeded to the platform
-// asynchronously at boot, and a render that races the seed differs from every
-// later one (measured: ride's first render != its steady state in BOTH paths).
+// A render racing the boot-time seeding differs from every later one.
 const READY = () =>
   typeof window.captureInstrumentPCM === "function" &&
   typeof window.__testCaptureSynthRender === "function" &&
@@ -79,21 +64,17 @@ try {
       if (!v.finite) fail(`${id} (${path}): non-finite samples — C read a garbage param block`);
       if (!(v.peak > 0.05 && v.peak <= 1.5)) fail(`${id} (${path}): peak ${v.peak} out of range — silent or exploded voice`);
     }
-    // A failed render (e.g. a stale drums.single.js glue with no HEAPF64) now
-    // THROWS — there is no substitute voice — so a capture that returned
-    // rendered for real. Still require each path to be the one asked for.
+    // A failed render THROWS (no substitute voice); each path must also be the one asked for.
     if (worker.viaWorker !== true) fail(`${id}: worker run did not render on the worker (viaWorker=${worker.viaWorker})`);
     if (sync.viaWorker !== false) fail(`${id}: forced-sync run rendered on the worker (viaWorker=${sync.viaWorker})`);
     if (worker.hash && sync.hash && worker.hash !== sync.hash) {
       fail(`${id}: worker render ${worker.hash} != sync render ${sync.hash} — the two paths write the param block differently`);
     }
   }
-  // Every voice is a different instrument: identical renders mean they all fell
-  // back to one default voice.
+  // Identical renders would mean they all fell back to one voice.
   const hashes = res.map((r) => r.worker.hash);
   if (new Set(hashes).size !== hashes.length) fail(`instrument renders are not all distinct: ${hashes.join(", ")}`);
-  // The loaded C engine was compiled with the layout audio.js marshals: a glue
-  // built from an older header reads every later field at a shifted offset.
+  // A glue built from an older header reads later fields at shifted offsets.
   const abi = await page.evaluate(() => ({ n: window.__synthEngineParamCount, stale: window.__synthABIStale }));
   if (!(abi.n > 0) || abi.stale !== false) {
     fail(`engine ABI check: compiled param count ${abi.n}, stale=${abi.stale} — drums.single.js does not match synth_param_abi.gen.js`);

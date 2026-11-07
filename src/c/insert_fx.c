@@ -689,10 +689,6 @@ void ifx_tremolo_set_param(ifx_tremolo_t *t,
     }
 }
 
-/* ==== Gate ==== */
-/* (Coefficients are computed inline in init/set_param; there is no separate
- * recalc step — a vestigial empty gate_recalc helper was removed.) */
-
 EXPORT void ifx_gate_init(ifx_gate_t *g, int sr,
                             float threshold_db, float attack_ms,
                             float release_ms, float range_db) {
@@ -1032,16 +1028,11 @@ EXPORT void ifx_autowah_process(ifx_autowah_t *a,
         float env_mod = env * sensitivity * 5000.0f;
         float lfo_mod = lfo * depth * 3000.0f;
         float fc = 200.0f + env_mod + lfo_mod;
-        /* Chamberlin SVF stability bound: keep fc below ~sr/6 so
-         * f_coef = 2*sin(pi*fc/sr) stays under 1.0. The previous 0.45*sr
-         * clamp allowed f_coef ~ 1.97, which diverges. */
+        /* Chamberlin SVF stability: fc below ~sr/6 keeps f_coef = 2·sin(π·fc/sr) under 1. */
         if (fc > sr * 0.16f) fc = sr * 0.16f;
         if (fc < 50.0f) fc = 50.0f;
 
-        /* State-variable filter (bandpass). The damping term is 1/Q —
-         * feeding Q in directly (the original code) over-damps past the
-         * stable (0,2) region and explodes within a few blocks on hot
-         * input (caught by TestInsertFXProcessBlockBufAllEffects). */
+        /* The damping term is 1/Q: feeding Q directly over-damps past the stable (0,2) region and explodes on hot input. */
         float f_coef = 2.0f * sinf((float)M_PI * fc / sr);
         float q = 0.5f + depth * 4.5f; /* Q from 0.5 to 5 */
         float damp = 1.0f / q;

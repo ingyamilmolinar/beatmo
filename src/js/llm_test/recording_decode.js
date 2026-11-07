@@ -1,8 +1,4 @@
-/**
- * Stored-ZIP + WAV decode + RMS — factored from recording_lifecycle.browser.test.js
- * so the agent harness can verify captured audio is non-silent (measure_audio tool).
- * Assert-free: throws Error on malformed input.
- */
+/** So the agent harness can verify captured audio is non-silent. Throws on malformed input. */
 
 /** Parse a stored-only PKZIP (as produced by recording_encoder_worker.js). → { name: Uint8Array }. */
 export function parseZip(buf) {

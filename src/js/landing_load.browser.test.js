@@ -1,28 +1,6 @@
-// landing_load.browser.test.js
-//
-// Cold-load evidence for the landing page (spec
-// docs/superpowers/specs/2026-10-23-landing-page-design.md): measures the
-// game's time-to-interactive with and without the landing under THROTTLED
-// network + CPU, and checks the landing's boundary behaviour (shell paints,
-// crystal draws, Play enables on readiness and hands over, the opt-out skip,
-// muted video). The landing's full behaviour is landing_behavior.browser.test.js.
-//
-// Why throttled: on localhost bandwidth is infinite, so a landing that steals
-// bandwidth from main.wasm would pass any TTI gate by construction.
-//
-// Every run is COLD (a fresh browser context = empty HTTP cache + storage).
-// Arms run interleaved so drift in machine load hits every arm alike.
-//
-// Env:
-//   WASM_FILE=<path>          main.wasm to serve (default src/js/main.wasm)
-//   LANDING_RUNS=<n>          cold runs per arm (default 3)
-//   LANDING_PROFILE=4g|slow4g|desktop|none   (default 4g)
-//   LANDING_ARMS=a,b          subset of arms (baseline,landing,skip,nolanding)
-//   BASELINE_INDEX=<path>     index.html for the "baseline" arm (no landing)
-//   LANDING_ENCODING=gzip|br  main.wasm content-encoding (default gzip)
-//   LANDING_TTI_MAX_RATIO     landing/baseline median TTI gate (default 1.10)
-//   LANDING_BENCH_OUT=<path>  write the JSON results here
-//   LANDING_CHANNEL=chrome    browser channel (default chrome; "" = bundled Chromium)
+// Cold-load TTI with and without the landing under THROTTLED network and CPU (on localhost a bandwidth-stealing
+// landing would pass by construction), every run cold, arms interleaved. Env: WASM_FILE, LANDING_RUNS, LANDING_PROFILE,
+// LANDING_ARMS, BASELINE_INDEX, LANDING_ENCODING, LANDING_TTI_MAX_RATIO, LANDING_BENCH_OUT, LANDING_CHANNEL.
 
 import { chromium } from "playwright";
 import fs from "fs";
@@ -39,8 +17,7 @@ const MAX_RATIO = Number(process.env.LANDING_TTI_MAX_RATIO || 1.1);
 const BASELINE_INDEX = process.env.BASELINE_INDEX || "";
 const ARMS = (process.env.LANDING_ARMS || (BASELINE_INDEX ? "baseline,landing,skip" : "landing,skip")).split(",");
 
-// Throughput in bytes/s, latency in ms. "4g" ~ a decent phone connection,
-// "slow4g" the Lighthouse mobile profile. CPU rate 4 = a mid-range phone.
+// Bytes/s and ms. "4g" a decent phone connection, "slow4g" Lighthouse mobile; CPU 4 a mid-range phone.
 const PROFILES = {
   "4g": { latency: 85, down: (9e6 / 8), up: (1.5e6 / 8), cpu: 4, viewport: { width: 390, height: 844 }, mobile: true },
   slow4g: { latency: 150, down: (1.6e6 / 8), up: (0.75e6 / 8), cpu: 4, viewport: { width: 390, height: 844 }, mobile: true },
@@ -49,14 +26,11 @@ const PROFILES = {
 };
 const prof = PROFILES[PROFILE];
 
-// Server: mirrors production (landing_server.js) — text + wasm pre-compressed
-// (gzip, or br for main.wasm when asked), video served raw with Range support,
-// index.html stamped with a content hash exactly like the deploy does.
+// Like production: pre-compressed text and wasm, raw video with Range, a content-hash-stamped index.html.
 const server = createLandingServer({ wasmFile: WASM_FILE, encoding: ENCODING, level: 9, baselineIndex: BASELINE_INDEX });
 await new Promise((r) => server.listen(0, r));
 const base = `http://localhost:${server.address().port}`;
-// Real Chrome when installed: Playwright's bundled Chromium has no H.264, so
-// the landing would (correctly) never download its video there.
+// Bundled Chromium has no H.264, so the landing would never download its video there.
 const CHANNEL = process.env.LANDING_CHANNEL ?? "chrome";
 let browser;
 try {
@@ -88,9 +62,7 @@ async function coldPage(viewport) {
   return { ctx, page, cdp, bytes };
 }
 
-// The game is interactive when its first full frame has drawn AND the playback
-// readiness gate (circuit warm-up) is open — the same condition the landing's
-// Play button waits for.
+// The condition the landing's Play button waits for.
 const READY_FN = () => {
   const b = window.__beatmoBoot;
   if (!b || b.firstFrame == null) return false;
@@ -101,9 +73,7 @@ async function measure(arm) {
   const { ctx, page, bytes } = await coldPage();
   try {
     if (arm === "skip") {
-      // A visitor who ticked "Do not show tutorial demo again" on an earlier
-      // visit. Only the decision path is verified (the landing never appears,
-      // nothing of it is fetched) — the skip arm's timing is not compared.
+      // Only the decision path is verified; the skip arm's timing is not compared.
       await page.addInitScript(() => { try { localStorage.setItem("beatmo.landing.optOut", "1"); } catch (_) {} });
     }
     const t0 = Date.now();

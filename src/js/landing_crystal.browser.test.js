@@ -1,10 +1,5 @@
-// landing_crystal.browser.test.js — pure Node (no browser): the landing
-// crystal's growth rules (src/js/landing_crystal.js). Determinism per seed,
-// divergence across seeds, the graph invariants every rule set must keep, and
-// a bounded node count over a long run; then the VIEW the worker runs, driven
-// through its message protocol (the same messages landing.js posts) on a fake
-// canvas and a hand-cranked animation clock. Spec:
-// docs/superpowers/specs/2026-10-23-landing-page-design.md ("The crystal").
+// Pure Node: the crystal's growth rules (determinism per seed, divergence across seeds, graph invariants, a bounded node
+// count) and the worker's view driven through its real message protocol on a fake canvas and clock.
 import assert from "node:assert/strict";
 import { Crystal, RULES, MAX_NODES, seedFromString, createCrystalView } from "./landing_crystal.js";
 
@@ -57,8 +52,7 @@ for (let r = 0; r < RULES.length; r++) {
   }
 }
 
-// Growth speed: a tick must stay far below one frame on a slow phone (this
-// machine × ~4). Measured, reported, and gated loosely.
+// Far below one frame on a slow phone (this machine × ~4); gated loosely.
 {
   const c = new Crystal(seedA, 0);
   const t0 = performance.now();
@@ -67,9 +61,6 @@ for (let r = 0; r < RULES.length; r++) {
   console.log(`grow(): ${(per * 1000).toFixed(1)} µs/tick over 20k ticks, ${c.nodes.length} nodes, level ${c.level}`);
   assert.ok(per < 0.5, `grow() ${per.toFixed(3)} ms/tick`);
 }
-// ---------------------------------------------------------------------------
-// The view: messages in, frames out.
-// ---------------------------------------------------------------------------
 const rafQueue = [];
 globalThis.requestAnimationFrame = (cb) => rafQueue.push(cb);
 let clockMs = performance.now();
@@ -140,8 +131,7 @@ function crankBoth(views, n, each) {
   assert.ok(b.nodes() > a.nodes() * 2, `speed 8x grew ${b.nodes()} nodes, 0.25x ${a.nodes()}`);
 }
 
-// Planting: a click outside the recording adds a node there (once — the cell
-// is then taken); a click on the recording adds nothing.
+// Once (the cell is then taken); a click on the recording adds nothing.
 {
   const { v, nodes } = view();
   v.handle({ type: "pause", paused: true });

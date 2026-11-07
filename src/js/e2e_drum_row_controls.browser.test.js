@@ -1,9 +1,4 @@
-/**
- * Drum Row Controls Real Input Test
- *
- * Tests that Mute/Solo buttons and row color picker work via real canvas clicks.
- * Uses the FULL WASM build (main.wasm) with Playwright's native mouse methods.
- */
+/** Mute, Solo and the row colour picker through real canvas clicks on the full WASM build. */
 
 import {
   setupFullWasm,
@@ -29,9 +24,6 @@ try {
   await page.waitForTimeout(500);
   await waitForGameLoopRelease(page);
 
-  // ─────────────────────────────────────────────────────────────────────
-  // Test 1: Mute button
-  // ─────────────────────────────────────────────────────────────────────
   console.log("drum_row_controls_real: Testing Mute button...");
 
   const muteRect = await page.evaluate(() => rowMuteBtnRect?.(0));
@@ -47,15 +39,10 @@ try {
   );
   console.log("drum_row_controls_real: Muted after:", mutedAfter);
 
-  // Move cursor away and wait for the game loop to fully process the mouseup
-  // before the next click.  Without this, the adjacent button can swallow the
-  // click because the previous button's "held" state hasn't reset yet.
+  // Until the game loop processes the mouseup, the adjacent button can swallow the click (the previous one is still held).
   await page.mouse.move(0, 0);
   await waitForGameLoopRelease(page);
 
-  // ─────────────────────────────────────────────────────────────────────
-  // Test 2: Solo button
-  // ─────────────────────────────────────────────────────────────────────
   console.log("drum_row_controls_real: Testing Solo button...");
 
   const soloRect = await page.evaluate(() => rowSoloBtnRect?.(0));
@@ -75,9 +62,6 @@ try {
   await page.mouse.move(0, 0);
   await waitForGameLoopRelease(page);
 
-  // ─────────────────────────────────────────────────────────────────────
-  // Test 3: Color button opens color menu
-  // ─────────────────────────────────────────────────────────────────────
   console.log("drum_row_controls_real: Testing Color button...");
 
   const colorRect = await page.evaluate(() => rowColorBtnRect?.(0));

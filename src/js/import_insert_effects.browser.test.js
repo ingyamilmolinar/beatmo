@@ -1,24 +1,6 @@
-// import_insert_effects.browser.test.js
-//
-// Render-level guards for per-instrument insert effect chains across
-// importJSON — the Go↔WebAudio boundary the Go tests cannot reach:
-//
-//   1. Importing a project whose instrument carries an effect chain must
-//      reconfigure the live JS chain (worklet/fallback graph): captured
-//      playback audibly differs from the dry baseline, and getInsertEffects
-//      mirrors the imported slots (type/order/enabled/params).
-//   2. Importing a project WITHOUT effects after a live chain exists must
-//      clear the JS chain (audio.ClearAllInsertEffectsAndNotify →
-//      updateInsertEffects(id, null)): playback returns to ~baseline.
-//
-// COVERED-BY-GO: chain state round-trip + stale-chain clearing + processing
-// (internal/ui/insert_effects_roundtrip_test.go,
-// internal/audio/effect_chain_import_process_test.go,
-// internal/audio/effect_chain_sanitize_test.go). JS-owned here: the
-// updateInsertEffects bridge actually rewires the audible WebAudio chain on
-// import.
-//
-// Usage: GO=/path/to/.tools/go/bin/go node src/js/import_insert_effects.browser.test.js
+// Importing an effect chain must rewire the AUDIBLE WebAudio chain (and importing none must clear it), which Go
+// cannot reach. COVERED-BY-GO: insert_effects_roundtrip_test.go, effect_chain_import_process_test.go,
+// effect_chain_sanitize_test.go. Usage: GO=… node src/js/import_insert_effects.browser.test.js
 
 import { chromium } from "playwright";
 import http from "http";
@@ -72,14 +54,8 @@ const failures = [];
 try {
   browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 
-  // Page-load retry. The deprecated ScriptProcessorNode capture tap is serviced
-  // on the main thread, and on a minority of headless software-GL page loads the
-  // WASM game's draw loop starves it so persistently that NO capture (not even
-  // after priming + per-capture retries) ever delivers signal — the dry/wet
-  // REFERENCE captures throw "stayed silent". That is a property of the starved
-  // page load, not the code under test, so we discard it and retry the whole
-  // measurement on a fresh page. A genuine assertion failure is collected in
-  // `failures` (never thrown from measure()), so it is NEVER masked by a retry.
+  // On a minority of software-GL page loads the draw loop starves the main-thread capture tap for good, so that page
+  // is discarded and retried; a real assertion failure is collected, never thrown, so a retry never masks it.
   let measured = false;
   for (let pageAttempt = 1; pageAttempt <= 3 && !measured; pageAttempt++) {
   const page = await browser.newPage();
@@ -108,35 +84,21 @@ try {
     { timeout: 10000 }
   );
   await waitForAudioReady(page);
-  // Let the WASM game's heavy startup draw burst settle before we measure: it
-  // runs on the same main thread as the deprecated ScriptProcessorNode capture
-  // tap and, while it churns, starves the tap so it delivers all-zeros (the tap
-  // recovers once startup quiesces). The reliably-green full_game_playback_audio
-  // test waits 2500ms here for the same reason.
+  // The startup draw burst starves the main-thread capture tap until it quiesces.
   await page.waitForTimeout(2500);
   await page.evaluate(() => ensureSynthSample("kick"));
 
   const NOISE_FLOOR = 0.0001;
   const MAX_RETRIES = 5;
 
-  // captureKick: one self-contained capture of 3 spaced kicks through the LIVE
-  // master chain (limiter → capture tap), returning amplitude metrics plus the
-  // raw head of the waveform for correlation analysis.
-  //
-  // The capture tap is a deprecated ScriptProcessorNode that "can receive
-  // all-zero input after extended use" / "becomes unreliable" under headless
-  // software-GL (audio.js startOutputCapture / resetOutputCaptureNode), so on a
-  // retry we resetOutputCaptureNode() to rebuild a FRESH tap before starting —
-  // the same recovery the sibling worklet_insert_effects.browser.test.js uses.
-  // Each capture is independent (own start → warmup → measure → stop); measure()
-  // below retries this whole function until it lands a non-silent capture.
+  // 3 spaced kicks through the live master, plus the waveform head for correlation. The ScriptProcessor tap turns
+  // unreliable under software GL, so a retry rebuilds a fresh one.
   async function captureKick(retryAttempt) {
     return page.evaluate(async ({ retryAttempt, NOISE_FLOOR }) => {
       try { resumeAudio?.(); } catch (_) {} // re-ensure the context is running
       if (retryAttempt > 1) resetOutputCaptureNode();
       startOutputCapture();
-      // Warm up until real signal flows (CPU contention right after the WASM
-      // build can starve the first playbacks).
+      // CPU contention right after the build can starve the first plays.
       playSound("kick", 1.0);
       const deadline = Date.now() + 5000;
       let warm = false;
@@ -151,9 +113,7 @@ try {
       }
       await new Promise((r) => setTimeout(r, warm ? 300 : 1500));
       clearOutputCapture();
-      // Measurement: 3 kicks with spacing, all from the SAME post-clear offset
-      // so the captured onset position is consistent across captures (the head
-      // correlation below relies on that alignment).
+      // From the same post-clear offset, so onsets align for the head correlation.
       for (let i = 0; i < 3; i++) {
         playSound("kick", 1.0);
         await new Promise((r) => setTimeout(r, 400));
@@ -171,20 +131,14 @@ try {
     }, { retryAttempt, NOISE_FLOOR });
   }
 
-  // measure: retry captureKick until a non-silent capture lands. The tap
-  // randomly drops out under software-GL (any scenario, not just the first), so
-  // a single capture is not trustworthy — retry (rebuilding the tap each time)
-  // until we get real signal. Throws only if EVERY attempt is silent.
+  // The tap drops out at random under software GL, so one capture is not trustworthy; throws only if every attempt is
+  // silent.
   async function measure(label, required = true) {
     let best = { rms: 0, peak: 0, active: 0, head: [] };
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       const m = await captureKick(attempt);
       if (m.peak > best.peak) best = m;
-      // A healthy kick through the limiter peaks well above 0.01 (dry ~0.059);
-      // a starved/degraded capture comes back near-silent (peak ~0.003, rms
-      // ~0.001). Require a genuinely loud capture, not just barely-non-zero, so
-      // the metrics below are comparing real signal — retrying (with a fresh
-      // tap) until one lands.
+      // A healthy kick peaks well above 0.01; a starved capture is near-silent, so only a genuinely loud one counts.
       if (m.active > 0 && m.rms > 0.001 && m.peak > 0.01) {
         console.log(`[test] ${label}: rms=${m.rms.toFixed(5)} peak=${m.peak.toFixed(5)} active=${m.active}`);
         return m;
@@ -192,12 +146,8 @@ try {
       console.log(`[test] ${label} attempt ${attempt} weak (rms=${m.rms.toFixed(5)} peak=${m.peak.toFixed(5)}); retrying`);
       await page.waitForTimeout(800);
     }
-    // `required` captures (the dry/wet REFERENCES the comparisons are measured
-    // against) must be real — fail loudly if the tap never recovered. A
-    // non-required capture (the post-clear, only ever asked "do you still match
-    // the loud wet capture?") tolerates a starved/degraded read: it differs
-    // from wet either way, and the structural afterClear.length===0 check plus
-    // the Go effect_chain_import_process tests independently prove the teardown.
+    // The dry/wet REFERENCES must be real; the post-clear capture only has to differ from wet, and the structural check plus
+    // the Go tests prove the teardown.
     if (required) {
       throw new Error(`${label} capture stayed silent after ${MAX_RETRIES} attempts (rms=${best.rms} peak=${best.peak})`);
     }
@@ -205,14 +155,7 @@ try {
     return best;
   }
 
-  // correlation: normalized cross-correlation of two captured waveform heads.
-  // A clean kick vs a distortion/bitcrusher-mangled kick DEcorrelates strongly;
-  // the cleared kick RE-correlates with the dry kick. Unlike RMS/peak magnitude
-  // (whose dry and wet distributions overlap run-to-run and flake), correlation
-  // is amplitude-invariant, so it cleanly separates "chain in the path" from
-  // "chain removed" regardless of the capture's amplitude noise. Heads are
-  // aligned because every capture starts measuring from the same post-clear
-  // offset (see captureKick).
+  // Amplitude-invariant, so it separates "chain in the path" from "chain removed" where RMS and peak overlap run to run.
   function correlation(a, b) {
     const A = a.head || [], B = b.head || [];
     const len = Math.min(A.length, B.length, 4096);
@@ -226,10 +169,7 @@ try {
     return denom > 1e-10 ? sumXY / denom : 0;
   }
 
-  // chainAudiblyChanged: did adding the chain measurably alter the sound? True
-  // if ANY of RMS / peak / waveform changed beyond noise — the same OR-of-three
-  // discriminator worklet_insert_effects uses, so an effect that preserves
-  // energy (waveform-only) or only shifts peak still counts.
+  // ANY of RMS, peak or waveform beyond noise, so an energy-preserving effect still counts.
   function chainAudiblyChanged(ref, cur) {
     const rmsRel = ref.rms > 0 ? Math.abs(cur.rms - ref.rms) / ref.rms : 0;
     const peakRel = ref.peak > 0 ? Math.abs(cur.peak - ref.peak) / ref.peak : 0;
@@ -237,12 +177,7 @@ try {
     return { rmsRel, peakRel, corr, changed: rmsRel > 0.05 || peakRel > 0.05 || corr < 0.95 };
   }
 
-  // Prime the audio pipeline + capture tap until they are demonstrably alive
-  // before any scenario measures. Right after page load the startup-draw burst
-  // can keep the main-thread tap starved for several seconds (all-zero reads);
-  // play kicks and poll the tap (rebuilding it each round) until it delivers
-  // real signal, so the dry baseline doesn't spuriously read silent. Tolerant:
-  // logs and proceeds if priming times out (measure() still retries).
+  // Until the tap demonstrably delivers, or the dry baseline reads silent; tolerant, since measure() still retries.
   await page.evaluate(async () => {
     const deadline = Date.now() + 20000;
     let alive = false;
@@ -298,9 +233,7 @@ try {
     });
   }
 
-  // Let updateInsertEffects finish wiring the JS chain AND the import's
-  // main-thread/redraw burst settle before capturing — that burst otherwise
-  // re-starves the ScriptProcessor tap during the very next capture.
+  // Or the import's redraw burst re-starves the tap during the next capture.
   await page.waitForTimeout(1500);
   let wet = await measure("post-import wet");
   let wetDelta = chainAudiblyChanged(baseline, wet);
@@ -328,16 +261,8 @@ try {
     failures.push(`stale Go chain after effects-free import: ${JSON.stringify(afterClear)}`);
   }
   await page.waitForTimeout(1500); // let the effects-free import tear down the chain AND its redraw burst settle
-  // After clearing, the kick is the clean dry sound again, so it must NO LONGER
-  // match the loud distorted `wet` capture. We assert the robust direction —
-  // "cleared differs from wet" (the same OR-of-three change detector) — rather
-  // than "cleared equals dry": proving SAMENESS from a live ScriptProcessor tap
-  // is unreliable (amplitude noise + variable onset offset make even two clean
-  // kicks read as different), whereas the distortion's huge peak/energy/shape
-  // delta makes "no longer the wet sound" rock-solid. Combined with the
-  // structural afterClear.length===0 check above, this proves the stale chain
-  // was removed from the AUDIBLE path (its return-to-dry processing is covered
-  // by the Go effect_chain_import_process tests cited in the header).
+  // The robust direction, "cleared differs from wet": proving sameness from a live ScriptProcessor tap is unreliable,
+  // while the distortion's huge delta makes the difference rock-solid.
   let cleared = await measure("post-clear", false);
   let clearDelta = chainAudiblyChanged(wet, cleared);
   if (!clearDelta.changed) {

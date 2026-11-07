@@ -1,16 +1,5 @@
-/**
- * Instrument-menu search caret editing via REAL keyboard events.
- *
- * Reproduces the reported bug: focus the search bar, type a query, move the
- * caret back to the START with the ArrowLeft key, and type a character — the
- * character must insert AT the caret (not at the end, and not be silently
- * dropped). This exercises the browser keyboard path (canvas focus, ebiten
- * key events, soft-keyboard proxy interplay) that Go's stubbed-input tests
- * cannot reach. Charter: real input dispatch through the canvas (item 6).
- *
- * Go-side coverage of the same contract with stubbed input:
- *   internal/ui/inst_menu_search_cursor_test.go
- */
+/** Through REAL keyboard events: type, ArrowLeft to the start, type again, and the character lands AT the caret.
+ * COVERED-BY-GO: internal/ui/inst_menu_search_cursor_test.go (stubbed input) */
 import { setupFullWasm, clickAndHold } from "./real_input_test_helpers.js";
 
 let cleanup;
@@ -88,9 +77,7 @@ try {
   const bc = await page.evaluate(() => instMenuSearchRect?.() && true);
   must(bc, "menu should still be open with the search bar visible");
 
-  // ── Space at the start (the originally-reported character). Space is also
-  // the transport play/pause shortcut — it must insert into the focused box,
-  // not toggle playback.
+  // Space is also play/pause: it must insert into the focused box, not toggle playback.
   for (let i = 0; i < 1; i++) {
     await page.keyboard.press("ArrowLeft");
     await page.waitForTimeout(80);
@@ -107,9 +94,7 @@ try {
   const playing = await page.evaluate(() => isPlaying?.());
   must(!playing, "Space in the focused search box must not start playback");
 
-  // ── Same caret contract on the CATEGORIES-view global search bar.
-  // Clear the pending query with real keys (caret to end, then backspace all
-  // 6 chars of " xkick"), then Back returns to the categories view.
+  // Caret to end, then backspace all 6 chars of " xkick"; Back returns to the categories view.
   for (let i = 0; i < 5; i++) {
     await page.keyboard.press("ArrowRight");
     await page.waitForTimeout(60);

@@ -1,17 +1,5 @@
-// insert_effects_functional.browser.test.js
-//
-// Functional tests verifying ALL insert effects actually modify audio in WASM.
-// For each of the 18 registered effects:
-//   1. Capture a dry baseline (no effects)
-//   2. Add the effect with aggressive parameters
-//   3. Capture audio with the effect enabled
-//   4. Assert the output meaningfully differs from baseline
-//
-// This catches the class of bug where an effect's WebAudio fallback is a
-// passthrough (e.g., pitchshift, gate, transient, phaser, autowah) — the
-// captured audio would be identical to baseline, failing the diff check.
-//
-// Usage: GO=/path/to/.tools/go/bin/go node src/js/insert_effects_functional.browser.test.js
+// Every registered insert effect, at aggressive params, must measurably change the audio against a dry baseline, which
+// catches an effect host that silently passes audio through. Usage: GO=… node src/js/worklet_insert_effects.browser.test.js
 
 import { chromium } from "playwright";
 import http from "http";
@@ -128,10 +116,7 @@ try {
     for (let i = slots.length - 1; i >= 0; i--) removeInsertEffect("kick", i);
   });
 
-  // ========================================================================
-  // Helper: capture audio with optional effect
-  // Returns { rms, peak, samples, sampleCount }
-  // ========================================================================
+  // Returns {rms, peak, samples, sampleCount}.
   async function captureAudio(page, effectType, effectParams, retryAttempt) {
     return await page.evaluate(async ({ effectType, effectParams, retryAttempt, NOISE_FLOOR }) => {
       if (retryAttempt > 1) resetOutputCaptureNode();
@@ -217,9 +202,6 @@ try {
     }, { effectType, effectParams, retryAttempt, NOISE_FLOOR });
   }
 
-  // ========================================================================
-  // Scenario 1: Capture dry baseline
-  // ========================================================================
   let baseline;
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     console.log(`--- Baseline capture (attempt ${attempt}/${MAX_RETRIES}) ---`);
@@ -236,9 +218,6 @@ try {
   if (baseline.rms < 0.001) throw new Error(`Baseline FAIL: RMS too low (${baseline.rms})`);
   console.log("  PASS\n");
 
-  // ========================================================================
-  // Scenario 2: Test each effect modifies audio
-  // ========================================================================
   let passed = 0;
   let failed = 0;
   const failures = [];
@@ -262,11 +241,7 @@ try {
 
       console.log(`  Samples: ${result.sampleCount}, Active: ${result.activeCount}, RMS: ${result.rms.toFixed(6)}, Peak: ${result.peak.toFixed(6)}`);
 
-      // Noise gate: the played kick sits below the gate threshold, so a WORKING
-      // gate REMOVES it — near-silence is the pass condition, not a failure.
-      // (A gate can only pass a signal unchanged or attenuate it; the generic
-      // "must modify AND have active samples" logic below can't express that.
-      // Deterministic gating correctness lives in insert_effects_webaudio.browser.test.js.)
+      // The kick sits below the gate threshold, so a WORKING gate removes it: near-silence passes here.
       if (config.type === "gate") {
         const attenuated = result.peak < baseline.peak * 0.25;
         console.log(`  gate: wet peak ${result.peak.toFixed(6)} vs baseline peak ${baseline.peak.toFixed(6)} (want < 25%)`);
@@ -285,8 +260,7 @@ try {
         break;
       }
 
-      // Compare with baseline using multiple metrics:
-      // 1. RMS difference (catches energy-changing effects)
+      // RMS catches energy-changing effects.
       const rmsDiff = Math.abs(result.rms - baseline.rms);
       const rmsRelDiff = baseline.rms > 0 ? rmsDiff / baseline.rms : 0;
 
@@ -314,10 +288,7 @@ try {
 
       console.log(`  RMS diff: ${(rmsRelDiff * 100).toFixed(1)}%, Peak diff: ${(peakRelDiff * 100).toFixed(1)}%, Correlation: ${correlation.toFixed(4)}`);
 
-      // Effect passes if ANY of these conditions hold:
-      // - RMS changed by >5% relative
-      // - Peak changed by >5% relative
-      // - Waveform correlation dropped below 0.95
+      // Any of: RMS or peak moved > 5 %, or waveform correlation below 0.95.
       const rmsChanged = rmsRelDiff > 0.05;
       const peakChanged = peakRelDiff > 0.05;
       const waveformChanged = correlation < 0.95;
@@ -344,9 +315,6 @@ try {
     }
   }
 
-  // ========================================================================
-  // Summary
-  // ========================================================================
   console.log("========================================");
   console.log(`Results: ${passed} passed, ${failed} failed out of ${EFFECT_CONFIGS.length} effects`);
   if (failures.length > 0) {

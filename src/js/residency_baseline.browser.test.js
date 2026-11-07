@@ -1,25 +1,6 @@
-// residency_baseline.browser.test.js
-//
-// Evidence for residency decisions (spec
-// docs/superpowers/specs/2026-10-31-versioned-objects-and-residency-revisions-design.md
-// §1.1), in the real app on the startup demo:
-//
-//   boot     what exists before playing: WebAudio chains, beatmo-dsp stages,
-//            voice renders (count + bytes), param blocks pushed, Go's
-//            registered instruments and mixer channels.
-//   playing  the same after a few seconds of playback, plus what is HEARD
-//            (playback probe).
-//   switch   a row switched to a different instrument every 500 ms while
-//            playing — the switch rule's cost, judged on the heard audio.
-//
-// Writes bench-results/residency_baseline_<date>.json. Hard-gates silent and
-// dropped notes (a 2026-10-31 run caught a release cutting the probe's channel
-// tap this way); lateness and clicks are reported unless AUDIO_PROBE_STRICT=1. Skips (exit 0, reported) on a machine above RESIDENCY_MAX_LOAD.
-//
-// Run:
-//   GO=$(pwd)/.tools/go/bin/go node src/js/residency_baseline.browser.test.js
-// Env: WASM_PREBUILT=1, WASM_FILE=<wasm>, RESIDENCY_SECS (default 8),
-//      RESIDENCY_MAX_LOAD (default 15).
+// Evidence for residency decisions on the startup demo: what exists at boot, after playing, and under a row switch
+// every 500 ms, judged on the heard audio. Hard-gates silent and dropped notes; lateness and clicks report unless
+// AUDIO_PROBE_STRICT=1. Run: GO=… node src/js/residency_baseline.browser.test.js (RESIDENCY_SECS, RESIDENCY_MAX_LOAD)
 
 import http from "http";
 import { spawnSync } from "child_process";
@@ -70,9 +51,7 @@ await new Promise((r) => server.listen(0, r));
 const port = server.address().port;
 
 const failures = [];
-// A silent or dropped note is a hard failure. Lateness (headless software GL
-// dominates it — CLAUDE.md) and clicks (one in ~3 runs of the demo, with
-// channel release disabled too — 2026-10-31) are reported unless
+// Lateness (dominated by headless software GL) and clicks (seen with release disabled too) report unless
 // AUDIO_PROBE_STRICT=1.
 const gate = (report, label) => {
   for (const f of probeGateFailures(report, undefined, label)) {

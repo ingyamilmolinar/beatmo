@@ -1,26 +1,6 @@
-/**
- * A melodic note's DURATION must never change its PITCH — WebAudio half.
- *
- * Melodic voices are rendered AT pitch, so the playback rate carries only the
- * residual semitone ratio. The render dispatch used to divide that rate by the
- * node's duration (correct for drums, which are pitched and sized by
- * resampling), so a duration-0.5 note sounded an OCTAVE high and a duration-
- * 0.25 note two octaves high. Templates write each note's length into
- * Duration, so the Ave Maria soprano jumped around by octaves — "some notes OK,
- * some terrible, too high". The same dispatch also consulted a hand-kept
- * melodic list holding 31 of the 79 pitch-aware instruments; voice-soprano was
- * not on it, so it was resampled outright.
- *
- * This plays each subject through window.playSoundsBatch (the batch path the
- * sequencer uses) at durations 1, 0.75, 0.5 and 0.25, captures the master
- * output on the audio thread, and measures the fundamental. Every shortened
- * note must sound within ±30 cents of the duration-1 note, and must END sooner
- * (a duration below 1 GATES the note, it does not stretch it).
- *
- * COVERED-BY-GO: cmd/gen-showcase/played_duration_test.go
- * (TestNodeDurationNeverChangesPitch, TestAveMariaVoiceSoundsAtTheNotatedPitch)
- * owns the native engine; THIS test owns the browser dispatch.
- */
+/** A melodic note's DURATION never changes its PITCH in the browser: each subject through the sequencer's batch path at
+ * durations 1/0.75/0.5/0.25 must sound within ±30 cents and END sooner (gated, not stretched). COVERED-BY-GO:
+ * cmd/gen-showcase/played_duration_test.go */
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";
@@ -85,8 +65,7 @@ await page.waitForFunction(() => typeof window.playSoundsBatch === "function", n
 await page.waitForFunction(() => window.audioReady !== undefined, null, { timeout: 60_000 });
 await waitForAudioReady(page);
 
-// voice-soprano is the reported voice and was missing from the old hand list;
-// violin was ON that list, so it isolates the duration bug from the list bug.
+// voice-soprano is the reported voice; violin isolates the duration rule from melodic-set membership.
 const SUBJECTS = [
   { id: "voice-soprano", pitch: 0 },
   { id: "voice-soprano", pitch: 7 },
@@ -95,10 +74,8 @@ const SUBJECTS = [
 const DURS = [1, 0.75, 0.5, 0.25];
 const TOL_CENTS = 30;
 
-// f0 by YIN (cumulative-mean-normalised difference, first dip under 0.15,
-// parabolic refinement) in 80-1500 Hz. It takes the FIRST period that fits, so
-// a vibrato-smeared later period cannot win the way it can for a raw
-// autocorrelation maximum.
+// YIN in 80-1500 Hz takes the FIRST fitting period, so a vibrato-smeared later one cannot win as with raw
+// autocorrelation.
 function detectF0(x, sr) {
   const minLag = Math.floor(sr / 1500), maxLag = Math.ceil(sr / 80);
   const n = x.length - maxLag;
@@ -152,8 +129,7 @@ async function playAndCapture(id, pitch, dur) {
 }
 
 await page.evaluate(() => window.enableOutputCapture());
-// Warm every pitched render first: a cold pitch DEFERS its note until the
-// render lands, which would put the onset outside the capture window.
+// A cold pitch DEFERS its note, which would put the onset outside the capture.
 for (const s of SUBJECTS) {
   await page.evaluate(async ({ id, pitch }) => {
     window.playSoundsBatch({ id, vol: 0.001, pitch, dur: 1 });
@@ -173,11 +149,7 @@ for (const s of SUBJECTS) {
     if (!Number.isFinite(cents)) { failures.push(`${s.id} p${s.pitch} dur ${r.dur}: no f0`); continue; }
     if (Math.abs(cents) > TOL_CENTS) failures.push(`${s.id} p${s.pitch} dur ${r.dur}: ${cents.toFixed(0)} cents off the dur-1 note`);
   }
-  // Gating: a duration-d note plays d of the rendered buffer, so it sounds
-  // min(natural decay, d * buffer). The buffer is longer than the audible
-  // decay, so only the short durations are visibly cut — dur 0.25 must end
-  // well before the dur-1 note, and dur 0.5 must last about twice as long as
-  // dur 0.25 or the full note, whichever is shorter.
+  // A note sounds min(natural decay, d × buffer), so only short durations are visibly cut.
   const q = results.find((r) => r.dur === 0.25), h = results.find((r) => r.dur === 0.5);
   if (q && h && !q.silent && !h.silent) {
     if (!(q.soundingSec < 0.6 * ref.soundingSec)) {

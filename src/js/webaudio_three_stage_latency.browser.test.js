@@ -1,24 +1,6 @@
-// webaudio_three_stage_latency.browser.test.js
-//
-// End-to-end latency gate for the WASM audio pipeline. Measures all
-// three stages of the scheduling chain:
-//
-//   Stage A  real         → scheduler fires     (seqScheduleTime late)
-//   Stage B  scheduler    → audio dispatch      (enqAt → audioLoop)
-//   Stage C  dispatch     → audio fires         (lead = when - audioNow)
-//
-// Per-stage assertions on P50/P90/P99/max + StdDev (jitter). Designed
-// to be tight — when WASM lag regresses (GC pause, goroutine starvation,
-// channel saturation, etc.) one of these should trip before the user
-// notices.
-//
-// Run:
-//   GO=$(pwd)/.tools/go/bin/go node src/js/webaudio_three_stage_latency.browser.test.js
-//
-// Skip env vars (use sparingly):
-//   THREE_STAGE_SOFT=1   — convert hard assertions to warnings
-//   THREE_STAGE_WARMUP=2000 — warmup ms before measurement (default 1500)
-//   THREE_STAGE_PLAY_MS=6000 — measurement duration ms (default 6000)
+// End-to-end latency of the scheduling chain: A real → scheduler fires, B scheduler → audio dispatch, C dispatch → audio
+// fires (lead), gated on percentiles and jitter so a regression trips before the user notices. Run: GO=… node
+// src/js/webaudio_three_stage_latency.browser.test.js (THREE_STAGE_SOFT=1, THREE_STAGE_WARMUP, THREE_STAGE_PLAY_MS)
 
 import { chromium } from "playwright";
 import http from "http";
@@ -117,12 +99,10 @@ async function runScenario({ name, rows, bpm, playMs }) {
     buildPerfRect(rows, 1);
     forceDraw?.(); forceDraw?.();
   }, { rows });
-  // Play only after the readiness gate opens — a bare startPlay() here was
-  // swallowed by the warm-up gate, so every scenario measured `null`.
+  // A bare startPlay() is swallowed by the warm-up gate and every scenario measured null.
   await startPlaybackWhenReady(page, { bpm });
 
-  // Warmup: discard early measurements while AudioContext stabilises and
-  // pre-roll allocations happen.
+  // While the context stabilises and pre-roll allocations happen.
   await page.waitForTimeout(WARMUP_MS);
   await page.evaluate(() => {
     resetThreeStageLatency?.();
@@ -140,36 +120,18 @@ async function runScenario({ name, rows, bpm, playMs }) {
   await page.close();
 
   dumpSnap(name, snap, stats);
-  // What the listener heard (onset vs predictor time, jitter, silent notes).
-  // Informational unless AUDIO_PROBE_STRICT=1 — see audio_probe_bench_helpers.
+  // Informational unless AUDIO_PROBE_STRICT=1.
   for (const m of probeGateFailures(probe, PROBE_LIMITS_DEFAULT, name)) {
     if (PROBE_STRICT) failures.push(m); else console.log(`  [probe info] ${m}`);
   }
   return { snap, stats };
 }
 
-// Threshold philosophy:
-// - Audio-critical metrics stay TIGHT: overdue=0, smallLead=0, lagP99<=8ms,
-//   lead.min>=3ms. These are the ones the listener actually hears. Any
-//   regression here is an audio bug and must fail the test.
-// - Scheduler-jitter metrics (Stage A, lead stddev) are intrinsically
-//   frame-coupled in WASM (cooperative goroutine scheduling can't preempt
-//   long RAF spans). They are gated at ~1.5× observed P99 to catch
-//   regressions, but not aspirational sub-frame targets.
-// - Stage B (goroutine handoff) caps reflect typical observed bridge max
-//   plus headroom for occasional spikes during long RAF-blocking frames. It
-//   applies to the legacy path only: the audio lane has no such handoff.
+// Audible metrics stay TIGHT (overdue 0, smallLead 0, lagP99 ≤ 8 ms, lead ≥ 3 ms); Stage A and lead jitter are
+// frame-coupled in WASM, so ~1.5× observed P99; Stage B (legacy path only) allows long-frame spikes.
 const scenarios = [
-  // Threshold philosophy:
-  // - Audio-critical gates stay TIGHT (overdue=0, smallLead=0,
-  //   lagP99 ≤ 5–12ms, lead.min ≥ 3ms, audioDrops=0). These are what
-  //   the listener actually hears; any regression here is an audio bug.
-  // - Scheduler-jitter gates (Stage A, stddev) are intrinsically
-  //   frame-coupled in WASM (cooperative goroutine scheduling can't
-  //   preempt long RAF spans). Generous caps catch order-of-magnitude
-  //   regressions while tolerating browser variance up to ~500ms.
-  // - Stage B caps accept the ~25ms bridge-handoff max observed during
-  //   long-frame events in headless Chromium.
+  // Audible gates tight; scheduler-jitter caps catch order-of-magnitude regressions across browser variance; Stage B accepts
+  // the ~25 ms handoff max seen in headless long frames.
   { name: "S1-single-row-BPM240", rows: 1, bpm: 240, playMs: PLAY_MS,
     limits: {
       seqFire: { p99: 0.500, stddev: 0.130 },
@@ -214,9 +176,7 @@ for (const sc of scenarios) {
     gate(sc.name, "A.p99", a.p99 != null && a.p99 <= lim.seqFire.p99, `seqFire P99 ${fmtMs(a.p99)} > ${fmtMs(lim.seqFire.p99)}`);
     gate(sc.name, "A.stddev", a.stddev != null && a.stddev <= lim.seqFire.stddev, `seqFire stddev ${fmtMs(a.stddev)} > ${fmtMs(lim.seqFire.stddev)}`);
   }
-  // On the audio lane (the browser default) a note is committed from the
-  // sequencer pass itself — there is no enqueue → audioLoop handoff to time, so
-  // Stage B is empty by design; the legacy path (BEATMO_AUDIO_LANE=0) must fill it.
+  // The lane commits from the sequencer pass itself, so Stage B is empty by design; the legacy path must fill it.
   if (snap.lane) {
     gate(sc.name, "B.lane", !b || b.count === 0, `the lane recorded ${b && b.count} Stage B handoffs`);
   } else if (b) {

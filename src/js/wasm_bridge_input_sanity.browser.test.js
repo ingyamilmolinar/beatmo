@@ -1,21 +1,5 @@
-/**
- * WASM JS Bridge Sanity Test
- *
- * This test verifies that the WASM JS bridge functions work correctly.
- *
- * NOTE: The playtest harness (play_ui.wasm) doesn't run Ebiten's full game loop.
- * Instead, it calls g.Update() directly in a goroutine, which means Ebiten's
- * mouse/keyboard event handlers are NOT active. Mouse clicks dispatched to the
- * canvas don't reach the Go code.
- *
- * For actual input handling tests, see the Go unit tests in wasm_input_sanity_test.go
- * which use SetInputForTest to simulate input correctly.
- *
- * This test verifies:
- * 1. The JS bridge functions are exported and callable
- * 2. The functions correctly modify game state
- * 3. The UI state can be queried via JS
- */
+/** The bridge functions are exported, change game state and can be queried. The playtest harness runs no Ebiten input
+ * loop, so canvas clicks never reach Go; input handling is covered by wasm_input_sanity_test.go. */
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";

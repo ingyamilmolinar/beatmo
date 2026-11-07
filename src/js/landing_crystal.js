@@ -1,21 +1,8 @@
-// landing_crystal.js — the landing page's living crystal.
-//
-// A Beatmo-shaped grid graph (nodes on an integer lattice, L-shaped edges) that
-// grows by local rules from a seed. One rule machinery for everyone; only the
-// seed (the visitor's local date + time) differs. Spec:
-// docs/superpowers/specs/2026-10-23-landing-page-design.md ("The crystal").
-//
-// Runs in a module Worker that owns an OffscreenCanvas (so the game's boot on
-// the main thread cannot stutter it) or, where OffscreenCanvas is missing, on
-// the main thread through the same createCrystalView(). The Crystal class is
-// pure (no DOM, no clock) so it is tested in Node: landing_crystal.browser.test.js.
+// A Beatmo-shaped lattice graph grown by local rules from a seed (the visitor's local date and time). In a module Worker
+// on an OffscreenCanvas so the game's boot cannot stutter it, else on the main thread; the Crystal class is pure.
 
-// Rule sets: same machinery, different parameters → different graphs.
-// pick: which live nodes may sprout; out: outward bias; straight: chance to
-// keep the parent's heading; L: step lengths in lattice steps; loop: chance to
-// close a loop on collision; maxDeg; retire: failures before a node is
-// "crowded"; mutate: chance a birth takes a new colour; branch: tips-only
-// rules let a non-tip sprout with this probability.
+// pick: which nodes may sprout; out: outward bias; straight: keep heading; L: step lengths; loop: close on collision;
+// maxDeg; retire: failures before "crowded"; mutate: a new colour; branch: non-tip sprouting under tips-only rules.
 export const RULES = [
   { name: "Crystal", pick: "any", out: 0.45, straight: 0.2, L: [1, 3], loop: 0.4, maxDeg: 3, retire: 6, mutate: 0.08 },
   { name: "Coral", pick: "tips", out: 0.35, straight: 0.35, L: [1, 2], loop: 0.03, maxDeg: 3, retire: 5, mutate: 0.04, branch: 0.2 },
@@ -106,8 +93,7 @@ export class Crystal {
     this.adj[a].push(b); this.adj[b].push(a);
     this.nodes[a].deg++; this.nodes[b].deg++;
   }
-  // No existing node within Chebyshev distance r of (i,j). r < bucket size
-  // (r ≤ 0.9·step, bucket = step), so the 3×3 neighbouring buckets cover it.
+  // r < bucket size, so the 3×3 neighbouring buckets cover it.
   free(i, j, r) {
     const bi = Math.floor(i / this.bucket), bj = Math.floor(j / this.bucket);
     for (let x = bi - 1; x <= bi + 1; x++) {
@@ -166,8 +152,7 @@ export class Crystal {
       this.link(aid, b);
       this.alive.push(b);
     }
-    // The lattice coarsens as the WEAKEST side widens, so on-screen density
-    // stays roughly constant through the infinite zoom.
+    // Coarsens as the WEAKEST side widens, so density stays constant through the infinite zoom.
     const rr = this.reach();
     const weak = Math.min(rr[0] / this.screenAspect, rr[1] / this.screenAspect, rr[2], rr[3]);
     const want = Math.max(0, Math.floor(Math.log2(weak / (R0 + 4))));
@@ -175,9 +160,7 @@ export class Crystal {
     if (this.nodes.length > MAX_NODES) this.prune();
   }
 
-  // Forget detail 4+ levels below the current lattice (sub-pixel at any zoom)
-  // and nodes the recording now covers. If that is not enough, drop the oldest
-  // so the count stays bounded on an endless run whatever the level does.
+  // Detail 4+ levels down (sub-pixel) and nodes under the recording go first, then the oldest: bounded on an endless run.
   prune() {
     const keep = this.nodes.map((n) => n.lv >= this.level - 3 && !this.inHole(n.i, n.j));
     let kept = keep.reduce((a, k) => a + (k ? 1 : 0), 0);
@@ -208,8 +191,7 @@ export class Crystal {
     return id;
   }
 
-  // On a beat: flash some nodes (more on a downbeat) and send a signal along
-  // one of each flashed node's edges. Returns [[from,to],…] signals.
+  // More on a downbeat. Returns [[from,to],…] signals.
   beat(down) {
     const pool = this.alive.length > 8 ? this.alive : null;
     const count = pool ? pool.length : this.nodes.length;
@@ -227,11 +209,8 @@ export class Crystal {
   }
 }
 
-// ---------------------------------------------------------------------------
-// View: camera (auto-fit by the weakest side × the visitor's zoom, no panning),
-// drawing, beat clock. `canvas` is an OffscreenCanvas (worker) or a
-// HTMLCanvasElement (fallback). Messages are the same in both cases.
-// ---------------------------------------------------------------------------
+// Auto-fit by the weakest side × the visitor's zoom, no panning; the canvas is an OffscreenCanvas or an element, the
+// messages the same.
 export function createCrystalView(canvas, opts) {
   const cx = canvas.getContext("2d", { alpha: false });
   const now = () => performance.now();
@@ -354,8 +333,7 @@ export function createCrystalView(canvas, opts) {
       cx.stroke();
     }
 
-    // Nodes: plain ones batched per (colour, level); lit ones (flash / near the
-    // pointer) drawn individually with a glow.
+    // Plain nodes batched per (colour, level); lit ones drawn individually with a glow.
     const nb2 = new Map(), lit = [];
     for (let id = 0; id < nodes.length; id++) {
       const n = nodes[id];
@@ -410,8 +388,7 @@ export function createCrystalView(canvas, opts) {
     }
     cx.shadowBlur = 0;
 
-    // The recording's frame glows on the kick (drawn here, behind the video,
-    // so a busy main thread cannot freeze it).
+    // Drawn here, behind the video, so a busy main thread cannot freeze it.
     if (hole.set) {
       const kick = Math.exp(-((t - kickAt) / beatMs) * 5);
       cx.globalAlpha = 1;

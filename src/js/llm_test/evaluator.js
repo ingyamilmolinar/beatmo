@@ -1,16 +1,8 @@
-/**
- * LLM Visual Testing — Claude Vision API Integration
- *
- * Key-frame selection, prompt templates, structured result parsing.
- * Uses raw fetch() to call the Anthropic API (no SDK dependency).
- */
+/** Key-frame selection, prompt templates and result parsing over the vision API, with raw fetch() (no SDK). */
 
 import fs from "fs";
 import path from "path";
 
-/**
- * Built-in prompt templates for common evaluation scenarios.
- */
 const PROMPT_TEMPLATES = {
   general_quality: `You are evaluating a drum machine web application called Beatmo.
 Look at these screenshots taken during a session. Evaluate:
@@ -61,13 +53,7 @@ Issues:
 Summary: [1-2 sentence regression assessment]`,
 };
 
-/**
- * Select key frames from a recording for evaluation.
- *
- * @param {Array} frames - Frame entries from recording.json
- * @param {number} maxFrames - Maximum frames to select (default 20)
- * @returns {Array} Selected frame entries
- */
+/** At most maxFrames (default 20) of recording.json's frames. */
 export function selectKeyFrames(frames, maxFrames = 20) {
   if (!frames || frames.length === 0) return [];
   if (frames.length <= maxFrames) return [...frames];
@@ -99,14 +85,7 @@ export function selectKeyFrames(frames, maxFrames = 20) {
   return [...selected].sort((a, b) => a - b).slice(0, maxFrames).map((i) => frames[i]);
 }
 
-/**
- * Build content blocks for the Claude API call.
- *
- * @param {Array} selectedFrames - Selected frame entries
- * @param {string} dirPath - Recording directory (for loading PNGs)
- * @param {string} prompt - Evaluation prompt text
- * @returns {Array} Content blocks for the messages API
- */
+/** PNGs are loaded from dirPath. */
 function buildContentBlocks(selectedFrames, dirPath, prompt) {
   const blocks = [];
 
@@ -147,12 +126,7 @@ function buildContentBlocks(selectedFrames, dirPath, prompt) {
   return blocks;
 }
 
-/**
- * Parse Claude's response into a structured result.
- *
- * @param {string} text - Claude's response text
- * @returns {Object} Parsed result with score, issues, summary
- */
+/** {score, issues, summary}. */
 function parseResult(text) {
   const result = { raw: text, score: null, issues: [], summary: "" };
 
@@ -180,16 +154,7 @@ function parseResult(text) {
   return result;
 }
 
-/**
- * Create an evaluator for Claude vision API calls.
- *
- * @param {Object} options
- * @param {string} options.apiKey - Anthropic API key (default: ANTHROPIC_API_KEY env)
- * @param {string} options.model - Model to use (default: claude-sonnet-4-5-20250929)
- * @param {number} options.maxTokens - Max response tokens (default: 1024)
- * @param {number} options.maxFrames - Max frames to send (default: 20)
- * @returns {Evaluator}
- */
+/** options: apiKey (default ANTHROPIC_API_KEY), model (claude-sonnet-4-5-20250929), maxTokens (1024), maxFrames (20). */
 export function createEvaluator(options = {}) {
   const apiKey = options.apiKey ?? process.env.ANTHROPIC_API_KEY;
   const model = options.model ?? "claude-sonnet-4-5-20250929";
@@ -226,15 +191,7 @@ export function createEvaluator(options = {}) {
   }
 
   return {
-    /**
-     * Evaluate a recording with a prompt template or custom prompt.
-     *
-     * @param {Object} recording - Loaded recording object
-     * @param {Object} criteria
-     * @param {string} criteria.template - Built-in template name
-     * @param {string} criteria.prompt - Custom prompt (overrides template)
-     * @returns {Object} Structured evaluation result
-     */
+    /** criteria.prompt overrides criteria.template. */
     async evaluate(recording, criteria = {}) {
       const prompt =
         criteria.prompt ??
@@ -257,13 +214,6 @@ export function createEvaluator(options = {}) {
       return parseResult(responseText);
     },
 
-    /**
-     * Evaluate specific PNG files directly.
-     *
-     * @param {string[]} pngPaths - Array of PNG file paths
-     * @param {string} prompt - Evaluation prompt
-     * @returns {Object} Structured evaluation result
-     */
     async evaluateFrames(pngPaths, prompt) {
       const content = [];
       content.push({ type: "text", text: prompt });

@@ -1,17 +1,5 @@
-/**
- * End-to-end Synth-tab audio regression — Phase 5 follow-up.
- *
- * Reproduces the user-reported "audio stops in WASM when synth sliders
- * change" bug using the FULL APP (main.wasm), not the playtest harness.
- * Drives the actual sequencer via startPlay(), captures WebAudio output
- * via startOutputCapture(), and dispatches setInstrumentParam calls at
- * 60Hz mid-playback. Asserts the captured stream stays audible + finite
- * before, during, and after the slider drag.
- *
- * This is the canonical "did Phase 5 actually fix the user's session"
- * regression — if this passes, the bug they're seeing has a different
- * root cause and we need more telemetry from their browser.
- */
+/** The full app, the real sequencer, setInstrumentParam at 60 Hz mid-playback: the captured stream must stay audible and
+ * finite before, during and after the drag. */
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";
@@ -110,8 +98,7 @@ try {
   );
   await waitForAudioReady(page);
 
-  // Sanity: the snare has an instrument document (the test drives "pitch",
-  // which every document carries).
+  // The test drives "pitch", which every document carries.
   const sanity = await page.evaluate(() => ({ doc: getInstrumentDoc("snare") }));
   if (!sanity.doc) {
     throw new Error("snare has no instrument document");
@@ -142,8 +129,7 @@ try {
       resetInstrumentParams("snare");
     }
   });
-  // Play is ignored while the circuit warm-up gate is closed (the button is
-  // disabled then); press it the way a user can — once the gate opens.
+  // Play is ignored while the warm-up gate is closed.
   await startPlaybackWhenReady(page);
   // Let the sequencer fire 5+ notes so the channel chain is fully built.
   await page.waitForTimeout(800);
@@ -165,8 +151,7 @@ try {
     throw new Error(`baseline is silent (peak=${basePeak}). Sequencer is not actually playing.`);
   }
 
-  // ─── Phase C: simulate slider drag while playback continues ───
-  // 60Hz spam matches the OnDrag firing pattern in the real UI.
+  // 60 Hz, the OnDrag firing pattern of the real UI.
   await page.evaluate(async () => {
     clearOutputCapture();
     startOutputCapture();
@@ -188,9 +173,7 @@ try {
   const dragEnergy = energyOf(duringDrag);
   console.log(`[TEST] during-drag capture: ${duringDrag.length} samples, peak=${dragPeak.toFixed(4)}, energy=${dragEnergy.toFixed(6)}`);
 
-  // Even with pitch=19 (high), the snare must still produce some audio.
-  // We allow energy to drop because pitch-shifting time-compresses the
-  // sample, but the peak should still be non-trivial.
+  // Pitch-shifting time-compresses the sample, so energy may drop but the peak must stay non-trivial.
   if (dragPeak < 0.001) {
     throw new Error(
       `BUG: audio stopped during slider drag — peak=${dragPeak} (baseline=${basePeak}). ` +
@@ -198,9 +181,7 @@ try {
     );
   }
 
-  // ─── Phase D: capture audio AFTER the drag completes ───
-  // The most damning bug pattern: drag completes but audio stays
-  // silent. Verifies the channel chain recovers.
+  // The damning pattern: the drag ends and audio stays silent.
   await page.evaluate(async () => {
     // Park the slider at a neutral value, then wait for the sequencer.
     setInstrumentParam("snare", "pitch", 0);
@@ -222,8 +203,7 @@ try {
     );
   }
 
-  // The post-drag audio should be within a factor of 5 of baseline
-  // (allowing for sequencer phase differences + slight headroom drift).
+  // Within 5× of baseline, allowing for sequencer phase.
   const postRatio = postEnergy / Math.max(baseEnergy, 1e-12);
   if (postRatio < 0.2) {
     throw new Error(
@@ -239,8 +219,7 @@ try {
   if (pageErrors.length > 0) {
     throw new Error(`page emitted ${pageErrors.length} errors:\n  ${pageErrors.join("\n  ")}`);
   }
-  // BiquadFilterNode warnings are a real symptom of NaN/Inf propagating
-  // through the EQ chain. Any warning during the test is a regression.
+  // A BiquadFilterNode warning is NaN/Inf reaching the EQ chain.
   if (biquadWarnings.length > 0) {
     throw new Error(
       `${biquadWarnings.length} BiquadFilterNode warning(s) emitted during the test — the audio chain went into a bad state.\n` +

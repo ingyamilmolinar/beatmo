@@ -1,25 +1,12 @@
-/**
- * BrowserStack Helper Module
- *
- * Manages BrowserStack Local tunnel lifecycle, remote device connections,
- * and session status reporting for real-device visual testing.
- *
- * Uses the "legacy direct connect" pattern: browserstack-local npm package
- * for tunneling + Playwright's webkit.connect() (iOS) and _android.connect()
- * (Android) to BrowserStack's WebSocket endpoint. This works with Beatmo's
- * standalone Node.js test harness (not @playwright/test runner).
- */
+/** The tunnel, real-device connections and session status for real-device visual tests: browserstack-local plus
+ * webkit.connect() (iOS) / _android.connect() (Android), which fits the standalone Node harness. */
 
 import BrowserStackLocal from "browserstack-local";
 import { webkit, _android } from "playwright";
 
 // ─── Credentials ────────────────────────────────────────────────────
 
-/**
- * Validate and return BrowserStack credentials from env vars.
- * Exits with error if not set.
- * @returns {{user: string, key: string}}
- */
+/** Exits with an error if unset. */
 export function requireBrowserStackCredentials() {
   const user = process.env.BROWSERSTACK_USERNAME;
   const key = process.env.BROWSERSTACK_ACCESS_KEY;
@@ -35,11 +22,7 @@ export function requireBrowserStackCredentials() {
 
 // ─── Tunnel Lifecycle ───────────────────────────────────────────────
 
-/**
- * Start a BrowserStack Local tunnel so real devices can reach localhost.
- * @param {string} accessKey BrowserStack access key
- * @returns {Promise<BrowserStackLocal.Local>} Tunnel instance (caller calls stopTunnel)
- */
+/** So real devices can reach localhost; the caller stops it. */
 export async function startTunnel(accessKey) {
   const bsLocal = new BrowserStackLocal.Local();
   await new Promise((resolve, reject) => {
@@ -52,10 +35,6 @@ export async function startTunnel(accessKey) {
   return bsLocal;
 }
 
-/**
- * Stop the BrowserStack Local tunnel.
- * @param {BrowserStackLocal.Local} bsLocal
- */
 export async function stopTunnel(bsLocal) {
   if (!bsLocal) return;
   await new Promise((resolve) => bsLocal.stop(resolve));
@@ -64,10 +43,7 @@ export async function stopTunnel(bsLocal) {
 
 // ─── Device Matrix ──────────────────────────────────────────────────
 
-/**
- * Curated device matrix covering the primary suspects for mobile
- * WebGL/GPU rendering bugs.
- */
+/** The primary suspects for mobile WebGL/GPU rendering bugs. */
 export const DEVICE_MATRIX = [
   // iOS Safari — primary suspect for the flat gray bug
   {
@@ -131,17 +107,7 @@ export const DEVICE_MATRIX = [
 
 // ─── Remote Browser Connect ─────────────────────────────────────────
 
-/**
- * Connect to a real BrowserStack device via Playwright WebSocket.
- *
- * iOS uses webkit.connect(); Android uses playwright._android.connect()
- * which returns an AndroidDevice (launchBrowser → BrowserContext).
- *
- * @param {object} device Device definition from DEVICE_MATRIX
- * @param {{user: string, key: string}} credentials
- * @param {number} localPort Local server port (tunneled)
- * @returns {Promise<{browser: object, context: object, page: object}>}
- */
+/** iOS through webkit.connect(); Android through _android.connect(), which returns an AndroidDevice. */
 export async function connectRemoteDevice(device, credentials, localPort) {
   const caps = {
     browser: device.browser,
@@ -165,9 +131,7 @@ export async function connectRemoteDevice(device, credentials, localPort) {
   let browser, context, page;
 
   if (device.engine === "chromium") {
-    // Android real devices use Playwright's _android API, not chromium.connect().
-    // BrowserStack's /playwright endpoint speaks the Android wire protocol for
-    // these devices, not the Chromium browser protocol.
+    // BrowserStack's endpoint speaks the Android wire protocol for these devices, not Chromium's.
     const androidDevice = await _android.connect(wsUrl);
     await androidDevice.shell("am force-stop com.android.chrome");
     context = await androidDevice.launchBrowser();
@@ -190,12 +154,7 @@ export async function connectRemoteDevice(device, credentials, localPort) {
 
 // ─── Session Status ─────────────────────────────────────────────────
 
-/**
- * Report test pass/fail to BrowserStack dashboard.
- * @param {object} page Playwright page
- * @param {"passed"|"failed"} status
- * @param {string} reason Human-readable reason
- */
+/** To the BrowserStack dashboard. */
 export async function markSessionStatus(page, status, reason) {
   try {
     await page.evaluate(

@@ -46,8 +46,7 @@ void wt_generate_glottal(wavetable_t *wt, float *buf, int length, int harmonics)
     wt->length = length;
     memset(buf, 0, (size_t)(length + 1) * sizeof(float));
 
-    /* Same alternating-sign Fourier series as saw, but per-harmonic amplitude
-     * is 1/n^2 (Rosenberg glottal slope) instead of saw's 1/n. */
+    /* 1/n² per harmonic (the Rosenberg glottal slope) instead of saw's 1/n. */
     for (int h = 1; h <= harmonics; h++) {
         double sign = (h % 2 == 0) ? -1.0 : 1.0;
         double amp  = sign * 2.0 / (M_PI * (double)h * (double)h);

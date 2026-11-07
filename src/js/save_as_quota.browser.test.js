@@ -1,14 +1,5 @@
-// save_as_quota.browser.test.js
-//
-// A Save As the browser cannot store must fail visibly (spec
-// docs/superpowers/specs/2026-10-31-versioned-objects-and-residency-revisions-design.md
-// §2.4): with localStorage full, saving over an instrument reports nothing
-// saved, the library stays as it was, and nothing claims success — the version
-// would otherwise vanish on the next reload.
-//
-// Run:
-//   GO=$(pwd)/.tools/go/bin/go node src/js/save_as_quota.browser.test.js
-// Env: WASM_PREBUILT=1, WASM_FILE=<wasm>.
+// With localStorage full a Save As must fail visibly: nothing claims success and the library is unchanged, or the
+// version would vanish on reload. Run: GO=… node src/js/save_as_quota.browser.test.js (WASM_PREBUILT=1, WASM_FILE=)
 
 import http from "http";
 import { spawnSync } from "child_process";

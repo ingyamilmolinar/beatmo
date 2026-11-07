@@ -1,11 +1,7 @@
 #ifndef INSERT_FX_H
 #define INSERT_FX_H
 
-/* ================================================================
- * Insert Effects — C implementations for all 6 insert effect types.
- * Each effect has _init(), _process(in, out, N), _reset(), _set_param().
- * All buffers are caller-owned (Go allocates via C.malloc, frees on cleanup).
- * ================================================================ */
+/* Each effect has _init, _process(in, out, N), _reset and _set_param; every buffer is caller-owned. */
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846

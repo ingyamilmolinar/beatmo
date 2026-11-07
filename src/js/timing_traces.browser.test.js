@@ -1,10 +1,5 @@
-// COVERED-BY-GO: none — WebAudio emission timing (BufferSource.start(when)
-// vs the true AudioContext clock) is a JS-only boundary; Go has no visibility
-// into when WebAudio actually starts a scheduled source. This test verifies
-// the audio.js timingTraces ring (window.getTimingTraces/resetTimingTraces)
-// records real sequencer playback. See CLAUDE.md "Parity Timing-Sync" plan
-// Task 4.1/4.2 — Task 4.2 pulls these traces into the Go-WASM Stage-D drift
-// checker.
+// COVERED-BY-GO: none, since Go cannot see when WebAudio actually starts a scheduled source. The timingTraces ring must
+// record real sequencer playback for Go's emission-drift checker.
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";
 import http from "http";
@@ -19,9 +14,7 @@ const jsDir = __dirname;
 const goDir = path.resolve(jsDir, "../go");
 const GO = resolveGoBinary();
 
-// Build the full main.wasm (real sequencer + audio bridge, same as
-// webaudio_timing_stress.browser.test.js) — a minimal playtest harness has no
-// sequencer to drive BatchParam.Row/Abs through.
+// The full build: the playtest harness has no sequencer to thread Row/Abs through.
 if (!shouldSkipWasmBuild("main.wasm")) {
   const build = spawnSync(
     GO,
@@ -64,9 +57,7 @@ page.on("console", (m) => {
   if (m.type() === "error") pageErrors.push("console.error: " + m.text());
 });
 
-// Gate readiness on REAL exports that only register after Game.New() finishes
-// installing the full JS bridge (see webaudio_timing_stress.browser.test.js
-// header comment for why startPlay alone races ahead of full init).
+// On exports that register only once the whole bridge is installed: startPlay alone races ahead of init.
 await page.goto(`http://localhost:${port}/`);
 await page.waitForFunction(
   () =>
@@ -83,13 +74,9 @@ await page.evaluate(() => {
   resetTimingTraces();
   buildPerfRect(2, 1);
   forceDraw?.(); forceDraw?.();
-  // Observe every trace the Go Stage-D drain consumes. Sequencer batches now
-  // start their voices SYNCHRONOUSLY inside the Go→JS call (audio.js
-  // enqueueAudioEvents(…, true)), and the drain runs right after PlayBatch in
-  // the same audioLoop iteration — so the ring is refilled and emptied before
-  // control ever returns to the page, and a poll between frames sees it empty.
-  // Go resolves window.resetTimingTraces by name on every drain, so wrapping
-  // it captures exactly what Stage D receives.
+  // Batches start voices SYNCHRONOUSLY inside the Go→JS call and Go drains the ring right after, before control returns,
+  // so a poll between frames sees it empty. Go resolves resetTimingTraces by name on every drain, so wrapping it captures
+  // exactly what the checker receives.
   window.__ttCaptured = [];
   const origReset = window.resetTimingTraces;
   window.resetTimingTraces = () => {
@@ -98,20 +85,11 @@ await page.evaluate(() => {
     return origReset();
   };
 });
-// Press Play only once the readiness gate opens — a bare startPlay() right
-// after buildPerfRect is ignored while the new rows' voices warm up.
+// A bare startPlay() is ignored while the new rows' voices warm up.
 await startPlaybackWhenReady(page, { bpm: 240 });
 
-// Task 4.2 wires drainEmissionReports() into the js build: on every audio
-// batch dispatch (game_audio_loop.go), Go now pulls window.getTimingTraces()
-// AND resets the ring (window.resetTimingTraces()) to feed Stage-D drift.
-// That means the ring no longer accumulates monotonically across the whole
-// playback window — it is drained near-continuously from the Go side. So
-// instead of waiting once and reading a final snapshot, poll repeatedly
-// during playback and keep the largest non-empty snapshot seen. A non-empty
-// snapshot at any poll instant proves both: (a) audio.js is still recording
-// real BufferSource.start(when) calls (Task 4.1), and (b) polling itself
-// (mirroring what the Go drain does every batch) never throws.
+// Go drains and resets the ring on every batch, so it never accumulates: poll during playback and keep the largest
+// snapshot. A non-empty one proves recording works and that polling, as the drain does, never throws.
 let best = [];
 let pollThrew = false;
 for (let i = 0; i < 30; i++) {
@@ -149,23 +127,8 @@ for (const tr of best) {
 }
 console.log("PASS timing_traces:", best.length, "traces (best snapshot while Go Stage-D drain is concurrently active)");
 
-// ── Task 4.2 extension: reset + replay cycle ───────────────────────────
-// Browser Stage-D is log-only by default (RuntimeProf().Timing.FatalDefault
-// == false for the browser profile) — it must never panic even while the
-// Go drain is pulling + resetting this ring on every dispatch. Prove the
-// drain+reset cycle doesn't permanently wedge recording: explicitly reset,
-// confirm the ring is empty, replay, and confirm traces resume flowing.
-//
-// Reset and read must share ONE evaluate — traces keep landing after
-// stopPlay() resolves, so two round-trips race. stopPlay() is not
-// synchronous: it sets the one-frame `stopPressed` pulse
-// (js_exports_playback_perf.go) that the next Game.Update() consumes, and
-// audio.js's flushAudioQueue keeps draining already-queued events past that,
-// each BufferSource.start(when) pushing a trace. In the gap between two
-// round-trips that tail lands and the read sees a non-empty ring (~21 traces
-// on a box running 4 browser jobs). One evaluate body runs to completion
-// without yielding, so nothing can push mid-check — which makes the assertion
-// stronger, not weaker: it holds even while recording is concurrently active.
+// The browser checker is log-only, so a drain + reset must never wedge recording. Reset and read share ONE evaluate:
+// stopPlay() takes effect a frame later and queued events keep pushing traces, so two round trips race.
 const { before, after } = await page.evaluate(() => {
   const before = window.getTimingTraces().length;
   window.resetTimingTraces();

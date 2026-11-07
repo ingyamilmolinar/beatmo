@@ -1,12 +1,7 @@
 #ifndef ADSR_H
 #define ADSR_H
 
-/* ================================================================
- * ADSR envelope generator with linear and exponential curves.
- *
- * State-machine design: more efficient than time-based lookup for
- * real-time processing. Supports block rendering.
- * ================================================================ */
+/* ADSR with linear and exponential curves: a state machine, cheaper than time-based lookup in real time. */
 
 typedef enum {
     ADSR_IDLE,

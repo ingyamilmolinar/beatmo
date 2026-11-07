@@ -1,14 +1,5 @@
-// mobile_file_picker.browser.test.js
-//
-// Verifies that the mobile file picker rect system correctly opens file pickers
-// on mobile touch and that import/upload work end-to-end.
-//
-// Scenarios:
-//   1. Import JSON on mobile — file picker opens via gesture rect, import succeeds
-//   2. Upload WAV on mobile — file picker opens via gesture rect
-//   3. Desktop still works — import via programmatic click (no gesture rect needed)
-//
-// Usage: GO=/path/to/.tools/go/bin/go node src/js/mobile_file_picker.browser.test.js
+// The mobile picker rect system: import and upload through gesture rects, and desktop import by programmatic click.
+// Usage: GO=… node src/js/mobile_file_picker.browser.test.js
 
 import { chromium, devices } from "playwright";
 import http from "http";
@@ -55,9 +46,6 @@ const iPhone = devices["iPhone 12 landscape"];
 let exitCode = 0;
 
 try {
-  // ========================================================================
-  // Scenario 1: Import JSON on mobile via file picker rect system
-  // ========================================================================
   console.log("--- Scenario 1: Import JSON on mobile ---");
   {
     const browser = await chromium.launch({
@@ -91,8 +79,7 @@ try {
     }
     console.log("  File picker rect functions available");
 
-    // Verify openJSONFile checks for pending mobile picks.
-    // We simulate a pending import result and verify openJSONFile consumes it.
+    // openJSONFile must consume a pending mobile pick.
     const testJSON = JSON.stringify({
       schema_version: "0.0.1",
       subdiv: 16,
@@ -108,10 +95,7 @@ try {
     const importResult = await page.evaluate(async (json) => {
       // Simulate a pending file pick.
       const p = Promise.resolve({ data: json, name: "test.json" });
-      // Store it as if the touchend handler had set it.
-      // We need to access the pending map indirectly through _fpConsumePending.
-      // Since _fpConsumePending reads from the closure, we'll register a rect
-      // and simulate the pick by overriding _fpConsumePending temporarily.
+      // The pending map is closure-private, so _fpConsumePending is overridden for the pick.
       const origConsume = window._fpConsumePending;
       window._fpConsumePending = function(id) {
         if (id === "import") {
@@ -147,9 +131,6 @@ try {
     await browser.close();
   }
 
-  // ========================================================================
-  // Scenario 2: Upload WAV on mobile via file picker rect system
-  // ========================================================================
   console.log("\n--- Scenario 2: Upload WAV on mobile ---");
   {
     const browser = await chromium.launch({
@@ -191,9 +172,6 @@ try {
     await browser.close();
   }
 
-  // ========================================================================
-  // Scenario 3: Desktop import still works (no gesture rect needed)
-  // ========================================================================
   console.log("\n--- Scenario 3: Desktop import still works ---");
   {
     const browser = await chromium.launch({

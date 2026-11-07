@@ -1,42 +1,6 @@
-/**
- * Recording Encoder Web Worker.
- *
- * Owns the entire WAV encode + zip bundle pipeline for the WASM recording
- * subsystem. Runs on a dedicated worker thread so neither the audio
- * rendering thread (AudioWorklet) nor the main thread (Go-WASM goroutines,
- * UI repaint, RAF) does any encoding work while a session is active.
- *
- * Lifecycle (driven by main thread):
- *
- *   main                                  worker
- *   ────                                  ──────
- *   new Worker('recording_encoder_worker.js')
- *   postMessage({type:'init',
- *                format, sampleRate})  ──▶ initialize encoder, channel registry
- *   for each channel:
- *     create MessageChannel(p1, p2)
- *     send p2 to worklet, p1 to worker
- *     postMessage({type:'addChannel',
- *                  id, name, filename,
- *                  port: p1, bitDepth},
- *                 [p1])              ──▶ attach onmessage to p1; encode batches
- *
- *   ... worklet posts Float32 batches to p2 → arrives at p1 in worker ...
- *   ... worker WAV-encodes into per-channel chunk lists ...
- *
- *   postMessage({type:'finalize',
- *                channels:[{id,name,filename,...meta}]}) ──▶
- *                                          patch WAV headers, zip, post Blob
- *                                       ◀── postMessage({type:'blob',
- *                                                        blob, meta},[blob])
- *   trigger anchor.click(blob)
- *
- * Resource bounds (worker-side, hard-stop on breach):
- *   - BYTES_PER_CHANNEL_MAX (default 128 MB) — drop further samples + counter
- *   - DURATION_MAX_SEC (default 30 min) — post {type:'autoStop'} to main
- *
- * The worker has no DOM or AudioContext access. Pure encoding + zip.
- */
+/** The whole WAV encode and zip bundle on its own thread, so neither the audio thread nor the main thread encodes. init →
+ * addChannel (a MessagePort whose twin goes to that channel's worklet) → batches arrive straight from the worklet →
+ * finalize patches headers, zips, posts the Blob. Hard bounds: 128 MB per channel, 30 min (autoStop). No DOM. */
 
 /* eslint-disable no-undef */
 
@@ -102,8 +66,7 @@ function statsSnapshot() {
 
 // ─── Sample → PCM conversion ─────────────────────────────────────────────
 
-// Each writer takes a Float32Array slice and returns a Uint8Array of bytes.
-// All formats are little-endian PCM mono.
+// Little-endian PCM mono, Float32Array slice in, bytes out.
 
 function encodeSamplesPCM16(samples) {
   const out = new Uint8Array(samples.length * 2);
@@ -140,9 +103,7 @@ function encodeSamplesPCM32F(samples) {
   return out;
 }
 
-// Float32 passthrough used by formats we encode at finalize-time (FLAC,
-// OGG). Storing raw little-endian float bytes keeps appendChannelBytes /
-// chunk bookkeeping unchanged and lets finalize re-decode without loss.
+// FLAC/OGG are encoded at finalize, so raw float bytes are stored and re-read without loss.
 function encodeSamplesFloat32(samples) {
   const out = new Uint8Array(samples.length * 4);
   const view = new DataView(out.buffer);
@@ -157,17 +118,13 @@ function pickEncoder(fmt) {
   case 'wav16':  return { fn: encodeSamplesPCM16,   bitDepth: 16, isFloat: false, container: 'wav' };
   case 'wav24':  return { fn: encodeSamplesPCM24,   bitDepth: 24, isFloat: false, container: 'wav' };
   case 'wav32f': return { fn: encodeSamplesPCM32F,  bitDepth: 32, isFloat: true,  container: 'wav' };
-  // FLAC and OGG buffer raw float samples and encode at finalize time.
-  // bitDepth=32/isFloat=true here only describes the *intermediate* storage
-  // (float32 LE) — the finalize step writes the real container.
+  // bitDepth 32 / isFloat only describe the intermediate storage; finalize writes the real container.
   case 'flac':   return { fn: encodeSamplesFloat32, bitDepth: 32, isFloat: true,  container: 'flac' };
   case 'ogg':    return { fn: encodeSamplesFloat32, bitDepth: 32, isFloat: true,  container: 'ogg' };
   default: throw new Error('unsupported recording format: ' + fmt);
   }
 }
 
-// Decode the float32-LE storage back into a Float32Array sample stream.
-// Used by finalize for FLAC/OGG containers.
 function readChannelFloatSamples(c) {
   const totalSamples = (c.totalSampleBytes / 4) | 0;
   const out = new Float32Array(totalSamples);
@@ -188,8 +145,7 @@ function readChannelFloatSamples(c) {
 // ─── Append to channel chunks ────────────────────────────────────────────
 
 function appendChannelBytes(c, bytes) {
-  // Append into the trailing chunk if it has room; otherwise allocate.
-  // Pre-allocated chunkSize keeps allocations bounded and predictable.
+  // A fixed chunk size keeps allocations bounded and predictable.
   let remaining = bytes;
   while (remaining.length > 0) {
     let tail = c.chunks[c.chunks.length - 1];
@@ -271,8 +227,7 @@ function buildWavFile(c, encoder) {
   const buf = new Uint8Array(fileSize);
   const view = new DataView(buf.buffer);
 
-  // Always write WAV format spec — handle PCM (16/24) vs IEEE float (32f).
-  // For float, fmt format code is 3; for PCM it's 1.
+  // fmt code 3 for IEEE float, 1 for PCM.
   const fmtCode = encoder.isFloat ? 3 : 1;
   const numChannels = 1;
   const blockAlign = numChannels * c.bytesPerSample;
@@ -307,12 +262,7 @@ function buildWavFile(c, encoder) {
   return buf;
 }
 
-// ─── FLAC verbatim encoder (mono, 16-bit) ──────────────────────────────
-//
-// Ported from src/go/internal/audio/encode_flac.go. Writes a valid FLAC
-// stream using verbatim (uncompressed) subframes — one frame per ~4096
-// samples. File sizes are similar to 16-bit WAV; any FLAC decoder will
-// accept the output.
+// A port of encode_flac.go: verbatim (uncompressed) subframes, ~4096 samples per frame, valid for any decoder.
 
 const FLAC_CRC8_TABLE = (() => {
   const t = new Uint8Array(256);
@@ -466,10 +416,7 @@ function writeFlacVerbatimFrame(out, block, srCode, bps, frameNum) {
   fb.writeUTF8(frameNum);
   if (bsCode === 6) fb.writeBits(block.length - 1, 8);
   else if (bsCode === 7) fb.writeBits(block.length - 1, 16);
-  // Sample-rate "from end of header" cases not used: srCode 12 needs an
-  // 8-bit kHz value, but our writer only emits 12 for non-standard rates
-  // we don't expect from WebAudio. WebAudio rates (44.1k/48k/96k) all hit
-  // the table codes above.
+  // srCode 12 needs an 8-bit kHz value only for rates WebAudio never produces.
   fb.alignByte();
   const crc8 = fb.crc8();
   fb.writeByteRaw(crc8);
@@ -520,8 +467,7 @@ function buildFlacFile(samples, sr) {
   out.push((blockSize >>> 8) & 0xff, blockSize & 0xff);
   // min/max frame size (24 bits each) = unknown
   out.push(0, 0, 0,  0, 0, 0);
-  // sample rate (20 bits) | channels-1 (3) | bps-1 (5) | total samples high 4 bits
-  // Use BigInt to safely shift across 32-bit boundary.
+  // sample rate (20) | channels-1 (3) | bps-1 (5) | total samples high 4; BigInt to shift past 32 bits.
   const sr20 = BigInt(sr) & 0xFFFFFn;          // 20 bits
   const ch3  = BigInt(numChannels - 1) & 0x7n; // 3 bits
   const bp5  = BigInt(bps - 1) & 0x1Fn;        // 5 bits
@@ -529,16 +475,8 @@ function buildFlacFile(samples, sr) {
   const high4 = (ts >> 32n) & 0xFn;
   // 36-bit packed value: [sr20][ch3][bp5][high4]
   const packed64 = (sr20 << 12n) | (ch3 << 9n) | (bp5 << 4n) | high4;
-  // Pack as 4 BE bytes (the high 32 of a 36-bit field; lowest 4 bits go in the next byte alongside totalSamples low).
-  // Simpler: write high 4 bytes (32 bits) of the 36-bit packed, then 32-bit total samples low.
-  // packed64 fits in 36 bits — top 4 belong to the byte that also holds high4? No, the layout is:
-  //   bytes [4..7]: top 32 bits of 36-bit packed (sr20 + ch3 + bp5 + high4 occupies bits 35..0)
-  //   bytes [8..11]: low 32 bits of total samples
-  // Actually the Go code writes packed (uint32) as BE then totalSamples low (uint32) as BE.
-  // The Go `packed` is a uint32 = (sr<<12) | ((ch-1)<<9) | ((bps-1)<<4) | (totalSamples>>32).
-  // Since totalSamples>>32 is the high 4 bits, and totalSamples fits in 36 bits for any practical recording,
-  // we can compute packed as a 32-bit number directly. The shift can overflow 32-bit JS bitwise ops,
-  // so use math.
+  // Go writes packed = (sr<<12)|((ch-1)<<9)|((bps-1)<<4)|(total>>32) as a BE uint32, then the low 32 of total: done
+  // with BigInt because the shift overflows JS bitwise ops.
   const packedHi = Number(((sr20 << 12n) | (ch3 << 9n) | (bp5 << 4n) | high4) & 0xFFFFFFFFn);
   out.push((packedHi >>> 24) & 0xff, (packedHi >>> 16) & 0xff,
            (packedHi >>> 8) & 0xff, packedHi & 0xff);
@@ -563,15 +501,10 @@ function buildFlacFile(samples, sr) {
   return Uint8Array.from(out);
 }
 
-// OGG stub: matches Go's encode_ogg.go (which returns an error and is not
-// implemented). Produce a minimal placeholder so the worker doesn't hang
-// or crash; the file won't decode as real Vorbis. Tests that exercise OGG
-// only check the format string round-trips, not the file content.
+// Go's OGG encoder is unimplemented too; a placeholder keeps the worker from hanging, and tests only round-trip the
+// format string.
 function buildOggStub(samples) {
-  // Minimal "OggS" capture-pattern header so file sniffers recognize the
-  // container, followed by zero data. 27 bytes is the minimum OggS page
-  // header size; the version, type, and segment-count fields are all
-  // zero, which is technically malformed but harmless for our purposes.
+  // The 27-byte OggS capture pattern so sniffers recognise it; zeroed fields are malformed but harmless here.
   return new Uint8Array([
     0x4f, 0x67, 0x67, 0x53, // "OggS"
     0,                       // version
@@ -584,11 +517,7 @@ function buildOggStub(samples) {
   ]);
 }
 
-// ─── Minimal stored-format ZIP writer ────────────────────────────────────
-//
-// Implements just enough of PKZIP to bundle our WAV files. No compression
-// (stored-only), no encryption. Validated against `unzip` and Go's
-// archive/zip reader.
+// Stored-only PKZIP, enough to bundle WAVs; validated against `unzip` and Go's archive/zip.
 
 const crcTable = (() => {
   const t = new Uint32Array(256);
@@ -707,11 +636,7 @@ function bundleZip(entries) {
 // ─── Finalize: patch WAV headers, build zip, post Blob ──────────────────
 
 function finalize(meta) {
-  // Wait for each channel's worklet to have closed before reading its
-  // chunk list. The 'done' message from each worklet sets c.closed = true.
-  // If a channel hasn't finished draining when finalize arrives, we still
-  // build the file with whatever is in c.chunks — drops are reported in
-  // statsSnapshot().
+  // A channel not yet drained when finalize arrives is built from what it has; drops show in statsSnapshot().
   let encoder;
   try {
     encoder = pickEncoder(format);

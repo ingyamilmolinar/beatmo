@@ -1,22 +1,6 @@
-// landscape_block.browser.test.js
-//
-// Mobile landscape is unsupported. A DOM/CSS overlay (#landscape-block in
-// index.html), driven by the real (orientation: landscape) media query and
-// anchored to the visible viewport (position:fixed; inset:0), covers the canvas
-// with a rotate-to-portrait notice. This is robust against the Ebiten
-// canvas/DPR sizing race that mis-positioned the in-engine notice on real
-// devices ("top half black, message in the bottom half").
-//
-// Verifies (browser-only platform feature + Go→JS bridge plumbing, per the JS
-// Test Charter):
-//   1. Landscape phone viewport => overlay visible, covers the full viewport.
-//   2. Overlay is the topmost element at center (blocks input to the canvas).
-//   3. Overlay text is localized text pushed from Go (non-empty title/body).
-//   4. Portrait => overlay hidden.
-//   5. Live rotation round-trip toggles visibility (seamless transition).
-//
-// Usage: GO=/path/to/.tools/go/bin/go node src/js/landscape_block.browser.test.js
-//   (WASM_PREBUILT=1 reuses an existing src/js/main.wasm.)
+// Mobile landscape is blocked by a DOM overlay on the real orientation media query, anchored to the visible viewport,
+// robust to the canvas/DPR sizing race that broke an in-engine notice. Checks it covers, sits on top, shows Go's
+// localized text, and toggles on rotation. Usage: GO=… node src/js/landscape_block.browser.test.js
 
 import { chromium, devices } from "playwright";
 import http from "http";
@@ -144,15 +128,8 @@ try {
     await ctx.close();
   }
 
-  // ── 4) Viewport height is re-pinned to the VISIBLE viewport on rotation ──
-  // Regression guard for the iOS-Safari 100dvh bug: after rotating back to
-  // portrait the layout-viewport height can stay stale, so the canvas ends up a
-  // different height than the screen — a black band at the top and a wrong
-  // (mis-scaled) game resolution. The fix pins --app-vh to the real viewport and
-  // re-applies it on orientationchange/resize. Here we deliberately corrupt the
-  // pinned height (simulating the stale value), fire the rotation events, and
-  // assert the canvas refits the visible viewport exactly. Without the handler
-  // the stale height persists and the canvas no longer fills the screen.
+  // iOS Safari can leave a stale layout-viewport height after rotating back, so the canvas misfits the screen. The
+  // pinned --app-vh is corrupted on purpose, the rotation events fired, and the canvas must refit exactly.
   {
     console.log("--- viewport re-pin on rotation ---");
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
@@ -160,8 +137,7 @@ try {
     await page.goto(`http://localhost:${port}/`);
     await waitWasm(page);
 
-    // The app must size off a pinned CSS var (not raw 100dvh) so a stale value
-    // can be corrected. Corrupt it to simulate iOS leaving a wrong viewport.
+    // Sized off a pinned CSS var, not raw 100dvh, so a stale value can be corrected.
     const stuck = await page.evaluate(() => {
       document.documentElement.style.setProperty("--app-vh", (window.innerHeight + 90) + "px");
       return Math.round(document.body.getBoundingClientRect().height);
@@ -194,12 +170,10 @@ try {
     if (s.bodyH !== s.innerH) fail(`app height NOT re-pinned after rotation (body=${s.bodyH} inner=${s.innerH}) — black band / wrong resolution`); else pass("app height re-pinned to visible viewport after rotation");
     if (s.canvasTop !== 0) fail(`canvas has a top gap after rotation (top=${s.canvasTop})`); else pass("no top black band (canvas top=0)");
     if (Math.abs(s.canvasH - s.innerH) > 1) fail(`canvas does not fill viewport height after rotation (canvas=${s.canvasH} inner=${s.innerH}) — wrong resolution`); else pass("canvas fills viewport height");
-    // Width / right-side coverage: a vertical black box on the right means the
-    // canvas does not span the full width (or its framebuffer is the wrong shape).
+    // A black box on the right means the canvas does not span the width.
     if (s.canvasLeft !== 0) fail(`canvas has a left gap after rotation (left=${s.canvasLeft})`); else pass("canvas anchored to left edge");
     if (Math.abs(s.canvasW - s.innerW) > 1) fail(`canvas does not fill viewport WIDTH after rotation (canvas=${s.canvasW} inner=${s.innerW}) — black box on the right`); else pass("canvas fills viewport width (no right black box)");
-    // Framebuffer aspect must match the display aspect, else Ebiten letterboxes
-    // / pillarboxes the game inside the canvas (a black band, e.g. right 50%).
+    // Otherwise Ebiten letterboxes the game inside the canvas.
     if (s.fb) {
       const fbAspect = s.fb[0] / s.fb[1];
       const dispAspect = s.canvasW / s.canvasH;

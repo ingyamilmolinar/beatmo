@@ -1,21 +1,6 @@
-// sampler_unregister_pcm.browser.test.js
-//
-// Validates the Go↔WebAudio seam that makes the Sampler/Synth "Reset to
-// factory" actually restore a built-in's synth on the browser:
-// unregisterSamplePCM(id) must (a) clear the chopped PCM from renderCache and
-// (b) restore the deleted RENDER[id] → C-synth mapping that registerSamplePCM
-// removed. Without either, a built-in that was Sampler-Saved over keeps playing
-// the chop (or goes silent) after Reset — the "reversed kick won't reset" bug.
-//
-// The test registers a SILENT PCM over the real "kick" synth (registerSamplePCM
-// deletes RENDER['kick'] and caches the silent buffer), then unregisters and
-// plays "kick". Only the correct fix — renderCache cleared AND RENDER restored —
-// yields audible synth output; a buggy unregister leaves silence.
-//
-// COVERED-BY-GO:
-//   internal/audio/sample_factory_test.go            (ResetSampleToFactory state + restart)
-//   internal/audio/sample_factory_desktop_test.go    (desktop instrument-table restore)
-//   internal/audio/sample_factory_unregister_test.go (UnregisterSamplePCM seam)
+// unregisterSamplePCM must clear the chop from renderCache AND restore the synth mapping, or a built-in saved over
+// keeps playing the chop (or goes silent). COVERED-BY-GO: sample_factory_test.go, sample_factory_desktop_test.go,
+// sample_factory_unregister_test.go
 
 import { chromium } from "playwright";
 import { spawnSync } from "child_process";
@@ -101,9 +86,7 @@ await page.waitForFunction(() =>
   typeof window.playSound === "function");
 await page.evaluate(() => document.dispatchEvent(new Event("mousedown")));
 
-// Register a SILENT chop over the real "kick" synth, then unregister and play
-// "kick". Audible output proves renderCache was cleared AND RENDER['kick'] was
-// restored; silence proves the bug.
+// A SILENT chop over the real kick: only both fixes together make kick audible again.
 await page.evaluate(async () => {
   const sr = 44100;
   const silent = new Float32Array(8000); // all zeros

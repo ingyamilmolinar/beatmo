@@ -1,9 +1,5 @@
-// mobile_speaker_routing.browser.test.js
-//
-// Verifies iOS speaker routing fixes: silent <audio> element, audioSession API,
-// visibilitychange recovery, and suspend/resume resilience.
-//
-// Usage: GO=/path/to/.tools/go/bin/go node src/js/mobile_speaker_routing.browser.test.js
+// The iOS speaker routing: the silent <audio> element, audioSession, visibilitychange recovery and suspend/resume
+// resilience. Usage: GO=… node src/js/mobile_speaker_routing.browser.test.js
 
 import { chromium, devices } from "playwright";
 import http from "http";
@@ -50,11 +46,7 @@ const iPhone = devices['iPhone 12 landscape'];
 let exitCode = 0;
 let browser;
 try {
-  // ========================================================================
-  // Scenario 1: Silent audio element created on gesture unlock
-  // Launch WITHOUT --autoplay-policy=no-user-gesture-required to test
-  // that the silent <audio> element is created during the unlock gesture.
-  // ========================================================================
+  // Without the autoplay override, so the element is created by a real unlock.
   console.log("--- Scenario 1: Silent audio element created on gesture unlock ---");
   {
     const b = await chromium.launch({
@@ -120,11 +112,7 @@ try {
     await b.close();
   }
 
-  // ========================================================================
-  // Scenario 2: audioSession.type set to 'playback'
-  // Verifies that configureAudioSession() runs without error. Chromium
-  // doesn't support navigator.audioSession, so we verify graceful fallback.
-  // ========================================================================
+  // Chromium has no navigator.audioSession, so a graceful fallback is what is checked.
   console.log("\n--- Scenario 2: audioSession.type set to 'playback' ---");
   browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
   {
@@ -140,13 +128,11 @@ try {
       typeof resumeAudio === "function"
     );
 
-    // Check audioSession type — Chromium doesn't support this API,
-    // so we expect null (graceful no-op).
+    // null on Chromium: a graceful no-op.
     const sessionType = await page.evaluate(() => __audioSessionType());
     console.log(`  audioSession.type: ${sessionType}`);
 
-    // The key assertion: no errors were thrown during configureAudioSession().
-    // On Safari 16.4+ this would return 'playback'; on Chromium it's null.
+    // 'playback' on Safari 16.4+, null on Chromium; anything else is an error.
     if (sessionType !== null && sessionType !== 'playback') {
       throw new Error(`Scenario 2 FAIL: unexpected audioSession.type '${sessionType}'`);
     }
@@ -168,11 +154,7 @@ try {
     await context.close();
   }
 
-  // ========================================================================
-  // Scenario 3: Audio plays with speaker routing fix active
-  // Mobile emulation WITH autoplay bypass. Build circuit, start playback,
-  // verify output AND that the silent audio element was created.
-  // ========================================================================
+  // With the autoplay bypass: playback output and the silent element.
   console.log("\n--- Scenario 3: Audio plays with speaker routing fix active ---");
   {
     const context = await browser.newContext({
@@ -194,12 +176,8 @@ try {
       typeof __hasSilentAudioEl === "function"
     );
 
-    // unlockAudio() installs the silent <audio> element only when it actually
-    // has to UNLOCK (its fast path returns when the context already runs). On a
-    // real iPhone the context always starts suspended, so the first tap always
-    // installs it — Scenario 1 proves that without the autoplay bypass. Under
-    // THIS scenario's --autoplay-policy bypass the app may already have created
-    // a RUNNING context before the tap, and then there is nothing to unlock.
+    // The element is installed only when unlockAudio actually UNLOCKS; under this bypass a context may already run before
+    // the tap. A real iPhone always starts suspended (scenario 1 proves the install).
     const ctxRunningBeforeTap = await page.evaluate(() => !!(window.__audioCtx && window.__audioCtx.state === "running"));
 
     // Unlock audio context via gesture.
@@ -220,8 +198,7 @@ try {
     });
     await page.waitForTimeout(200);
 
-    // Play is ignored while the warm-up gate is closed (the button is disabled
-    // then) — wait for it, as a user must.
+    // Play is ignored while the warm-up gate is closed.
     await page.waitForFunction(() => typeof warmupProgress !== "function" || warmupProgress().ready === true, null, { timeout: 30000, polling: 100 });
 
     // Enable output capture and start playback.
@@ -257,11 +234,7 @@ try {
     await context.close();
   }
 
-  // ========================================================================
-  // Scenario 4: Page visibility change resumes audio
-  // Start playback, suspend context programmatically, dispatch
-  // visibilitychange, verify context resumes and audio output recovers.
-  // ========================================================================
+  // Suspended by hand, then visibilitychange must resume it and output recover.
   console.log("\n--- Scenario 4: Page visibility change resumes audio ---");
   {
     const context = await browser.newContext({
@@ -300,13 +273,8 @@ try {
         return { error: `expected running, got ${ctx.state}` };
       }
 
-      // capturePlay arms recordSamples, fires a (fire-and-forget) playSound,
-      // then polls until the async flush has recorded the hit. window.playSound
-      // only enqueues the event and resolves immediately; the render +
-      // recordSamples runs later in flushAudioQueue (deferred to setTimeout(0)
-      // under contention), so we must poll rather than assume `await playSound`
-      // finished recording. Returns a copy so a later deferred flush can't
-      // mutate it after capture is disabled.
+      // playSound only enqueues; the render and recordSamples run later (possibly deferred), so this polls, and returns a copy
+      // a later flush cannot mutate.
       const capturePlay = async (id, vol) => {
         window.__samples = [];
         window.__captureSamples = true;
@@ -331,9 +299,7 @@ try {
       await ctx.suspend();
       const suspendedState = ctx.state;
 
-      // Dispatch visibilitychange to trigger recovery handler.
-      // The handler checks document.visibilityState, which we can't override,
-      // but in headless it returns 'visible', so the handler will fire.
+      // Headless reports 'visible', so the handler fires.
       document.dispatchEvent(new Event('visibilitychange'));
 
       // Wait for resume to take effect.
@@ -376,10 +342,6 @@ try {
     await context.close();
   }
 
-  // ========================================================================
-  // Scenario 5: Multiple suspend/resume cycles
-  // Start playback, then do 3 cycles of suspend → resumeAudio → verify.
-  // ========================================================================
   console.log("\n--- Scenario 5: Multiple suspend/resume cycles ---");
   {
     const context = await browser.newContext({
@@ -413,10 +375,7 @@ try {
       if (!ctx) return { error: "no AudioContext" };
       if (ctx.state !== 'running') return { error: `initial state ${ctx.state}` };
 
-      // capturePlay arms recordSamples, fires a (fire-and-forget) playSound,
-      // then polls until the async flush has recorded the hit. Returns the
-      // captured Float32 samples (a copy, so a later deferred flush can't
-      // mutate it after capture is disabled).
+      // Polls until the flush records the hit; returns a copy.
       const capturePlay = async (id, vol) => {
         window.__samples = [];
         window.__captureSamples = true;
@@ -445,18 +404,8 @@ try {
 
         const stateAfterResume = ctx.state;
 
-        // Use software-side recordSamples capture instead of
-        // ScriptProcessorNode-based output capture.  The deprecated
-        // ScriptProcessorNode is unreliable in headless Chromium under
-        // CPU contention (parallel tests), producing all-zero buffers.
-        //
-        // NOTE: window.playSound() is fire-and-forget — it enqueues the
-        // event and resolves immediately; the actual render + recordSamples
-        // runs later in flushAudioQueue, which defers to setTimeout(0)
-        // whenever a flush is already in-flight or the render isn't cached
-        // yet. Under CPU contention that deferral lands AFTER the line that
-        // disables capture, so we must POLL until samples accumulate rather
-        // than assume `await playSound` completed the recording.
+        // Software capture, not the ScriptProcessor tap, which yields zeros under contention; polled, since the deferred flush
+        // can land after capture is disabled.
         const captured = await capturePlay("kick", 1.0);
 
         let rms = 0;

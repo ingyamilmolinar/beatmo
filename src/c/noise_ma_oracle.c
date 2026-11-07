@@ -1,9 +1,5 @@
-/* Test-support oracle: fills a buffer with the REAL ma_noise white stream
- * so noise_ma_parity_test.go can prove the noise.c transplant bit-identical.
- * Not referenced by any production code path.
- *
- * Header-only include (mirrors drums.c): MINIAUDIO_IMPLEMENTATION lives in
- * miniaudio.c, so this shim links against build/miniaudio.o. */
+/* Test-only: the REAL ma_noise stream, so the parity test can prove the transplant bit-identical. Links against
+ * build/miniaudio.o, where MINIAUDIO_IMPLEMENTATION lives. */
 #define MA_NO_DEVICE_IO
 #define MA_NO_THREADING
 #include "miniaudio.h"

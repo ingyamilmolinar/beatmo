@@ -1,48 +1,6 @@
-// webaudio_live_edit_budget.browser.test.js
-//
-// "An edit during playback costs what the edit is — never a rebuild of the
-// audio graph." Plays the startup demo in the real app (main.wasm + index.html)
-// and performs live edits through REAL pointer input on the canvas (hover,
-// press, move, release — what Ebiten reads from a mouse), then checks each
-// edit against budgets:
-//
-//   graph churn  (HARD)  window.audioGraphStats(): what the edit did to the
-//                        WebAudio graph. A param gesture only retunes live
-//                        nodes — 0 insert-chain rebuilds, 0 AudioWorkletNodes
-//                        built, 0 channel rewires — and a slider held still
-//                        writes nothing. Deterministic: no timing involved.
-//   heard        (HARD)  the playback probe: no note dropped, no note silent
-//                        on any channel (a note delayed by an insert effect's
-//                        own latency is matched as heard-late, not silent).
-//   main thread  (REPORT; AUDIO_PROBE_STRICT=1 enforces) long-task time per
-//                        second of each phase vs plain playback.
-//
-// The reported bug this pins (2026-10-25): startup demo playing, open the
-// kick's FX, add a Pitch Shifter, touch its slider → "the audio lagged a lot
-// and then stopped completely". Every input tick of a held FX slider pushed
-// the whole slot list to audio.js, which tore the channel's insert chain down
-// and rebuilt it: ~1,000 AudioWorkletNodes + ~15,000 connect/disconnect calls
-// per second of dragging, each new pitch shifter starting with an EMPTY delay
-// line (kick notes cut), and at a 6× slower CPU the main thread blocked 25 of
-// 30 s. No existing bench edited an insert effect live — they all set effects
-// up BEFORE playback.
-//
-// Phases (one page, playing throughout):
-//   idle           plain playback (main-thread baseline)
-//   fx-add         FX button on row 0 → + Add Effect → type "pitch" → pick
-//                  Pitch Shifter. Budget: exactly ONE chain rebuild.
-//   fx-slider-hold press the new effect's Pitch slider and hold it still
-//   fx-slider-drag drag it back and forth
-//   eq-band-hold   (FX panel closed) press one EQ band handle and hold it still
-//   eq-band-drag   …then drag it up and down
-//
-// Run:
-//   GO=$(pwd)/.tools/go/bin/go node src/js/webaudio_live_edit_budget.browser.test.js
-// Env: LIVE_EDIT_SECS (default 4) per phase, WASM_PREBUILT=1, WASM_FILE=<wasm>,
-//      TEST_PLATFORM=chrome-local TEST_HEADED=1 (real Chrome + GPU),
-//      LIVE_EDIT_CPU_THROTTLE=<n> (CDP CPU throttling; Chromium only),
-//      LIVE_EDIT_SHOTS=<dir> (a screenshot at the end of every phase),
-//      AUDIO_PROBE_STRICT=1.
+// An edit during playback costs what the edit is, never a graph rebuild: real pointer edits on the demo (add an effect,
+// hold and drag its slider, hold and drag an EQ band). HARD: graph churn (no rebuilds, no new worklet nodes, a still slider
+// writes nothing) and the heard notes; main-thread cost reported. Run: GO=… node src/js/webaudio_live_edit_budget.browser.test.js
 
 import http from "http";
 import { spawnSync } from "child_process";
@@ -134,8 +92,7 @@ async function tap(x, y) {
 const graph = () => page.evaluate(() => audioGraphStats());
 const diff = (a, b) => Object.fromEntries(Object.keys(b).map((k) => [k, b[k] - (a[k] ?? 0)]));
 
-// One measured phase: graph churn + probe + main thread around `act`, which
-// runs while the probe records and must take about SECS.
+// `act` runs while the probe records and must take about SECS.
 const rows = [];
 async function phase(name, act) {
   await page.evaluate(() => { window.__liveEditT0 = performance.now(); });
@@ -195,8 +152,7 @@ console.log(`  ${inst} insert chain after the add: ${JSON.stringify(hosts)}`);
 hard(hosts.length > 0 && hosts.every((h) => h === "worklet"), `[fx-add] the chain's effects are not on the beatmo-dsp worklet: ${JSON.stringify(hosts)}`);
 hard(fxAdd && fxAdd.churn.insertChainUpdates === 1,
   `[fx-add] adding ONE effect pushed the chain ${fxAdd?.churn.insertChainUpdates} times; want exactly 1`);
-// The whole chain is ONE node: at most one is built (a channel's first effect)
-// and the channel is rewired at most once (to put it in).
+// The chain is ONE node: at most one built (a channel's first effect), at most one rewire.
 hard(fxAdd && fxAdd.churn.dspNodesCreated <= 1 && fxAdd.churn.channelRewires <= 1,
   `[fx-add] built ${fxAdd?.churn.dspNodesCreated} DSP nodes / ${fxAdd?.churn.channelRewires} rewires for one effect`);
 

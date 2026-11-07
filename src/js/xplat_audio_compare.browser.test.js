@@ -1,14 +1,5 @@
-// xplat_audio_compare.browser.test.js
-//
-// Cross-platform audio buffer comparison test to verify that desktop Go and WASM
-// produce identical audio output when given the same parameters.
-//
-// IMPORTANT: This test uses desktop's actual buffer durations (from cmd/export_audio)
-// to render WASM samples, ensuring both platforms render into the same size buffer.
-// Both platforms use the same C code (drums.c) for synthesis with identical
-// post-processing (peak normalize + amplitude scale).
-//
-// The desktop reference is rendered fresh by cmd/export_audio on every run.
+// Desktop and WASM must render the same audio for the same parameters: the same C, the same post-processing, rendered
+// into desktop's frame counts. The desktop reference is rendered fresh by cmd/export_audio on every run.
 
 import { chromium } from "playwright";
 import http from "http";
@@ -28,12 +19,7 @@ if (!fs.existsSync(chromiumPath)) {
   spawnSync("npx", ["playwright", "install", "chromium"], { cwd: jsDir, stdio: "inherit" });
 }
 
-// ============================================================================
-// Load desktop audio samples
-// ============================================================================
-
-// The native reference is rendered NOW, from this tree, by cmd/export_audio —
-// never read from a committed snapshot (see loadDesktopAudioReference).
+// From this tree, never a committed snapshot.
 let desktopData;
 try {
   desktopData = loadDesktopAudioReference();
@@ -42,10 +28,6 @@ try {
   console.error(`Failed to render the desktop audio reference: ${err.message}`);
   process.exit(1);
 }
-
-// ============================================================================
-// Metric computation functions (also used in-browser)
-// ============================================================================
 
 function computePeak(data) {
   let peak = 0;
@@ -98,10 +80,6 @@ function maxAbsDiff(x, y) {
   return { maxDiff, maxIdx };
 }
 
-// ============================================================================
-// Audio processing (for WASM rendering to match desktop pipeline)
-// ============================================================================
-
 // Amplitude map: read from the export_audio reference to stay in sync with Go InstrumentConfigs.
 const AMPLITUDES = {};
 for (const inst of desktopData.instruments) {
@@ -123,10 +101,6 @@ function applyAudioProcessing(data, amp) {
   for (let i = 0; i < result.length; i++) result[i] *= amp;
   return result;
 }
-
-// ============================================================================
-// Test setup
-// ============================================================================
 
 const server = http.createServer((req, res) => {
   if (req.url === "/" || req.url === "/test.html") {
@@ -165,46 +139,21 @@ page.on('console', (msg) => {
 await page.goto(`http://localhost:${port}/test.html`);
 await page.waitForFunction(() => window.__ready === true, null, { timeout: 10000 });
 
-// Instantiate the WASM module ONCE and share it across every render below.
-// The bespoke drum renderers carry advancing ma_noise state; the desktop
-// reference (export_audio) renders its whole sequence in one process, so the
-// browser must replay the same sequence on one module instance to keep the
-// noise components aligned (fresh-instance-per-render decorrelates the tails).
+// ONE module instance: the reference renders its whole sequence in one process, and a fresh instance per render would
+// decorrelate any advancing noise state.
 await page.evaluate(async () => {
   window.__drumsModule = await window.__drumsFactory();
 });
 
-// ============================================================================
-// Render WASM audio and compare with desktop
-// ============================================================================
-
 const RENDER_FUNCS = {
-  // snare / clap migrated to the modular engine (Phase-5): render_snare /
-  // render_clap deleted, and snare/clap are no longer in the export_audio
-  // instruments list (their parity is covered by the snare-* paramCases via
-  // render_modular_p).
-  // kick migrated to the modular engine (Phase-3): render_kick deleted, and kick
-  // is no longer in the export_audio instruments list (its parity is covered by
-  // the kick-* paramCases via render_modular_p).
-  // tom migrated to the modular engine (Phase-4): render_tom deleted (tom-*
-  // paramCases via render_modular_p).
-  // cymbal family migrated to the modular engine (Phase-6): render_hihat /
-  // render_cowbell etc. deleted (parity via the hihat-* / cowbell-* paramCases).
-  // FM family migrated to the modular engine (Phase-7, the LAST): render_fm_bass /
-  // render_fm_bell etc. deleted, and fm-* are no longer in the export_audio
-  // raw-render list (their parity is covered by the fm-* paramCases via
-  // render_modular_p). EVERY legacy family has now migrated — the ONLY remaining
-  // raw-render instrument is the unified modular voice.
-  // Unified modular voice (base preset): the bare voice — every param at its
-  // schema identity (the engine has no defaults of its own) — native vs WASM.
+  // Every family renders through render_modular_p and is compared in the paramCases below; the raw case is the bare
+  // voice, every param at its schema identity.
   modular: 'render_modular_p',
 };
 
 const SAMPLE_RATE = 48000; // Match desktop and production WASM (AudioContext.sampleRate)
 
-// The bare modular voice's param block, exactly as the desktop reference
-// rendered it (export_audio emits each instrument's flattened block). Passed to
-// every raw render_modular_p below.
+// Exactly as the reference rendered it.
 const BARE_BLOCK = (desktopData.instruments.find((i) => i.name === 'modular') || {}).block;
 if (!Array.isArray(BARE_BLOCK) || BARE_BLOCK.length === 0) {
   throw new Error('desktop reference carries no block for the modular voice — regenerate it (cmd/export_audio)');
@@ -225,8 +174,7 @@ for (const desktopInst of desktopData.instruments) {
   }
 
   const amp = AMPLITUDES[instName] || 0.6;
-  // Use the SAME frame count as desktop to ensure identical buffer sizes
-  // This is critical because the C synth envelopes are proportional to buffer length
+  // The C envelopes are proportional to buffer length, so the frame count must match.
   const frames = desktopInst.frames;
   const desktopSamples = desktopInst.samples;
   const desktopDuration = desktopInst.duration;
@@ -292,12 +240,7 @@ for (const desktopInst of desktopData.instruments) {
     },
   };
 
-  // ============================================================================
-  // ASSERTIONS
-  // ============================================================================
-
-  // 1. Correlation should be very high (both use same C code)
-  // Allow some tolerance for float precision differences
+  // Same C code: very high, with float-precision tolerance.
   if (corr < 0.99) {
     const msg = `${instName}: Correlation too low - ${corr.toFixed(6)} (expected >= 0.99)`;
     console.log(`FAIL: ${msg}`);
@@ -325,9 +268,7 @@ for (const desktopInst of desktopData.instruments) {
     anyFailed = true;
   }
 
-  // 4. Max sample difference should be small (float precision)
-  // Both use the same C render functions, so differences should only be from
-  // float32 vs float64 precision and any Go/JS processing differences
+  // Only float precision and Go/JS processing can differ.
   const maxSampleDiffThreshold = 0.001; // 0.1% of full scale
   if (maxDiff > maxSampleDiffThreshold) {
     const msg = `${instName}: Max sample diff too large - ${maxDiff.toFixed(6)} at index ${maxIdx}`;
@@ -336,16 +277,8 @@ for (const desktopInst of desktopData.instruments) {
   }
 }
 
-// ============================================================================
-// Parameterized render comparison (knobs, stage enables, re-voicing)
-// ============================================================================
-// Desktop reference: renderParamCases() in cmd/export_audio — each case's
-// fields set through the instrument's document, the flattened block rendered
-// RAW through the C engine; Params carries that COMPLETE block by field name.
-// Browser side: the block rebuilt from Params (MODULAR_PARAM_INDEX from
-// synth_param_abi.gen.js) and rendered through render_modular_p on the SAME
-// shared module. A divergence means the platforms' C builds or ABI tables
-// differ for the same edit.
+// Each case's complete flattened block from cmd/export_audio, rebuilt by name in the browser and rendered on the SAME
+// module: a divergence means the platforms' C builds or ABI tables differ for the same edit.
 
 console.log('\n--- PARAMETERIZED RENDER COMPARISON ---');
 
@@ -356,8 +289,6 @@ const PARAM_ABI = {
   tables: ABI.MODULAR_PARAM_TABLES,
 };
 
-// Every case renders through the modular block (render_modular_p); export_audio
-// emits each case's complete flattened block as params.
 for (const pc of desktopData.paramCases || []) {
   const renderFnP = 'render_modular_p';
 
@@ -366,8 +297,7 @@ for (const pc of desktopData.paramCases || []) {
     if (!m) throw new Error('no shared drums module');
     const COUNT = abi.count;
     const INDEX = abi.index;
-    // The complete block, field by field (the modular block is double). A
-    // missing field is a reference/ABI mismatch, never a default.
+    // A missing field is a reference/ABI mismatch, never a default.
     const paramsPtr = m._malloc(COUNT * 8);
     const pheap = m.HEAPF64.subarray(paramsPtr >> 3, (paramsPtr >> 3) + COUNT);
     pheap.fill(0); // _malloc does not zero: table cells outside INDEX were garbage
@@ -376,8 +306,7 @@ for (const pc of desktopData.paramCases || []) {
       if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`param case ${pc.name}: no value for ${name}`);
       pheap[idx] = v;
     }
-    // Table columns (modal_freq[i], nb_center[i], …) are dense arrays outside
-    // MODULAR_PARAM_INDEX: every cell comes from the reference too.
+    // Table columns lie outside MODULAR_PARAM_INDEX: every cell comes from the reference too.
     for (const [col, [first, rows]] of Object.entries(abi.tables)) {
       for (let i = 0; i < rows; i++) {
         const v = pc.params[`${col}[${i}]`];
@@ -440,15 +369,8 @@ for (const pc of desktopData.paramCases || []) {
     failures.push(msg);
     anyFailed = true;
   }
-  // Hard per-sample bound (promoted from a warning by the 2026-06-06 gap
-  // audit). Calibration: the inherent native↔WASM seam is ~1 float32 ULP at
-  // the push ABI (NaN-sentinel double literal vs spelled float32 literal —
-  // see family_push_binding_parity_test.go); observed ceiling across the full
-  // param-case table on this tree was 2.09e-7, and the worst KNOWN
-  // ULP-amplification (growing post-decay tail, tom-low decay=max) reaches
-  // ~1.5e-5 absolute. 1e-4 sits ~6× above that amplified floor and ≥10×
-  // below any real literal/dispatch drift (~1e-3+), so it cannot flake on
-  // float noise but catches genuine divergence.
+  // The inherent seam is ~1 float32 ULP and the worst known amplification ~1.5e-5; 1e-4 sits well above both and ≥ 10×
+  // below real literal or dispatch drift.
   if (maxDiff > 1e-4) {
     const msg = `param ${pc.name}: maxDiff ${maxDiff.toExponential(2)} at ${maxIdx} exceeds 1e-4 — ` +
       `beyond the float32-ULP seam; the platforms genuinely diverge on this edit`;
@@ -458,12 +380,7 @@ for (const pc of desktopData.paramCases || []) {
   }
 }
 
-// ============================================================================
-// Polyphonic Mixing Test
-// ============================================================================
-// This test verifies that multiple simultaneous voices mix correctly without
-// hard clipping artifacts. The desktop mixer applies -12dB headroom (0.25)
-// to prevent distortion when summing multiple voices.
+// Several simultaneous voices must sum through the per-voice headroom without hard clipping.
 
 console.log('\n--- POLYPHONIC MIXING TEST ---');
 
@@ -471,12 +388,7 @@ const polyResult = await page.evaluate(async ({ AMPLITUDES, SAMPLE_RATE, BARE_BL
   const m = window.__drumsModule;
   if (!m) throw new Error('no shared drums module');
 
-  // Render individual instruments. EVERY legacy family migrated to the modular
-  // engine — render_kick / render_snare / render_hihat / render_fm_bass etc. are
-  // ALL deleted (FM in Phase-7, the LAST). render_modular is the only remaining
-  // bespoke C renderer, so it stands in for all three voices of this self-contained
-  // polyphonic headroom/clipping check (summing three render_modular voices still
-  // exercises the per-voice normalize → amplitude-scale → sum headroom path).
+  // render_modular is the only C renderer, so three of its voices exercise the normalize → amplitude → sum path.
   const instruments = ['modular-a', 'modular-b', 'modular-c'];
   const renderFuncs = {
     'modular-a': 'render_modular_p',
@@ -588,10 +500,6 @@ results['polyphonic_mix'] = {
   headroomEffective: polyResult.wouldClipWithoutHeadroom && !polyResult.clipsWithHeadroom,
 };
 
-// ============================================================================
-// Output diagnostic information
-// ============================================================================
-
 console.log('\n============================================================');
 console.log('CROSS-PLATFORM AUDIO COMPARISON RESULTS');
 console.log('Desktop samples from: cmd/export_audio (rendered fresh)');
@@ -602,8 +510,7 @@ console.log(`  Sample Rate: ${SAMPLE_RATE} Hz`);
 console.log(`  Instruments Tested: ${Object.keys(results).join(', ')}\n`);
 
 for (const [inst, r] of Object.entries(results)) {
-  // Skip polyphonic_mix and the parameterized cases - they have a different
-  // structure and were already printed in their own sections above.
+  // Printed in their own sections above.
   if (inst === 'polyphonic_mix' || inst.startsWith('param:')) continue;
 
   console.log(`--- ${inst.toUpperCase()} ---`);
@@ -630,17 +537,9 @@ if (warnings.length > 0) {
   console.log('');
 }
 
-// ============================================================================
-// Cleanup
-// ============================================================================
-
 if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "xplat_audio_compare");
 await browser.close();
 server.close();
-
-// ============================================================================
-// Final test result
-// ============================================================================
 
 if (anyFailed) {
   console.log('============================================================');

@@ -1,11 +1,4 @@
-/**
- * JavaScript source coverage helpers for browser tests.
- *
- * Collects V8 coverage via Playwright's page.coverage API and writes
- * output in V8 JSON format that c8 can consume.
- *
- * Enabled when JS_COVERAGE=1 is set.
- */
+/** V8 coverage via page.coverage, written as JSON for c8. Enabled by JS_COVERAGE=1. */
 import fs from "fs";
 import path from "path";
 
