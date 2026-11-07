@@ -126,3 +126,15 @@ func TestWaitRecordingFinalized_RespectsContextCancel(t *testing.T) {
 	defer wcancel2()
 	_ = WaitRecordingFinalized(wctx2)
 }
+
+// A caller that already gave up gets ctx.Err even when nothing is pending; a
+// select between two ready channels would answer at random.
+func TestWaitRecordingFinalized_CancelledContextWinsWhenNothingIsPending(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	for i := 0; i < 200; i++ {
+		if err := WaitRecordingFinalized(ctx); err == nil {
+			t.Fatalf("attempt %d: a cancelled context returned nil", i)
+		}
+	}
+}
