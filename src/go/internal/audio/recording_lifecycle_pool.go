@@ -94,6 +94,9 @@ func finalizeDone() {
 // Returns nil on clean drain, ctx.Err() on cancellation. Returns nil
 // immediately if no finalize is pending.
 func WaitRecordingFinalized(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	done := make(chan struct{})
 	go func() {
 		finalizeMu.Lock()
