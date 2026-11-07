@@ -2156,7 +2156,7 @@ window.setRenderCacheBudget = (bytes) => {
 // setHeldChannels(idsJSON): the instruments the rows play (Go's
 // audio.SetHeldInstruments).
 window.setHeldChannels = (idsJSON) => {
-  let ids = [];
+  let ids;
   try { ids = JSON.parse(idsJSON); } catch (_) { ids = []; }
   heldChannels = new Set(Array.isArray(ids) ? ids : []);
   for (const id of channelNodes.keys()) considerRelease(id);
@@ -2639,7 +2639,7 @@ async function runWarmPump() {
 }
 
 window.warmInstrumentBatch = (itemsJSON, doneFnName) => {
-  let items = [];
+  let items;
   try { items = JSON.parse(itemsJSON); } catch (_) { items = []; }
   const cb = window[doneFnName];
   const fire = (token) => {
@@ -2760,7 +2760,7 @@ window.updateSampleEdit = (id, editJSON) => {
 };
 
 function _updateSampleEdit(id, editJSON) {
-  let e = null;
+  let e;
   try { e = JSON.parse(editJSON); } catch (_) { e = null; }
   if (e && typeof e === 'object' && !sampleEditIsIdentity(e)) {
     instrumentSampleEdits.set(id, e);
@@ -3379,8 +3379,8 @@ async function ensureRenderedSample(id, opts) {
   // and keeps playing on time, and the caller drops the note when there is
   // none. There is no substitute voice — rendering anything else in its place
   // would play a different instrument.
-  let data = null;
-  let viaWorker = false;
+  let data;
+  let viaWorker;
   // P4: the worker applies the voice post-processing when it renders, so the
   // main thread's per-render O(frames) passes only run on the sync fallback.
   const post = voicePost(info);

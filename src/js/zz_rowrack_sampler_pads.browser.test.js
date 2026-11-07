@@ -208,7 +208,7 @@ console.log(`  viewModes: freshPads=${vmFreshPads} sampler=${vmSampler} backToPa
 await browser.close();
 server.close();
 
-let exitCode = 0;
+let exitCode;
 if (!ctrlOk) {
   console.log(">>> INCONCLUSIVE/BROKEN-HARNESS: could not toggle mute even on fresh Pads (clicks not landing). NOT a pass.");
   exitCode = 1;

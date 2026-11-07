@@ -233,6 +233,8 @@ static void render_bowed_string(float *out, int sampleRate, int samples,
      * params. offset + refl stay literals (numerical loop stability, not voice). */
     const double offset = 0.001;
     const double refl   = 0.99;   /* slight per-round-trip energy loss for stability */
+    /* Loss-filter state, carried across samples. */
+    // cppcheck-suppress variableScope
     double lp = 0.0;
     noise_gen ng; noise_init(&ng, noise_seed);
     /* Bow ramp-in. This is a MODE-SELECTION control, not just a click guard.
@@ -427,6 +429,8 @@ static void render_flute(float *out, int sampleRate, int samples, double freq,
     int bwi = 0, jwi = 0;
     double boreLast = 0.0;
     double b0 = (pole > 0.0) ? (1.0 - pole) : (1.0 + pole); /* one-pole, DC gain 1 */
+    /* Bore-loss filter state, carried across samples. */
+    // cppcheck-suppress variableScope
     double fpY = 0.0;
     sp_dcblock dc = {0.0, 0.0};
     const double jetRefl = 0.5, endRefl = 0.5;
@@ -1575,9 +1579,9 @@ EXPORT void render_modular_p(float *out, int sampleRate, int samples,
             sp_onepole_tick(&m, 0.0004, target); /* ~55 ms ramp → smooth, gentle bow wander */
             double amp = 1.0 + (double)bow_dynamics * m; /* loudness swing */
             if (amp < 0.0) amp = 0.0;
-            double a = 0.70 + 0.42 * (double)bow_dynamics * m; /* brightness: LP coeff tracks m (wider swing) */
-            if (a < 0.05) a = 0.05; else if (a > 0.995) a = 0.995;
-            sp_onepole_tick(&lp, a, (double)out[i]);
+            double lpCoef = 0.70 + 0.42 * (double)bow_dynamics * m; /* brightness: LP coeff tracks m (wider swing) */
+            if (lpCoef < 0.05) lpCoef = 0.05; else if (lpCoef > 0.995) lpCoef = 0.995;
+            sp_onepole_tick(&lp, lpCoef, (double)out[i]);
             out[i] = (float)(lp * amp);
         }
     }

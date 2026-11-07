@@ -165,8 +165,8 @@ try {
       () => typeof instMenuOpenState === "function" && instMenuOpenState() === false, null,
       { timeout: 3000 },
     );
-  } catch (_) {
-    throw new Error("menu must close after Escape press");
+  } catch (err) {
+    throw new Error("menu must close after Escape press", { cause: err });
   }
   isOpen = await page.evaluate(() => instMenuOpenState());
   if (isOpen) {

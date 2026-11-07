@@ -41,7 +41,7 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
-let snareDefs = [];
+let snareDefs;
 
 // Ensure Chromium is installed.
 const chromiumPath = path.join(
