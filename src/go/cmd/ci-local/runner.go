@@ -88,7 +88,11 @@ func (r *runner) snapshot(committedOnly bool) (string, error) {
 		}
 		headTree, _ := r.git(nil, "rev-parse", "HEAD^{tree}")
 		if tree != headTree {
-			if commit, err = r.git(nil, "commit-tree", tree, "-p", "HEAD", "-m", "ci-local: working tree"); err != nil {
+			// Its own identity: a machine with none configured (a CI container)
+			// cannot commit, and this commit never leaves the scratch repo.
+			ident := []string{"GIT_AUTHOR_NAME=ci-local", "GIT_AUTHOR_EMAIL=ci-local@localhost",
+				"GIT_COMMITTER_NAME=ci-local", "GIT_COMMITTER_EMAIL=ci-local@localhost"}
+			if commit, err = r.git(ident, "commit-tree", tree, "-p", "HEAD", "-m", "ci-local: working tree"); err != nil {
 				return "", err
 			}
 			fmt.Printf("ci-local: running HEAD + tracked working-tree changes (%s); untracked files are not part of it, as in CI\n", commit[:12])
