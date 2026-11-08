@@ -263,7 +263,8 @@ try {
     const target = await page.evaluate(() => { const e = document.elementFromPoint(1240, 560); return e && e.id; });
     check(target === "lc-crystal" || target === "landing", `the plant point is covered by #${target}`);
     await page.mouse.click(1240, 560);
-    await page.waitForTimeout(150);
+    // The worker reports the plant with its next stats message: wait for it.
+    await page.waitForFunction(async (n) => ((await window.__beatmoLanding.stats()) || {}).nodes > n, st0.nodes, { timeout: 3000, polling: 50 }).catch(() => {});
     const st1 = await crystal(page);
     check(st1.nodes === st0.nodes + 1, `a click on the crystal planted ${st1.nodes - st0.nodes} nodes`);
     await page.mouse.move(640, 360);
