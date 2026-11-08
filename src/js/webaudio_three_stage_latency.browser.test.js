@@ -133,7 +133,11 @@ async function runScenario({ name, rows, bpm, playMs }) {
 
   await page.waitForTimeout(playMs);
 
-  const snap = await page.evaluate(() => getThreeStageLatency?.());
+  let snap = await page.evaluate(() => getThreeStageLatency?.());
+  // With no Stage C sample the export returns only its diagnostics.
+  const diag = snap && (snap.diag || (snap.count === undefined ? snap : null));
+  if (snap && snap.count === undefined) snap = null;
+  console.log(`  [${name}] stage C context: ${JSON.stringify(diag)}`);
   const stats = await page.evaluate(() => perfStats?.());
   const { report: probe } = await stopPlaybackProbe(page, name);
   await page.evaluate(() => stopPlay?.());

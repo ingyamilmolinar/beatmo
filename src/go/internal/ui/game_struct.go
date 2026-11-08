@@ -376,6 +376,10 @@ type Game struct {
 	laneBatchScratch []audio.BatchParam
 	laneOldScratch   []uint64
 	laneFlushMu      sync.Mutex // serialises flushLaneOps (audioLoop vs Close)
+	// Stage C bookkeeping for getThreeStageLatency: cells the lane committed,
+	// and Stage C observations the parity grace window suppressed.
+	laneCommitted atomic.Int64
+	stageCInGrace atomic.Int64
 	// lanePendingObs: cells the UI lane passed this sequencer pass before the
 	// lane had committed them (play start, seek, row add) — observed again
 	// after the pass's laneTick (observePendingLaneCells). seqMu-guarded.

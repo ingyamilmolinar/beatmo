@@ -98,8 +98,13 @@ func (g *Game) flushLaneOps() {
 		// Stage C on the lane: lead = when − now at commit (≈ the horizon
 		// in steady state; negative = committed late). One observation and
 		// one timing trace per CELL, however many voices it sounds.
-		if audioNow > 0 && !g.parityInGrace() {
-			g.schedMetrics.Observe(audioNow, n.Time)
+		g.laneCommitted.Add(1)
+		if audioNow > 0 {
+			if g.parityInGrace() {
+				g.stageCInGrace.Add(1)
+			} else {
+				g.schedMetrics.Observe(audioNow, n.Time)
+			}
 		}
 		g.openTimingTrace(n.Row, n.Abs, n.Time, g.audioGen.Load(), g.parityGen.Load())
 		for k := 0; k < n.voiceCount(); k++ {
