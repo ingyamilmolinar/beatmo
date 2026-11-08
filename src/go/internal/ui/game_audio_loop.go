@@ -165,6 +165,8 @@ func (g *Game) audioLoop() {
 				// schedMetrics.Observe call is guarded.
 				if !g.parityInGrace() {
 					g.schedMetrics.Observe(audioNow, requested)
+				} else {
+					g.stageCInGrace.Add(1)
 				}
 				if lead := req.when - audioNow; lead > 0 {
 					leadDur := time.Duration(lead * float64(time.Second))

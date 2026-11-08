@@ -326,10 +326,20 @@ func (g *Game) initJSPlaybackPerf() {
 			// has no enqueue → audioLoop handoff, so Stage B stays empty.
 			o.Set("lane", g.audioLaneOn())
 		}
+		// Why Stage C may be empty: no cell committed, or the parity grace
+		// window suppressed every observation. Present even when count == 0.
+		diag := map[string]any{"laneCommitted": g.laneCommitted.Load(), "stageCInGrace": g.stageCInGrace.Load(),
+			"parityGen": g.parityGen.Load(), "inGrace": g.parityInGrace()}
+		if o.IsNull() {
+			return diag
+		}
+		o.Set("diag", diag)
 		return o
 	}))
 	js.Global().Set("resetThreeStageLatency", jsFn(func(args jsArgs) any {
 		g.schedMetrics.Reset()
+		g.laneCommitted.Store(0)
+		g.stageCInGrace.Store(0)
 		return nil
 	}))
 
