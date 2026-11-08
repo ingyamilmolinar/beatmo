@@ -110,9 +110,10 @@ try {
         page.on("requestfailed", (r) => pending.delete(r));
         const errors = [];
         page.on("pageerror", (e) => errors.push(e.message));
-        // A Go panic or exit reaches the console, never pageerror: it names the cause.
-        const consoleErrors = [];
-        page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text()); });
+        // A Go panic or exit reaches the console (Go's ERROR lines as plain
+        // logs), never pageerror: the last lines name the cause.
+        const consoleTail = [];
+        page.on("console", (m) => { consoleTail.push(`${m.type()}: ${m.text()}`.slice(0, 300)); if (consoleTail.length > 15) consoleTail.shift(); });
         // "commit", not "load": a hung boot never fires load, and the
         // diagnosis below is the point of the test.
         await page.goto(`http://127.0.0.1:${port}/${variant.query}`, { waitUntil: "commit" });
@@ -137,7 +138,7 @@ try {
           ? `${name} ${variant.label}: the landing is shown`
           : `${name} ${variant.label}: an unstamped dev page shows no landing`);
         check(errors.length === 0, `${name} ${variant.label}: no page errors ${errors.length ? JSON.stringify(errors) +
-          "; console errors: " + JSON.stringify(consoleErrors.slice(-15)) : ""}`);
+          "; console: " + JSON.stringify(consoleTail) : ""}`);
         await page.close();
       }
     } finally {
