@@ -32,6 +32,7 @@ import net from "net";
 import path from "path";
 import { fileURLToPath } from "url";
 import { resolveGoBinary, shouldSkipWasmBuild } from "./browser_test_helpers.js";
+import { FIREFOX_WEBGL_PREFS } from "./platform/launch.js";
 
 const jsDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(jsDir, "../..");
@@ -96,7 +97,7 @@ try {
     const engine = ENGINES[name];
     if (!engine) throw new Error(`unknown engine ${name}`);
     console.log(`\n== ${name}`);
-    const browser = await engine.launch();
+    const browser = await engine.launch(name === "firefox" ? { firefoxUserPrefs: FIREFOX_WEBGL_PREFS } : {});
     try {
       for (const variant of [
         { label: "dev page", query: "", landing: false },
@@ -109,6 +110,9 @@ try {
         page.on("requestfailed", (r) => pending.delete(r));
         const errors = [];
         page.on("pageerror", (e) => errors.push(e.message));
+        // A Go panic or exit reaches the console, never pageerror: it names the cause.
+        const consoleErrors = [];
+        page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text()); });
         // "commit", not "load": a hung boot never fires load, and the
         // diagnosis below is the point of the test.
         await page.goto(`http://127.0.0.1:${port}/${variant.query}`, { waitUntil: "commit" });
@@ -132,7 +136,8 @@ try {
         check(landing === variant.landing, variant.landing
           ? `${name} ${variant.label}: the landing is shown`
           : `${name} ${variant.label}: an unstamped dev page shows no landing`);
-        check(errors.length === 0, `${name} ${variant.label}: no page errors ${errors.length ? JSON.stringify(errors) : ""}`);
+        check(errors.length === 0, `${name} ${variant.label}: no page errors ${errors.length ? JSON.stringify(errors) +
+          "; console errors: " + JSON.stringify(consoleErrors.slice(-15)) : ""}`);
         await page.close();
       }
     } finally {

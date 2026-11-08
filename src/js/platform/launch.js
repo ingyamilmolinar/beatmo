@@ -92,10 +92,14 @@ async function launchWebkitLocal(opts) {
   };
 }
 
+// Firefox blocklists WebGL2 when its GPU probe fails (CI containers, no GPU
+// session), and Ebiten then exits the Go program; Mesa's software GL is fine.
+export const FIREFOX_WEBGL_PREFS = { "webgl.force-enabled": true };
+
 async function launchFirefoxLocal(opts) {
   const browser = await firefox.launch({
     headless: resolveHeadless(opts),
-    firefoxUserPrefs: { "media.autoplay.default": 0, "media.autoplay.block-webaudio": false },
+    firefoxUserPrefs: { ...FIREFOX_WEBGL_PREFS, "media.autoplay.default": 0, "media.autoplay.block-webaudio": false },
   });
   return {
     browser,
