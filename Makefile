@@ -968,7 +968,7 @@ test-race: $(C_LIB)
 # Browser suites run on a virtual display, here and in CI alike: headless
 # Firefox has no WebGL without a GL device, so on Xvfb it runs headful
 # (src/js/platform/launch.js firefoxLaunchOptions). Chromium stays headless.
-BROWSER_XVFB = BROWSER_TEST_XVFB=1 xvfb-run -a -s "-screen 0 1920x1080x24"
+BROWSER_XVFB = BROWSER_TEST_XVFB=1 scripts/with-xvfb.sh
 
 test-browser: wasm-all $(JS_DEPS)
 	@if ! command -v node >/dev/null 2>&1; then echo 'Node not found'; exit 1; fi
