@@ -190,7 +190,7 @@ const schedMetricsWindow = 10 * time.Second
 // (silently reducing the 4-stage gate to its single-sample absmax checks),
 // and without PERF_LOG the metrics were never reset at all.
 func (g *Game) maybeResetSchedMetricsWindow(now time.Time) {
-	if g.schedMetricsNextReset.IsZero() {
+	if g.schedWindowRestart.Swap(false) || g.schedMetricsNextReset.IsZero() {
 		g.schedMetricsNextReset = now.Add(schedMetricsWindow)
 		return
 	}
@@ -200,6 +200,16 @@ func (g *Game) maybeResetSchedMetricsWindow(now time.Time) {
 		// New window, fresh warn budget (see emitTimingFatal dedup).
 		clear(g.timingWarnedThisWindow)
 	}
+}
+
+// resetThreeStageLatency starts a measurement (getThreeStageLatency). The
+// gate's rolling window resets the same metrics, so it restarts too: otherwise
+// a roll inside the measurement empties it (CI: no Stage C sample at all).
+func (g *Game) resetThreeStageLatency() {
+	g.schedMetrics.Reset()
+	g.laneCommitted.Store(0)
+	g.stageCInGrace.Store(0)
+	g.schedWindowRestart.Store(true)
 }
 
 // buildTimingFatalDump reuses the logical parity dump and appends a timing

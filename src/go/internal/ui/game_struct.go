@@ -298,6 +298,7 @@ type Game struct {
 	// Rolling-window deadline for schedMetrics (timing-parity gate); see
 	// maybeResetSchedMetricsWindow in game_parity_timing.go.
 	schedMetricsNextReset time.Time
+	schedWindowRestart    atomic.Bool // a measurement reset: the window restarts at the next frame end
 	// Per-window dedup of WarnOnly timing-gate dumps (emitTimingFatal).
 	timingWarnedThisWindow map[string]struct{}
 

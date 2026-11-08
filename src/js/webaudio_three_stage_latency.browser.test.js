@@ -124,6 +124,7 @@ async function runScenario({ name, rows, bpm, playMs }) {
   // Warmup: discard early measurements while AudioContext stabilises and
   // pre-roll allocations happen.
   await page.waitForTimeout(WARMUP_MS);
+  const clock0 = await page.evaluate(() => ({ audio: window.audioNow?.(), wall: performance.now() / 1000 }));
   await page.evaluate(() => {
     resetThreeStageLatency?.();
     resetAudioScheduleMetrics?.();
@@ -137,7 +138,9 @@ async function runScenario({ name, rows, bpm, playMs }) {
   // With no Stage C sample the export returns only its diagnostics.
   const diag = snap && (snap.diag || (snap.count === undefined ? snap : null));
   if (snap && snap.count === undefined) snap = null;
-  console.log(`  [${name}] stage C context: ${JSON.stringify(diag)}`);
+  const clock1 = await page.evaluate(() => ({ audio: window.audioNow?.(), wall: performance.now() / 1000 }));
+  const clockRate = (clock1.audio - clock0.audio) / (clock1.wall - clock0.wall);
+  console.log(`  [${name}] stage C context: ${JSON.stringify(diag)}; audio clock ${clockRate.toFixed(3)}x wall over the window`);
   const stats = await page.evaluate(() => perfStats?.());
   const { report: probe } = await stopPlaybackProbe(page, name);
   await page.evaluate(() => stopPlay?.());

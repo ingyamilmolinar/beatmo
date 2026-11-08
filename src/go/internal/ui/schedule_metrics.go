@@ -88,6 +88,8 @@ type scheduleMetrics struct {
 
 	// Stage C — lead/lag (existing).
 	startAt        float64
+	lastAudioNow   float64 // newest audio clock Observe saw (warm-up diagnostics)
+	observeCalls   int64
 	count          int64
 	overdue        int64
 	smallLeadCount int64
@@ -151,6 +153,8 @@ func (m *scheduleMetrics) Observe(audioNow, when float64) {
 	defer m.mu.Unlock()
 	m.rev++
 
+	m.observeCalls++
+	m.lastAudioNow = audioNow
 	if m.startAt == 0 {
 		m.startAt = audioNow
 	}
@@ -285,6 +289,8 @@ func (m *scheduleMetrics) Reset() {
 	defer m.mu.Unlock()
 	m.rev++
 	m.startAt = 0
+	m.lastAudioNow = 0
+	m.observeCalls = 0
 	m.count = 0
 	m.overdue = 0
 	m.smallLeadCount = 0
@@ -490,4 +496,12 @@ func sortedQuantile(sorted []float64, q float64) float64 {
 		idx = n - 1
 	}
 	return sorted[idx]
+}
+
+// warmupState reports Stage C's warm-up bookkeeping: the audio clock at the
+// first observation since Reset, the newest one seen, and how many arrived.
+func (m *scheduleMetrics) warmupState() (startAt, lastAudioNow float64, calls int64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.startAt, m.lastAudioNow, m.observeCalls
 }
