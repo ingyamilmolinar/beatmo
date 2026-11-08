@@ -234,6 +234,10 @@ var inharmonicByDesignTemplates = map[instrument.ID]string{
 	// merengue grooves.
 	roster.Accordion: "reed timbre puts the 3rd harmonic 4 dB above the fundamental " +
 		"(present); YIN reports 3x f0",
+	// Tuned cello: the fundamental is present at every template pitch, the 3rd
+	// partial 7-17 dB above it, no sub-octave (<= -40 dB); YIN reads exactly 3x.
+	roster.Cello: "bowed body resonance puts the 3rd harmonic 7-17 dB above the " +
+		"fundamental (present); YIN reports 3x f0",
 	// A detector artifact of THIS test's settings, not of the voice:
 	// pitchCenterOverrides zeroes unison_detune, which leaves a supersaw's
 	// stacked saws in a fixed phase relation — a comb YIN reads at exactly
