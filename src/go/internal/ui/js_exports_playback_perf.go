@@ -328,8 +328,10 @@ func (g *Game) initJSPlaybackPerf() {
 		}
 		// Why Stage C may be empty: no cell committed, or the parity grace
 		// window suppressed every observation. Present even when count == 0.
+		startAt, lastNow, calls := g.schedMetrics.warmupState()
 		diag := map[string]any{"laneCommitted": g.laneCommitted.Load(), "stageCInGrace": g.stageCInGrace.Load(),
-			"parityGen": g.parityGen.Load(), "inGrace": g.parityInGrace()}
+			"parityGen": g.parityGen.Load(), "inGrace": g.parityInGrace(),
+			"observeCalls": calls, "firstAudioNow": startAt, "lastAudioNow": lastNow}
 		if o.IsNull() {
 			return diag
 		}
@@ -337,9 +339,7 @@ func (g *Game) initJSPlaybackPerf() {
 		return o
 	}))
 	js.Global().Set("resetThreeStageLatency", jsFn(func(args jsArgs) any {
-		g.schedMetrics.Reset()
-		g.laneCommitted.Store(0)
-		g.stageCInGrace.Store(0)
+		g.resetThreeStageLatency()
 		return nil
 	}))
 
