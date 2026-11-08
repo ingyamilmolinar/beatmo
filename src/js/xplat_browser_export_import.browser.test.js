@@ -40,7 +40,7 @@
  */
 import * as pw from "playwright";
 import { buildMainWasm, createServer } from "./real_input_test_helpers.js";
-import { FIREFOX_WEBGL_PREFS } from "./platform/launch.js";
+import { firefoxLaunchOptions } from "./platform/launch.js";
 
 const ENGINES = ["chromium", "firefox", "webkit"];
 const BOOT_TIMEOUT_MS = 90000;
@@ -107,7 +107,7 @@ const READY = () =>
 async function openEngine(engine, port) {
   const launchOpts = engine === "chromium"
     ? { args: ["--autoplay-policy=no-user-gesture-required"] }
-    : engine === "firefox" ? { firefoxUserPrefs: FIREFOX_WEBGL_PREFS } : {};
+    : engine === "firefox" ? firefoxLaunchOptions() : {};
   const browser = await pw[engine].launch(launchOpts);
   try {
     const page = await browser.newPage();

@@ -64,6 +64,9 @@ SEQUENTIAL_TESTS=(
     # above. It has no timing thresholds of its own; it just needs each engine to
     # finish booting.
     "xplat_browser_export_import.browser.test.js"
+    # Boots the app in all three engines too; headful Firefox on Xvfb's software
+    # GL crashed when three parallel jobs shared the CPU, and passes alone.
+    "dev_server_boot.browser.test.js"
     # Cold-load timing of the landing page under CDP network + CPU throttling
     # (landing vs no-landing TTI ratio gate when BASELINE_INDEX is set):
     # parallel browsers would skew the very boot times it measures.

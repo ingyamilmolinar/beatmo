@@ -32,7 +32,7 @@ import net from "net";
 import path from "path";
 import { fileURLToPath } from "url";
 import { resolveGoBinary, shouldSkipWasmBuild } from "./browser_test_helpers.js";
-import { FIREFOX_WEBGL_PREFS } from "./platform/launch.js";
+import { firefoxLaunchOptions } from "./platform/launch.js";
 
 const jsDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(jsDir, "../..");
@@ -97,7 +97,7 @@ try {
     const engine = ENGINES[name];
     if (!engine) throw new Error(`unknown engine ${name}`);
     console.log(`\n== ${name}`);
-    const browser = await engine.launch(name === "firefox" ? { firefoxUserPrefs: FIREFOX_WEBGL_PREFS } : {});
+    const browser = await engine.launch(name === "firefox" ? firefoxLaunchOptions() : {});
     try {
       for (const variant of [
         { label: "dev page", query: "", landing: false },
