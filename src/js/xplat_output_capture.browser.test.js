@@ -344,31 +344,16 @@ for (const instName of instrumentsToTest) {
     bestLagCorrelation(envRef, envCap, ENV_MAX_LAG);
   const envLagSamples = envBestLag * ENV_WIN;
 
-  // ----- INVERSION GUARD: signed raw correlation at the content-aligned lag -----
-  // The envelope is sign-blind (RMS uses |x|), so a NEGATED capture passes the envelope
-  // check. We catch inversion/decorrelation with the SIGNED raw-sample correlation, but
-  // raw correlation on broadband noise is delicate:
-  //   * A FREE raw-lag search is unusable: pure-noise instruments are self-similar, so
-  //     their autocorrelation has POSITIVE side-lobes as strong as the main lobe in both
-  //     polarities -- a free search finds an equal-magnitude positive lobe even for an
-  //     inverted capture (hihat is the worst case), defeating the guard.
-  //   * Pinning to a single coarse-envelope lag is too brittle: the 64-sample envelope
-  //     quantisation occasionally lands one block off the true onset, where the raw
-  //     correlation of a GENUINE capture can read negative -- a false inversion FAIL.
-  // Robust resolution: evaluate raw correlation only at the three lags anchored to the
-  // envelope peak {coarse-WIN, coarse, coarse+WIN}, pick the one with the largest
-  // ABSOLUTE correlation (= the true onset alignment, polarity-agnostic), and take its
-  // SIGNED value. This consistently reads POSITIVE for a genuine capture (kick ~0.95;
-  // broadband snare ~0.10-0.25, hihat ~0.27 -- low but reliably positive because their
-  // fine phase only partially survives the 256-sample-block, post-limiter capture) and
-  // the EXACT NEGATIVE for an inverted capture. Requiring the value > 0 therefore
-  // catches inversion for every instrument. (Teeth-proven: negating the reference makes
-  // all three FAIL.)
+  // ----- INVERSION GUARD: signed raw correlation at the true alignment -----
+  // The envelope is sign-blind, and on a long smooth decay its best lag can sit
+  // a few windows off. The worklet tap is sample-exact, so the raw lobe with the
+  // largest |corr| over the whole search is the true alignment; its sign is polarity.
   const rawWinEnd = Math.min(4000, reference.length);
+  const RAW_MAX_LAG = ENV_MAX_LAG * ENV_WIN;
   let rawAbsBest = -1;
   let rawCorrAligned = -2;
-  let rawLagAligned = envLagSamples;
-  for (const lag of [envLagSamples - ENV_WIN, envLagSamples, envLagSamples + ENV_WIN]) {
+  let rawLagAligned = 0;
+  for (let lag = -RAW_MAX_LAG; lag <= RAW_MAX_LAG; lag++) {
     const c = correlationAtLag(reference, captured, lag, 0, rawWinEnd);
     if (Math.abs(c) > rawAbsBest) {
       rawAbsBest = Math.abs(c);
@@ -436,14 +421,11 @@ for (const instName of instrumentsToTest) {
     instOk = false;
   }
 
-  // For tonal instruments that align at the sample level, additionally require a high
-  // raw correlation as the strictest possible check. Kick consistently clears 0.95;
-  // broadband noise instruments legitimately cannot (block-phase capture), so this is
-  // gated to instruments whose raw correlation is expected to be high.
-  const RAW_TONAL_THRESHOLD = 0.90;
-  const tonalInstruments = new Set(['kick']);
-  if (tonalInstruments.has(instName) && !(rawCorrAligned >= RAW_TONAL_THRESHOLD)) {
-    const msg = `${instName}: Tonal raw waveform mismatch - raw corr=${rawCorrAligned.toFixed(4)} < ${RAW_TONAL_THRESHOLD}`;
+  // The worklet tap is sample-exact, so every voice (noise included) must match
+  // its render closely once aligned; only the 5 ms fade-in and soft clip differ.
+  const RAW_THRESHOLD = 0.90;
+  if (!(rawCorrAligned >= RAW_THRESHOLD)) {
+    const msg = `${instName}: Raw waveform mismatch - raw corr=${rawCorrAligned.toFixed(4)} < ${RAW_THRESHOLD}`;
     console.log(`FAIL: ${msg}`);
     failures.push(msg);
     anyFailed = true;
