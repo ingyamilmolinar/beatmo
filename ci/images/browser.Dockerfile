@@ -1,5 +1,6 @@
 # The build image plus what the browser suite drives: Node, Playwright's
 # Chromium/Firefox/WebKit, and real Chrome (the bundled Chromium has no H.264).
+# EGL + Mesa: headless Firefox's WebGL renders through it (no EGL, no WebGL2).
 ARG BUILD_IMAGE
 FROM ${BUILD_IMAGE}
 
@@ -17,6 +18,6 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN npx -y "playwright@${PLAYWRIGHT_VERSION}" install --with-deps chromium firefox webkit \
  && curl -fsSLo /tmp/chrome.deb "https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${CHROME_VERSION}_amd64.deb" \
  && echo "${CHROME_SHA256}  /tmp/chrome.deb" | sha256sum -c - \
- && apt-get update && apt-get install -y --no-install-recommends /tmp/chrome.deb \
+ && apt-get update && apt-get install -y --no-install-recommends /tmp/chrome.deb libegl1 libegl-mesa0 \
  && rm -rf /var/lib/apt/lists/* /tmp/chrome.deb /root/.npm \
  && chmod -R a+rX /ms-playwright

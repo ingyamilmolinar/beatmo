@@ -41,7 +41,7 @@ install_debian() {
     cppcheck xvfb xauth ffmpeg zstd \
     libasound2-dev libgl1-mesa-dev libgl1-mesa-dri libglx-mesa0 \
     libx11-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev libxxf86vm-dev \
-    xorg-dev libgtk-3-dev \
+    xorg-dev libgtk-3-dev libegl1 libegl-mesa0 \
     podman uidmap slirp4netns fuse-overlayfs dbus-user-session
 
   step "rootless podman for $user"
