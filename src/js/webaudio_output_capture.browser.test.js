@@ -29,6 +29,25 @@ try {
     typeof resetOutputCaptureNode === "function"
   );
 
+  // A capture enabled before the audio-thread tap's module loads must still be
+  // on the audio thread (the ScriptProcessor fallback reorders blocks when the
+  // main thread is late). audio.js alone on a page: no AudioContext exists yet.
+  const fresh = await env.browser.newPage();
+  await fresh.goto(`http://localhost:${env.port}/audio.js`);
+  const first = await fresh.evaluate(async () => {
+    await import("/audio.js");
+    const hadContext = !!window.__audioCtx;
+    await window.enableOutputCapture();
+    return { hadContext, stats: window.getOutputCaptureStats() };
+  });
+  await fresh.close();
+  console.log(`--- Capture enabled before the tap module loads ---\n  ${JSON.stringify(first)}`);
+  if (first.hadContext) throw new Error("precondition: an AudioContext existed before the first enableOutputCapture");
+  if (!first.stats.hasNode || !first.stats.audioThread) {
+    throw new Error("an early enableOutputCapture fell back to the main-thread ScriptProcessor");
+  }
+  console.log("  PASS");
+
   // Unlock audio context (synthetic gesture is enough for headless Chromium).
   await page.evaluate(() => {
     document.dispatchEvent(new Event("pointerdown"));

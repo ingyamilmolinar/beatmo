@@ -114,6 +114,7 @@ function preloadOutputTap(c) {
   } catch (_) { outputTapModule = Promise.resolve(false); }
 }
 let outputCaptureIsWorklet = false;
+let outputCapturePending = null; // Promise while the audio-thread tap's module loads
 let outputCaptureNode = null;
 let outputCaptureBuffer = [];
 let outputCaptureEnabled = false;
@@ -4198,6 +4199,11 @@ window.ensureSynthSample = async (id) => {
 
 // Enable output capture mode - creates capture node and inserts it into the audio chain.
 // Can be called at any time; will properly rewire if audio is already playing.
+// Returns a Promise that resolves once the tap is attached: while the
+// audio-thread tap's module is still loading it waits for it, because the
+// ScriptProcessor fallback, once chosen, stays for the session and reorders
+// blocks whenever the main thread is late (a busy machine read a sung A4 as
+// 87 Hz). The fallback is only for a context without AudioWorklet.
 window.enableOutputCapture = () => {
   window.__captureOutput = true;
   outputCaptureEnabled = false;
@@ -4207,41 +4213,58 @@ window.enableOutputCapture = () => {
   const c = getCtx();
   ensureMainNode(); // Force creation of main channel node
 
-  if (outputCaptureNode) {
-    // Already have capture node
-    return;
-  }
+  if (outputCaptureNode) return Promise.resolve();
+  if (outputCapturePending) return outputCapturePending;
 
   outputCaptureSampleRate = c.sampleRate;
   preloadOutputTap(c);
   if (outputTapReady) {
-    // Audio-thread tap on a PARALLEL branch: masterOut → tap → (silent) → out.
-    // The masterOut → destination path is left untouched.
-    const tap = new AudioWorkletNode(c, 'beatmo-output-tap', {
-      numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1],
-      channelCount: 1, channelCountMode: 'explicit', channelInterpretation: 'speakers',
-    });
-    tap.port.onmessage = (e) => {
-      const d = e.data;
-      if (d && d.flushed !== undefined) {
-        const w = outputTapFlushWaiters.get(d.flushed);
-        if (w) { outputTapFlushWaiters.delete(d.flushed); w(); }
-        return;
-      }
-      if (outputCaptureEnabled && d && d.length) {
-        for (let i = 0; i < d.length; i++) outputCaptureBuffer.push(d[i]);
-      }
-    };
-    const mute = c.createGain();
-    mute.gain.value = 0;
-    tap.connect(mute);
-    mute.connect(c.destination); // keeps the tap pulled by the render graph
-    ensureMasterOut().connect(tap);
-    outputCaptureNode = tap;
-    outputCaptureIsWorklet = true;
-    console.log('[AUDIO CAPTURE] Audio-thread capture tap attached to the master output');
-    return;
+    attachWorkletOutputTap(c);
+    return Promise.resolve();
   }
+  if (outputTapModule) {
+    outputCapturePending = outputTapModule.then((ok) => {
+      outputCapturePending = null;
+      if (outputCaptureNode) return;
+      if (ok) attachWorkletOutputTap(c);
+      else attachScriptProcessorOutputTap(c);
+      if (outputCaptureEnabled && outputCaptureIsWorklet) outputCaptureNode.port.postMessage('on');
+    });
+    return outputCapturePending;
+  }
+  attachScriptProcessorOutputTap(c);
+  return Promise.resolve();
+};
+
+function attachWorkletOutputTap(c) {
+  // Audio-thread tap on a PARALLEL branch: masterOut → tap → (silent) → out.
+  // The masterOut → destination path is left untouched.
+  const tap = new AudioWorkletNode(c, 'beatmo-output-tap', {
+    numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1],
+    channelCount: 1, channelCountMode: 'explicit', channelInterpretation: 'speakers',
+  });
+  tap.port.onmessage = (e) => {
+    const d = e.data;
+    if (d && d.flushed !== undefined) {
+      const w = outputTapFlushWaiters.get(d.flushed);
+      if (w) { outputTapFlushWaiters.delete(d.flushed); w(); }
+      return;
+    }
+    if (outputCaptureEnabled && d && d.length) {
+      for (let i = 0; i < d.length; i++) outputCaptureBuffer.push(d[i]);
+    }
+  };
+  const mute = c.createGain();
+  mute.gain.value = 0;
+  tap.connect(mute);
+  mute.connect(c.destination); // keeps the tap pulled by the render graph
+  ensureMasterOut().connect(tap);
+  outputCaptureNode = tap;
+  outputCaptureIsWorklet = true;
+  console.log('[AUDIO CAPTURE] Audio-thread capture tap attached to the master output');
+}
+
+function attachScriptProcessorOutputTap(c) {
   outputCaptureNode = c.createScriptProcessor(256, 1, 1);
   outputCaptureNode.onaudioprocess = (e) => {
     if (outputCaptureEnabled) {
@@ -4266,13 +4289,14 @@ window.enableOutputCapture = () => {
   outputCaptureNode.connect(c.destination);
 
   console.log('[AUDIO CAPTURE] Capture node inserted into audio chain');
-};
+}
 
 // Start capturing output samples
 window.startOutputCapture = () => {
   outputCaptureBuffer = [];
+  let attached = Promise.resolve();
   if (!outputCaptureNode) {
-    window.enableOutputCapture();
+    attached = window.enableOutputCapture();
   } else if (!outputCaptureIsWorklet) {
     // Re-verify capture chain is intact — Chrome's ScriptProcessorNode can
     // receive all-zero input after extended use across multiple start/stop
@@ -4290,6 +4314,7 @@ window.startOutputCapture = () => {
   outputCaptureEnabled = true;
   if (outputCaptureIsWorklet && outputCaptureNode) outputCaptureNode.port.postMessage('on');
   console.log('[AUDIO CAPTURE] Started capturing output at', outputCaptureSampleRate, 'Hz');
+  return attached;
 };
 
 // Stop capturing and return the captured samples as Float32Array
@@ -4308,6 +4333,7 @@ window.stopOutputCapture = () => {
 // Call it before stop/get when the exact capture window matters and the main
 // thread may be busy. Resolves immediately for the ScriptProcessor fallback.
 window.flushOutputCapture = () => {
+  if (outputCapturePending) return outputCapturePending.then(() => window.flushOutputCapture());
   if (!outputCaptureIsWorklet || !outputCaptureNode) return Promise.resolve();
   const seq = ++outputTapFlushSeq;
   return new Promise((resolve) => {
@@ -4349,6 +4375,7 @@ window.getOutputCaptureStats = () => {
     sampleRate: outputCaptureSampleRate,
     durationSec: outputCaptureBuffer.length / outputCaptureSampleRate,
     hasNode: !!outputCaptureNode,
+    pending: !!outputCapturePending,
     audioThread: outputCaptureIsWorklet,
   };
 };
