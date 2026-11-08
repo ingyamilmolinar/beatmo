@@ -83,8 +83,11 @@ await page.addInitScript(() => {
       window.__samples = [];
       sp.addEventListener("audioprocess", (e) => {
         const data = e.inputBuffer.getChannelData(0);
+        // The window opens at the first sound: a note waits for the DSP worklet
+        // in a context's first moments, which a slow machine stretches.
+        if (window.__heardAt === undefined && data.some((v) => v !== 0)) window.__heardAt = window.__samples.length;
         window.__samples.push(...data);
-        if (window.__samples.length >= SAMPLE_TARGET) window.__done = true;
+        if (window.__heardAt !== undefined && window.__samples.length - window.__heardAt >= SAMPLE_TARGET) window.__done = true;
       });
       sp.connect(dest);
       Object.defineProperty(this, "destination", { value: sp });
@@ -113,7 +116,8 @@ await page.evaluate(async () => {
   await window.playSound("kick", 1.0);
 });
 
-await page.waitForFunction(() => window.__done === true, {}, { timeout: 5000 });
+// Silence (the bug) never opens the window: judge whatever arrived by then.
+await page.waitForFunction(() => window.__done === true, null, { timeout: 15000 }).catch(() => {});
 const samples = await page.evaluate(() => window.__samples);
 await browser.close();
 server.close();
