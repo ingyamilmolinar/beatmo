@@ -40,7 +40,7 @@ A comment says **why**, in one or two sentences (at most 3 lines): a non-obvious
 
 | Task | Command |
 |------|---------|
-| Install deps | `sudo make dependencies` |
+| Install deps | `make dependencies` (as yourself; sudo only for system packages): the native toolchain at the `ci/versions.env` pins (Go + golangci-lint in `.tools/`, Node / emsdk there when the host's differ, Chrome), Playwright's three engines, and rootless podman (subuids, cgroup delegation for CPU/memory limits) |
 | Comment census / policy lint | `make comment-census` (`ARGS="--check"`, `"--top 60"`, `"--json"`, `"--only src/go/internal/ui/*"`) |
 | Desktop run | `make run` |
 | Debug run | `make run-debug` |
@@ -48,6 +48,7 @@ A comment says **why**, in one or two sentences (at most 3 lines): a non-obvious
 | Full pipeline | `make test` (runs `make ci-build` first: the CI Build job's exact commands) |
 | Check host tools vs the CI pins | `make doctor` (`ci/versions.env` is the ONE place a tool version is pinned: Debian digest, Go, emsdk, golangci-lint, Node, Playwright, Chrome) |
 | Run any target in the CI image | `make dev TARGET=<target> [KIND=build\|browser]` (podman or docker; the exact image CI uses, `ci/images/*.Dockerfile`, tag = content hash) |
+| Run CI itself, here | `make ci-local` (every job of `.github/workflows/ci.yml`, read from the file: each job in its CI image at CI's path `/__w/beatmo/beatmo`, a runner's 4 CPUs / 16 GB, steps exec'd in one container per job, artifacts + job outputs between jobs, HEAD + tracked edits as a shallow checkout); `JOBS="lint test-go/2"` or `make ci-local-<job>` for some; `make ci-local-list`; `CI_LOCAL_ARGS="-j 2 -keep -committed -n"`; logs + step summaries in `~/.cache/beatmo-ci/logs`. Native `make test` stays the fast default |
 | Lint (what CI's Lint job runs) | `make lint` = golangci-lint (Go version from go.mod — never pin `run.go` in `.golangci.yml`) + `scripts/ci/lint-unused.py` (the `unused` linter judged across linux, linux `-tags test`, js and js release: a symbol is dead only if every build that compiles its file finds it unused) + eslint over git-tracked JS + cppcheck |
 | Reproduce one CI shard | `make test-go-shard SHARD=2/4` / `make test-real-go-shard SHARD=2/4` (`scripts/ci/go-shard.sh plan 2/4` prints what it runs) |
 | JS-bridge audit (no typed id/enum reaches `syscall/js`) | `make js-audit` |

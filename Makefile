@@ -700,6 +700,20 @@ dev:
 doctor:
 	@scripts/ci/doctor.sh
 
+# CI on this machine: .github/workflows/ci.yml read and run job by job in CI's
+# images, at CI's paths, with a runner's 4 CPUs / 16 GB (src/go/cmd/ci-local).
+# JOBS picks jobs or one matrix instance (JOBS="lint test-go/2"); `make
+# ci-local-<job>` runs one job; CI_LOCAL_ARGS takes -j N, -keep, -committed, -n.
+.PHONY: ci-local ci-local-list
+ci-local:
+	cd src/go && $(GO) run ./cmd/ci-local $(CI_LOCAL_ARGS) $(JOBS)
+
+ci-local-list:
+	@cd src/go && $(GO) run ./cmd/ci-local -list
+
+ci-local-%:
+	cd src/go && $(GO) run ./cmd/ci-local $(CI_LOCAL_ARGS) $*
+
 # js-audit: no value js.ValueOf cannot convert (a typed id or enum) reaches
 # syscall/js — it panics in the browser only, invisible to the compiler and to
 # every native test. See scripts/jsaudit/main.go.
