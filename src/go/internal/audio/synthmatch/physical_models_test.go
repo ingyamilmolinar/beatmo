@@ -6,6 +6,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/audio/fingerprint"
 	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
@@ -74,16 +75,15 @@ func lateStable(w wave.Wave) bool {
 func TestPhysicalModelInstrumentsRenderCleanly(t *testing.T) {
 	cases := []struct {
 		id     instrument.ID
-		pitch  float64 // semitones from A3 (=0)
-		wantF0 float64 // Hz
+		pitch  float64 // node pitch, semitones
 		tolPct float64
 	}{
-		{roster.Violin, 17, 587.33, 7},      // D5 — bowed-string waveguide (osc_type:7)
-		{roster.Cello, -7, 146.83, 9},       // D2 — bowed-string waveguide (low note)
-		{roster.Oboe, 12, 440.0, 9},         // A4 — reed waveguide (osc_type:9)
-		{roster.GuitarNylon, 15, 523.25, 7}, // C5 — Karplus-Strong + warm nylon body (body_model:2)
-		{roster.GuitarSteel, 15, 523.25, 7}, // C5 — Karplus-Strong + bright steel body (body_model:4)
-		{roster.Harp, 15, 523.25, 7},        // C5 — Karplus-Strong celtic harp (bright, long ring)
+		{roster.Violin, 17, 7},      // bowed-string waveguide (osc_type:7)
+		{roster.Cello, -7, 9},       // bowed-string waveguide, low note
+		{roster.Oboe, 12, 9},        // reed waveguide (osc_type:9)
+		{roster.GuitarNylon, 15, 7}, // Karplus-Strong + warm nylon body (body_model:2)
+		{roster.GuitarSteel, 15, 7}, // Karplus-Strong + bright steel body (body_model:4)
+		{roster.Harp, 15, 7},        // Karplus-Strong celtic harp (bright, long ring)
 	}
 	for _, c := range cases {
 		t.Run(string(c.id), func(t *testing.T) {
@@ -104,11 +104,15 @@ func TestPhysicalModelInstrumentsRenderCleanly(t *testing.T) {
 			if !lateStable(w) {
 				t.Errorf("%s: unstable — late amplitude blows up", c.id)
 			}
+			// The note a node at this pitch promises: the cello's osc_octave -1
+			// puts it an octave under the node's A3-relative pitch.
+			offset, _ := audio.InstrumentPitchInfo(c.id)
+			wantF0 := 220 * math.Pow(2, (c.pitch+offset)/12)
 			f0 := fingerprint.DetectF0(w)
-			tol := c.wantF0 * c.tolPct / 100
+			tol := wantF0 * c.tolPct / 100
 			// Allow octave-up detection (a strong 2nd harmonic is common and benign).
-			if math.Abs(f0-c.wantF0) > tol && math.Abs(f0-2*c.wantF0) > 2*tol {
-				t.Errorf("%s: F0 %.0f Hz, want %.0f±%.0f Hz (or its octave)", c.id, f0, c.wantF0, tol)
+			if math.Abs(f0-wantF0) > tol && math.Abs(f0-2*wantF0) > 2*tol {
+				t.Errorf("%s: F0 %.0f Hz, want %.0f±%.0f Hz (or its octave)", c.id, f0, wantF0, tol)
 			}
 		})
 	}
