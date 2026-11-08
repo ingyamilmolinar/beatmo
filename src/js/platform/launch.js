@@ -96,11 +96,23 @@ async function launchWebkitLocal(opts) {
 // session), and Ebiten then exits the Go program; Mesa's software GL is fine.
 export const FIREFOX_WEBGL_PREFS = { "webgl.force-enabled": true };
 
+// Headless Firefox needs a GL device a container lacks ("Exhausted GL driver
+// options"); under xvfb-run (the Makefile's browser targets set
+// BROWSER_TEST_XVFB=1) it runs headful on Xvfb's Mesa GL instead.
+export function firefoxLaunchOptions(extra = {}) {
+  const onXvfb = process.env.BROWSER_TEST_XVFB === "1" && !!process.env.DISPLAY;
+  return {
+    ...extra,
+    ...(onXvfb ? { headless: false } : {}),
+    firefoxUserPrefs: { ...FIREFOX_WEBGL_PREFS, ...(extra.firefoxUserPrefs || {}) },
+  };
+}
+
 async function launchFirefoxLocal(opts) {
-  const browser = await firefox.launch({
+  const browser = await firefox.launch(firefoxLaunchOptions({
     headless: resolveHeadless(opts),
-    firefoxUserPrefs: { ...FIREFOX_WEBGL_PREFS, "media.autoplay.default": 0, "media.autoplay.block-webaudio": false },
-  });
+    firefoxUserPrefs: { "media.autoplay.default": 0, "media.autoplay.block-webaudio": false },
+  }));
   return {
     browser,
     kind: "firefox",

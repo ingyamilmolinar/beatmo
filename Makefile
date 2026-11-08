@@ -965,9 +965,14 @@ test-race: $(C_LIB)
 
 # Run all browser tests (auto-discovered). Timing-sensitive tests run sequentially
 # after the parallel batch. BROWSER_JOBS=N controls parallelism (default: 4).
+# Browser suites run on a virtual display, here and in CI alike: headless
+# Firefox has no WebGL without a GL device, so on Xvfb it runs headful
+# (src/js/platform/launch.js firefoxLaunchOptions). Chromium stays headless.
+BROWSER_XVFB = BROWSER_TEST_XVFB=1 xvfb-run -a -s "-screen 0 1920x1080x24"
+
 test-browser: wasm-all $(JS_DEPS)
 	@if ! command -v node >/dev/null 2>&1; then echo 'Node not found'; exit 1; fi
-	GO=$(GO) BROWSER_JOBS=$(or $(BROWSER_JOBS),4) ./scripts/run-browser-tests.sh
+	GO=$(GO) BROWSER_JOBS=$(or $(BROWSER_JOBS),4) $(BROWSER_XVFB) ./scripts/run-browser-tests.sh
 
 # Run browser tests with a filter pattern
 # Usage: make test-browser-filter FILTER=touch
@@ -1024,7 +1029,7 @@ coverage-summary:
 
 # One browser matrix entry: TESTS="a.browser.test.js b.browser.test.js".
 test-browser-batch: wasm-all $(JS_DEPS)
-	GO=$(GO) ./scripts/run-browser-tests.sh --no-fail-fast --tests "$(TESTS)"
+	GO=$(GO) $(BROWSER_XVFB) ./scripts/run-browser-tests.sh --no-fail-fast --tests "$(TESTS)"
 
 # Prints the browser matrix JSON (and hands it to the workflow under Actions).
 browser-matrix:
