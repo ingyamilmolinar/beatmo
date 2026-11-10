@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -57,54 +58,69 @@ type corpusCheck struct {
 	name string
 	doc  string
 	run  func(r *checkReport) error
+	// wholeCorpus marks a calibration over every instrument ref, locally
+	// adopted ones included: a fresh one means nothing while any is missing.
+	wholeCorpus bool
 }
 
 var corpusChecks = []corpusCheck{
-	{"thresholds", "testdata/thresholds.json reproduces from a fresh calibration", checkThresholdsGolden},
-	{"organic", "testdata/organic_range.json reproduces from a fresh calibration", checkOrganicRangeGolden},
-	{"f0", "F0ReliableConfidence separates the corpus's pitched and unpitched clips", checkF0ConfidenceSeparation},
-	{"f0-outliers", "the documented low-confidence pitched clips are still low", checkF0LowConfidenceOutliers},
-	{"candidates", "every shipped audition candidate passes the pre-audition gate", checkCandidateGate},
-	{"match-hubness", matchHubnessRel + " covers the roster and reproduces from a fresh calibration", checkMatchHubness},
+	{"thresholds", "testdata/thresholds.json reproduces from a fresh calibration", checkThresholdsGolden, false},
+	{"organic", "testdata/organic_range.json reproduces from a fresh calibration", checkOrganicRangeGolden, false},
+	{"f0", "F0ReliableConfidence separates the corpus's pitched and unpitched clips", checkF0ConfidenceSeparation, false},
+	{"f0-outliers", "the documented low-confidence pitched clips are still low", checkF0LowConfidenceOutliers, false},
+	{"candidates", "every shipped audition candidate passes the pre-audition gate", checkCandidateGate, false},
+	{"match-hubness", matchHubnessRel + " covers the roster and reproduces from a fresh calibration", checkMatchHubness, true},
 }
 
 var errCheckFailed = errors.New("refs check: one or more checks failed")
 
-// corpusPresent reports how many instrument-tier catalogue refs resolve to
-// audio on this machine.
-func corpusPresent() (int, error) {
-	c, err := loadCatalogue()
+// corpusPresent counts the instrument-tier catalogue refs whose audio is on
+// this machine and lists the fetchable ones that are not.
+func corpusPresent(load func() (wavref.Cat, error)) (int, []string, error) {
+	c, err := load()
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	n := 0
+	var missing []string
 	for _, r := range c.Refs {
-		if r.Tier != wavref.TierInstrument {
+		if r.Tier != wavref.TierInstrument || r.Status != "" || r.File == "" {
 			continue
 		}
-		if _, ok := wavref.Resolve(r.ID); ok {
+		if _, err := os.Stat(filepath.Join(wavref.Root(), r.File)); err == nil {
 			n++
+		} else {
+			missing = append(missing, r.ID)
 		}
 	}
-	return n, nil
+	return n, missing, nil
 }
 
 func runChecks(w io.Writer, only map[string]bool, verbose bool) error {
-	n, err := corpusPresent()
+	return runChecksFrom(w, only, verbose, loadCatalogue)
+}
+
+func runChecksFrom(w io.Writer, only map[string]bool, verbose bool, load func() (wavref.Cat, error)) error {
+	n, missing, err := corpusPresent(load)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(w, "reference corpus: %s (%d instrument refs present)\n", wavref.Root(), n)
+	fmt.Fprintf(w, "reference corpus: %s (%d instrument refs present, %d missing)\n", wavref.Root(), n, len(missing))
 	failed := false
 	for _, c := range corpusChecks {
 		if len(only) > 0 && !only[c.name] {
 			continue
 		}
 		r := &checkReport{name: c.name}
-		if n == 0 {
+		switch {
+		case n == 0:
 			r.Skipf("no reference audio present -- fetch it with `make fetch-refs TIER=instrument` or point %s at it", wavref.EnvVar)
-		} else if err := c.run(r); err != nil {
-			r.Errorf("%v", err)
+		case c.wholeCorpus && len(missing) > 0:
+			r.Skipf("calibrated over the whole corpus; missing here: %s", strings.Join(missing, ", "))
+		default:
+			if err := c.run(r); err != nil {
+				r.Errorf("%v", err)
+			}
 		}
 		switch {
 		case len(r.failed) > 0:

@@ -5,8 +5,8 @@
     "axis": "centroid",
     "verdict": "drift",
     "direction": "low",
-    "drift": 38.304804599859594,
-    "mismatch": 89.9385403932627
+    "drift": 38.30481755193695,
+    "mismatch": 89.9176178740361
   },
   {
     "instrument": "bassoon",
@@ -24,7 +24,7 @@
     "verdict": "drift",
     "direction": "high",
     "drift": 2.041666666666667,
-    "mismatch": 10.416666666666668
+    "mismatch": 9.916666666666668
   },
   {
     "instrument": "bassoon",
@@ -41,8 +41,8 @@
     "axis": "sustain modulation",
     "verdict": "ok",
     "direction": "",
-    "drift": 0.11688950079960236,
-    "mismatch": 0.1722274770222323
+    "drift": 0.060539372928214895,
+    "mismatch": 0.1394511184641879
   },
   {
     "instrument": "bassoon",
@@ -50,8 +50,8 @@
     "axis": "spectral flatness",
     "verdict": "ok",
     "direction": "",
-    "drift": 0.037512692972390585,
-    "mismatch": 0.07614578085401728
+    "drift": 0.0374519460638654,
+    "mismatch": 0.07612589226257203
   },
   {
     "instrument": "bassoon",
@@ -59,8 +59,8 @@
     "axis": "noise fraction",
     "verdict": "ok",
     "direction": "",
-    "drift": 0.016388959538388148,
-    "mismatch": 0.48911397547248436
+    "drift": 0.03755679718242899,
+    "mismatch": 0.4875005225527761
   },
   {
     "instrument": "bassoon",
@@ -68,8 +68,8 @@
     "axis": "inharmonicity",
     "verdict": "MISMATCH",
     "direction": "high",
-    "drift": 0.00020334749629327123,
-    "mismatch": 0.000973440378391897
+    "drift": 0.0002033033260242503,
+    "mismatch": 0.0010363060660872404
   },
   {
     "instrument": "bassoon",
@@ -77,8 +77,8 @@
     "axis": "partial series deviation",
     "verdict": "ok",
     "direction": "",
-    "drift": 0.20555643005609753,
-    "mismatch": 1.2058761946325518
+    "drift": 0.20547266459782088,
+    "mismatch": 1.2058750360156036
   },
   {
     "instrument": "cello",
@@ -86,8 +86,8 @@
     "axis": "centroid",
     "verdict": "ok",
     "direction": "",
-    "drift": 38.304804599859594,
-    "mismatch": 89.9385403932627
+    "drift": 38.30481755193695,
+    "mismatch": 89.9176178740361
   },
   {
     "instrument": "cello",
@@ -105,7 +105,7 @@
     "verdict": "MISMATCH",
     "direction": "high",
     "drift": 2.041666666666667,
-    "mismatch": 10.416666666666668
+    "mismatch": 9.916666666666668
   },
   {
     "instrument": "cello",
@@ -120,10 +120,10 @@
     "instrument": "cello",
     "id": "mod.sustain_variation",
     "axis": "sustain modulation",
-    "verdict": "drift",
+    "verdict": "MISMATCH",
     "direction": "high",
-    "drift": 0.11688950079960236,
-    "mismatch": 0.1722274770222323
+    "drift": 0.060539372928214895,
+    "mismatch": 0.1394511184641879
   },
   {
     "instrument": "cello",
@@ -131,8 +131,8 @@
     "axis": "spectral flatness",
     "verdict": "ok",
     "direction": "",
-    "drift": 0.037512692972390585,
-    "mismatch": 0.07614578085401728
+    "drift": 0.0374519460638654,
+    "mismatch": 0.07612589226257203
   },
   {
     "instrument": "cello",
@@ -140,8 +140,8 @@
     "axis": "noise fraction",
     "verdict": "drift",
     "direction": "low",
-    "drift": 0.016388959538388148,
-    "mismatch": 0.48911397547248436
+    "drift": 0.03755679718242899,
+    "mismatch": 0.4875005225527761
   },
   {
     "instrument": "cello",
@@ -149,8 +149,8 @@
     "axis": "inharmonicity",
     "verdict": "MISMATCH",
     "direction": "high",
-    "drift": 0.00020334749629327123,
-    "mismatch": 0.000973440378391897
+    "drift": 0.0002033033260242503,
+    "mismatch": 0.0010363060660872404
   },
   {
     "instrument": "cello",
@@ -158,8 +158,8 @@
     "axis": "partial series deviation",
     "verdict": "ok",
     "direction": "",
-    "drift": 0.20555643005609753,
-    "mismatch": 1.2058761946325518
+    "drift": 0.20547266459782088,
+    "mismatch": 1.2058750360156036
   },
   {
     "instrument": "clap",
@@ -167,8 +167,8 @@
     "axis": "centroid",
     "verdict": "ok",
     "direction": "",
-    "drift": 38.304804599859594,
-    "mismatch": 89.9385403932627
+    "drift": 38.30481755193695,
+    "mismatch": 89.9176178740361
   },
   {
     "instrument": "clap",
@@ -186,7 +186,7 @@
     "verdict": "drift",
     "direction": "low",
     "drift": 2.041666666666667,
-    "mismatch": 10.416666666666668
+    "mismatch": 9.916666666666668
   },
   {
     "instrument": "clap",
@@ -201,10 +201,10 @@
     "instrument": "clap",
     "id": "mod.sustain_variation",
     "axis": "sustain modulation",
-    "verdict": "ok",
-    "direction": "",
-    "drift": 0.11688950079960236,
-    "mismatch": 0.1722274770222323
+    "verdict": "drift",
+    "direction": "low",
+    "drift": 0.060539372928214895,
+    "mismatch": 0.1394511184641879
   },
   {
     "instrument": "clap",
@@ -212,8 +212,8 @@
     "axis": "spectral flatness",
     "verdict": "MISMATCH",
     "direction": "high",
-    "drift": 0.037512692972390585,
-    "mismatch": 0.07614578085401728
+    "drift": 0.0374519460638654,
+    "mismatch": 0.07612589226257203
   },
   {
     "instrument": "clap",
@@ -221,8 +221,8 @@
     "axis": "noise fraction",
     "verdict": "MISMATCH",
     "direction": "high",
-    "drift": 0.016388959538388148,
-    "mismatch": 0.48911397547248436
+    "drift": 0.03755679718242899,
+    "mismatch": 0.4875005225527761
   },
   {
     "instrument": "clap",
@@ -230,8 +230,8 @@
     "axis": "inharmonicity",
     "verdict": "MISMATCH",
     "direction": "high",
-    "drift": 0.00020334749629327123,
-    "mismatch": 0.000973440378391897
+    "drift": 0.0002033033260242503,
+    "mismatch": 0.0010363060660872404
   },
   {
     "instrument": "clap",
@@ -239,8 +239,8 @@
     "axis": "partial series deviation",
     "verdict": "MISMATCH",
     "direction": "high",
-    "drift": 0.20555643005609753,
-    "mismatch": 1.2058761946325518
+    "drift": 0.20547266459782088,
+    "mismatch": 1.2058750360156036
   },
   {
     "instrument": "harp",
@@ -248,8 +248,8 @@
     "axis": "centroid",
     "verdict": "ok",
     "direction": "",
-    "drift": 38.304804599859594,
-    "mismatch": 89.9385403932627
+    "drift": 38.30481755193695,
+    "mismatch": 89.9176178740361
   },
   {
     "instrument": "harp",
@@ -267,7 +267,7 @@
     "verdict": "MISMATCH",
     "direction": "low",
     "drift": 2.041666666666667,
-    "mismatch": 10.416666666666668
+    "mismatch": 9.916666666666668
   },
   {
     "instrument": "harp",
@@ -284,8 +284,8 @@
     "axis": "sustain modulation",
     "verdict": "ok",
     "direction": "",
-    "drift": 0.11688950079960236,
-    "mismatch": 0.1722274770222323
+    "drift": 0.060539372928214895,
+    "mismatch": 0.1394511184641879
   },
   {
     "instrument": "harp",
@@ -293,17 +293,17 @@
     "axis": "spectral flatness",
     "verdict": "ok",
     "direction": "",
-    "drift": 0.037512692972390585,
-    "mismatch": 0.07614578085401728
+    "drift": 0.0374519460638654,
+    "mismatch": 0.07612589226257203
   },
   {
     "instrument": "harp",
     "id": "noise.fraction",
     "axis": "noise fraction",
-    "verdict": "drift",
-    "direction": "high",
-    "drift": 0.016388959538388148,
-    "mismatch": 0.48911397547248436
+    "verdict": "ok",
+    "direction": "",
+    "drift": 0.03755679718242899,
+    "mismatch": 0.4875005225527761
   },
   {
     "instrument": "harp",
@@ -311,8 +311,8 @@
     "axis": "inharmonicity",
     "verdict": "MISMATCH",
     "direction": "low",
-    "drift": 0.00020334749629327123,
-    "mismatch": 0.000973440378391897
+    "drift": 0.0002033033260242503,
+    "mismatch": 0.0010363060660872404
   },
   {
     "instrument": "harp",
@@ -320,8 +320,8 @@
     "axis": "partial series deviation",
     "verdict": "ok",
     "direction": "",
-    "drift": 0.20555643005609753,
-    "mismatch": 1.2058761946325518
+    "drift": 0.20547266459782088,
+    "mismatch": 1.2058750360156036
   },
   {
     "instrument": "hihat",
@@ -329,8 +329,8 @@
     "axis": "centroid",
     "verdict": "drift",
     "direction": "high",
-    "drift": 38.304804599859594,
-    "mismatch": 89.9385403932627
+    "drift": 38.30481755193695,
+    "mismatch": 89.9176178740361
   },
   {
     "instrument": "hihat",
@@ -348,7 +348,7 @@
     "verdict": "MISMATCH",
     "direction": "low",
     "drift": 2.041666666666667,
-    "mismatch": 10.416666666666668
+    "mismatch": 9.916666666666668
   },
   {
     "instrument": "hihat",
@@ -365,8 +365,8 @@
     "axis": "sustain modulation",
     "verdict": "drift",
     "direction": "low",
-    "drift": 0.11688950079960236,
-    "mismatch": 0.1722274770222323
+    "drift": 0.060539372928214895,
+    "mismatch": 0.1394511184641879
   },
   {
     "instrument": "hihat",
@@ -374,8 +374,8 @@
     "axis": "spectral flatness",
     "verdict": "ok",
     "direction": "",
-    "drift": 0.037512692972390585,
-    "mismatch": 0.07614578085401728
+    "drift": 0.0374519460638654,
+    "mismatch": 0.07612589226257203
   },
   {
     "instrument": "hihat",
@@ -383,8 +383,8 @@
     "axis": "noise fraction",
     "verdict": "drift",
     "direction": "high",
-    "drift": 0.016388959538388148,
-    "mismatch": 0.48911397547248436
+    "drift": 0.03755679718242899,
+    "mismatch": 0.4875005225527761
   },
   {
     "instrument": "hihat",
@@ -392,8 +392,8 @@
     "axis": "inharmonicity",
     "verdict": "MISMATCH",
     "direction": "low",
-    "drift": 0.00020334749629327123,
-    "mismatch": 0.000973440378391897
+    "drift": 0.0002033033260242503,
+    "mismatch": 0.0010363060660872404
   },
   {
     "instrument": "hihat",
@@ -401,8 +401,8 @@
     "axis": "partial series deviation",
     "verdict": "MISMATCH",
     "direction": "high",
-    "drift": 0.20555643005609753,
-    "mismatch": 1.2058761946325518
+    "drift": 0.20547266459782088,
+    "mismatch": 1.2058750360156036
   },
   {
     "instrument": "kalimba",
@@ -410,8 +410,8 @@
     "axis": "centroid",
     "verdict": "drift",
     "direction": "low",
-    "drift": 38.304804599859594,
-    "mismatch": 89.9385403932627
+    "drift": 38.30481755193695,
+    "mismatch": 89.9176178740361
   },
   {
     "instrument": "kalimba",
@@ -429,7 +429,7 @@
     "verdict": "MISMATCH",
     "direction": "high",
     "drift": 2.041666666666667,
-    "mismatch": 10.416666666666668
+    "mismatch": 9.916666666666668
   },
   {
     "instrument": "kalimba",
@@ -446,8 +446,8 @@
     "axis": "sustain modulation",
     "verdict": "drift",
     "direction": "low",
-    "drift": 0.11688950079960236,
-    "mismatch": 0.1722274770222323
+    "drift": 0.060539372928214895,
+    "mismatch": 0.1394511184641879
   },
   {
     "instrument": "kalimba",
@@ -455,8 +455,8 @@
     "axis": "spectral flatness",
     "verdict": "MISMATCH",
     "direction": "low",
-    "drift": 0.037512692972390585,
-    "mismatch": 0.07614578085401728
+    "drift": 0.0374519460638654,
+    "mismatch": 0.07612589226257203
   },
   {
     "instrument": "kalimba",
@@ -464,8 +464,8 @@
     "axis": "noise fraction",
     "verdict": "MISMATCH",
     "direction": "low",
-    "drift": 0.016388959538388148,
-    "mismatch": 0.48911397547248436
+    "drift": 0.03755679718242899,
+    "mismatch": 0.4875005225527761
   },
   {
     "instrument": "kalimba",
@@ -473,8 +473,8 @@
     "axis": "inharmonicity",
     "verdict": "MISMATCH",
     "direction": "low",
-    "drift": 0.00020334749629327123,
-    "mismatch": 0.000973440378391897
+    "drift": 0.0002033033260242503,
+    "mismatch": 0.0010363060660872404
   },
   {
     "instrument": "kalimba",
@@ -482,8 +482,8 @@
     "axis": "partial series deviation",
     "verdict": "ok",
     "direction": "",
-    "drift": 0.20555643005609753,
-    "mismatch": 1.2058761946325518
+    "drift": 0.20547266459782088,
+    "mismatch": 1.2058750360156036
   },
   {
     "instrument": "oboe",
@@ -491,8 +491,8 @@
     "axis": "centroid",
     "verdict": "ok",
     "direction": "",
-    "drift": 38.304804599859594,
-    "mismatch": 89.9385403932627
+    "drift": 38.30481755193695,
+    "mismatch": 89.9176178740361
   },
   {
     "instrument": "oboe",
@@ -510,7 +510,7 @@
     "verdict": "MISMATCH",
     "direction": "low",
     "drift": 2.041666666666667,
-    "mismatch": 10.416666666666668
+    "mismatch": 9.916666666666668
   },
   {
     "instrument": "oboe",
@@ -527,8 +527,8 @@
     "axis": "sustain modulation",
     "verdict": "ok",
     "direction": "",
-    "drift": 0.11688950079960236,
-    "mismatch": 0.1722274770222323
+    "drift": 0.060539372928214895,
+    "mismatch": 0.1394511184641879
   },
   {
     "instrument": "oboe",
@@ -536,8 +536,8 @@
     "axis": "spectral flatness",
     "verdict": "ok",
     "direction": "",
-    "drift": 0.037512692972390585,
-    "mismatch": 0.07614578085401728
+    "drift": 0.0374519460638654,
+    "mismatch": 0.07612589226257203
   },
   {
     "instrument": "oboe",
@@ -545,8 +545,8 @@
     "axis": "noise fraction",
     "verdict": "drift",
     "direction": "high",
-    "drift": 0.016388959538388148,
-    "mismatch": 0.48911397547248436
+    "drift": 0.03755679718242899,
+    "mismatch": 0.4875005225527761
   },
   {
     "instrument": "oboe",
@@ -554,8 +554,8 @@
     "axis": "inharmonicity",
     "verdict": "MISMATCH",
     "direction": "high",
-    "drift": 0.00020334749629327123,
-    "mismatch": 0.000973440378391897
+    "drift": 0.0002033033260242503,
+    "mismatch": 0.0010363060660872404
   },
   {
     "instrument": "oboe",
@@ -563,8 +563,8 @@
     "axis": "partial series deviation",
     "verdict": "ok",
     "direction": "",
-    "drift": 0.20555643005609753,
-    "mismatch": 1.2058761946325518
+    "drift": 0.20547266459782088,
+    "mismatch": 1.2058750360156036
   },
   {
     "instrument": "rimshot",
@@ -572,8 +572,8 @@
     "axis": "centroid",
     "verdict": "drift",
     "direction": "low",
-    "drift": 38.304804599859594,
-    "mismatch": 89.9385403932627
+    "drift": 38.30481755193695,
+    "mismatch": 89.9176178740361
   },
   {
     "instrument": "rimshot",
@@ -591,7 +591,7 @@
     "verdict": "ok",
     "direction": "",
     "drift": 2.041666666666667,
-    "mismatch": 10.416666666666668
+    "mismatch": 9.916666666666668
   },
   {
     "instrument": "rimshot",
@@ -606,10 +606,10 @@
     "instrument": "rimshot",
     "id": "mod.sustain_variation",
     "axis": "sustain modulation",
-    "verdict": "drift",
+    "verdict": "MISMATCH",
     "direction": "low",
-    "drift": 0.11688950079960236,
-    "mismatch": 0.1722274770222323
+    "drift": 0.060539372928214895,
+    "mismatch": 0.1394511184641879
   },
   {
     "instrument": "rimshot",
@@ -617,8 +617,8 @@
     "axis": "spectral flatness",
     "verdict": "MISMATCH",
     "direction": "low",
-    "drift": 0.037512692972390585,
-    "mismatch": 0.07614578085401728
+    "drift": 0.0374519460638654,
+    "mismatch": 0.07612589226257203
   },
   {
     "instrument": "rimshot",
@@ -626,8 +626,8 @@
     "axis": "noise fraction",
     "verdict": "MISMATCH",
     "direction": "low",
-    "drift": 0.016388959538388148,
-    "mismatch": 0.48911397547248436
+    "drift": 0.03755679718242899,
+    "mismatch": 0.4875005225527761
   },
   {
     "instrument": "rimshot",
@@ -635,8 +635,8 @@
     "axis": "inharmonicity",
     "verdict": "MISMATCH",
     "direction": "low",
-    "drift": 0.00020334749629327123,
-    "mismatch": 0.000973440378391897
+    "drift": 0.0002033033260242503,
+    "mismatch": 0.0010363060660872404
   },
   {
     "instrument": "rimshot",
@@ -644,8 +644,8 @@
     "axis": "partial series deviation",
     "verdict": "drift",
     "direction": "low",
-    "drift": 0.20555643005609753,
-    "mismatch": 1.2058761946325518
+    "drift": 0.20547266459782088,
+    "mismatch": 1.2058750360156036
   },
   {
     "instrument": "snare",
@@ -653,8 +653,8 @@
     "axis": "centroid",
     "verdict": "drift",
     "direction": "low",
-    "drift": 38.304804599859594,
-    "mismatch": 89.9385403932627
+    "drift": 38.30481755193695,
+    "mismatch": 89.9176178740361
   },
   {
     "instrument": "snare",
@@ -672,7 +672,7 @@
     "verdict": "ok",
     "direction": "",
     "drift": 2.041666666666667,
-    "mismatch": 10.416666666666668
+    "mismatch": 9.916666666666668
   },
   {
     "instrument": "snare",
@@ -689,8 +689,8 @@
     "axis": "sustain modulation",
     "verdict": "drift",
     "direction": "high",
-    "drift": 0.11688950079960236,
-    "mismatch": 0.1722274770222323
+    "drift": 0.060539372928214895,
+    "mismatch": 0.1394511184641879
   },
   {
     "instrument": "snare",
@@ -698,8 +698,8 @@
     "axis": "spectral flatness",
     "verdict": "MISMATCH",
     "direction": "low",
-    "drift": 0.037512692972390585,
-    "mismatch": 0.07614578085401728
+    "drift": 0.0374519460638654,
+    "mismatch": 0.07612589226257203
   },
   {
     "instrument": "snare",
@@ -707,8 +707,8 @@
     "axis": "noise fraction",
     "verdict": "drift",
     "direction": "high",
-    "drift": 0.016388959538388148,
-    "mismatch": 0.48911397547248436
+    "drift": 0.03755679718242899,
+    "mismatch": 0.4875005225527761
   },
   {
     "instrument": "snare",
@@ -716,8 +716,8 @@
     "axis": "inharmonicity",
     "verdict": "drift",
     "direction": "high",
-    "drift": 0.00020334749629327123,
-    "mismatch": 0.000973440378391897
+    "drift": 0.0002033033260242503,
+    "mismatch": 0.0010363060660872404
   },
   {
     "instrument": "snare",
@@ -725,8 +725,8 @@
     "axis": "partial series deviation",
     "verdict": "drift",
     "direction": "high",
-    "drift": 0.20555643005609753,
-    "mismatch": 1.2058761946325518
+    "drift": 0.20547266459782088,
+    "mismatch": 1.2058750360156036
   },
   {
     "instrument": "tubular-bells",
@@ -734,8 +734,8 @@
     "axis": "centroid",
     "verdict": "ok",
     "direction": "",
-    "drift": 38.304804599859594,
-    "mismatch": 89.9385403932627
+    "drift": 38.30481755193695,
+    "mismatch": 89.9176178740361
   },
   {
     "instrument": "tubular-bells",
@@ -753,7 +753,7 @@
     "verdict": "ok",
     "direction": "",
     "drift": 2.041666666666667,
-    "mismatch": 10.416666666666668
+    "mismatch": 9.916666666666668
   },
   {
     "instrument": "tubular-bells",
@@ -770,8 +770,8 @@
     "axis": "sustain modulation",
     "verdict": "ok",
     "direction": "",
-    "drift": 0.11688950079960236,
-    "mismatch": 0.1722274770222323
+    "drift": 0.060539372928214895,
+    "mismatch": 0.1394511184641879
   },
   {
     "instrument": "tubular-bells",
@@ -779,8 +779,8 @@
     "axis": "spectral flatness",
     "verdict": "ok",
     "direction": "",
-    "drift": 0.037512692972390585,
-    "mismatch": 0.07614578085401728
+    "drift": 0.0374519460638654,
+    "mismatch": 0.07612589226257203
   },
   {
     "instrument": "tubular-bells",
@@ -788,8 +788,8 @@
     "axis": "noise fraction",
     "verdict": "MISMATCH",
     "direction": "low",
-    "drift": 0.016388959538388148,
-    "mismatch": 0.48911397547248436
+    "drift": 0.03755679718242899,
+    "mismatch": 0.4875005225527761
   },
   {
     "instrument": "tubular-bells",
@@ -797,8 +797,8 @@
     "axis": "inharmonicity",
     "verdict": "MISMATCH",
     "direction": "low",
-    "drift": 0.00020334749629327123,
-    "mismatch": 0.000973440378391897
+    "drift": 0.0002033033260242503,
+    "mismatch": 0.0010363060660872404
   },
   {
     "instrument": "tubular-bells",
@@ -806,7 +806,7 @@
     "axis": "partial series deviation",
     "verdict": "drift",
     "direction": "low",
-    "drift": 0.20555643005609753,
-    "mismatch": 1.2058761946325518
+    "drift": 0.20547266459782088,
+    "mismatch": 1.2058750360156036
   }
 ]
