@@ -138,6 +138,8 @@ EXPORT void *ifx_create(const char *type, int sr, const float *values, int n) {
     fx_handle *h = (fx_handle *)mem;
     h->k = k;
     h->state = mem + head;
+    /* The float buffer starts on an fx_align boundary of the same calloc block. */
+    /* cppcheck-suppress invalidPointerCast */
     h->buf = bl > 0 ? (float *)(mem + head + st) : 0;
     k->init(h->state, sr, h->buf, bl, values);
     return h;

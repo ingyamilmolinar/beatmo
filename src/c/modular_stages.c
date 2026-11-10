@@ -288,8 +288,8 @@ static void modular_gen_slot_ks(float *out, int sampleRate, int samples,
          * keeps the resulting limit cycle bounded. ks_sustain ~0.96-0.99 → loop
          * gain ~1.01-1.04 → a sustained, stable tone; lower → it decays (softer). */
         double fb      = decayFactor * 1.05; /* gen_ks_sustain → blown loop gain (>1 = self-oscillating) */
-        double lpAlpha = bPluck;             /* reflection lowpass alpha (tube air color) */
-        double lpState = 0.0;         /* reflection lowpass state */
+        double boreAlpha = bPluck;           /* reflection lowpass alpha (tube air color) */
+        double boreState = 0.0;              /* reflection lowpass state */
         /* Breath = SMOOTH airy turbulence, NOT white hiss. A raw white-noise drive
          * makes the tone harsh/"industrial"; a 2-pole lowpass turns it into soft air
          * so the tube sings smoothly. (This LP is on the excitation, not the bore
@@ -307,13 +307,13 @@ static void modular_gen_slot_ks(float *out, int sampleRate, int samples,
         for (int i = 0; i < samples; i++) {
             double bore = (double)delayBuf[readPtr];
             /* reflection filter: one-pole lowpass (open-tube radiation damping) */
-            lpState = lpState * (1.0 - lpAlpha) + bore * lpAlpha;
+            boreState = boreState * (1.0 - boreAlpha) + bore * boreAlpha;
             /* breath excitation: white noise → 2-pole lowpass (smooth air) */
             float nz = noise_ma_white_tick(&noise);
             bA = bA * (1.0 - breathAlpha) + (double)nz * breathAlpha;
             bB = bB * (1.0 - breathAlpha) + bA * breathAlpha;
             /* recirculate feedback + breath, SATURATED → bounded limit cycle */
-            double recirc = tanh(lpState * fb + bB * bBlow);
+            double recirc = tanh(boreState * fb + bB * bBlow);
             delayBuf[readPtr] = (float)recirc;
             readPtr = (readPtr + 1) % delayLen;
             /* high-pass the output below the fundamental (kills the rumble floor) */
@@ -1152,10 +1152,10 @@ static void gen_kick_physical(float *out, int sampleRate, int samples,
     static const double membr[4] = {1.0, 1.72, 2.04, 2.42};
     double ratio[KPHYS_MODES] = {1.0, 0, 0, 0, 5.31, 6.63, 7.92, 9.41, 11.2};
     for (int m = 1; m < 4; ++m) ratio[m] = harm[m] + memb * (membr[m] - harm[m]);
-    double gain[KPHYS_MODES] = {1.0, h2, h3, h3 * 0.5,
-                                skin, skin * 0.8, skin * 0.65, skin * 0.5, skin * 0.4};
-    double sigma[KPHYS_MODES] = {env0, env1, env1 * 1.3, env1 * 1.6,
-                                 skinDec, skinDec * 1.15, skinDec * 1.3, skinDec * 1.5, skinDec * 1.7};
+    const double gain[KPHYS_MODES] = {1.0, h2, h3, h3 * 0.5,
+                                      skin, skin * 0.8, skin * 0.65, skin * 0.5, skin * 0.4};
+    const double sigma[KPHYS_MODES] = {env0, env1, env1 * 1.3, env1 * 1.6,
+                                       skinDec, skinDec * 1.15, skinDec * 1.3, skinDec * 1.5, skinDec * 1.7};
     double rho[KPHYS_MODES], rhoHold[KPHYS_MODES];
     for (int m = 0; m < KPHYS_MODES; ++m) {
         rho[m] = exp(-sigma[m] / sr);
