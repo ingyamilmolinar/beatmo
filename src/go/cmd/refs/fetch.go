@@ -146,6 +146,9 @@ type fetchOpts struct {
 	Tier        string
 	OnlyMissing bool
 	Force       bool
+	// SkipAbsentLocal passes over a ref adopted from a file that is not on
+	// this machine instead of failing: CI fetches the public corpus only.
+	SkipAbsentLocal bool
 }
 
 func (o fetchOpts) selects(r wavref.Ref) bool {
@@ -330,6 +333,10 @@ func runFetch(w io.Writer, opts fetchOpts) error {
 		if !opts.selects(refs[i]) {
 			continue
 		}
+		if opts.SkipAbsentLocal && localSourceAbsent(refs[i]) {
+			fmt.Fprintf(w, "local-only %s (adopted from a file that is not on this machine)\n", refs[i].ID)
+			continue
+		}
 		did, err := fetchOne(w, &refs[i], opts.Force)
 		if err != nil {
 			fmt.Fprintf(w, "FAIL     %v\n", err)
@@ -352,6 +359,25 @@ func runFetch(w io.Writer, opts fetchOpts) error {
 		return fmt.Errorf("refs fetch: %d ref(s) failed", len(failures))
 	}
 	return nil
+}
+
+// localSourceAbsent reports a locally adopted ref whose audio can be made on
+// no machine but the one holding its source file.
+func localSourceAbsent(r wavref.Ref) bool {
+	if !locallyAdopted(r) {
+		return false
+	}
+	if r.Source.URL != "" {
+		if _, err := os.Stat(r.Source.URL); err == nil {
+			return false
+		}
+	}
+	dir, err := destDir(r)
+	if err != nil {
+		return true
+	}
+	_, err = os.Stat(filepath.Join(dir, r.File))
+	return err != nil
 }
 
 // writeCatalogue rewrites catalogue.json in the source tree. The file is
@@ -399,6 +425,7 @@ func cmdFetch(args []string) error {
 	fs.StringVar(&o.Tier, "tier", "", "fetch one tier: instrument|song")
 	fs.BoolVar(&o.OnlyMissing, "only-missing", false, "skip refs whose audio is already present")
 	fs.BoolVar(&o.Force, "force", false, "re-fetch even when the local hash already matches")
+	fs.BoolVar(&o.SkipAbsentLocal, "skip-absent-local", false, "pass over refs adopted from a file not on this machine instead of failing")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}

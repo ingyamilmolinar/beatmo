@@ -1,13 +1,13 @@
 {
   "band.t60": {
-    "drift": 1.9491078520520235,
-    "mismatch": 7.79289734614624,
+    "drift": 2.4413778899188205,
+    "mismatch": 9.107725234749104,
     "n": 8,
     "source": "corpus"
   },
   "bright.centroid": {
-    "drift": 38.304804599859594,
-    "mismatch": 89.9385403932627,
+    "drift": 38.30481755193695,
+    "mismatch": 89.9176178740361,
     "n": 8,
     "source": "corpus"
   },
@@ -18,56 +18,56 @@
     "source": "corpus"
   },
   "cepstral.mfcc": {
-    "drift": 22.342442274791047,
-    "mismatch": 46.553632792067276,
+    "drift": 22.22499908245073,
+    "mismatch": 38.897386027897944,
     "n": 8,
     "source": "corpus"
   },
   "decay.per_mode": {
-    "drift": 24.43956645813036,
-    "mismatch": 54.75465920031944,
+    "drift": 29.857396990956964,
+    "mismatch": 37.33174983120932,
     "n": 5,
     "source": "corpus"
   },
   "decay.slope_vs_freq": {
-    "drift": 22.79396572932483,
-    "mismatch": 54.65095220747732,
+    "drift": 26.669287762117232,
+    "mismatch": 49.48438558046303,
     "n": 5,
     "source": "corpus"
   },
   "env.attack": {
     "drift": 2.041666666666667,
-    "mismatch": 10.416666666666668,
+    "mismatch": 9.916666666666668,
     "n": 6,
     "source": "corpus"
   },
   "env.decay": {
-    "drift": 9.85,
-    "mismatch": 17.43333333333333,
+    "drift": 4.8999999999999995,
+    "mismatch": 5.9222222222222225,
     "n": 5,
     "source": "corpus"
   },
   "env.decay_rate": {
-    "drift": 15.81901612329495,
-    "mismatch": 39.39460745450813,
+    "drift": 26.414466782401227,
+    "mismatch": 40.33418527898988,
     "n": 5,
     "source": "corpus"
   },
   "env.decay_t10": {
-    "drift": 1.490566037735849,
-    "mismatch": 5.572727272727274,
+    "drift": 1.8965517241379313,
+    "mismatch": 4.375757575757577,
     "n": 7,
     "source": "corpus"
   },
   "env.energy_sections": {
-    "drift": 0.1214815966203791,
-    "mismatch": 0.23737328219392584,
+    "drift": 0.12087161348761818,
+    "mismatch": 0.2064736932069371,
     "n": 8,
     "source": "corpus"
   },
   "env.peak_time": {
-    "drift": 1.8019662921348316,
-    "mismatch": 31.725,
+    "drift": 6.9035714285714285,
+    "mismatch": 37.388888888888886,
     "n": 6,
     "source": "corpus"
   },
@@ -79,273 +79,267 @@
     "note": "pinned to the KindSeconds hand default. The 2026-09-13 recalibration gave this axis its first corpus entry (n=5, 4.222/5.301) because the good group finally cleared goodGroupCalibrationMinN -- a ~3x loosening that silenced the listener on two graded families: bassoon went MISMATCH-\u003edrift and oboe MISMATCH-\u003eok, and the listener graded bassoon 'does not sound right'. A calibrated value that stops reproducing the ear is exactly what source=hand exists to override."
   },
   "env.total_audible": {
-    "drift": 1.0075630678645753,
-    "mismatch": 1.1166861852092822,
+    "drift": 2.658333333333333,
+    "mismatch": 3.123,
     "n": 8,
     "source": "corpus"
   },
   "formant.f1_hz": {
-    "drift": 84.90136570561457,
-    "mismatch": 297.4654076290202,
+    "drift": 84.82549317147192,
+    "mismatch": 297.8010471204189,
     "n": 7,
     "source": "corpus"
   },
   "mod.am.bands": {
-    "drift": 0.07112449417034176,
-    "mismatch": 0.41909663858551505,
+    "drift": 0.03320312739081681,
+    "mismatch": 0.2109605892617906,
     "n": 8,
     "source": "corpus"
   },
   "mod.am.depth": {
-    "drift": 0.1635995751999164,
-    "mismatch": 0.3399333732644432,
+    "drift": 0.36317351121382835,
+    "mismatch": 0.4855014549159413,
     "n": 8,
     "source": "corpus"
   },
   "mod.am.flatness": {
-    "drift": 0.01998356373557383,
-    "mismatch": 0.24794105895991947,
+    "drift": 0.034239180195623775,
+    "mismatch": 0.11464806436497586,
     "n": 8,
     "source": "corpus"
   },
   "mod.centroid.depth": {
-    "drift": 0.10411105752109878,
-    "mismatch": 0.6150473794316527,
+    "drift": 0.1821449798682126,
+    "mismatch": 0.6107836658226475,
     "n": 8,
     "source": "corpus"
   },
   "mod.sustain_variation": {
-    "drift": 0.11688950079960236,
-    "mismatch": 0.1722274770222323,
+    "drift": 0.060539372928214895,
+    "mismatch": 0.1394511184641879,
     "n": 8,
     "source": "corpus"
   },
   "mode.anchor_hz": {
-    "drift": 0.09264205940906421,
-    "mismatch": 48.20338803569172,
+    "drift": 0.10063946755852436,
+    "mismatch": 48.209586821875746,
     "n": 5,
     "source": "corpus"
   },
   "mode.count_per_octave": {
     "drift": 2.4,
-    "mismatch": 5.425,
+    "mismatch": 4.725,
     "n": 5,
     "source": "corpus"
   },
   "mode.harmonicity": {
-    "drift": 0.34902370538515554,
-    "mismatch": 0.5235355580777333,
+    "drift": 0.3490236903322248,
+    "mismatch": 0.5235355354983372,
     "n": 5,
     "source": "corpus",
     "note": "p50 == 0 over n=5; drift synthesised as mismatch/1.5"
   },
   "noise.air_band": {
-    "drift": 0.1868739967454358,
-    "mismatch": 0.5746440640073889,
+    "drift": 0.1857032742577844,
+    "mismatch": 0.5754814329589854,
     "n": 8,
     "source": "corpus"
   },
   "noise.decay_vs_tone": {
-    "drift": 1.6606171929410136,
-    "mismatch": 6.652048319327731,
+    "drift": 1.2431624382130393,
+    "mismatch": 6.223076923076923,
     "n": 6,
     "source": "corpus"
   },
   "noise.flatness": {
-    "drift": 0.037512692972390585,
-    "mismatch": 0.07614578085401728,
+    "drift": 0.0374519460638654,
+    "mismatch": 0.07612589226257203,
     "n": 8,
     "source": "corpus"
   },
   "noise.fraction": {
-    "drift": 0.016388959538388148,
-    "mismatch": 0.48911397547248436,
+    "drift": 0.03755679718242899,
+    "mismatch": 0.4875005225527761,
     "n": 7,
     "source": "corpus"
   },
-  "noise.persistence": {
-    "drift": 2.146769353410893,
-    "mismatch": 5.066702844092162,
-    "n": 8,
-    "source": "corpus"
-  },
   "noise.residual_centroid_hz": {
-    "drift": 56.2201005696903,
-    "mismatch": 86.52230105995268,
+    "drift": 56.50009417201402,
+    "mismatch": 86.65202046811157,
     "n": 8,
     "source": "corpus"
   },
   "onset.bite_ratio": {
-    "drift": 22.17372445859853,
-    "mismatch": 152.66091625150557,
+    "drift": 23.47363316021046,
+    "mismatch": 137.28323430741295,
     "n": 8,
     "source": "corpus"
   },
   "onset.flatness": {
-    "drift": 0.10138774964143432,
-    "mismatch": 0.15840432808526242,
+    "drift": 0.10138748667883563,
+    "mismatch": 0.15840461988738558,
     "n": 8,
     "source": "corpus"
   },
   "onset.pitch_glide_cents": {
-    "drift": 78.41256506322479,
-    "mismatch": 190.6980976605563,
+    "drift": 78.41255356003111,
+    "mismatch": 190.69809454280846,
     "n": 6,
     "source": "corpus"
   },
   "partial.independence": {
-    "drift": 0.20404386859317492,
-    "mismatch": 0.8466672050808205,
+    "drift": 0.09498418678996445,
+    "mismatch": 0.8745516113189279,
     "n": 5,
     "source": "corpus"
   },
   "partial.inharmonicity": {
-    "drift": 0.00020334749629327123,
-    "mismatch": 0.000973440378391897,
+    "drift": 0.0002033033260242503,
+    "mismatch": 0.0010363060660872404,
     "n": 7,
     "source": "corpus"
   },
   "partial.series_deviation": {
-    "drift": 0.20555643005609753,
-    "mismatch": 1.2058761946325518,
+    "drift": 0.20547266459782088,
+    "mismatch": 1.2058750360156036,
     "n": 7,
     "source": "corpus"
   },
   "partial.spectral_irregularity": {
-    "drift": 8.144478018785271,
-    "mismatch": 25.57408629028548,
+    "drift": 11.785294835197943,
+    "mismatch": 33.716279932065724,
     "n": 7,
     "source": "corpus"
   },
   "piano.decay_fast_db_s": {
-    "drift": 22.20782328670379,
-    "mismatch": 37.03046918369671,
+    "drift": 10.117186256150651,
+    "mismatch": 34.95966139309758,
     "n": 7,
     "source": "corpus"
   },
   "piano.decay_slow_db_s": {
-    "drift": 10.633471331969632,
-    "mismatch": 61.47157786847586,
+    "drift": 27.081504640543734,
+    "mismatch": 115.84661899433169,
     "n": 7,
     "source": "corpus"
   },
   "piano.inharmonicity_b": {
-    "drift": 0.000023246548069421902,
-    "mismatch": 0.00021870812007617743,
+    "drift": 0.000028532269631626383,
+    "mismatch": 0.00019340747543664658,
     "n": 7,
     "source": "corpus"
   },
   "piano.stretch_cents": {
-    "drift": 112.870252659728,
-    "mismatch": 148.75325072405258,
+    "drift": 112.81381431403769,
+    "mismatch": 148.71351847877992,
     "n": 7,
     "source": "corpus"
   },
+  "piano.two_stage_ratio": {
+    "drift": 7.452983755930077,
+    "mismatch": 17.080626731940097,
+    "n": 6,
+    "source": "corpus"
+  },
   "timbre.brightness_ratio": {
-    "drift": 1.8479027914231005,
-    "mismatch": 2.775631172430816,
+    "drift": 1.8376044022839433,
+    "mismatch": 2.77427149819351,
     "n": 7,
     "source": "corpus"
   },
   "timbre.harmonic_slope": {
-    "drift": 8.062108606830575,
-    "mismatch": 11.916539683656294,
+    "drift": 8.062109805120597,
+    "mismatch": 11.828811395677342,
     "n": 7,
     "source": "corpus"
   },
   "timbre.tristimulus": {
-    "drift": 0.3504343664161467,
-    "mismatch": 0.5325280437742997,
+    "drift": 0.35043441349993615,
+    "mismatch": 0.5325280508339343,
     "n": 7,
     "source": "corpus"
   },
   "track.centroid.curvature": {
-    "drift": 656.9668813630976,
-    "mismatch": 2905.508570633351,
+    "drift": 502.63696791731934,
+    "mismatch": 2701.2421246391314,
     "n": 8,
     "source": "corpus"
   },
   "track.centroid.iqr": {
-    "drift": 93.1861895461737,
-    "mismatch": 144.77253963042466,
+    "drift": 313.1431037004082,
+    "mismatch": 1068.7631861607697,
     "n": 8,
     "source": "corpus"
   },
   "track.centroid.slope": {
-    "drift": 438.160347148809,
-    "mismatch": 1219.7122656930526,
-    "n": 8,
-    "source": "corpus"
-  },
-  "track.crest.median": {
-    "drift": 1.1080814429232293,
-    "mismatch": 1.4680170994625226,
+    "drift": 930.0537678404253,
+    "mismatch": 1899.194990279662,
     "n": 8,
     "source": "corpus"
   },
   "track.flatness.median": {
-    "drift": 0.03689468334466177,
-    "mismatch": 0.05078996708796724,
+    "drift": 0.03726217378238744,
+    "mismatch": 0.05136710011879626,
     "n": 8,
     "source": "corpus"
   },
   "track.flatness.slope": {
-    "drift": 0.0177678447918216,
-    "mismatch": 0.12733903815819944,
+    "drift": 0.02786503701233886,
+    "mismatch": 0.12978096454491986,
     "n": 8,
     "source": "corpus"
   },
   "track.h2_minus_h1.slope": {
-    "drift": 2.1063888809282583,
-    "mismatch": 10.033636049328225,
+    "drift": 6.653186540315891,
+    "mismatch": 70.42419969117876,
     "n": 7,
     "source": "corpus"
   },
   "track.noise.p90": {
-    "drift": 0.02626453802096637,
-    "mismatch": 0.3991384309758579,
+    "drift": 0.027854742248613083,
+    "mismatch": 0.3741808276736167,
     "n": 7,
     "source": "corpus"
   },
   "track.noise.slope": {
-    "drift": 0.04514474289157858,
-    "mismatch": 0.11457305585519344,
+    "drift": 0.053310536549662155,
+    "mismatch": 0.24120045776485727,
     "n": 7,
     "source": "corpus"
   },
   "track.rms.curvature": {
-    "drift": 0.0657237410100398,
-    "mismatch": 0.15922413081724934,
+    "drift": 0.07436909866226017,
+    "mismatch": 0.2200300089008454,
     "n": 8,
     "source": "corpus"
   },
   "track.rms.iqr": {
-    "drift": 0.02291797477732699,
-    "mismatch": 0.29181894244248824,
+    "drift": 0.0269257221583656,
+    "mismatch": 0.06176020724627716,
     "n": 8,
     "source": "corpus"
   },
   "track.rms.monotonic": {
-    "drift": 0.12240324416619242,
-    "mismatch": 0.42976190476190473,
+    "drift": 0.1984231019726967,
+    "mismatch": 0.4425492610837438,
     "n": 8,
     "source": "corpus"
   },
   "track.rms.slope": {
-    "drift": 0.039037003017593414,
-    "mismatch": 0.07726957116642544,
+    "drift": 0.05811620058091314,
+    "mismatch": 0.07769722587245963,
     "n": 8,
     "source": "corpus"
   },
   "wind.attack_centroid_traj": {
-    "drift": 564.768984263349,
-    "mismatch": 1760.4157694631986,
+    "drift": 564.7654625818332,
+    "mismatch": 1760.4157567652032,
     "n": 8,
     "source": "corpus"
   },
   "wind.temporal_centroid": {
-    "drift": 1.2386791357905786,
-    "mismatch": 1.7871478264170952,
+    "drift": 2.4954720260362118,
+    "mismatch": 3.3003368937903996,
     "n": 8,
     "source": "corpus"
   }
