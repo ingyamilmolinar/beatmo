@@ -26,7 +26,7 @@ fetch() { # url sha256 dest
 
 install_mac() {
   have brew || { echo "Install Homebrew (https://brew.sh/) first."; exit 1; }
-  brew install pkg-config glfw node emscripten podman ffmpeg cppcheck
+  brew install pkg-config glfw node emscripten podman ffmpeg cppcheck shellcheck
   echo "macOS: native targets only match CI loosely; use \`podman machine init && podman machine start\`, then \`make ci-local\`."
 }
 
@@ -38,7 +38,7 @@ install_debian() {
   # file dialog, which the image never builds.
   $SUDO apt-get install -y --no-install-recommends \
     build-essential pkg-config ca-certificates curl git xz-utils python3 \
-    cppcheck xvfb xauth ffmpeg zstd \
+    cppcheck shellcheck xvfb xauth ffmpeg zstd \
     libasound2-dev libgl1-mesa-dev libgl1-mesa-dri libglx-mesa0 \
     libx11-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev libxxf86vm-dev \
     xorg-dev libgtk-3-dev libegl1 libegl-mesa0 \
@@ -82,6 +82,10 @@ install_pinned_tools() {
     tgz="$(mktemp)"; fetch "https://github.com/golangci/golangci-lint/releases/download/v${GOLANGCI_LINT_VERSION}/golangci-lint-${GOLANGCI_LINT_VERSION}-linux-amd64.tar.gz" "$GOLANGCI_LINT_SHA256" "$tgz"
     tar -xzf "$tgz" -O "golangci-lint-${GOLANGCI_LINT_VERSION}-linux-amd64/golangci-lint" > "$tools/golangci-lint"
     chmod +x "$tools/golangci-lint"; rm -f "$tgz"
+  fi
+  if ! "$tools/govulncheck" -version 2>/dev/null | grep -q "v$GOVULNCHECK_VERSION"; then
+    step "govulncheck $GOVULNCHECK_VERSION -> .tools/govulncheck"
+    GOBIN="$tools" "$tools/go/bin/go" install "golang.org/x/vuln/cmd/govulncheck@v${GOVULNCHECK_VERSION}"
   fi
   path_hint=()
   if [[ "$(node --version 2>/dev/null)" != "v$NODE_VERSION" ]]; then

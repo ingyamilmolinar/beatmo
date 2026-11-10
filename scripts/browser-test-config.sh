@@ -99,8 +99,7 @@ SEQUENTIAL_TESTS=(
     "webaudio_synth_param_stress.browser.test.js"
 )
 
-# Tests that are known to be flaky or run separately and should be skipped
-# Visual tests are run via `make test-visual` instead of `make test-browser`.
+# Tests that are known to be flaky or run separately and should be skipped.
 #
 # webaudio_fx_chain_stress is an INTENTIONAL known-failing reproducer for the
 # "choppy/inconsistent audio under heavy FX load" investigation — it fails on
@@ -112,8 +111,7 @@ SEQUENTIAL_TESTS=(
 # Remove it from this list once the root cause is fixed (then it becomes a
 # regression gate).
 SKIP_TESTS=(
-    "visual_mobile_parity.browser.test.js"
-    "visual_regression.browser.test.js"
+    # Real devices on BrowserStack (credentials, paid): `make test-visual-device`.
     "visual_device_parity.browser.test.js"
     "webaudio_fx_chain_stress.browser.test.js"
     # Real devices on BrowserStack only ("On-demand only — real devices, not

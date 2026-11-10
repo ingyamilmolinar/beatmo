@@ -8,6 +8,7 @@ ARG GO_SHA256
 ARG EMSDK_VERSION
 ARG GOLANGCI_LINT_VERSION
 ARG GOLANGCI_LINT_SHA256
+ARG GOVULNCHECK_VERSION
 
 ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8
 
@@ -49,7 +50,9 @@ ENV GOTOOLCHAIN=local \
     PATH=/usr/local/go/bin:/opt/emsdk:/opt/emsdk/upstream/emscripten:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 RUN mkdir -p /cache && chmod 1777 /cache
 
-# Tools the tests (ffmpeg) and actions/cache (zstd) shell out to; last, so
-# adding one keeps every layer above cached.
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg zstd \
+# Tools the tests (ffmpeg), actions/cache (zstd), `make lint` (shellcheck) and
+# `make vulncheck` shell out to; last, so adding one keeps every layer above cached.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg zstd shellcheck \
  && rm -rf /var/lib/apt/lists/*
+RUN GOBIN=/usr/local/bin go install "golang.org/x/vuln/cmd/govulncheck@v${GOVULNCHECK_VERSION}" \
+ && go clean -cache -modcache

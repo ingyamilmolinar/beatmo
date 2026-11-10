@@ -1,0 +1,87 @@
+name: Nightly
+
+# What can break without a commit: upstream revising a reference score, the
+# live site drifting from what the deploy stamps, a newly published advisory.
+on:
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  images:
+    name: CI images
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      build: ${{ steps.publish.outputs.build }}
+      browser: ${{ steps.publish.outputs.browser }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: make image-publish
+
+  scores:
+    name: Reference scores upstream
+    needs: [images]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container: ${{ needs.images.outputs.build }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            /cache/go-build
+            /cache/gomod
+            /cache/npm
+            /cache/golangci-lint
+          key: go-${{ github.job }}-${{ hashFiles('ci/**') }}-${{ hashFiles('src/go/go.sum', 'src/go/**/*.go', 'src/c/**', 'src/js/package-lock.json') }}
+          restore-keys: go-${{ github.job }}-${{ hashFiles('ci/**') }}-
+      - run: make scores-verify
+
+  deploy:
+    name: Live site headers
+    needs: [images]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container: ${{ needs.images.outputs.build }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            /cache/go-build
+            /cache/gomod
+            /cache/npm
+            /cache/golangci-lint
+          key: go-${{ github.job }}-${{ hashFiles('ci/**') }}-${{ hashFiles('src/go/go.sum', 'src/go/**/*.go', 'src/c/**', 'src/js/package-lock.json') }}
+          restore-keys: go-${{ github.job }}-${{ hashFiles('ci/**') }}-
+      - run: make verify-deploy
+
+  security:
+    name: Security
+    needs: [images]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container: ${{ needs.images.outputs.browser }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            /cache/go-build
+            /cache/gomod
+            /cache/npm
+            /cache/golangci-lint
+          key: go-${{ github.job }}-${{ hashFiles('ci/**') }}-${{ hashFiles('src/go/go.sum', 'src/go/**/*.go', 'src/c/**', 'src/js/package-lock.json') }}
+          restore-keys: go-${{ github.job }}-${{ hashFiles('ci/**') }}-
+      - run: make vulncheck
+      - run: make npm-audit

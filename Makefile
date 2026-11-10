@@ -676,6 +676,7 @@ ci-build: $(C_LIB)
 	$(MAKE) check-ma-js
 	$(MAKE) gograph-test
 	$(MAKE) js-audit
+	$(MAKE) check-generated
 
 # ─── CI images (ci/versions.env + ci/images/) ───────────────────────────────
 # `make dev TARGET=test` runs any target in the CI image (podman or docker);
@@ -698,7 +699,7 @@ dev:
 	  $(IMAGE_REF) make $(TARGET)
 
 doctor:
-	@scripts/ci/doctor.sh
+	@GO=$(GO) scripts/ci/doctor.sh
 
 # CI on this machine: .github/workflows/ci.yml read and run job by job in CI's
 # images, at CI's paths, with a runner's 4 CPUs / 16 GB (src/go/cmd/ci-local).
@@ -719,6 +720,22 @@ ci-local-%:
 # every native test. See scripts/jsaudit/main.go.
 js-audit:
 	cd scripts/jsaudit && $(GO) test ./... && $(GO) run . $(CURDIR)/src/go ./...
+
+# Known vulnerabilities in what we build: the Go module for the desktop binary
+# and the shipped js/wasm one, and the npm tooling CI runs with its token.
+GOVULNCHECK ?= $(or $(shell command -v govulncheck 2>/dev/null),$(CURDIR)/.tools/govulncheck)
+$(CURDIR)/.tools/govulncheck:
+	GOBIN=$(CURDIR)/.tools $(GO) install golang.org/x/vuln/cmd/govulncheck@v$(GOVULNCHECK_VERSION)
+
+.PHONY: vulncheck npm-audit security
+vulncheck: $(GOVULNCHECK) $(C_LIB)
+	cd src/go && $(GOVULNCHECK) ./...
+	cd src/go && GOOS=js GOARCH=wasm $(GOVULNCHECK) -tags $(WASM_RELEASE_TAGS) ./cmd
+
+npm-audit:
+	cd src/js && npm audit --audit-level=high
+
+security: vulncheck npm-audit
 
 # Comment census + policy lint: make comment-census [ARGS="--check" | "--top 60" | "--json"].
 .PHONY: comment-census test-comment-census
@@ -756,21 +773,26 @@ lint-js: $(JS_DEPS)
 lint-js-fix:
 	cd src/js && npx eslint --fix .
 
+# Every tracked C source but the vendored miniaudio, so a new file is linted the
+# day it lands. -j: each file that includes miniaudio.h is preprocessed per
+# #ifdef configuration, minutes apiece.
 lint-c:
-	cppcheck --enable=warning,style,performance,portability \
+	cppcheck -j $$(nproc) --enable=warning,style,performance,portability \
 		--error-exitcode=1 --suppress=missingIncludeSystem \
 		--suppress='*:src/c/miniaudio.h' \
 		--inline-suppr -I src/c \
-		src/c/drums.c src/c/drums.h \
-		src/c/fmsynth.c src/c/fmsynth.h \
-		src/c/insert_fx.c src/c/insert_fx.h \
-		src/c/wavetable.c src/c/wavetable.h \
-		src/c/adsr.c src/c/adsr.h \
-		src/c/modular.c src/c/modular.h \
-		src/c/noise.c src/c/noise.h \
-		src/c/synth_post.h
+		$$(git ls-files 'src/c/*.c' 'src/c/*.h' | grep -v '^src/c/miniaudio\.h$$')
 
-lint: lint-go lint-js lint-c
+# go.mod/go.sum must be what `go mod tidy` writes and match the module cache.
+# go.test.mod is left out: it swaps Ebiten for the stub, which tidy cannot see.
+lint-go-mod:
+	cd src/go && $(GO) mod tidy -diff && $(GO) mod verify
+
+# Every tracked shell script, the extensionless git hooks included.
+lint-sh:
+	shellcheck -S warning $$(git ls-files '*.sh' .githooks/pre-commit scripts/precommit/pre-commit)
+
+lint: lint-go lint-go-mod lint-js lint-c lint-sh
 lint-fix: lint-go-fix lint-js-fix
 
 # Capture screenshots of desktop, browser desktop, and browser mobile layouts.
@@ -944,24 +966,20 @@ coverage-merge:
 test-audio-real: $(C_LIB)
 	cd src/go; $(LOG_ENV) $(GO) test -timeout 900s ./internal/audio
 
-# Run the concurrency-relevant Go packages under the race detector (-race is
-# native-only; it cannot instrument the js/wasm build, so this is the desktop
-# -tags test path). Some packages are EXCLUDED because they are single-threaded
-# numeric optimizers or giant suites that take 15-20 min under -race while
-# adding no goroutine coverage:
-#   internal/ui, internal/timeline                       — huge suites, >15 min under -race
-#   audio/songmatch, audio/synthmatch, audio/fingerprint — Hooke-Jeeves / FFT, no goroutines
-#   cmd/synth-analyze                                     — offline numeric analysis, no goroutines
-#   internal/deploy                                       — asset-size/manifest checks, no goroutines
-# Everything else runs here: the engine run loop + scheduler, async pools, the
-# hooks bus, the recording lifecycle, the analyzer SPSC ring, the event
-# sinks/loggers, and the scope-export service. Override the excludes with
-# RACE_EXCLUDE= to widen coverage (e.g. `make test-race RACE_EXCLUDE=xxxxx`).
-RACE_EXCLUDE ?= internal/ui$$|internal/timeline$$|audio/songmatch|audio/synthmatch|audio/fingerprint|cmd/synth-analyze|internal/deploy
-.PHONY: test-race
+# The -tags test suite under the race detector (native only: -race cannot
+# instrument js/wasm). internal/ui and internal/timeline are where the
+# sequencer, audio lane, prewarm pool and UI goroutines meet, so they run too,
+# split by test name across shards. Excluded: single-threaded numeric
+# optimizers that start no goroutine and take 15-20 min under -race.
+RACE_EXCLUDE ?= audio/songmatch|audio/synthmatch|audio/fingerprint|cmd/synth-analyze
+RACE_TIMEOUT ?= 3000s
+.PHONY: test-race test-race-shard
 test-race: $(C_LIB)
-	cd src/go; $(LOG_ENV) $(GO) test -race -tags test -modfile=go.test.mod -timeout 900s \
-	  $$($(GO) list -tags test -modfile=go.test.mod -f '{{if or .GoFiles .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./... | grep -vE '$(RACE_EXCLUDE)')
+	$(MAKE) test-race-shard SHARD=1/1
+
+test-race-shard: $(C_LIB)
+	cd src/go && $(LOG_ENV) GO=$(GO) GO_SHARD_EXCLUDE='$(RACE_EXCLUDE)' \
+	  ../../scripts/ci/go-shard.sh run $(SHARD) -race -tags test -modfile=go.test.mod -- -timeout $(RACE_TIMEOUT)
 
 # Run all browser tests (auto-discovered). Timing-sensitive tests run sequentially
 # after the parallel batch. BROWSER_JOBS=N controls parallelism (default: 4).
@@ -1013,15 +1031,13 @@ test-real: $(C_LIB)
 test-real-go: $(C_LIB)
 	cd src/go && BPM_TIMING_TEST=1 xvfb-run -a $(GO) test -timeout 30m $(or $(PKGS),./...)
 
-# CI's reference-corpus checks. The calibrations are derived from the WHOLE
-# corpus, so when any reference cannot be fetched (upstream down, or a ref only
-# its owner's disk has) refs-check skips loudly instead of reporting drift.
+# CI's reference-corpus checks. Every public reference must fetch and hash; a
+# ref adopted from a file on one developer's disk is passed over by name, and
+# only the checks calibrated over the whole corpus skip for it (refs check).
 refs-ci: $(C_LIB)
-	@if $(MAKE) fetch-refs TIER=instrument ONLY_MISSING=1; then fetched=1; else fetched=0; fi; \
-	  cd src/go && $(GO) run ./cmd/refs verify || exit 1; cd ../..; \
-	  if [ $$fetched = 1 ]; then $(MAKE) refs-check; else \
-	    msg="refs-check SKIPPED: the reference corpus is incomplete (see the fetch FAIL lines), so the calibrations cannot be re-derived"; \
-	    echo "::warning::$$msg"; [ -z "$$GITHUB_STEP_SUMMARY" ] || echo "- $$msg" >> "$$GITHUB_STEP_SUMMARY"; fi
+	cd src/go && $(GO) run ./cmd/refs fetch -tier instrument -only-missing -skip-absent-local
+	cd src/go && $(GO) run ./cmd/refs verify
+	$(MAKE) refs-check
 
 # Writes the Go/C coverage tables to $GITHUB_STEP_SUMMARY (or stdout).
 coverage-summary:
@@ -1030,6 +1046,43 @@ coverage-summary:
 # One browser matrix entry: TESTS="a.browser.test.js b.browser.test.js".
 test-browser-batch: wasm-all $(JS_DEPS)
 	GO=$(GO) $(BROWSER_XVFB) ./scripts/run-browser-tests.sh --no-fail-fast --tests "$(TESTS)"
+
+# The shipped site, as the deploy builds it: `make wasm` (release tags) staged
+# into build/wasm_site by the deploy script itself (nothing uploaded), its size
+# budget, and the browser suites that boot that binary (the rest of the browser
+# suite runs the developer build, which carries the scene catalog).
+RELEASE_BROWSER_TESTS ?= dev_server_boot.browser.test.js landing_behavior.browser.test.js wasm_load_startup.browser.test.js
+.PHONY: test-release
+test-release: $(C_LIB) $(JS_DEPS)
+	GO=$(GO) scripts/deploy-wasm-gcs.sh --stage-only
+	cd src/go && BEATMO_REQUIRE_SHIPPED_WASM=1 $(GO) test -tags test -modfile=go.test.mod -run 'TestWasmAssetSizeBudget' ./internal/deploy
+	GO=$(GO) $(BROWSER_XVFB) ./scripts/run-browser-tests.sh --no-fail-fast --tests "$(RELEASE_BROWSER_TESTS)"
+
+# Every catalog scene in the real desktop binary, desktop and mobile passes:
+# fails on a crash, a missing capture or a blank one. PNGs land in
+# build/scene-shots for a look.
+.PHONY: scene-smoke
+scene-smoke: $(C_LIB)
+	cd src/go && CGO_ENABLED=1 $(GO) build -o ../../build/beatmo-scenes ./cmd && $(GO) build -o ../../build/scene-smoke ./cmd/scene-smoke
+	xvfb-run -a -s "-screen 0 1280x900x24" build/scene-smoke -bin build/beatmo-scenes -out build/scene-shots $(if $(SCENES),-scenes $(SCENES),)
+
+# Re-runs every cheap generator whose output is committed; fails when one
+# changes the tree (an edited source whose output was not regenerated, or a
+# hand edit to an output). The expensive ones keep their own drift tests.
+.PHONY: check-generated
+check-generated: $(C_LIB)
+	@mkdir -p build; snap() { git status --porcelain=v1 -- src DESIGN.md; git diff -- src DESIGN.md; }; \
+	  snap > build/generated.before; \
+	  $(MAKE) generate gen-synth-abi gen-chain-spec asset-pack templates scores-notice >/dev/null || exit 1; \
+	  snap > build/generated.after; \
+	  if ! cmp -s build/generated.before build/generated.after; then \
+	    diff build/generated.before build/generated.after | head -200; \
+	    echo "check-generated: a generator changed the files above -- run it and commit the result"; exit 1; fi
+
+# Post-deploy probe of a live site's headers (default beatmo.io).
+.PHONY: verify-deploy
+verify-deploy:
+	scripts/verify_deploy_headers.sh $(or $(BEATMO_VERIFY_DEPLOY_URL),https://$(DOMAIN))
 
 # Prints the browser matrix JSON (and hands it to the workflow under Actions).
 browser-matrix:
@@ -1077,9 +1130,6 @@ test-visual-update: wasm
 	@rm -f src/js/testdata/golden/*.png
 	cd src/js && npm install --no-save 2>/dev/null; \
 	GO=$(GO) node visual_regression.browser.test.js
-
-test-xvfb:
-	cd src/go; xvfb-run -a $(GO) test -tags test -timeout 10s ./...
 
 # ─── LLM Visual Testing ──────────────────────────────────────────────────────
 # Record video + events from any browser test for replay / visual comparison.
@@ -1234,27 +1284,25 @@ deploy:
 # sub-targets are not file-producing in make's eyes either): without .PHONY,
 # `make coverage` reports "up to date" as soon as the directory exists and
 # silently runs nothing.
-.PHONY: coverage coverage-go coverage-go-check coverage-c coverage-c-check \
+.PHONY: coverage coverage-go coverage-go-check coverage-go-floor coverage-c coverage-c-check \
 	coverage-browser coverage-js coverage-report coverage-graph
 
 # Go test coverage (continues on test failures, warns instead of aborting)
 coverage-go: $(C_LIB)
 	@mkdir -p coverage
 	@cd src/go; $(LOG_ENV) $(GO) test -tags test -modfile=go.test.mod \
-		-coverprofile=../../coverage/go.out -covermode=atomic -timeout 360s ./... \
+		-coverprofile=../../coverage/go.out -covermode=atomic -timeout $(TEST_GO_TAGGED_TIMEOUT) ./... \
 		|| echo "WARNING: Some Go tests failed — coverage data still collected"
 	@if [ -f coverage/go.out ]; then cd src/go && $(GO) tool cover -func=../../coverage/go.out | tail -1; fi
 
-# Coverage floor guard. Runs coverage-go, then fails CI if total Go coverage
-# drops below COVERAGE_GO_FLOOR (default 80). Bump the floor when adding a
-# significant batch of tests so future regressions are caught. Current
-# baseline (2026-05-17) is 80.8% — combined effect of fixing the internal/ui
-# goleak/timeout (Phase A of plan hey-please-run-the-rosy-cat.md) and a
-# surgical pass over the largest untested UI files plus the timeline/audio
-# 0%-functions. 80 leaves ~0.8pt headroom; tighten further when the next
-# UI/audio test batch lands.
-COVERAGE_GO_FLOOR ?= 80
+# Total -tags test Go coverage must not fall below the floor. Raise the floor
+# when a batch of tests lands; never lower it to let a change through.
+COVERAGE_GO_FLOOR ?= 82
 coverage-go-check: coverage-go
+	$(MAKE) coverage-go-floor
+
+# The floor over an existing coverage/go.out (CI merges it from the shards).
+coverage-go-floor:
 	@total=$$(cd src/go && $(GO) tool cover -func=../../coverage/go.out | awk '/^total:/ {gsub("%","",$$NF); print $$NF}'); \
 	floor=$(COVERAGE_GO_FLOOR); \
 	if [ -z "$$total" ]; then echo "coverage-go-check: could not parse total"; exit 1; fi; \

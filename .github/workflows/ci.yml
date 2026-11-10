@@ -10,12 +10,16 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Read-only by default; only the images job may write (to GHCR).
+permissions:
+  contents: read
+
 env:
   GOLANGCI_LINT_CACHE: /cache/golangci-lint
 
 # Every job but `images`, `browser-matrix` and `verdict` runs inside the pinned
 # image (ci/versions.env), and every step is a make target that runs the same
-# way natively and under `make dev`.
+# way natively and under `make dev`. Actions are pinned by commit.
 jobs:
   # Builds and pushes the CI images only when ci/ changed (the tag is a content
   # hash); otherwise it finds both tags and finishes in seconds.
@@ -30,22 +34,23 @@ jobs:
       build: ${{ steps.publish.outputs.build }}
       browser: ${{ steps.publish.outputs.browser }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI_IMAGE_PUSH: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && '1' || '0' }}
         run: make image-publish
 
+  # ci-build also regenerates every cheap committed output and fails on a diff.
   build:
     name: Build
     needs: [images]
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     container: ${{ needs.images.outputs.build }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             /cache/go-build
@@ -60,11 +65,11 @@ jobs:
     name: Lint
     needs: [images]
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     container: ${{ needs.images.outputs.browser }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             /cache/go-build
@@ -74,6 +79,29 @@ jobs:
           key: go-${{ github.job }}-${{ hashFiles('ci/**') }}-${{ hashFiles('src/go/go.sum', 'src/go/**/*.go', 'src/c/**', 'src/js/package-lock.json') }}
           restore-keys: go-${{ github.job }}-${{ hashFiles('ci/**') }}-
       - run: make lint
+      - run: make doctor
+
+  # Known vulnerabilities in the Go module (desktop and the shipped wasm) and in
+  # the npm tooling that runs with this workflow's token.
+  security:
+    name: Security
+    needs: [images]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container: ${{ needs.images.outputs.browser }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            /cache/go-build
+            /cache/gomod
+            /cache/npm
+            /cache/golangci-lint
+          key: go-${{ github.job }}-${{ hashFiles('ci/**') }}-${{ hashFiles('src/go/go.sum', 'src/go/**/*.go', 'src/c/**', 'src/js/package-lock.json') }}
+          restore-keys: go-${{ github.job }}-${{ hashFiles('ci/**') }}-
+      - run: make vulncheck
+      - run: make npm-audit
 
   test-go:
     name: Test Go (-tags test) ${{ matrix.shard }}/4
@@ -86,8 +114,8 @@ jobs:
         shard: [1, 2, 3, 4]
       fail-fast: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             /cache/go-build
@@ -98,7 +126,7 @@ jobs:
           restore-keys: go-${{ github.job }}-${{ hashFiles('ci/**') }}-
       - run: make test-go-shard SHARD=${{ matrix.shard }}/4 COVER=1
       - if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: covdata-${{ matrix.shard }}
           path: coverage/covdata
@@ -112,8 +140,8 @@ jobs:
     timeout-minutes: 15
     container: ${{ needs.images.outputs.build }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             /cache/go-build
@@ -122,14 +150,16 @@ jobs:
             /cache/golangci-lint
           key: go-${{ github.job }}-${{ hashFiles('ci/**') }}-${{ hashFiles('src/go/go.sum', 'src/go/**/*.go', 'src/c/**', 'src/js/package-lock.json') }}
           restore-keys: go-${{ github.job }}-${{ hashFiles('ci/**') }}-
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: covdata-*
           path: coverage/covdata
           merge-multiple: true
       - run: make coverage-merge
       - run: make coverage-summary
-      - uses: actions/upload-artifact@v4
+      - run: make coverage-go-floor
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: go-coverage
           path: coverage/go.out
@@ -142,8 +172,8 @@ jobs:
     timeout-minutes: 30
     container: ${{ needs.images.outputs.build }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             /cache/go-build
@@ -165,8 +195,8 @@ jobs:
         shard: [1, 2, 3, 4]
       fail-fast: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             /cache/go-build
@@ -177,15 +207,20 @@ jobs:
           restore-keys: go-${{ github.job }}-${{ hashFiles('ci/**') }}-
       - run: make test-real-go-shard SHARD=${{ matrix.shard }}/4
 
+  # internal/ui and internal/timeline included: split by test name.
   test-race:
-    name: Test Go (race)
+    name: Test Go (race) ${{ matrix.shard }}/8
     needs: [images]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     container: ${{ needs.images.outputs.build }}
+    strategy:
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+      fail-fast: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             /cache/go-build
@@ -194,7 +229,7 @@ jobs:
             /cache/golangci-lint
           key: go-${{ github.job }}-${{ hashFiles('ci/**') }}-${{ hashFiles('src/go/go.sum', 'src/go/**/*.go', 'src/c/**', 'src/js/package-lock.json') }}
           restore-keys: go-${{ github.job }}-${{ hashFiles('ci/**') }}-
-      - run: make test-race
+      - run: make test-race-shard SHARD=${{ matrix.shard }}/8
 
   # gcov line coverage of our own C DSP sources (miniaudio excluded) via the
   # native CGo test run, floor at the recorded baseline.
@@ -205,8 +240,8 @@ jobs:
     timeout-minutes: 30
     container: ${{ needs.images.outputs.build }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             /cache/go-build
@@ -219,7 +254,7 @@ jobs:
       - if: always()
         run: make coverage-summary
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: c-coverage
           path: |
@@ -228,8 +263,8 @@ jobs:
             coverage/go-native.out
           retention-days: 30
 
-  # Reference audio is never committed and no test reads it; the corpus is
-  # fetched outside the checkout only to re-derive the calibrations.
+  # Reference audio is never committed and no test reads it; the public corpus
+  # is fetched outside the checkout to re-derive the calibrations.
   refs:
     name: Reference corpus
     needs: [images]
@@ -239,8 +274,8 @@ jobs:
     env:
       BEATMO_WAV_REFS: ${{ github.workspace }}/../wav-refs
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             /cache/go-build
@@ -251,6 +286,57 @@ jobs:
           restore-keys: go-${{ github.job }}-${{ hashFiles('ci/**') }}-
       - run: make refs-ci
 
+  # The shipped site: the deploy script's own build and staging (no upload), the
+  # size budget of the release wasm, and browser suites booting that binary.
+  release:
+    name: Release build
+    needs: [images]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    container:
+      image: ${{ needs.images.outputs.browser }}
+      options: --ipc=host --init
+    env:
+      HOME: /root
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            /cache/go-build
+            /cache/gomod
+            /cache/npm
+            /cache/golangci-lint
+          key: go-${{ github.job }}-${{ hashFiles('ci/**') }}-${{ hashFiles('src/go/go.sum', 'src/go/**/*.go', 'src/c/**', 'src/js/package-lock.json') }}
+          restore-keys: go-${{ github.job }}-${{ hashFiles('ci/**') }}-
+      - run: make test-release
+
+  # Every catalog scene in the real desktop binary (desktop + mobile passes).
+  scenes:
+    name: Scene smoke
+    needs: [images]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: ${{ needs.images.outputs.build }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            /cache/go-build
+            /cache/gomod
+            /cache/npm
+            /cache/golangci-lint
+          key: go-${{ github.job }}-${{ hashFiles('ci/**') }}-${{ hashFiles('src/go/go.sum', 'src/go/**/*.go', 'src/c/**', 'src/js/package-lock.json') }}
+          restore-keys: go-${{ github.job }}-${{ hashFiles('ci/**') }}-
+      - run: make scene-smoke
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: scene-smoke
+          path: build/scene-shots
+          retention-days: 7
+
   browser-matrix:
     name: Browser test matrix
     runs-on: ubuntu-latest
@@ -258,7 +344,7 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: set-matrix
         run: make browser-matrix BATCH_SIZE=${{ vars.BROWSER_BATCH_SIZE || '4' }}
 
@@ -277,8 +363,8 @@ jobs:
       matrix: ${{ fromJson(needs.browser-matrix.outputs.matrix) }}
       fail-fast: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             /cache/go-build
@@ -294,11 +380,11 @@ jobs:
   verdict:
     name: CI verdict
     if: always()
-    needs: [images, build, lint, test-go, go-coverage, test-audio-real, test-real-go, test-race, coverage-c, refs, browser-matrix, browser]
+    needs: [images, build, lint, security, test-go, go-coverage, test-audio-real, test-real-go, test-race, coverage-c, refs, release, scenes, browser-matrix, browser]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - env:
           NEEDS: ${{ toJSON(needs) }}
         run: make ci-verdict
