@@ -36,36 +36,43 @@ GCP_PROJECT="${GCP_PROJECT:-}"
 GCS_BUCKET="${GCS_BUCKET:-}"
 DRY_RUN="${DRY_RUN:-0}"          # Set to 1 for a no-op preview of the sync.
 PURGE_CDN="${PURGE_CDN:-0}"      # Set to 1 (or pass --purge-cdn) to invalidate.
+STAGE_ONLY="${STAGE_ONLY:-0}"    # Set to 1 (or --stage-only): build + stage, upload nothing.
 
 for arg in "$@"; do
   case "${arg}" in
     --purge-cdn) PURGE_CDN=1 ;;
     --dry-run)   DRY_RUN=1 ;;
+    --stage-only) STAGE_ONLY=1 ;;
     -h|--help)
       cat <<EOF
 Usage:
   GCP_PROJECT=<project-id> GCS_BUCKET=<bucket-name> $0 [--purge-cdn] [--dry-run]
+  $0 --stage-only
 
 Environment:
   GCP_PROJECT   GCP project ID (required)
   GCS_BUCKET    Target GCS bucket (required), e.g. www-beatmo-io-static
   DRY_RUN       If "1" (or --dry-run), perform a dry-run sync (no changes)
   PURGE_CDN     If "1" (or --purge-cdn), invalidate Cloud CDN after upload
+  STAGE_ONLY    If "1" (or --stage-only), build and stage build/wasm_site exactly
+                as a deploy would, then stop: no GCP project, gcloud or upload
 EOF
       exit 0
       ;;
   esac
 done
 
-if [[ -z "${GCP_PROJECT}" || -z "${GCS_BUCKET}" ]]; then
-  echo "GCP_PROJECT and GCS_BUCKET must be set." >&2
-  exit 1
-fi
+if [[ "${STAGE_ONLY}" != "1" ]]; then
+  if [[ -z "${GCP_PROJECT}" || -z "${GCS_BUCKET}" ]]; then
+    echo "GCP_PROJECT and GCS_BUCKET must be set." >&2
+    exit 1
+  fi
 
-if ! command -v gcloud >/dev/null 2>&1 && ! command -v gsutil >/dev/null 2>&1; then
-  echo "Neither gcloud nor gsutil is installed." >&2
-  echo "Install Google Cloud SDK first: https://cloud.google.com/sdk/docs/install" >&2
-  exit 1
+  if ! command -v gcloud >/dev/null 2>&1 && ! command -v gsutil >/dev/null 2>&1; then
+    echo "Neither gcloud nor gsutil is installed." >&2
+    echo "Install Google Cloud SDK first: https://cloud.google.com/sdk/docs/install" >&2
+    exit 1
+  fi
 fi
 
 URL_MAP="${GCS_BUCKET}-lb"
@@ -233,6 +240,11 @@ fs.writeFileSync(f + ".br", z.brotliCompressSync(b, { params: {
   [z.constants.BROTLI_PARAM_SIZE_HINT]: b.length } }));' "${staged}"
 mv "${staged}.br" "${staged}"
 printf '  %-30s %10d -> %10d bytes (br)\n' "${WASM_NAME}" "${raw_bytes}" "$(wc -c < "${staged}")"
+
+if [[ "${STAGE_ONLY}" == "1" ]]; then
+  echo "[deploy] Stage only: ${BUILD_DIR} holds what a deploy would upload; nothing uploaded."
+  exit 0
+fi
 
 # Sanity-check that the bucket exists before attempting rsync.
 if command -v gcloud >/dev/null 2>&1 && gcloud storage --help >/dev/null 2>&1; then

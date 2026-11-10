@@ -80,7 +80,6 @@ export GO=$(pwd)/.tools/go/bin/go
 | Single browser test | `GO=$(pwd)/.tools/go/bin/go node src/js/<name>.browser.test.js` |
 | Cross-platform parity | `make test-parity` |
 | Build WASM | `make wasm` |
-| Headless stubbed tests | `make test-xvfb` |
 | List browser tests | `make test-browser-list` |
 | Sync WAV embeds | `make sync-wav` |
 | Go coverage | `make coverage-go` |
@@ -111,13 +110,6 @@ the real Ebiten library:
 
 ```sh
 make test-real
-```
-
-For convenience, there is also a headless wrapper that runs the stubbed suite
-under `xvfb-run`:
-
-```sh
-make test-xvfb
 ```
 
 ### Cross-platform parity tests

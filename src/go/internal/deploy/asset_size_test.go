@@ -198,6 +198,17 @@ func gzipLen(t *testing.T, b []byte) int64 {
 
 func mib(n int64) string { return fmt.Sprintf("%.2f MiB", float64(n)/(1024*1024)) }
 
+// notShippedWasm skips when src/js/main.wasm is not the `make wasm` build.
+// CI's release job builds it first and sets BEATMO_REQUIRE_SHIPPED_WASM=1, so
+// there a missing or wrong artifact fails instead of passing as a skip.
+func notShippedWasm(t *testing.T, format string, args ...any) {
+	t.Helper()
+	if os.Getenv("BEATMO_REQUIRE_SHIPPED_WASM") == "1" {
+		t.Fatalf(format, args...)
+	}
+	t.Skipf(format, args...)
+}
+
 // TestWasmAssetSizeBudget measures the raw and gzip sizes of every shipped
 // browser asset and enforces tight budgets on main.wasm and the total transfer.
 func TestWasmAssetSizeBudget(t *testing.T) {
@@ -206,7 +217,7 @@ func TestWasmAssetSizeBudget(t *testing.T) {
 
 	wasmPath := filepath.Join(jsDir, "main.wasm")
 	if _, err := os.Stat(wasmPath); err != nil {
-		t.Skipf("main.wasm not present (%v) -- build artifact is not committed; run `make wasm`. Skipping size budget.", err)
+		notShippedWasm(t, "main.wasm not present (%v) -- build artifact is not committed; run `make wasm`. Skipping size budget.", err)
 	}
 
 	// The budgets below describe the SHIPPED binary, i.e. what `make wasm`
@@ -234,7 +245,7 @@ func TestWasmAssetSizeBudget(t *testing.T) {
 		t.Fatalf("read main.wasm: %v", err)
 	}
 	if wasmHasCustomSection(wasmBytes, "name") {
-		t.Skipf("main.wasm carries the `name` custom section, so it was NOT built by `make wasm` "+
+		notShippedWasm(t, "main.wasm carries the `name` custom section, so it was NOT built by `make wasm` "+
 			"(which links -s -w and strips it) -- a *.browser.test.js suite rebuilds this file "+
 			"unstripped and leaves it behind. Measuring it overstates the shipped size by the "+
 			"~0.8 MiB section alone. Run `make wasm` and re-run this gate. (size on disk: %s)",
@@ -247,7 +258,7 @@ func TestWasmAssetSizeBudget(t *testing.T) {
 	// a string no other shipped code holds (TestShippedWasmLeavesOutTheSceneCatalog
 	// pins that the shipped build compiles no scene definitions at all).
 	if bytes.Contains(wasmBytes, []byte(sceneCatalogMarker)) {
-		t.Skipf("main.wasm contains the screenshot scene catalog, so it is a `make wasm-dev` "+
+		notShippedWasm(t, "main.wasm contains the screenshot scene catalog, so it is a `make wasm-dev` "+
 			"build, not the shipped one (`make wasm` builds with -tags noscenes). Run `make wasm` "+
 			"and re-run this gate. (size on disk: %s)", mib(int64(len(wasmBytes))))
 	}

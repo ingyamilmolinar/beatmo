@@ -26,14 +26,31 @@ type workflow struct {
 
 func readCI(t *testing.T) workflow {
 	t.Helper()
+	return readWorkflow(t, filepath.Join(repoRoot(t), ".github", "workflows", "ci.yml"))
+}
+
+func readWorkflow(t *testing.T, path string) workflow {
+	t.Helper()
 	var w workflow
-	if err := yaml.Unmarshal([]byte(mustRead(t, filepath.Join(repoRoot(t), ".github", "workflows", "ci.yml"))), &w); err != nil {
-		t.Fatal(err)
+	if err := yaml.Unmarshal([]byte(mustRead(t, path)), &w); err != nil {
+		t.Fatalf("%s: %v", path, err)
 	}
 	if len(w.Jobs) == 0 {
-		t.Fatal("ci.yml has no jobs")
+		t.Fatalf("%s has no jobs", path)
 	}
 	return w
+}
+
+// everyWorkflow holds every workflow file to the rules ci.yml follows.
+func everyWorkflow(t *testing.T, check func(name string, w workflow)) {
+	t.Helper()
+	files := workflowFiles(t, repoRoot(t))
+	if len(files) == 0 {
+		t.Fatal("no workflow files")
+	}
+	for _, f := range files {
+		check(filepath.Base(f), readWorkflow(t, f))
+	}
 }
 
 func needsList(v any) []string {
@@ -53,40 +70,75 @@ func needsList(v any) []string {
 // A command written inline in a workflow is one `make test` never runs.
 func TestCIRunsOnlyMakeTargets(t *testing.T) {
 	sawCIBuild := false
-	for id, job := range readCI(t).Jobs {
-		for _, st := range job.Steps {
-			run := strings.TrimSpace(st.Run)
-			if run == "" {
-				continue
+	everyWorkflow(t, func(name string, w workflow) {
+		for id, job := range w.Jobs {
+			for _, st := range job.Steps {
+				run := strings.TrimSpace(st.Run)
+				if run == "" {
+					continue
+				}
+				if strings.Contains(run, "\n") || (!strings.HasPrefix(run, "make ")) {
+					t.Errorf("%s job %s runs %q — CI steps must be one `make <target>` so they run the same locally", name, id, run)
+				}
+				sawCIBuild = sawCIBuild || (name == "ci.yml" && run == "make ci-build")
 			}
-			if strings.Contains(run, "\n") || (!strings.HasPrefix(run, "make ")) {
-				t.Errorf("job %s runs %q — CI steps must be one `make <target>` so they run the same locally", id, run)
-			}
-			sawCIBuild = sawCIBuild || run == "make ci-build"
 		}
-	}
+	})
 	if !sawCIBuild {
 		t.Error("ci.yml no longer runs `make ci-build` — the Build job and `make test` have diverged")
 	}
 }
 
 func TestEveryCIJobRunsInTheImage(t *testing.T) {
-	src := stripYAMLComments(mustRead(t, filepath.Join(repoRoot(t), ".github", "workflows", "ci.yml")))
-	for _, banned := range []string{"actions/setup-go", "actions/setup-node", "apt-get"} {
-		if strings.Contains(src, banned) {
-			t.Errorf("ci.yml uses %s — every tool comes from the pinned image", banned)
+	for _, f := range workflowFiles(t, repoRoot(t)) {
+		src := stripYAMLComments(mustRead(t, f))
+		for _, banned := range []string{"actions/setup-go", "actions/setup-node", "apt-get"} {
+			if strings.Contains(src, banned) {
+				t.Errorf("%s uses %s — every tool comes from the pinned image", filepath.Base(f), banned)
+			}
 		}
 	}
-	for id, job := range readCI(t).Jobs {
-		if hostJobs[id] {
-			continue
+	everyWorkflow(t, func(name string, w workflow) {
+		for id, job := range w.Jobs {
+			if hostJobs[id] {
+				continue
+			}
+			c, _ := yaml.Marshal(job.Container)
+			if !strings.Contains(string(c), "needs.images.outputs.") {
+				t.Errorf("%s job %s does not run in the CI image (container: %s)", name, id, strings.TrimSpace(string(c)))
+			}
+			if !slices.Contains(needsList(job.Needs), "images") {
+				t.Errorf("%s job %s does not need `images`, so its container ref is empty", name, id)
+			}
 		}
-		c, _ := yaml.Marshal(job.Container)
-		if !strings.Contains(string(c), "needs.images.outputs.") {
-			t.Errorf("job %s does not run in the CI image (container: %s)", id, strings.TrimSpace(string(c)))
+	})
+}
+
+// A tag can be moved to other code after review; a commit cannot.
+func TestWorkflowActionsArePinnedByCommit(t *testing.T) {
+	pinned := regexp.MustCompile(`^[\w.-]+/[\w.-]+@[0-9a-f]{40}$`)
+	everyWorkflow(t, func(name string, w workflow) {
+		for id, job := range w.Jobs {
+			for _, st := range job.Steps {
+				if st.Uses != "" && !pinned.MatchString(st.Uses) {
+					t.Errorf("%s job %s uses %s — pin the action to a full commit SHA", name, id, st.Uses)
+				}
+			}
 		}
-		if !slices.Contains(needsList(job.Needs), "images") {
-			t.Errorf("job %s does not need `images`, so its container ref is empty", id)
+	})
+}
+
+// The token is read-only unless a job asks for more, in that job.
+func TestWorkflowsDefaultToAReadOnlyToken(t *testing.T) {
+	for _, f := range workflowFiles(t, repoRoot(t)) {
+		var w struct {
+			Permissions map[string]string `yaml:"permissions"`
+		}
+		if err := yaml.Unmarshal([]byte(mustRead(t, f)), &w); err != nil {
+			t.Fatal(err)
+		}
+		if len(w.Permissions) != 1 || w.Permissions["contents"] != "read" {
+			t.Errorf("%s: top-level permissions are %v, want only contents: read", filepath.Base(f), w.Permissions)
 		}
 	}
 }
@@ -206,18 +258,20 @@ func goBin() string {
 // A Go cache built by another image (another compiler) must never be restored,
 // so every key starts from the image's inputs.
 func TestGoJobsRestoreACacheKeyedOnTheImage(t *testing.T) {
-	for id, job := range readCI(t).Jobs {
-		if hostJobs[id] {
-			continue
-		}
-		ok := false
-		for _, st := range job.Steps {
-			if strings.HasPrefix(st.Uses, "actions/cache@") && strings.Contains(st.With["path"], "/cache/go-build") {
-				ok = strings.Contains(st.With["key"], "hashFiles('ci/**')") && strings.Contains(st.With["restore-keys"], "hashFiles('ci/**')")
+	everyWorkflow(t, func(name string, w workflow) {
+		for id, job := range w.Jobs {
+			if hostJobs[id] {
+				continue
+			}
+			ok := false
+			for _, st := range job.Steps {
+				if strings.HasPrefix(st.Uses, "actions/cache@") && strings.Contains(st.With["path"], "/cache/go-build") {
+					ok = strings.Contains(st.With["key"], "hashFiles('ci/**')") && strings.Contains(st.With["restore-keys"], "hashFiles('ci/**')")
+				}
+			}
+			if !ok {
+				t.Errorf("%s job %s has no /cache/go-build cache keyed on hashFiles('ci/**')", name, id)
 			}
 		}
-		if !ok {
-			t.Errorf("job %s has no /cache/go-build cache keyed on hashFiles('ci/**')", id)
-		}
-	}
+	})
 }

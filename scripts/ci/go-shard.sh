@@ -4,7 +4,8 @@
 #   go-shard.sh run  i/n [build flags...] -- [test flags...]
 # Packages with at least SPLIT_MIN tests are split by test name; the rest are
 # assigned whole. Both by a hash, so every (package, test) runs in exactly one
-# shard. With COVERDIR set, each test binary writes covdata there.
+# shard. With COVERDIR set, each test binary writes covdata there; packages
+# matching the GO_SHARD_EXCLUDE regex run in no shard.
 set -euo pipefail
 mode="$1"; shard="$2"; shift 2
 i="${shard%/*}"; n="${shard#*/}"
@@ -15,7 +16,7 @@ test=("$@")
 go="${GO:-go}"
 
 listing="$("$go" test "${build[@]}" -list '.' ./...)"
-plan="$(awk -v i="$i" -v n="$n" -v min="${SPLIT_MIN:-300}" '
+plan="$(awk -v i="$i" -v n="$n" -v min="${SPLIT_MIN:-300}" -v ex="${GO_SHARD_EXCLUDE:-}" '
   BEGIN { chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./-" }
   function h(s,  x, k) { x = 5381; for (k = 1; k <= length(s); k++) x = (x * 33 + index(chars, substr(s, k, 1))) % 1000003; return x }
   # 60 KB per -run value keeps every argv string under Linux'"'"' 128 KB cap.
@@ -23,6 +24,7 @@ plan="$(awk -v i="$i" -v n="$n" -v min="${SPLIT_MIN:-300}" '
   /^(Test|Example|Fuzz)[A-Za-z0-9_]*$/ { names[++cnt] = $0; next }
   /^ok / {
     pkg = $2
+    if (ex != "" && pkg ~ ex) { cnt = 0; next }
     if (cnt >= min) {
       re = ""
       for (k = 1; k <= cnt; k++) {
