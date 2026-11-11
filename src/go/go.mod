@@ -2,7 +2,7 @@ module github.com/ingyamilmolinar/beatmo
 
 go 1.24.0
 
-toolchain go1.26.5
+toolchain go1.26.10
 
 require (
 	github.com/ebitengine/oto/v3 v3.4.0
