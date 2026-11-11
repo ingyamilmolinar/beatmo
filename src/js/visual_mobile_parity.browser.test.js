@@ -35,11 +35,11 @@ import { flushCoverage, isCoverageEnabled } from "./coverage_helpers.js";
 
 const DESKTOP_VIEWPORT = { width: 1280, height: 720 };
 
+// Portrait only: a phone in landscape shows the rotate prompt instead of the
+// game (landscape_block.browser.test.js).
 const MOBILE_VIEWPORTS = [
   { name: "iPhone14_portrait", width: 390, height: 844 },
-  { name: "iPhone14_landscape", width: 844, height: 390 },
   { name: "iPhoneSE_portrait", width: 320, height: 568 },
-  { name: "small_landscape", width: 480, height: 320 },
 ];
 
 // ─── Build WASM ──────────────────────────────────────────────────────
