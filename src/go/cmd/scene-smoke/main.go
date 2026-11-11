@@ -158,7 +158,11 @@ func capture(bin string, j job, timeout time.Duration) error {
 		if ctx.Err() != nil {
 			err = fmt.Errorf("timed out after %v", timeout)
 		}
-		return fmt.Errorf("binary: %v\n%s", err, tail(output.String(), 15))
+		// A Go crash report leads with the signal and the stacks; the register
+		// dump that ends it says little. The whole report stays beside the PNG.
+		logPath := strings.TrimSuffix(j.out, ".png") + ".log"
+		_ = os.WriteFile(logPath, output.Bytes(), 0o644)
+		return fmt.Errorf("binary: %v (full output: %s)\n%s", err, logPath, head(output.String(), 40))
 	}
 	return checkCapture(j.out)
 }
@@ -197,10 +201,10 @@ func distinctColors(img image.Image, limit int) int {
 	return len(seen)
 }
 
-func tail(s string, lines int) string {
+func head(s string, lines int) string {
 	all := strings.Split(strings.TrimRight(s, "\n"), "\n")
 	if len(all) > lines {
-		all = all[len(all)-lines:]
+		all = all[:lines]
 	}
 	return strings.Join(all, "\n")
 }
