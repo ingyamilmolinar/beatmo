@@ -21,7 +21,6 @@ HTTPS_PROXY="${GCS_BUCKET}-lb-https-proxy"
 SSL_CERT="${DOMAIN//./-}-cert"
 IP_NAME="${DOMAIN//./-}-ip"
 HTTP_FORWARDING_RULE="${GCS_BUCKET}-lb-forwarding-rule-ipv4"
-HTTP_FORWARDING_RULE_IPV6="${GCS_BUCKET}-lb-forwarding-rule-ipv6"
 HTTPS_FORWARDING_RULE="${GCS_BUCKET}-lb-https-rule"
 
 echo "=== GCP Static Site Setup ==="
@@ -43,7 +42,6 @@ gcloud config set project "${GCP_PROJECT}" >/dev/null
 resource_exists() {
   local type="$1"
   local name="$2"
-  local extra="${3:-}"
 
   case "${type}" in
     bucket)

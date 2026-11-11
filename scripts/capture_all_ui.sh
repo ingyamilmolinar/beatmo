@@ -121,7 +121,6 @@ done
 
 # ── Browser pass ──────────────────────────────────────────────────
 BROWSER_COUNT=0
-BROWSER_FAILED=0
 if [[ -d "$ROOT/src/js/node_modules/playwright" ]]; then
     cd "$ROOT"
     # Build WASM if not present.
@@ -189,5 +188,6 @@ MANIFEST="$OUTDIR/manifest.json"
 echo ""
 echo "Done."
 echo "  Desktop: $DESKTOP_COUNT captured ($DESKTOP_FAILED failed)"
+echo "  Browser: $BROWSER_COUNT captured"
 [[ "$MOBILE" == "1" ]] && echo "  Mobile: see $OUTDIR/mobile/"
 echo "  Manifest: $MANIFEST"
