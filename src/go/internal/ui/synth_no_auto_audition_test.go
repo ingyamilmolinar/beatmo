@@ -1,0 +1,190 @@
+package ui
+
+import (
+	"fmt"
+	"strings"
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
+)
+
+// These tests pin the runtime-edit contract for the Synth tab:
+//
+//	Editing a knob or a stage pill ONLY updates the instrument config
+//	(audio.SetInstrumentParam → voice-cache invalidation → the NEXT
+//	trigger renders with the new values). It must NOT auto-play the
+//	instrument. The one-shot audition is reserved for the explicit
+//	Preview button (previewActiveSynth).
+//
+// Why: the auto-audition fired audio.Play(id) on every knob release and
+// stage toggle — an immediate, full-gain (vol=1.0) one-shot with no
+// scheduler lead that bypasses the row/node volume sequencer hits get.
+// Layered over the scheduled voices of the same instrument during
+// playback it overshoots the master chain and is heard as a crackling /
+// sharp transient alongside the unwanted "preview".
+
+// newSnareSynthTabGame builds the standard snare/drum-snare synth-tab
+// harness used by the drag e2e tests.
+func newSnareSynthTabGame(t *testing.T) *Game {
+	t.Helper()
+	assertDefaultParityState(t)
+	logger := game_log.New(nil, game_log.LevelError)
+	g := New(logger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(1280, 720)
+	uiNode := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	g.drum.Rows[0].Origin = uiNode.ID
+	g.drum.Rows[0].Node = uiNode
+	g.drum.Rows[0].Name = "Snare"
+	g.drum.Rows[0].Instrument = roster.Snare
+	_ = audio.InstallInstrumentDocForTest(roster.Snare, roster.Snare)
+	t.Cleanup(func() { audio.ResetInstrumentParams(roster.Snare) })
+	return g
+}
+
+// firstVisibleSynthControl returns the index, knob, and hit area of the first
+// laid-out (non-empty rect) synth knob.
+func firstVisibleSynthControl(t *testing.T, g *Game) (int, *Knob, *HitArea) {
+	t.Helper()
+	knobs := g.drum.SynthTabControls()
+	idx := -1
+	for i, k := range knobs {
+		if !k.Rect().Empty() {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		t.Fatal("no visible synth knob")
+	}
+	var hit *HitArea
+	hits := g.drum.eqPanelZone.HitAreas()
+	for i, h := range hits {
+		if h.Tag == fmt.Sprintf("synth-control-%d", idx) {
+			hit = &hits[i]
+			break
+		}
+	}
+	if hit == nil {
+		var tags []string
+		for _, h := range hits {
+			tags = append(tags, h.Tag)
+		}
+		t.Fatalf("no hit area for synth-control-%d; tags=%s", idx, strings.Join(tags, ","))
+	}
+	return idx, knobs[idx], hit
+}
+
+// TestSynthStageTogglePill_DoesNotAutoAudition flips a modular per-stage
+// bypass pill. The toggle must mutate the param (next trigger renders with
+// the stage bypassed/enabled) but must not auto-play the instrument.
+func TestSynthStageTogglePill_DoesNotAutoAudition(t *testing.T) {
+	g := newModularSynthTabGame(t)
+	layoutSynthTab(t, g)
+
+	var auditions int
+	prev := SwapSynthAuditionFnForTest(func(instrument.ID) { auditions++ })
+	t.Cleanup(func() { SwapSynthAuditionFnForTest(prev) })
+
+	const instID, param = "ut-chip-modular", "filter_enabled"
+	before := synthStageEnabled(instID, param)
+	g.drum.toggleSynthStage(instID, param)
+
+	if got := synthStageEnabled(instID, param); got == before {
+		t.Fatalf("stage toggle did not flip %s (still %v)", param, got)
+	}
+	if auditions != 0 {
+		t.Errorf("stage toggle auto-auditioned %d time(s); want 0 (config-only, next trigger picks it up)", auditions)
+	}
+}
+
+// TestPreviewButton_StillAuditionsExactlyOnce is the guard rail for the
+// fix: removing the automatic audition must NOT remove the explicit
+// Preview button's one-shot.
+func TestPreviewButton_StillAuditionsExactlyOnce(t *testing.T) {
+	g := newSnareSynthTabGame(t)
+	expandSynthPanelForTest(t, g)
+
+	var auditions []string
+	prev := SwapSynthAuditionFnForTest(func(id instrument.ID) { auditions = append(auditions, string(id)) })
+	t.Cleanup(func() { SwapSynthAuditionFnForTest(prev) })
+
+	g.drum.previewActiveSynth()
+
+	if len(auditions) != 1 || auditions[0] != "snare" {
+		t.Errorf("Preview button auditions = %v, want exactly one for %q", auditions, "snare")
+	}
+}
+
+// TestSetInstrumentParam_NeverTriggersPlayback pins the audio-layer half of
+// the contract directly: a param write dispatches config (platform callback,
+// voice-cache invalidation) but never schedules a voice. Every Play* entry
+// point (desktop, WASM, stub) stamps RecordVoiceTrigger, so an untouched
+// LastTriggerAt proves no playback happened. This is what "change the config
+// and let the next trigger pick it up" means at the engine boundary.
+func TestSetInstrumentParam_NeverTriggersPlayback(t *testing.T) {
+	assertDefaultParityState(t)
+	const instID = "no-auto-audition-probe"
+	_ = audio.InstallInstrumentDocForTest(instID, roster.Snare)
+	t.Cleanup(func() { audio.ResetInstrumentParams(instID) })
+
+	if !audio.LastTriggerAt(instID).IsZero() {
+		t.Fatalf("probe instrument %q already has a trigger timestamp", instID)
+	}
+	audio.SetInstrumentParam(instID, "amp_decay", 2.5)
+	if got := audio.LastTriggerAt(instID); !got.IsZero() {
+		t.Errorf("SetInstrumentParam triggered playback: LastTriggerAt = %v, want zero (no voice scheduled)", got)
+	}
+}
+
+// TestSynthControlWheelNudge_DoesNotAutoAudition drives the Task-9 ARMED wheel
+// nudge (synthControlHitAdapter.OnWheel while the control is armed, spinning the
+// ArmedControlEditor's value lane): a notch over the armed value lane must
+// propagate the param (next-trigger model) and NOT fire an audition. A
+// not-armed wheel is out of scope here — it scrolls the row (see
+// TestNotArmedWheelScrollsRow) and never touches audio config at all, so it
+// could never fire an audition either; arming is what actually exercises the
+// value-edit path this invariant guards.
+func TestSynthControlWheelNudge_DoesNotAutoAudition(t *testing.T) {
+	g := newSnareSynthTabGame(t)
+	expandSynthPanelForTest(t, g)
+	var auditions []string
+	prev := SwapSynthAuditionFnForTest(func(id instrument.ID) { auditions = append(auditions, string(id)) })
+	t.Cleanup(func() { SwapSynthAuditionFnForTest(prev) })
+	idx, knob, _ := firstVisibleSynthControl(t, g)
+	dv := g.drum
+	instID := dv.synthTabActiveInstrument()
+	paramName := dv.SynthTabBindings()[idx].def.Name
+	r := knob.Rect()
+	knob.Value = 0.25 // low value so the notch always increases (discrete or endless)
+
+	dv.armSynthControl(instID, idx)
+	e := dv.instEditorArmedEditor
+	if e == nil {
+		t.Fatal("arming should create the ArmedControlEditor")
+	}
+	e.SetCardRect(r)
+	h := &synthControlHitAdapter{dv: dv, idx: idx, instID: instID}
+	vx, vy := e.ValueLaneRect().Min.X+2, r.Min.Y+r.Dy()/2
+
+	if res := h.OnWheel(vx, vy, 1); res != InputConsumed {
+		t.Fatalf("armed wheel over the value lane should be consumed (nudge), got %v", res)
+	}
+	// Settle the kinetic barrel so the value lane actually crosses a detent
+	// (SHARED FACTS: ImpulseNotch only resolves into a value change via Tick).
+	for i := 0; i < 240 && e.Tick(); i++ {
+	}
+	if _, ok := audio.GetInstrumentParams(instID)[paramName]; !ok {
+		t.Fatalf("param %q was not propagated to the audio config on armed wheel nudge", paramName)
+	}
+	if knob.Value <= 0.25 {
+		t.Fatalf("armed wheel nudge should have increased the knob value above 0.25, got %.6f", knob.Value)
+	}
+	if len(auditions) != 0 {
+		t.Errorf("armed knob wheel nudge auto-auditioned %v; want none", auditions)
+	}
+}

@@ -1,0 +1,2401 @@
+//go:build js && !test
+
+package ui
+
+import (
+	"encoding/json"
+	"image/color"
+	"math"
+	"strconv"
+	"strings"
+	"syscall/js"
+
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+)
+
+func (g *Game) initJSGraphUI() {
+	// Graph mutation helpers for e2e tests
+	js.Global().Set("addNode", jsFn(func(args jsArgs) any {
+		if args.Len() < 3 {
+			return js.ValueOf(-1)
+		}
+		i := args.Int(0)
+		j := args.Int(1)
+		nt, err := model.ParseNodeType(args.Str(2))
+		if err != nil {
+			return js.ValueOf(-1)
+		}
+		n := g.tryAddNode(i, j, nt)
+		return js.ValueOf(int(n.ID))
+	}))
+
+	js.Global().Set("addEdgeGrid", jsFn(func(args jsArgs) any {
+		if args.Len() < 4 {
+			return nil
+		}
+		i1 := args.Int(0)
+		j1 := args.Int(1)
+		i2 := args.Int(2)
+		j2 := args.Int(3)
+		a := g.nodeAt(i1, j1)
+		b := g.nodeAt(i2, j2)
+		if a != nil && b != nil {
+			g.addEdge(a, b)
+		}
+		return nil
+	}))
+
+	js.Global().Set("deleteEdgeGrid", jsFn(func(args jsArgs) any {
+		if args.Len() < 4 {
+			return nil
+		}
+		i1 := args.Int(0)
+		j1 := args.Int(1)
+		i2 := args.Int(2)
+		j2 := args.Int(3)
+		a := g.nodeAt(i1, j1)
+		b := g.nodeAt(i2, j2)
+		if a != nil && b != nil {
+			g.deleteEdge(a, b)
+		}
+		return nil
+	}))
+
+	js.Global().Set("deleteNodeGrid", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
+			return nil
+		}
+		i := args.Int(0)
+		j := args.Int(1)
+		n := g.nodeAt(i, j)
+		if n != nil {
+			g.deleteNode(n)
+		}
+		return nil
+	}))
+
+	js.Global().Set("updateBeatInfos", jsFn(func(args jsArgs) any {
+		g.updateBeatInfos()
+		return nil
+	}))
+
+	// setOrigin(row, i, j) – set a drum row origin to the node at grid (i,j).
+	js.Global().Set("setOrigin", jsFn(func(args jsArgs) any {
+		if args.Len() < 3 || g.drum == nil {
+			return nil
+		}
+		row := args.Int(0)
+		i := args.Int(1)
+		j := args.Int(2)
+		if row < 0 || row >= len(g.drum.Rows) {
+			return nil
+		}
+		n := g.nodeAt(i, j)
+		if n == nil {
+			return nil
+		}
+		g.drum.Rows[row].Origin = n.ID
+		g.drum.Rows[row].Node = n
+		if row == 0 {
+			g.start = n
+			g.graph.StartNodeID = n.ID
+		}
+		g.updateBeatInfos()
+		emitStartNodeChanged(row, n.ID)
+		return nil
+	}))
+
+	// setNodeLogicGrid(i,j, kind, n, p)
+	js.Global().Set("setNodeLogicGrid", jsFn(func(args jsArgs) any {
+		if args.Len() < 3 {
+			return nil
+		}
+		i := args.Int(0)
+		j := args.Int(1)
+		kind, err := model.ParseLogicKind(args.Str(2))
+		if err != nil {
+			return nil
+		}
+		n := 0
+		if args.Len() > 3 {
+			n = args.Int(3)
+		}
+		p := 0.0
+		if args.Len() > 4 {
+			p = args.Float(4)
+		}
+		node := g.nodeAt(i, j)
+		if node == nil {
+			return nil
+		}
+		if mn, ok := g.graph.GetNodeByID(node.ID); ok {
+			ps := mn.Params
+			ps.LogicKind = kind
+			if kind == model.LogicEveryN || kind == model.LogicSkipEveryN {
+				ps.LogicN = n
+			}
+			if kind == model.LogicProbability {
+				ps.LogicP = p
+			}
+			g.graph.SetNodeParams(node.ID, ps)
+			emitNodeParamsChanged(node.ID, ps)
+		}
+		return nil
+	}))
+
+	// createNodeGroup(id1, id2, ...) -> groupId (int), or -1 on failure (e.g.
+	// no args, or an id not present in the graph). Test/debug helper mirroring
+	// the marquee-select "group these nodes" flow.
+	js.Global().Set("createNodeGroup", jsFn(func(args jsArgs) any {
+		ids := make([]model.NodeID, 0, args.Len())
+		for k := 0; k < args.Len(); k++ {
+			ids = append(ids, model.NodeID(args.Int(k)))
+		}
+		gid, err := g.graph.CreateGroup("", ids)
+		if err != nil {
+			return -1
+		}
+		grp, _ := g.graph.Group(gid)
+		emitGroupCreated(gid, grp.Name, grp.NodeIDs)
+		return int(gid)
+	}))
+
+	// setGroupRule(groupId, param, delta, everyN) -> bool. Replaces the
+	// group's rule set with a single rule; param is one of
+	// "pitch"/"volume"/"duration". Returns false on an unknown group or an
+	// invalid rule (bad param, everyN < 1, ...). AnchorIdx PRESERVES the
+	// group's existing rule anchor for this same param when one already
+	// exists (an in-place edit continues the ramp — task-rule-continuity
+	// Part 2, mirrors GroupMenu.writeRules), else stamps a fresh anchor at
+	// the current playhead (ruleAnchorIdxNow — 0 when not playing) so a
+	// brand-new rule's step count starts from this write, not the timeline
+	// origin; the JS-facing signature is unchanged.
+	//
+	// Also flips RulesEnabled true (task-enabled-status brief, Part C): this
+	// is the ONE call-site deliberately kept as a convenience — unlike the
+	// GroupMenu UI (where a delta stepper and the on/off toggle are
+	// deliberately independent so a user can compose several rules before
+	// committing), a scripted/JS caller writing a rule almost always wants it
+	// to apply immediately; there is no separate JS export for the toggle.
+	js.Global().Set("setGroupRule", jsFn(func(args jsArgs) any {
+		gid := model.GroupID(args.Int(0))
+		param, err := model.ParseGroupParam(args.Str(1))
+		if err != nil || param == model.GroupParamNone {
+			return false
+		}
+		anchor := g.ruleAnchorIdxNow()
+		if grp, ok := g.graph.Group(gid); ok {
+			for _, r := range grp.Rules {
+				if r.Param == param {
+					anchor = r.AnchorIdx
+					break
+				}
+			}
+		}
+		rule := model.GroupRule{
+			Param:     param,
+			Delta:     args.Float(2),
+			EveryN:    args.Int(3),
+			AnchorIdx: anchor,
+		}
+		if err := g.graph.SetGroupRules(gid, []model.GroupRule{rule}); err != nil {
+			return false
+		}
+		_ = g.graph.SetGroupRulesEnabled(gid, true)
+		emitGroupChanged(gid)
+		return true
+	}))
+
+	// deleteGroup(groupId) -> bool. Returns false if the group doesn't exist.
+	js.Global().Set("deleteGroup", jsFn(func(args jsArgs) any {
+		gid := model.GroupID(args.Int(0))
+		if err := g.graph.DeleteGroup(gid); err != nil {
+			return false
+		}
+		emitGroupDeleted(gid)
+		return true
+	}))
+
+	// dumpGroups() -> JSON string of every NodeGroup (AllGroups()). Read-only
+	// debug/test seam; never emits a hook.
+	js.Global().Set("dumpGroups", jsFn(func(args jsArgs) any {
+		b, err := json.Marshal(g.graph.AllGroups())
+		if err != nil {
+			return "[]"
+		}
+		return string(b)
+	}))
+
+	// nodeMenuRect(id) -> {x,y,w,h} for sidebar control id; "panel" for full panel.
+	js.Global().Set("nodeMenuRect", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
+			return nil
+		}
+		g.sidebar.layout()
+		id, ok := g.sidebar.laidOutID(args.Str(0))
+		if !ok {
+			return nil
+		}
+		return rectToJS(g.sidebar.rects[id])
+	}))
+
+	// triggerOnce(i,j,pitch,dur) – test helper to schedule one audio + highlight for a grid node.
+	js.Global().Set("triggerOnce", jsFn(func(args jsArgs) any {
+		if args.Len() < 4 {
+			return js.ValueOf(false)
+		}
+		i := args.Int(0)
+		j := args.Int(1)
+		pitch := args.Float(2)
+		dur := args.Float(3)
+		n := g.nodeAt(i, j)
+		if n == nil {
+			return js.ValueOf(false)
+		}
+		row, ok := g.nodeRows[n.ID]
+		if !ok || row < 0 || row >= len(g.drum.Rows) {
+			return js.ValueOf(false)
+		}
+		info := model.BeatInfo{NodeID: n.ID, NodeType: model.NodeTypeRegular, I: i, J: j}
+		inst := g.drum.Rows[row].Instrument
+		g.scheduleSound(row, 0, info, inst, 1.0, pitch, dur, math.NaN(), false)
+		return js.ValueOf(true)
+	}))
+
+	// nodeParams(i,j) -> {volume, pitch, duration, logicKind, logicN, logicP, type}
+	js.Global().Set("nodeParams", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
+			return nil
+		}
+		i := args.Int(0)
+		j := args.Int(1)
+		n := g.nodeAt(i, j)
+		if n == nil {
+			return nil
+		}
+		mn, ok := g.graph.GetNodeByID(n.ID)
+		if !ok {
+			return nil
+		}
+		obj := js.Global().Get("Object").New()
+		obj.Set("volume", mn.Params.Volume)
+		obj.Set("pitch", mn.Params.Pitch)
+		obj.Set("duration", mn.Params.Duration)
+		obj.Set("logicKind", mn.Params.LogicKind.String())
+		obj.Set("logicN", mn.Params.LogicN)
+		obj.Set("logicP", mn.Params.LogicP)
+		obj.Set("type", int(mn.Type))
+		return obj
+	}))
+
+	// nodeMenuAction(id) -> applies the same action as clicking a popup button
+	js.Global().Set("nodeMenuAction", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
+			return nil
+		}
+		if g.sidebar.Node() == nil {
+			return nil
+		}
+		id := args.Str(0)
+		node := g.sidebar.Node()
+		mn, ok := g.graph.GetNodeByID(node.ID)
+		if !ok {
+			return nil
+		}
+		switch id {
+		case "vol-":
+			p := mn.Params
+			p.Volume = stepNodeVolume(p.Volume, false)
+			g.graph.SetNodeParams(node.ID, p)
+		case "vol+":
+			p := mn.Params
+			p.Volume = clampNodeVolume(stepNodeVolume(p.Volume, true))
+			g.graph.SetNodeParams(node.ID, p)
+		case "pit-":
+			p := mn.Params
+			p.Pitch -= 1
+			if p.Pitch < -24 {
+				p.Pitch = -24
+			}
+			g.graph.SetNodeParams(node.ID, p)
+		case "pit+":
+			p := mn.Params
+			p.Pitch += 1
+			if p.Pitch > 24 {
+				p.Pitch = 24
+			}
+			g.graph.SetNodeParams(node.ID, p)
+		case "dur-":
+			p := mn.Params
+			if p.Duration == 0 {
+				p.Duration = 1
+			}
+			p.Duration -= 0.1
+			if p.Duration < nodeParamLimits.DurationMin {
+				p.Duration = nodeParamLimits.DurationMin
+			}
+			g.graph.SetNodeParams(node.ID, p)
+		case "dur+":
+			p := mn.Params
+			if p.Duration == 0 {
+				p.Duration = 1
+			}
+			p.Duration += 0.1
+			if p.Duration > nodeParamLimits.DurationMax {
+				p.Duration = nodeParamLimits.DurationMax
+			}
+			g.graph.SetNodeParams(node.ID, p)
+		case "ln-":
+			p := mn.Params
+			if p.LogicN > 0 {
+				p.LogicN--
+			}
+			if p.LogicN < nodeParamLimits.LogicNMin {
+				p.LogicN = nodeParamLimits.LogicNMin
+			}
+			g.graph.SetNodeParams(node.ID, p)
+		case "ln+":
+			p := mn.Params
+			p.LogicN++
+			if p.LogicN > nodeParamLimits.LogicNMax {
+				p.LogicN = nodeParamLimits.LogicNMax
+			}
+			g.graph.SetNodeParams(node.ID, p)
+		case "lp-":
+			p := mn.Params
+			p.LogicP -= 0.1
+			if p.LogicP < 0 {
+				p.LogicP = 0
+			}
+			g.graph.SetNodeParams(node.ID, p)
+		case "lp+":
+			p := mn.Params
+			p.LogicP += 0.1
+			if p.LogicP > 1 {
+				p.LogicP = 1
+			}
+			g.graph.SetNodeParams(node.ID, p)
+		case "aud":
+			g.cycleNodeType(node.ID) // the sidebar's cycle (Chord included)
+		}
+		g.notifyPredictorNode(node.ID)
+		return nil
+	}))
+
+	// nodeActionAt(i,j,id) -> applies an action to the node at grid coords
+	js.Global().Set("nodeActionAt", jsFn(func(args jsArgs) any {
+		if args.Len() < 3 {
+			return nil
+		}
+		i := args.Int(0)
+		j := args.Int(1)
+		id := args.Str(2)
+		n := g.nodeAt(i, j)
+		if n == nil {
+			return nil
+		}
+		mn, ok := g.graph.GetNodeByID(n.ID)
+		if !ok {
+			return nil
+		}
+		switch id {
+		case "vol-":
+			p := mn.Params
+			p.Volume = stepNodeVolume(p.Volume, false)
+			g.graph.SetNodeParams(n.ID, p)
+		case "vol+":
+			p := mn.Params
+			p.Volume = clampNodeVolume(stepNodeVolume(p.Volume, true))
+			g.graph.SetNodeParams(n.ID, p)
+		case "pit-":
+			p := mn.Params
+			p.Pitch -= 1
+			if p.Pitch < -24 {
+				p.Pitch = -24
+			}
+			g.graph.SetNodeParams(n.ID, p)
+		case "pit+":
+			p := mn.Params
+			p.Pitch += 1
+			if p.Pitch > 24 {
+				p.Pitch = 24
+			}
+			g.graph.SetNodeParams(n.ID, p)
+		case "dur-":
+			p := mn.Params
+			if p.Duration == 0 {
+				p.Duration = 1
+			}
+			p.Duration -= 0.1
+			if p.Duration < nodeParamLimits.DurationMin {
+				p.Duration = nodeParamLimits.DurationMin
+			}
+			g.graph.SetNodeParams(n.ID, p)
+		case "dur+":
+			p := mn.Params
+			if p.Duration == 0 {
+				p.Duration = 1
+			}
+			p.Duration += 0.1
+			if p.Duration > nodeParamLimits.DurationMax {
+				p.Duration = nodeParamLimits.DurationMax
+			}
+			g.graph.SetNodeParams(n.ID, p)
+		case "ln-":
+			p := mn.Params
+			if p.LogicN > 0 {
+				p.LogicN--
+			}
+			if p.LogicN < nodeParamLimits.LogicNMin {
+				p.LogicN = nodeParamLimits.LogicNMin
+			}
+			g.graph.SetNodeParams(n.ID, p)
+		case "ln+":
+			p := mn.Params
+			p.LogicN++
+			if p.LogicN > nodeParamLimits.LogicNMax {
+				p.LogicN = nodeParamLimits.LogicNMax
+			}
+			g.graph.SetNodeParams(n.ID, p)
+		case "lp-":
+			p := mn.Params
+			p.LogicP -= 0.1
+			if p.LogicP < 0 {
+				p.LogicP = 0
+			}
+			g.graph.SetNodeParams(n.ID, p)
+		case "lp+":
+			p := mn.Params
+			p.LogicP += 0.1
+			if p.LogicP > 1 {
+				p.LogicP = 1
+			}
+			g.graph.SetNodeParams(n.ID, p)
+		case "aud":
+			g.cycleNodeType(n.ID) // the sidebar's cycle (Chord included)
+		}
+		g.notifyPredictorNode(n.ID)
+		return nil
+	}))
+
+	// ensureDefaultPath builds a minimal single-edge path if the graph is empty
+	// so browser tests can start playback without interacting with the editor.
+	js.Global().Set("ensureDefaultPath", jsFn(func(args jsArgs) any {
+		if len(g.nodes) == 0 {
+			g.pendingStartRow = 0
+			n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+			n1 := g.tryAddNode(1, 0, model.NodeTypeRegular)
+			n2 := g.tryAddNode(1, 1, model.NodeTypeRegular)
+			n3 := g.tryAddNode(0, 1, model.NodeTypeRegular)
+			g.addEdge(n0, n1)
+			g.addEdge(n1, n2)
+			g.addEdge(n2, n3)
+			g.addEdge(n3, n0)
+			g.pendingStartRow = -1
+			g.start = n0
+			g.graph.StartNodeID = n0.ID
+			g.updateBeatInfos()
+		}
+		return nil
+	}))
+
+	// Export the current state as a JSON string.
+	js.Global().Set("exportJSON", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return js.ValueOf("")
+		}
+		if data, err := g.drum.exportBytes(); err == nil {
+			return js.ValueOf(string(data))
+		}
+		return js.ValueOf("")
+	}))
+
+	// Import a JSON string to rebuild the state.
+	js.Global().Set("importJSON", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
+			return nil
+		}
+		txt := args.Str(0)
+		// Surface the error to JS instead of silently discarding it: a failed
+		// import that returns nothing reads as "nothing happened" with no clue.
+		// Returns "" on success, the error string otherwise.
+		if err := g.Import([]byte(txt)); err != nil {
+			return err.Error()
+		}
+		return ""
+	}))
+
+	// sliderRect(row) -> {x, y, w, h}
+	// Exposes the on-screen rectangle for a drum row's volume slider so
+	// browser tests can simulate pointer interaction precisely.
+	js.Global().Set("sliderRect", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
+			return nil
+		}
+		row := args.Int(0)
+		if row < 0 || row >= len(g.drum.rowVolSliders()) {
+			return nil
+		}
+		return rectToJS(g.drum.rowVolSliders()[row].Rect())
+	}))
+
+	// timelineRect() -> {x,y,w,h}
+	js.Global().Set("timelineRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return nil
+		}
+		return rectToJS(g.drum.timelineRect)
+	}))
+
+	// bpmBoxRect() -> {x,y,w,h}
+	js.Global().Set("bpmBoxRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.bpmBox() == nil {
+			return nil
+		}
+		return rectToJS(g.drum.bpmBox().Rect)
+	}))
+
+	// splitY() -> int
+	js.Global().Set("splitY", jsFn(func(args jsArgs) any {
+		if g.split == nil {
+			return js.ValueOf(0)
+		}
+		return js.ValueOf(g.split.Y)
+	}))
+
+	// splitX() -> int
+	js.Global().Set("splitX", jsFn(func(args jsArgs) any {
+		if g.split == nil {
+			return js.ValueOf(0)
+		}
+		return js.ValueOf(g.split.X)
+	}))
+
+	// layoutHorizontal() -> bool (true=stacked, false=side-by-side)
+	js.Global().Set("layoutHorizontal", jsFn(func(args jsArgs) any {
+		if g.split == nil {
+			return js.ValueOf(true)
+		}
+		return js.ValueOf(g.split.horizontal)
+	}))
+
+	// setSplitY(y)
+	js.Global().Set("setSplitY", jsFn(func(args jsArgs) any {
+		if g.split == nil || args.Len() < 1 {
+			return nil
+		}
+		y := args.Int(0)
+		g.split.Y = y
+		g.split.userSet = true
+		// Clamp to match UpdateResize bounds
+		minY := 120
+		maxY := g.winH - 120
+		if g.split.Y < minY {
+			g.split.Y = minY
+		}
+		if g.winH > 0 && g.split.Y > maxY {
+			g.split.Y = maxY
+		}
+		if g.winH > 0 {
+			g.split.ratio = float64(g.split.Y) / float64(g.winH)
+		}
+		// Immediately update drum bounds so drumBounds() is consistent
+		if g.drum != nil {
+			g.drum.SetBounds(g.split.DrumRect(g.winW, g.winH))
+		}
+		return nil
+	}))
+
+	// drumBounds() -> {x,y,w,h}
+	js.Global().Set("drumBounds", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return nil
+		}
+		return rectToJS(g.drum.Bounds)
+	}))
+
+	// scrollBarRect() / scrollThumbRect() -> {x,y,w,h}
+	js.Global().Set("scrollBarRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return nil
+		}
+		return rectToJS(g.drum.scrollBarRect())
+	}))
+
+	js.Global().Set("scrollThumbRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return nil
+		}
+		return rectToJS(g.drum.scrollThumbRect())
+	}))
+
+	// rowOffset() -> int (vertical scroll)
+	js.Global().Set("rowOffset", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return js.ValueOf(0)
+		}
+		return js.ValueOf(g.drum.rowOffset)
+	}))
+
+	// setRowOffset(n)
+	js.Global().Set("setRowOffset", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
+			return nil
+		}
+		off := args.Int(0)
+		if off < 0 {
+			off = 0
+		}
+		max := len(g.drum.Rows) - g.drum.visibleRows()
+		if max < 0 {
+			max = 0
+		}
+		if off > max {
+			off = max
+		}
+		g.drum.rowOffset = off
+		if g.drum.rowRackZone != nil {
+			g.drum.rowRackZone.SetRowOffset(off)
+		}
+		return nil
+	}))
+
+	// addDrumRow(); totalRows() -> int
+	js.Global().Set("addDrumRow", jsFn(func(args jsArgs) any {
+		if g.drum != nil {
+			g.drum.AddRow()
+		}
+		return nil
+	}))
+
+	js.Global().Set("totalRows", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return js.ValueOf(0)
+		}
+		return js.ValueOf(len(g.drum.Rows))
+	}))
+
+	js.Global().Set("setRowInstrument", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 2 {
+			return nil
+		}
+		row := args.Int(0)
+		if row < 0 || row >= len(g.drum.Rows) {
+			return nil
+		}
+		id := args.Instrument(1)
+		if id == "" {
+			return nil
+		}
+		// A pick like the instrument menu's: the row's settings are never
+		// dropped (pick_settings.go — it may ask first).
+		prev := g.drum.selRow
+		g.drum.pickInstrument(row, id)
+		g.drum.selRow = prev
+		return nil
+	}))
+
+	js.Global().Set("setRowStep", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 3 {
+			return nil
+		}
+		row := args.Int(0)
+		idx := args.Int(1)
+		val := args.Bool(2)
+		if row < 0 || row >= len(g.drum.Rows) {
+			return nil
+		}
+		steps := g.drum.Rows[row].Steps
+		if idx < 0 || idx >= len(steps) {
+			return nil
+		}
+		steps[idx] = val
+		g.drum.markRowDirty(row)
+		return nil
+	}))
+
+	// rowLabelRect(row), rowEditBtnRect(row), rowColorBtnRect(row) -> {x,y,w,h}
+	js.Global().Set("rowLabelRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
+			return nil
+		}
+		i := args.Int(0)
+		if i < 0 || i >= len(g.drum.rowLabels()) {
+			return nil
+		}
+		return rectToJS(g.drum.rowLabels()[i].Rect())
+	}))
+
+	js.Global().Set("rowEditBtnRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
+			return nil
+		}
+		i := args.Int(0)
+		if i < 0 || i >= len(g.drum.rowEditBtns()) {
+			return nil
+		}
+		return rectToJS(g.drum.rowEditBtns()[i].Rect())
+	}))
+
+	// rowLabelText(row) -> string
+	js.Global().Set("rowLabelText", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
+			return js.ValueOf("")
+		}
+		i := args.Int(0)
+		if i < 0 || i >= len(g.drum.rowLabels()) {
+			return js.ValueOf("")
+		}
+		return js.ValueOf(g.drum.rowLabels()[i].Text)
+	}))
+
+	js.Global().Set("rowColorBtnRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
+			return nil
+		}
+		i := args.Int(0)
+		if i < 0 || i >= len(g.drum.rowColorBtns()) {
+			return nil
+		}
+		return rectToJS(g.drum.rowColorBtns()[i].Rect())
+	}))
+
+	// rowMuteBtnRect(row), rowSoloBtnRect(row)
+	js.Global().Set("rowMuteBtnRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
+			return nil
+		}
+		i := args.Int(0)
+		if i < 0 || i >= len(g.drum.rowMuteBtns()) {
+			return nil
+		}
+		return rectToJS(g.drum.rowMuteBtns()[i].Rect())
+	}))
+
+	js.Global().Set("rowSoloBtnRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
+			return nil
+		}
+		i := args.Int(0)
+		if i < 0 || i >= len(g.drum.rowSoloBtns()) {
+			return nil
+		}
+		return rectToJS(g.drum.rowSoloBtns()[i].Rect())
+	}))
+
+	// rowMuted(row) / rowSoloed(row)
+	js.Global().Set("rowMuted", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
+			return js.ValueOf(false)
+		}
+		i := args.Int(0)
+		if i < 0 || i >= len(g.drum.Rows) {
+			return js.ValueOf(false)
+		}
+		return js.ValueOf(g.drum.Rows[i].Muted)
+	}))
+
+	js.Global().Set("rowSoloed", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
+			return js.ValueOf(false)
+		}
+		i := args.Int(0)
+		if i < 0 || i >= len(g.drum.Rows) {
+			return js.ValueOf(false)
+		}
+		return js.ValueOf(g.drum.Rows[i].Solo)
+	}))
+
+	// toggleMute(row), toggleSolo(row)
+	js.Global().Set("toggleMute", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
+			return nil
+		}
+		i := args.Int(0)
+		if i < 0 || i >= len(g.drum.Rows) {
+			return nil
+		}
+		g.drum.toggleMute(i)
+		return nil
+	}))
+
+	js.Global().Set("toggleSolo", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
+			return nil
+		}
+		i := args.Int(0)
+		if i < 0 || i >= len(g.drum.Rows) {
+			return nil
+		}
+		g.drum.toggleSolo(i)
+		return nil
+	}))
+
+	// rowInstrument(row) -> string
+	js.Global().Set("rowInstrument", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
+			return js.ValueOf("")
+		}
+		i := args.Int(0)
+		if i < 0 || i >= len(g.drum.Rows) {
+			return js.ValueOf("")
+		}
+		return js.ValueOf(string(g.drum.Rows[i].Instrument))
+	}))
+
+	// instOptions() -> []string
+	js.Global().Set("instOptions", jsFn(func(args jsArgs) any {
+		arr := js.Global().Get("Array").New()
+		if g.drum == nil {
+			return arr
+		}
+		for _, id := range g.drum.instOptions {
+			arr.Call("push", string(id))
+		}
+		return arr
+	}))
+
+	// openInstMenu(row)
+	js.Global().Set("openInstMenu", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
+			return nil
+		}
+		i := args.Int(0)
+		if i < 0 || i >= len(g.drum.Rows) {
+			return nil
+		}
+		g.drum.openInstMenuForRow(i)
+		return nil
+	}))
+
+	// instMenuItemRects() -> [{id,x,y,w,h}]
+	js.Global().Set("instMenuItemRects", jsFn(func(args jsArgs) any {
+		arr := js.Global().Get("Array").New()
+		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
+			return arr
+		}
+		btns := g.drum.instMenuComp.InstBtns()
+		ids := g.drum.instMenuComp.VisibleInstIDs()
+		for i, btn := range btns {
+			if i < len(ids) {
+				obj := js.Global().Get("Object").New()
+				r := btn.Rect()
+				obj.Set("id", string(ids[i]))
+				obj.Set("x", r.Min.X)
+				obj.Set("y", r.Min.Y)
+				obj.Set("w", r.Dx())
+				obj.Set("h", r.Dy())
+				arr.Call("push", obj)
+			}
+		}
+		return arr
+	}))
+
+	// isNamingOpen() -> bool. True while the WAV-upload naming portal is open
+	// (after a .wav is picked, before the new sampler instrument is named/created).
+	// Read-only; lets the real-device upload test assert the OS file pick advanced
+	// the real upload→naming flow.
+	js.Global().Set("isNamingOpen", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return js.ValueOf(false)
+		}
+		return js.ValueOf(g.drum.IsNamingOpen())
+	}))
+
+	// instMenuSearchRect() -> {x,y,w,h} of the instrument-menu search field, or
+	// null when the menu is closed / not in instruments mode. Read-only; used by
+	// the mobile sanity test to tap the search field and assert the native
+	// keyboard opens.
+	js.Global().Set("instMenuSearchRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
+			return js.Null()
+		}
+		r := g.drum.instMenuComp.SearchRect()
+		if r.Empty() {
+			return js.Null()
+		}
+		return rectToJS(r)
+	}))
+
+	// instMenuSearchState() -> {text, cursor, focused} of the instrument-menu
+	// search box, or null when the menu is closed / the box doesn't exist.
+	// Read-only debug seam for the real-keyboard caret-editing browser test
+	// (the caret position is otherwise unobservable from JS).
+	js.Global().Set("instMenuSearchState", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
+			return js.Null()
+		}
+		box := g.drum.instMenuComp.SearchBox()
+		if box == nil {
+			return js.Null()
+		}
+		obj := js.Global().Get("Object").New()
+		obj.Set("text", box.Value())
+		obj.Set("cursor", box.CursorForTest())
+		obj.Set("focused", box.Focused())
+		return obj
+	}))
+
+	// openLogsPanel() -> bool. Ensures the Logs Navigation Panel is open (idempotent)
+	// and returns whether it is open afterwards. Read-only debug seam for the
+	// logs-search caret-editing browser test.
+	js.Global().Set("openLogsPanel", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return js.ValueOf(false)
+		}
+		if !g.drum.IsLogsPanelOpen() {
+			g.toggleLogsPanel()
+		}
+		return js.ValueOf(g.drum.IsLogsPanelOpen())
+	}))
+
+	// logsSearchRect() -> {x,y,w,h} of the logs-panel search field, or null when
+	// the panel is closed / the box doesn't exist. Read-only; used by the caret
+	// browser test to click the field.
+	js.Global().Set("logsSearchRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.logsComp == nil || !g.drum.logsComp.IsOpen() {
+			return js.Null()
+		}
+		r := g.drum.logsComp.searchRect
+		if r.Empty() {
+			return js.Null()
+		}
+		return rectToJS(r)
+	}))
+
+	// logsSearchState() -> {text, cursor, focused} of the logs-panel search box,
+	// or null when the panel is closed / the box doesn't exist. Mirrors
+	// instMenuSearchState — the caret position is otherwise unobservable from JS.
+	js.Global().Set("logsSearchState", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.logsComp == nil || !g.drum.logsComp.IsOpen() {
+			return js.Null()
+		}
+		box := g.drum.logsComp.searchBox
+		if box == nil {
+			return js.Null()
+		}
+		obj := js.Global().Get("Object").New()
+		obj.Set("text", box.Value())
+		obj.Set("cursor", box.CursorForTest())
+		obj.Set("focused", box.Focused())
+		return obj
+	}))
+
+	// rowColor(row) -> hex string like #RRGGBBAA
+	js.Global().Set("rowColor", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
+			return js.ValueOf("")
+		}
+		i := args.Int(0)
+		if i < 0 || i >= len(g.drum.Rows) {
+			return js.ValueOf("")
+		}
+		return js.ValueOf(g.drum.colorKey(g.drum.Rows[i].Color))
+	}))
+
+	// Hex input removed; wheel used instead
+
+	// colorWheelRect() -> {x,y,w,h}
+	// Returns the swatch-grid picker panel rect (the free hue wheel was
+	// replaced by a palette-restricted swatch grid; the component keeps the
+	// legacy "Wheel" naming so this export stays stable for browser tests).
+	js.Global().Set("colorWheelRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.colorWheelComp == nil {
+			return nil
+		}
+		return rectToJS(g.drum.colorWheelComp.WheelRect())
+	}))
+
+	// pickColorAtWheel(row, fx, fy) – opens wheel if needed and picks color at fractional coords (0..1)
+	js.Global().Set("pickColorAtWheel", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 3 {
+			return nil
+		}
+		row := args.Int(0)
+		fx := args.Float(1)
+		fy := args.Float(2)
+		if row < 0 || row >= len(g.drum.Rows) {
+			return nil
+		}
+		g.drum.selRow = row
+		g.drum.colorMenuRow = row
+		if g.drum.colorWheelComp != nil {
+			rackBounds := g.drum.widgetRects[WidgetRack]
+			if rackBounds.Empty() {
+				rackBounds = g.drum.Bounds
+			}
+			anchor := g.drum.rowColorBtns()[row].Rect()
+			if anchor.Empty() && row < len(g.drum.rowLabels()) {
+				anchor = g.drum.rowLabels()[row].Rect()
+			}
+			g.drum.colorWheelComp.SetProps(ColorWheelProps{
+				AnchorRect: anchor,
+				Bounds:     rackBounds,
+				RowHeight:  g.drum.rowHeight(),
+				OnColorPick: func(c color.Color) {
+					g.drum.SetRowColorManual(g.drum.colorMenuRow, c)
+				},
+				OnClose: func() {},
+			})
+			g.drum.colorWheelComp.Open()
+			g.drum.colorWheelComp.ClearHold()
+		}
+		g.drum.buildColorMenu()
+		g.drum.openColorWheelPortal()
+		if g.drum.colorWheelComp == nil {
+			return nil
+		}
+		r := g.drum.colorWheelComp.WheelRect()
+		if r.Dx() <= 0 || r.Dy() <= 0 {
+			return nil
+		}
+		if fx < 0 {
+			fx = 0
+		}
+		if fx > 1 {
+			fx = 1
+		}
+		if fy < 0 {
+			fy = 0
+		}
+		if fy > 1 {
+			fy = 1
+		}
+		x := int(float64(r.Min.X) + fx*float64(r.Dx()))
+		y := int(float64(r.Min.Y) + fy*float64(r.Dy()))
+		// Map the fractional point onto the swatch grid. pickColorAt resolves
+		// any point in the grid body (gap-tolerant) to a palette swatch; if the
+		// point lands in the header band it returns nil, so fall back to the
+		// first swatch so the export always picks an on-palette color.
+		col := g.drum.colorWheelComp.pickColorAt(x, y)
+		if col == nil {
+			if cells := g.drum.colorWheelComp.cells; len(cells) > 0 {
+				col = cells[0].col
+			}
+		}
+		if col != nil {
+			// Mirror the real-user picker: a deliberate pick wins even if it
+			// duplicates another row's color (SetRowColorManual). Using the
+			// plain SetRowColor here would silently substitute duplicates away,
+			// diverging from the manual-pick path scenes/WASM exercise.
+			g.drum.SetRowColorManual(row, col)
+		}
+		g.drum.closeColorWheelPortal()
+		return nil
+	}))
+
+	// NOTE: openColorMenu / openSubdivMenu are registered in
+	// js_exports_scenes.go (initJSScenes runs after initJSGraphUI, so its
+	// registrations win). This file used to register richer duplicates that
+	// were silently shadowed — the live behavior has always been the queued
+	// DrumView.OpenColorMenu / OpenSubdivMenu path. Don't re-add them here;
+	// TestJSExportCatalogueDrift keeps the catalogue honest.
+
+	// subdivBtnRect() -> {x,y,w,h}
+	js.Global().Set("subdivBtnRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.subdivBtn() == nil {
+			return nil
+		}
+		return rectToJS(g.drum.subdivBtn().Rect())
+	}))
+
+	// subdivMenuItemRects() -> [{val,x,y,w,h}]
+	js.Global().Set("subdivMenuItemRects", jsFn(func(args jsArgs) any {
+		arr := js.Global().Get("Array").New()
+		if g.drum == nil {
+			return arr
+		}
+		for _, btn := range g.drum.subdivMenuBtns {
+			obj := js.Global().Get("Object").New()
+			r := btn.Rect()
+			obj.Set("x", r.Min.X)
+			obj.Set("y", r.Min.Y)
+			obj.Set("w", r.Dx())
+			obj.Set("h", r.Dy())
+			// Button text holds the value, parse to int
+			v, _ := strconv.Atoi(btn.Text)
+			obj.Set("val", v)
+			arr.Call("push", obj)
+		}
+		return arr
+	}))
+
+	// applySubdivValue(val int) – simulate selecting a subdivision menu item.
+	js.Global().Set("applySubdivValue", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
+			return nil
+		}
+		target := args.Int(0)
+		for _, btn := range g.drum.subdivMenuBtns {
+			v, _ := strconv.Atoi(btn.Text)
+			if v == target {
+				if btn.OnClick != nil {
+					btn.OnClick()
+				}
+				break
+			}
+		}
+		return nil
+	}))
+
+	// timelineUnitsPerBeat() -> int
+	js.Global().Set("timelineUnitsPerBeat", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return js.ValueOf(0)
+		}
+		return js.ValueOf(g.drum.timelineUnitsPerBeat)
+	}))
+
+	// uploadBtnRect() -> {x,y,w,h}
+	js.Global().Set("uploadBtnRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.uploadBtn() == nil {
+			return nil
+		}
+		return rectToJS(g.drum.uploadBtn().Rect())
+	}))
+
+	// isUploading() -> bool
+	js.Global().Set("isUploading", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return js.ValueOf(false)
+		}
+		return js.ValueOf(g.drum.uploading)
+	}))
+
+	// renameBoxRect() -> {x,y,w,h} when active; commitRename(name)
+	js.Global().Set("renameBoxRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.renameComp == nil || !g.drum.renameComp.IsOpen() {
+			return nil
+		}
+		return rectToJS(g.drum.renameComp.Bounds())
+	}))
+
+	// renameBoxState() -> {text, cursor, focused} of the instrument rename box,
+	// or null when the rename portal is closed. Mirrors instMenuSearchState —
+	// the caret position is otherwise unobservable from JS. Read-only debug seam
+	// for the rename caret-editing browser test.
+	js.Global().Set("renameBoxState", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.renameComp == nil || !g.drum.renameComp.IsOpen() {
+			return js.Null()
+		}
+		box := g.drum.renameComp.TextBox()
+		if box == nil {
+			return js.Null()
+		}
+		obj := js.Global().Get("Object").New()
+		obj.Set("text", box.Value())
+		obj.Set("cursor", box.CursorForTest())
+		obj.Set("focused", box.Focused())
+		return obj
+	}))
+
+	js.Global().Set("commitRename", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.renameComp == nil || !g.drum.renameComp.IsOpen() || args.Len() < 1 {
+			return nil
+		}
+		name := args.Str(0)
+		name = strings.TrimSpace(name)
+		if name != "" && g.drum.renameRow >= 0 && g.drum.renameRow < len(g.drum.Rows) {
+			g.drum.renameInstrumentTo(g.drum.renameRow, name)
+		}
+		g.drum.closeRename()
+		return nil
+	}))
+
+	// openRenameBox(row) — opens the rename component through the portal.
+	js.Global().Set("openRenameBox", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
+			return nil
+		}
+		i := args.Int(0)
+		if i < 0 || i >= len(g.drum.rowLabels()) {
+			return nil
+		}
+		g.drum.CloseAllPopups()
+		g.drum.renameRow = i
+		r := g.drum.rowLabels()[i].Rect()
+		if g.drum.renameComp != nil {
+			g.drum.renameComp.SetProps(RenameProps{
+				AnchorRect:  r,
+				InitialText: g.drum.Rows[i].Name,
+				MaxLen:      32,
+				OnCommit: func(newName string) {
+					name := strings.TrimSpace(newName)
+					if name != "" && g.drum.renameRow >= 0 && g.drum.renameRow < len(g.drum.Rows) {
+						g.drum.renameInstrumentTo(g.drum.renameRow, name)
+						g.drum.notifyInfoKey(i18n.KeyNotifRenamedInstrument, name)
+					}
+					g.drum.renameRow = -1
+				},
+				OnCancel: func() {
+					g.drum.renameRow = -1
+				},
+			})
+			g.drum.renameComp.Open()
+			g.drum.renameComp.ClearHold()
+			g.drum.openRenamePortal()
+		}
+		return nil
+	}))
+
+	// getBPM() -> int
+	js.Global().Set("getBPM", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return js.ValueOf(0)
+		}
+		return js.ValueOf(g.drum.BPM())
+	}))
+
+	// getEngineBPM() -> int
+	js.Global().Set("getEngineBPM", jsFn(func(args jsArgs) any {
+		if g.engine == nil {
+			return js.ValueOf(0)
+		}
+		return js.ValueOf(g.engine.BPM())
+	}))
+
+	// getAppliedBPM() -> int
+	js.Global().Set("getAppliedBPM", jsFn(func(args jsArgs) any {
+		return js.ValueOf(g.AppliedBPM())
+	}))
+
+	// drumOffset() -> int
+	js.Global().Set("drumOffset", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return js.ValueOf(0)
+		}
+		return js.ValueOf(g.drum.Offset)
+	}))
+
+	// drumLength() -> int
+	js.Global().Set("drumLength", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return js.ValueOf(0)
+		}
+		return js.ValueOf(g.drum.Length)
+	}))
+
+	// rowVolume(row) -> float
+	js.Global().Set("rowVolume", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return js.ValueOf(0.0)
+		}
+		if args.Len() < 1 {
+			return js.ValueOf(0.0)
+		}
+		r := args.Int(0)
+		if r < 0 || r >= len(g.drum.Rows) {
+			return js.ValueOf(0.0)
+		}
+		return js.ValueOf(g.drum.Rows[r].Volume)
+	}))
+
+	js.Global().Set("mainVolume", jsFn(func(args jsArgs) any {
+		return js.ValueOf(audio.MainVolume())
+	}))
+
+	js.Global().Set("setMainVolume", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
+			return nil
+		}
+		v := args.Float(0)
+		if v < 0 {
+			v = 0
+		}
+		if v > 1 {
+			v = 1
+		}
+		audio.SetMainVolume(v)
+		if g.drum != nil && g.drum.mainVolSlider() != nil {
+			g.drum.mainVolSlider().Value = v
+		}
+		return nil
+	}))
+
+	// setRowVolume(row, value)
+	js.Global().Set("setRowVolume", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return nil
+		}
+		if args.Len() < 2 {
+			return nil
+		}
+		r := args.Int(0)
+		v := args.Float(1)
+		if v < 0 {
+			v = 0
+		}
+		if v > 1 {
+			v = 1
+		}
+		if r < 0 || r >= len(g.drum.Rows) {
+			return nil
+		}
+		g.drum.Rows[r].Volume = v
+		if r < len(g.drum.rowVolSliders()) {
+			g.drum.rowVolSliders()[r].Value = v
+		}
+		return nil
+	}))
+
+	// timelineBeats() -> int
+	js.Global().Set("timelineBeats", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return js.ValueOf(0)
+		}
+		return js.ValueOf(g.drum.timelineBeats)
+	}))
+
+	// setTimelineBeats(n)
+	js.Global().Set("setTimelineBeats", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return nil
+		}
+		if args.Len() < 1 {
+			return nil
+		}
+		n := args.Int(0)
+		if n < g.drum.Length {
+			n = g.drum.Length
+		}
+		g.drum.timelineBeats = n
+		return nil
+	}))
+
+	// setDrumLength(n)
+	js.Global().Set("setDrumLength", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return nil
+		}
+		if args.Len() < 1 {
+			return nil
+		}
+		n := args.Int(0)
+		if n < 1 {
+			n = 1
+		}
+		g.drum.SetLength(n)
+		return nil
+	}))
+
+	// clickTimelineAt(frac) simulates a click on the timeline at a fractional
+	// position [0,1], updating the drum offset using the same centering logic
+	// as the UI.
+	js.Global().Set("clickTimelineAt", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return nil
+		}
+		if args.Len() < 1 {
+			return nil
+		}
+		f := args.Float(0)
+		if f < 0 {
+			f = 0
+		}
+		if f > 1 {
+			f = 1
+		}
+		total := g.drum.timelineBeats
+		if total < g.drum.Length {
+			total = g.drum.Length
+		}
+		center := int(f * float64(total))
+		desired := center - g.drum.Length/2
+		maxOff := g.drum.timelineBeats - g.drum.Length
+		if maxOff < 0 {
+			maxOff = 0
+		}
+		if desired < 0 {
+			desired = 0
+		}
+		if desired > maxOff {
+			desired = maxOff
+		}
+		g.drum.Offset = desired
+		// Pause auto-tracking briefly so seeking doesn't fight TrackBeat.
+		g.state.SetSeekFreezeFrames(30)
+		js.Global().Get("console").Call("log", "[WASM] clickTimelineAt", f, "-> Offset:", desired)
+		return nil
+	}))
+
+	// seekSteps(steps) queues an absolute seek to subdivision `steps`. The
+	// request is drained on the next Update() under seqMu — do NOT call
+	// g.SeekSteps directly here, this callback is not inside the locked
+	// region.
+	js.Global().Set("seekSteps", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
+			return nil
+		}
+		g.drum.RequestSeekSteps(args.Int(0), hooks.SeekJS)
+		return nil
+	}))
+
+	// playheadStep() -> current absolute playhead subdivision.
+	js.Global().Set("playheadStep", jsFn(func(args jsArgs) any {
+		return g.playheadAbsSubdiv()
+	}))
+
+	// nodeInfo(i,j) -> {i, j, instrument, row, color} or null
+	js.Global().Set("nodeInfo", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
+			return nil
+		}
+		i := args.Int(0)
+		j := args.Int(1)
+		n := g.nodeAt(i, j)
+		if n == nil {
+			return nil
+		}
+		obj := js.Global().Get("Object").New()
+		obj.Set("i", n.I)
+		obj.Set("j", n.J)
+		obj.Set("id", int(n.ID))
+		if row, ok := g.nodeRows[n.ID]; ok && row >= 0 && row < len(g.drum.Rows) {
+			dr := g.drum.Rows[row]
+			obj.Set("row", row)
+			obj.Set("instrument", string(dr.Instrument))
+			obj.Set("name", dr.Name)
+			obj.Set("color", g.drum.colorKey(dr.Color))
+		} else {
+			obj.Set("row", -1)
+			obj.Set("instrument", "")
+			obj.Set("name", "")
+			obj.Set("color", "")
+		}
+		return obj
+	}))
+
+	// moveNodeGrid(fromI, fromJ, toI, toJ) -> bool
+	// Direct move without confirmation (for programmatic/test use).
+	js.Global().Set("moveNodeGrid", jsFn(func(args jsArgs) any {
+		if args.Len() < 4 {
+			return js.ValueOf(false)
+		}
+		fi := args.Int(0)
+		fj := args.Int(1)
+		ti := args.Int(2)
+		tj := args.Int(3)
+		n := g.nodeAt(fi, fj)
+		if n == nil {
+			return js.ValueOf(false)
+		}
+		return js.ValueOf(g.moveNode(n, ti, tj))
+	}))
+
+	// ─────────────────────────────────────────────────────────────────────────
+	// State verification exports for real input tests
+	// ─────────────────────────────────────────────────────────────────────────
+
+	// totalNodes() -> int
+	js.Global().Set("totalNodes", jsFn(func(args jsArgs) any {
+		return js.ValueOf(len(g.nodes))
+	}))
+
+	// nodeMenuOpen() -> bool
+	js.Global().Set("nodeMenuOpen", jsFn(func(args jsArgs) any {
+		return js.ValueOf(g.sidebar.IsOpen())
+	}))
+
+	// nodeMenuNodeId() -> int (-1 if none)
+	js.Global().Set("nodeMenuNodeId", jsFn(func(args jsArgs) any {
+		if g.sidebar.Node() == nil {
+			return js.ValueOf(-1)
+		}
+		return js.ValueOf(int(g.sidebar.Node().ID))
+	}))
+
+	// selectedNodeId() -> int (-1 if none)
+	js.Global().Set("selectedNodeId", jsFn(func(args jsArgs) any {
+		if g.sel == nil {
+			return js.ValueOf(-1)
+		}
+		return js.ValueOf(int(g.sel.ID))
+	}))
+
+	// playBtnRect() -> {x,y,w,h}
+	js.Global().Set("playBtnRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.playBtn() == nil {
+			return nil
+		}
+		return rectToJS(g.drum.playBtn().Rect())
+	}))
+
+	// recBtnRect() -> {x,y,w,h} of the transport Record button (or null). Lets
+	// the real-device test tap Record with real touch to start/stop recording.
+	js.Global().Set("recBtnRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.recordBtn() == nil {
+			return nil
+		}
+		return rectToJS(g.drum.recordBtn().Rect())
+	}))
+
+	// fileMenuBtnRect() -> {x,y,w,h} of the grid-pane folder button that opens the
+	// File menu (Upload / Import / Export / Load Template), or null before it is
+	// laid out. Since the "Pop Up Controls / Modes" overhaul the transport kebab
+	// was removed and File actions moved here (g.gridFileButtonRect → OpenFileMenu),
+	// so the real-device test taps this to reach the file-picker overlays.
+	js.Global().Set("fileMenuBtnRect", jsFn(func(args jsArgs) any {
+		r := g.gridFileButtonRect()
+		if r.Empty() {
+			return nil
+		}
+		return rectToJS(r)
+	}))
+
+	// stopBtnRect() -> {x,y,w,h}
+	js.Global().Set("stopBtnRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.stopBtn() == nil {
+			return nil
+		}
+		return rectToJS(g.drum.stopBtn().Rect())
+	}))
+
+	// bpmIncBtnRect() -> {x,y,w,h}
+	js.Global().Set("bpmIncBtnRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.bpmIncBtn() == nil {
+			return nil
+		}
+		return rectToJS(g.drum.bpmIncBtn().Rect())
+	}))
+
+	// bpmDecBtnRect() -> {x,y,w,h}
+	js.Global().Set("bpmDecBtnRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.bpmDecBtn() == nil {
+			return nil
+		}
+		return rectToJS(g.drum.bpmDecBtn().Rect())
+	}))
+
+	// lenIncBtnRect() -> {x,y,w,h}
+	js.Global().Set("lenIncBtnRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.lenIncBtn == nil {
+			return nil
+		}
+		return rectToJS(g.drum.lenIncBtn.Rect())
+	}))
+
+	// lenDecBtnRect() -> {x,y,w,h}
+	js.Global().Set("lenDecBtnRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.lenDecBtn == nil {
+			return nil
+		}
+		return rectToJS(g.drum.lenDecBtn.Rect())
+	}))
+
+	// addRowBtnRect() -> {x,y,w,h}
+	js.Global().Set("addRowBtnRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.addRowBtn() == nil {
+			return nil
+		}
+		return rectToJS(g.drum.addRowBtn().Rect())
+	}))
+
+	// importBtnRect() -> {x,y,w,h}
+	js.Global().Set("importBtnRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.importBtn() == nil {
+			return nil
+		}
+		return rectToJS(g.drum.importBtn().Rect())
+	}))
+
+	// exportBtnRect() -> {x,y,w,h}
+	js.Global().Set("exportBtnRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.exportBtn() == nil {
+			return nil
+		}
+		return rectToJS(g.drum.exportBtn().Rect())
+	}))
+
+	// instMenuOpen() -> bool
+	js.Global().Set("instMenuOpenState", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return js.ValueOf(false)
+		}
+		return js.ValueOf(g.drum.IsInstMenuOpen())
+	}))
+
+	// instMenuBreadcrumbPath() -> [string] (visible-segment labels;
+	// empty when closed). Tests can assert on len(path) >= 2 to know
+	// they're at the instruments level, etc.
+	js.Global().Set("instMenuBreadcrumbPath", jsFn(func(args jsArgs) any {
+		arr := js.Global().Get("Array").New()
+		if g.drum == nil || g.drum.instMenuComp == nil {
+			return arr
+		}
+		for _, seg := range g.drum.instMenuComp.BreadcrumbPath() {
+			arr.Call("push", js.ValueOf(seg))
+		}
+		return arr
+	}))
+
+	// instMenuPageState() -> {page, pageCount, pageSize}. Replaces the
+	// legacy instMenuScrollOffset / instMenuScrollBarRect / instMenuScrollThumbRect
+	// trio under the new pagination model. Phase 7 retires the old
+	// names; for now both coexist in the bridge.
+	js.Global().Set("instMenuPageState", jsFn(func(args jsArgs) any {
+		obj := js.Global().Get("Object").New()
+		if g.drum == nil || g.drum.instMenuComp == nil {
+			obj.Set("page", 1)
+			obj.Set("pageCount", 0)
+			obj.Set("pageSize", 1)
+			return obj
+		}
+		obj.Set("page", g.drum.instMenuComp.Page())
+		obj.Set("pageCount", g.drum.instMenuComp.PageCount())
+		obj.Set("pageSize", g.drum.instMenuComp.PageSize())
+		return obj
+	}))
+
+	// instrumentIsFavorite(id) -> boolean. Reads the Favorites() global
+	// store. Used by the localStorage round-trip browser test to assert
+	// star persistence across reloads without going through the menu UI.
+	js.Global().Set("instrumentIsFavorite", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
+			return js.ValueOf(false)
+		}
+		return js.ValueOf(Favorites().Get(args.Instrument(0)))
+	}))
+
+	// instrumentSetFavorite(id, fav) -> bool. Programmatic setter that
+	// writes to the Favorites() global store. The persisted backend
+	// flushes to localStorage; subsequent page loads see the value.
+	js.Global().Set("instrumentSetFavorite", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
+			return js.ValueOf(false)
+		}
+		Favorites().Set(args.Instrument(0), args.Bool(1))
+		return js.ValueOf(true)
+	}))
+
+	// instrumentFavoriteKeys() -> [string]. Returns the sorted list of
+	// favorited instrument ids — convenient for snapshot assertions.
+	js.Global().Set("instrumentFavoriteKeys", jsFn(func(args jsArgs) any {
+		arr := js.Global().Get("Array").New()
+		for _, k := range Favorites().Keys() {
+			arr.Call("push", js.ValueOf(string(k)))
+		}
+		return arr
+	}))
+
+	// instMenuRenderedOrder() -> [string]. Returns the instrument ids in
+	// the order they're currently rendered (post fuzzy filter and tier
+	// sort). Used by the JS-side bridge tests to assert tier ordering at
+	// the bridge boundary; the Go side already pins tier order via
+	// TestInstMenu_FavoritesPinnedInInstrumentsMode and friends.
+	js.Global().Set("instMenuRenderedOrder", jsFn(func(args jsArgs) any {
+		arr := js.Global().Get("Array").New()
+		if g.drum == nil || g.drum.instMenuComp == nil {
+			return arr
+		}
+		for _, id := range g.drum.instMenuComp.state.filteredInsts {
+			arr.Call("push", js.ValueOf(string(id)))
+		}
+		return arr
+	}))
+
+	// instMenuFavoritesViewActive() -> boolean. Reports whether the menu
+	// is filtering to ★-favorited items only. Pairs with the virtual
+	// "Favorites" category at the top of the category list — clicking it
+	// flips this flag to true. Useful for bridge tests to confirm the
+	// click event reached the expected handler.
+	js.Global().Set("instMenuFavoritesViewActive", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.instMenuComp == nil {
+			return js.ValueOf(false)
+		}
+		return js.ValueOf(g.drum.instMenuComp.state.favoritesView)
+	}))
+
+	// projectPinsList() -> [string]. Returns the per-project pinned
+	// instrument ids (sorted) that travel with the project JSON's
+	// pinned_instruments field. Empty when no pins are set. The list is
+	// architecture-only this PR — no UI to mutate it ships yet, so the
+	// list will be empty for any project authored before the follow-up
+	// PR adds the per-row "pin to project" affordance. The export pairs
+	// with setProjectPinsListForTest below for xplat parity round-trips.
+	js.Global().Set("projectPinsList", jsFn(func(args jsArgs) any {
+		arr := js.Global().Get("Array").New()
+		if g.drum == nil {
+			return arr
+		}
+		for _, id := range g.drum.exportPinnedInstrumentIDs() {
+			arr.Call("push", js.ValueOf(string(id)))
+		}
+		return arr
+	}))
+
+	// setProjectPinsListForTest(ids) -> bool. Test-only setter (no UI
+	// today). Accepts a JS array of strings; replaces the pin set
+	// wholesale. Empty array clears it. Returns true on success. Useful
+	// for xplat parity browser tests that need to seed pins before
+	// exporting JSON.
+	js.Global().Set("setProjectPinsListForTest", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
+			return js.ValueOf(false)
+		}
+		arr := args.At(0)
+		if arr.Type() != js.TypeObject {
+			return js.ValueOf(false)
+		}
+		n := arr.Length()
+		ids := make([]instrument.ID, 0, n)
+		for i := 0; i < n; i++ {
+			id, err := instrument.ParseID(arr.Index(i).String())
+			if err != nil {
+				return js.ValueOf(false)
+			}
+			ids = append(ids, id)
+		}
+		g.drum.SetProjectPins(ids)
+		return js.ValueOf(true)
+	}))
+
+	// instMenuBackBtnRect() -> {x,y,w,h} | null
+	js.Global().Set("instMenuBackBtnRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
+			return nil
+		}
+		btn := g.drum.instMenuComp.BackBtn()
+		if btn == nil {
+			return nil
+		}
+		return rectToJS(btn.Rect())
+	}))
+
+	// instMenuCategoryRects() -> [{name,x,y,w,h}]
+	js.Global().Set("instMenuCategoryRects", jsFn(func(args jsArgs) any {
+		arr := js.Global().Get("Array").New()
+		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
+			return arr
+		}
+		for _, btn := range g.drum.instMenuComp.CategoryBtns() {
+			obj := js.Global().Get("Object").New()
+			r := btn.Rect()
+			obj.Set("name", btn.Text)
+			obj.Set("x", r.Min.X)
+			obj.Set("y", r.Min.Y)
+			obj.Set("w", r.Dx())
+			obj.Set("h", r.Dy())
+			arr.Call("push", obj)
+		}
+		return arr
+	}))
+
+	// instMenuClickBack() - programmatically trigger back button OnClick
+	js.Global().Set("instMenuClickBack", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
+			return js.ValueOf(false)
+		}
+		btn := g.drum.instMenuComp.BackBtn()
+		if btn == nil || btn.OnClick == nil {
+			return js.ValueOf(false)
+		}
+		btn.OnClick()
+		return js.ValueOf(true)
+	}))
+
+	// instMenuSelectCategory(idx) - programmatically click a category button
+	js.Global().Set("instMenuSelectCategory", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
+			return js.ValueOf(false)
+		}
+		idx := args.Int(0)
+		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
+			return js.ValueOf(false)
+		}
+		cats := g.drum.instMenuComp.CategoryBtns()
+		if idx < 0 || idx >= len(cats) {
+			return js.ValueOf(false)
+		}
+		if cats[idx].OnClick != nil {
+			cats[idx].OnClick()
+		}
+		return js.ValueOf(true)
+	}))
+
+	// instMenuSelectItem(idx) - programmatically click an instrument button
+	js.Global().Set("instMenuSelectItem", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
+			return js.ValueOf(false)
+		}
+		idx := args.Int(0)
+		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
+			return js.ValueOf(false)
+		}
+		btns := g.drum.instMenuComp.InstBtns()
+		if idx < 0 || idx >= len(btns) {
+			return js.ValueOf(false)
+		}
+		if btns[idx].OnClick != nil {
+			btns[idx].OnClick()
+		}
+		return js.ValueOf(true)
+	}))
+
+	// closeInstMenu() - explicitly close the instrument menu
+	js.Global().Set("closeInstMenu", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return nil
+		}
+		if g.drum.instMenuComp != nil && g.drum.instMenuComp.IsOpen() {
+			g.drum.instMenuComp.Close()
+		}
+		g.drum.closeInstMenuPortal()
+		return nil
+	}))
+
+	// colorMenuOpen() -> bool
+	js.Global().Set("colorMenuOpenState", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return js.ValueOf(false)
+		}
+		return js.ValueOf(g.drum.IsColorMenuOpen())
+	}))
+
+	// isPlaying() -> bool
+	js.Global().Set("isPlaying", jsFn(func(args jsArgs) any {
+		return js.ValueOf(g.Playing())
+	}))
+
+	// closeNodeMenu() - explicitly close the node sidebar
+	js.Global().Set("closeNodeMenu", jsFn(func(args jsArgs) any {
+		g.sidebar.Close()
+		return nil
+	}))
+
+	// openNodeSidebar(i, j) - open sidebar for node at grid position
+	js.Global().Set("openNodeSidebar", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
+			return js.ValueOf(false)
+		}
+		i := args.Int(0)
+		j := args.Int(1)
+		n := g.nodeAt(i, j)
+		if n == nil {
+			return js.ValueOf(false)
+		}
+		if g.sel != nil {
+			g.sel.Selected = false
+		}
+		g.sel = n
+		n.Selected = true
+		g.sidebar.Open(n)
+		return js.ValueOf(true)
+	}))
+
+	// closeAllPopups() - close all open popups (node menu, instrument, color, subdiv, etc.)
+	js.Global().Set("closeAllPopups", jsFn(func(args jsArgs) any {
+		g.closeAllPopups()
+		return nil
+	}))
+
+	// ─────────────────────────────────────────────────────────────────────────
+	// Node sidebar scroll diagnostics
+	// ─────────────────────────────────────────────────────────────────────────
+
+	// sidebarScrollOffset() -> int (VS.First)
+	js.Global().Set("sidebarScrollOffset", jsFn(func(args jsArgs) any {
+		if !g.sidebar.IsOpen() {
+			return js.ValueOf(0)
+		}
+		g.sidebar.layout()
+		return js.ValueOf(g.sidebar.scroll.VS.First)
+	}))
+
+	// sidebarHasScroll() -> bool
+	js.Global().Set("sidebarHasScroll", jsFn(func(args jsArgs) any {
+		if !g.sidebar.IsOpen() {
+			return js.ValueOf(false)
+		}
+		g.sidebar.layout()
+		return js.ValueOf(g.sidebar.scroll.HasScroll())
+	}))
+
+	// sidebarExpandAllSections() - expand all collapsible sections
+	js.Global().Set("sidebarExpandAllSections", jsFn(func(args jsArgs) any {
+		g.sidebar.ExpandAllSections()
+		g.sidebar.layout()
+		return nil
+	}))
+
+	// sidebarSectionOpen(name) -> bool — query whether a section is open
+	js.Global().Set("sidebarSectionOpen", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 || !g.sidebar.IsOpen() {
+			return js.ValueOf(false)
+		}
+		sec, ok := parseSBSection(args.Str(0))
+		return js.ValueOf(ok && g.sidebar.sectionOpen[sec])
+	}))
+
+	// sidebarSectionRect(name) -> {x,y,w,h} or null — get section header rect
+	js.Global().Set("sidebarSectionRect", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 || !g.sidebar.IsOpen() {
+			return nil
+		}
+		g.sidebar.layout()
+		sec, known := parseSBSection(args.Str(0))
+		r, ok := g.sidebar.rects[sbSectionHeader(sec)]
+		if !known || !ok || r.Empty() {
+			return nil
+		}
+		return rectToJS(r)
+	}))
+
+	// sidebarScrollBarRect() -> {x,y,w,h} or null
+	js.Global().Set("sidebarScrollBarRect", jsFn(func(args jsArgs) any {
+		if !g.sidebar.IsOpen() || !g.sidebar.scroll.HasScroll() {
+			return nil
+		}
+		g.sidebar.layout()
+		return rectToJS(g.sidebar.scroll.BarRect())
+	}))
+
+	// sidebarScrollThumbRect() -> {x,y,w,h} or null
+	js.Global().Set("sidebarScrollThumbRect", jsFn(func(args jsArgs) any {
+		if !g.sidebar.IsOpen() || !g.sidebar.scroll.HasScroll() {
+			return nil
+		}
+		g.sidebar.layout()
+		return rectToJS(g.sidebar.scroll.ThumbRect())
+	}))
+
+	// sidebarContentHeight() -> int
+	js.Global().Set("sidebarContentHeight", jsFn(func(args jsArgs) any {
+		if !g.sidebar.IsOpen() {
+			return js.ValueOf(0)
+		}
+		g.sidebar.layout()
+		return js.ValueOf(g.sidebar.scroll.VS.Total)
+	}))
+
+	// sidebarPanelRect() -> {x,y,w,h} or null
+	js.Global().Set("sidebarPanelRect", jsFn(func(args jsArgs) any {
+		if !g.sidebar.IsOpen() {
+			return nil
+		}
+		g.sidebar.layout()
+		r, ok := g.sidebar.rects[sbPanel]
+		if !ok {
+			return nil
+		}
+		return rectToJS(r)
+	}))
+
+	// sidebarDebugState() -> {scrollOffset, hasScroll, contentH, panelH, viewportH, ...}
+	js.Global().Set("sidebarDebugState", jsFn(func(args jsArgs) any {
+		obj := js.Global().Get("Object").New()
+		obj.Set("open", g.sidebar.IsOpen())
+		if !g.sidebar.IsOpen() {
+			return obj
+		}
+		g.sidebar.layout()
+		obj.Set("scrollOffset", g.sidebar.scroll.VS.First)
+		obj.Set("hasScroll", g.sidebar.scroll.HasScroll())
+		obj.Set("contentH", g.sidebar.scroll.VS.Total)
+		obj.Set("viewportH", g.sidebar.scroll.VS.Visible)
+		if r, ok := g.sidebar.rects[sbPanel]; ok {
+			obj.Set("panelH", r.Dy())
+		}
+		return obj
+	}))
+
+	// ─────────────────────────────────────────────────────────────────────────
+	// Instrument menu scroll diagnostics
+	// ─────────────────────────────────────────────────────────────────────────
+
+	// instMenuScrollOffset() -> int
+	js.Global().Set("instMenuScrollOffset", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
+			return js.ValueOf(0)
+		}
+		first, _, _ := g.drum.instMenuComp.ScrollState()
+		return js.ValueOf(first)
+	}))
+
+	// instMenuHasScroll() -> bool
+	js.Global().Set("instMenuHasScroll", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
+			return js.ValueOf(false)
+		}
+		_, visible, total := g.drum.instMenuComp.ScrollState()
+		return js.ValueOf(total > visible)
+	}))
+
+	// instMenuScrollBarRect() -> {x,y,w,h} or null
+	js.Global().Set("instMenuScrollBarRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
+			return nil
+		}
+		if g.drum.instMenuComp.scroll == nil || !g.drum.instMenuComp.scroll.HasScroll() {
+			return nil
+		}
+		return rectToJS(g.drum.instMenuComp.scroll.BarRect())
+	}))
+
+	// instMenuScrollThumbRect() -> {x,y,w,h} or null
+	js.Global().Set("instMenuScrollThumbRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
+			return nil
+		}
+		if g.drum.instMenuComp.scroll == nil || !g.drum.instMenuComp.scroll.HasScroll() {
+			return nil
+		}
+		return rectToJS(g.drum.instMenuComp.scroll.ThumbRect())
+	}))
+
+	// instMenuDebugState() -> {scrollOffset, hasScroll, totalItems, visibleItems, ...}
+	js.Global().Set("instMenuDebugState", jsFn(func(args jsArgs) any {
+		obj := js.Global().Get("Object").New()
+		if g.drum == nil || g.drum.instMenuComp == nil {
+			obj.Set("open", false)
+			return obj
+		}
+		comp := g.drum.instMenuComp
+		obj.Set("open", comp.IsOpen())
+		if !comp.IsOpen() {
+			return obj
+		}
+		first, visible, total := comp.ScrollState()
+		obj.Set("scrollOffset", first)
+		obj.Set("hasScroll", total > visible)
+		obj.Set("visible", visible)
+		obj.Set("total", total)
+		obj.Set("mode", string(comp.Mode()))
+		obj.Set("totalInstBtns", len(comp.InstBtns()))
+		obj.Set("totalCatBtns", len(comp.CategoryBtns()))
+		return obj
+	}))
+
+	// ─────────────────────────────────────────────────────────────────────────
+	// Context menu exports for testing
+	// ─────────────────────────────────────────────────────────────────────────
+
+	// openContextMenuJS(row) — programmatically open context menu for a drum row
+	js.Global().Set("openContextMenuJS", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
+			return nil
+		}
+		row := args.Int(0)
+		if row < 0 || row >= len(g.drum.Rows) {
+			return nil
+		}
+		g.drum.openContextMenu(row)
+		return nil
+	}))
+
+	// contextMenuOpen() -> bool
+	js.Global().Set("contextMenuOpen", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return js.ValueOf(false)
+		}
+		return js.ValueOf(g.drum.ContextMenuOpen())
+	}))
+
+	// contextMenuItems() -> [{label, divider}]
+	js.Global().Set("contextMenuItems", jsFn(func(args jsArgs) any {
+		arr := js.Global().Get("Array").New()
+		if g.drum == nil || !g.drum.ContextMenuOpen() {
+			return arr
+		}
+		items := g.drum.ContextMenuItemsForTest(g.drum.contextMenuRow)
+		for _, item := range items {
+			obj := js.Global().Get("Object").New()
+			obj.Set("label", item.label)
+			obj.Set("divider", item.divider)
+			arr.Call("push", obj)
+		}
+		return arr
+	}))
+
+	// contextMenuClick(label) — click a context menu item by label
+	js.Global().Set("contextMenuClick", jsFn(func(args jsArgs) any {
+		if g.drum == nil || !g.drum.ContextMenuOpen() || args.Len() < 1 {
+			return js.ValueOf(false)
+		}
+		label := args.Str(0)
+		for _, btn := range g.drum.ContextMenuBtns() {
+			if btn.Text == label && btn.OnClick != nil {
+				btn.OnClick()
+				return js.ValueOf(true)
+			}
+		}
+		return js.ValueOf(false)
+	}))
+
+	// contextMenuRect() -> {x,y,w,h} or null
+	js.Global().Set("contextMenuRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || !g.drum.ContextMenuOpen() {
+			return nil
+		}
+		return rectToJS(g.drum.ContextMenuRectVal())
+	}))
+
+	// contextMenuRow() -> int (-1 if not open)
+	js.Global().Set("contextMenuRow", jsFn(func(args jsArgs) any {
+		if g.drum == nil || !g.drum.ContextMenuOpen() {
+			return js.ValueOf(-1)
+		}
+		return js.ValueOf(g.drum.contextMenuRow)
+	}))
+
+	// ─────────────────────────────────────────────────────────────────────────
+	// FX panel + portal state exports for testing
+	// ─────────────────────────────────────────────────────────────────────────
+
+	// fxPanelOpen() -> bool
+	js.Global().Set("fxPanelOpen", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return js.ValueOf(false)
+		}
+		return js.ValueOf(g.drum.IsFXPanelOpen())
+	}))
+
+	// fxPanelRow() -> int (-1 if not open)
+	js.Global().Set("fxPanelRow", jsFn(func(args jsArgs) any {
+		if g.drum == nil || !g.drum.IsFXPanelOpen() {
+			return js.ValueOf(-1)
+		}
+		return js.ValueOf(g.drum.fxPanelRow)
+	}))
+
+	// fxPanelRect() -> {x,y,w,h} or null
+	js.Global().Set("fxPanelRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || !g.drum.IsFXPanelOpen() {
+			return nil
+		}
+		return rectToJS(g.drum.fxPanelRect)
+	}))
+
+	// fxPanelControlRects() -> {add, picks:[{effect,x,y,w,h}], sliders:[{slot,param,x,y,w,h}]}
+	// or null when the FX panel is closed: where a pointer presses to add an
+	// effect, pick one in the add picker, or drag a param (real-input benches).
+	js.Global().Set("fxPanelControlRects", jsFn(func(args jsArgs) any {
+		dv := g.drum
+		if dv == nil || !dv.IsFXPanelOpen() {
+			return nil
+		}
+		out := map[string]any{"add": nil}
+		if dv.fxAddEffectBtn != nil {
+			out["add"] = rectToJS(dv.fxAddEffectBtn.Rect())
+		}
+		picks := make([]any, 0, len(dv.fxAddRowBtn))
+		for i, b := range dv.fxAddRowBtn {
+			if b == nil || i >= len(dv.fxAddRowEffect) {
+				continue
+			}
+			r := b.Rect()
+			picks = append(picks, map[string]any{"effect": string(dv.fxAddRowEffect[i]), "x": r.Min.X, "y": r.Min.Y, "w": r.Dx(), "h": r.Dy()})
+		}
+		out["picks"] = picks
+		sliders := make([]any, 0, len(dv.fxPanelSliders))
+		for i, sl := range dv.fxPanelSliders {
+			if sl == nil || i >= len(dv.fxSliderBindings) {
+				continue
+			}
+			b := dv.fxSliderBindings[i]
+			r := sl.Rect()
+			sliders = append(sliders, map[string]any{"slot": b.slotIndex, "param": b.paramName, "x": r.Min.X, "y": r.Min.Y, "w": r.Dx(), "h": r.Dy()})
+		}
+		out["sliders"] = sliders
+		return out
+	}))
+
+	// rowFXBtnRect(row) -> {x,y,w,h} or null
+	js.Global().Set("rowFXBtnRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
+			return nil
+		}
+		row := args.Int(0)
+		btns := g.drum.rowFXBtns()
+		if row < 0 || row >= len(btns) || btns[row] == nil {
+			return nil
+		}
+		return rectToJS(btns[row].Rect())
+	}))
+
+	// openFXPanelJS(row) — programmatically open FX panel
+	js.Global().Set("openFXPanelJS", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
+			return nil
+		}
+		row := args.Int(0)
+		if row < 0 || row >= len(g.drum.Rows) {
+			return nil
+		}
+		g.drum.toggleFXPanel(row)
+		return nil
+	}))
+
+	// portalTopID() -> string
+	js.Global().Set("portalTopID", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.tree == nil {
+			return js.ValueOf("")
+		}
+		return js.ValueOf(g.drum.portal().TopID())
+	}))
+
+	// portalStackLen() -> int
+	js.Global().Set("portalStackLen", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.tree == nil {
+			return js.ValueOf(0)
+		}
+		return js.ValueOf(g.drum.portal().StackLen())
+	}))
+
+	// ─────────────────────────────────────────────────────────────────────────
+	// Mobile / soft keyboard exports for testing
+	// ─────────────────────────────────────────────────────────────────────────
+
+	// kbProxyFocused() -> bool
+	js.Global().Set("kbProxyFocused", jsFn(func(args jsArgs) any {
+		return js.ValueOf(softKeyboardActive())
+	}))
+
+	// kbProxyInputMode() -> string
+	js.Global().Set("kbProxyInputMode", jsFn(func(args jsArgs) any {
+		doc := js.Global().Get("document")
+		el := doc.Call("getElementById", "beatmo-kb-proxy")
+		if !el.Truthy() {
+			return js.ValueOf("")
+		}
+		return js.ValueOf(el.Call("getAttribute", "inputmode").String())
+	}))
+
+	// longPressDeleteRect() -> {x,y,w,h} or null if popup not open
+	js.Global().Set("longPressDeleteRect", jsFn(func(args jsArgs) any {
+		if !g.longPressPopup {
+			return nil
+		}
+		return rectToJS(g.longPressPopupDel)
+	}))
+
+	// longPressMoveRect() / longPressCopyRect() -> {x,y,w,h} or null
+	js.Global().Set("longPressMoveRect", jsFn(func(args jsArgs) any {
+		if !g.longPressPopup {
+			return nil
+		}
+		return rectToJS(g.longPressPopupMove)
+	}))
+	js.Global().Set("longPressCopyRect", jsFn(func(args jsArgs) any {
+		if !g.longPressPopup {
+			return nil
+		}
+		return rectToJS(g.longPressPopupCopy)
+	}))
+
+	// gridModeState() -> {mode:"none|move|copy|connect", subjectId:int}
+	js.Global().Set("gridModeState", jsFn(func(args jsArgs) any {
+		obj := js.Global().Get("Object").New()
+		obj.Set("mode", g.modes.Active().String())
+		if n := g.modes.Subject(); n != nil {
+			obj.Set("subjectId", int(n.ID))
+		} else {
+			obj.Set("subjectId", -1)
+		}
+		return obj
+	}))
+
+	// totalVisibleRows() -> int
+	js.Global().Set("totalVisibleRows", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return js.ValueOf(0)
+		}
+		return js.ValueOf(g.drum.visibleRows())
+	}))
+
+	// ─────────────────────────────────────────────────────────────────────────
+	// Debug exports for grid input bug testing (fastPath issue)
+	// ─────────────────────────────────────────────────────────────────────────
+
+	// getFastPath() -> bool - returns current fastPath status
+	js.Global().Set("getFastPath", jsFn(func(args jsArgs) any {
+		return js.ValueOf(g.perfMode.FastPathEnabled())
+	}))
+
+	// setFastPath(enabled) - toggle fastPath for testing
+	js.Global().Set("setFastPath", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
+			return nil
+		}
+		enabled := args.Bool(0)
+		g.perfMode.SetFastPath(enabled)
+		return nil
+	}))
+
+	// getLeftPrev() -> bool - returns g.leftPrev state
+	js.Global().Set("getLeftPrev", jsFn(func(args jsArgs) any {
+		return js.ValueOf(g.leftPrev)
+	}))
+
+	// getPendingClick() -> bool - returns g.pendingClick state
+	js.Global().Set("getPendingClick", jsFn(func(args jsArgs) any {
+		return js.ValueOf(g.pendingClick)
+	}))
+
+	// getClickNode() -> int - returns g.clickNode ID (-1 if nil)
+	js.Global().Set("getClickNode", jsFn(func(args jsArgs) any {
+		if g.clickNode == nil {
+			return js.ValueOf(-1)
+		}
+		return js.ValueOf(int(g.clickNode.ID))
+	}))
+
+	// debugGridInputState() -> object with all input state fields
+	js.Global().Set("debugGridInputState", jsFn(func(args jsArgs) any {
+		obj := js.Global().Get("Object").New()
+		obj.Set("fastPath", g.perfMode.FastPathEnabled())
+		obj.Set("leftPrev", g.leftPrev)
+		obj.Set("pendingClick", g.pendingClick)
+		if g.clickNode != nil {
+			obj.Set("clickNodeId", int(g.clickNode.ID))
+		} else {
+			obj.Set("clickNodeId", -1)
+		}
+		obj.Set("clickI", g.clickI)
+		obj.Set("clickJ", g.clickJ)
+		obj.Set("nodeMenuOpen", g.sidebar.IsOpen())
+		if g.sidebar.Node() != nil {
+			obj.Set("nodeMenuNodeId", int(g.sidebar.Node().ID))
+		} else {
+			obj.Set("nodeMenuNodeId", -1)
+		}
+		if g.sel != nil {
+			obj.Set("selectedNodeId", int(g.sel.ID))
+		} else {
+			obj.Set("selectedNodeId", -1)
+		}
+		obj.Set("camDragging", g.camDragging)
+		obj.Set("camDragged", g.camDragged)
+		// Dispatcher capture diagnostic
+		obj.Set("dispatcherHasCapture", g.inputDispatcher.capture != nil)
+		if g.drum != nil {
+			obj.Set("drumCapturing", g.drum.Capturing())
+			obj.Set("drumMouseDownInBounds", g.drum.mouseDownInBounds)
+			obj.Set("drumAnyDragActive", g.drum.anyDragActive())
+			obj.Set("drumAnyDropdownOpen", g.drum.anyDropdownOpen())
+		}
+		obj.Set("splitDragging", g.split.dragging)
+		obj.Set("connectMode", g.modes.Is(GridModeConnect))
+		obj.Set("moveMode", g.modes.Is(GridModeMove))
+		obj.Set("copyMode", g.modes.Is(GridModeCopy))
+		obj.Set("longPressPopup", g.longPressPopup)
+		obj.Set("suppressClicks", suppressClicksUntilRelease)
+		return obj
+	}))
+
+	// mobileInputActive(id) -> bool — check if a mobile native input is active
+	js.Global().Set("mobileInputActive", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
+			return js.ValueOf(false)
+		}
+		return js.ValueOf(mobileInputActive(args.Str(0)))
+	}))
+
+	// mobileInputAnyActive() -> bool
+	js.Global().Set("mobileInputAnyActive", jsFn(func(args jsArgs) any {
+		return js.ValueOf(mobileInputAnyActive())
+	}))
+}

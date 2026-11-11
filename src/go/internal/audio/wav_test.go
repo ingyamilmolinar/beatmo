@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
 )
 
 func writeTestWAV(path string) error {
@@ -68,6 +70,7 @@ func writeTestWAV(path string) error {
 }
 
 func TestRegisterWAVPlaysSample(t *testing.T) {
+	withDefaultAudio(t)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.wav")
 	if err := writeTestWAV(path); err != nil {
@@ -82,8 +85,14 @@ func TestRegisterWAVPlaysSample(t *testing.T) {
 	if !ok {
 		t.Fatalf("instrument not registered")
 	}
-	m := &mixer{}
-	m.Schedule(inst.NewVoice(120, sampleRate), 0)
+	m := &mixer{
+		workBuf:   make([]float64, blockSize),
+		voiceTemp: make([]float64, blockSize),
+		masterBuf: make([]float64, blockSize),
+		postEQBuf: make([]float64, blockSize),
+		instSlots: make(map[channel.ID]int),
+	}
+	m.Schedule(channel.Of("testwav"), inst.NewVoice(sampleRate), 0, -1, -1)
 	buf := make([]byte, sampleRate/100*2)
 	m.Read(buf)
 	nonZero := false

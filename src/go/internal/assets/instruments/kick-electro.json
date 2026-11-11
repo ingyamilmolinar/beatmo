@@ -1,0 +1,99 @@
+{
+  "schema_version": "0.0.1",
+  "id": "kick-electro",
+  "name": "Electro Kick",
+  "category": "modular",
+  "notes": "electroKickSeed: a HARD ELECTRONIC / EDM kick (the deliberately-synthetic\ncounterpart to the organic dnb-kick). Punchy variant, a strong beater click +\nsharp attack transient, real harmonics for edge, a fast tight pitch snap, and\ndrive — everything the organic kick avoids.\n2026-10-02 FULLNESS RETUNE (user A/B at equal peak, approved): louder under the\nfixed peak, more punch and body, same variant, pitch and >250 Hz timbre. Changed:\nfade 14→8, h2 0.45→0.09, click 0.22→0.06, env0 9→6, attack 0.5→0, pe_amt\n0.25→0.4, env1 16→10\n(dropped) gen1_kick_h3: harmonic edge\n(dropped) gen1_kick_noise: a click, not a clipping spike",
+  "render": {
+    "seconds": 0.4,
+    "amplitude": 1,
+    "gate_tail": 0,
+    "melodic": false
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "amp_attack": 0.005,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.2,
+        "amp_sustain": 0.6
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 58
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "filter_cutoff": 8000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "kick.punchy",
+      "v": 1,
+      "on": true,
+      "values": {
+        "freq": 1,
+        "freq_mode": 0,
+        "kick_attack": 0,
+        "kick_click": 0.06,
+        "kick_env0": 6,
+        "kick_env1": 10,
+        "kick_fade": 8,
+        "kick_h2": 0.09,
+        "kick_pe_amt": 0.4,
+        "kick_pe_rate": 60,
+        "kick_sat": 0.45,
+        "wave": 0
+      },
+      "notes": "gen1_kick_click: a click, not a clipping spike\ngen1_kick_env0: fast, tight\ngen1_kick_env1: fast, tight\ngen1_kick_fade: attack/sat kept MODERATE: 1.6/1.0 pushed the onset past ±1 into the C hard\nclamp → distorted/crackly. These keep the raw render under full-scale.\ngen1_kick_h2: harmonic edge\ngen1_kick_pe_amt: tight fast \"thwack\"\ngen1_kick_pe_rate: tight fast \"thwack\"\ngen1_kick_variant: punchy"
+    }
+  ]
+}

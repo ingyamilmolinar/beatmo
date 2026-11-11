@@ -1,0 +1,92 @@
+{
+  "schema_version": "0.0.1",
+  "id": "bass-acid",
+  "name": "Acid Bass",
+  "category": "modular",
+  "notes": "bassAcidSeed: TB-303-style acid bass — saw OSC at -1 octave through a low,\nHIGH-resonance low-pass filter that a fast-decaying filter ENVELOPE sweeps up\nthen squelches back down. Light drive adds the 303 grit; plucked amp envelope\n(low sustain) keeps each note articulated.",
+  "render": {
+    "seconds": 0.75,
+    "amplitude": 0.4571,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.003,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.1,
+        "amp_sustain": 0.4
+      },
+      "notes": "amp_attack: plucked amp envelope."
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": -1,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      },
+      "notes": "osc_octave: bass register"
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0.4
+      },
+      "notes": "drive_enabled: light grit."
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 350,
+        "filter_resonance": 6,
+        "filter_type": 0
+      },
+      "notes": "filter_resonance: squelchy resonant peak\nfilter_type: low-pass"
+    },
+    "filter_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filtenv_amt": 3,
+        "filtenv_attack": 0,
+        "filtenv_decay": 0.25
+      },
+      "notes": "filtenv_amt: wide sweep (octaves)\nfiltenv_enabled: the 303 squelch: a filter envelope that opens the cutoff up then decays."
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": true,
+    "values": {
+      "osc_type": 1
+    },
+    "notes": "osc_type: saw — the acid buzz"
+  }
+}

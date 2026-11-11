@@ -1,0 +1,88 @@
+package ui
+
+import (
+	"encoding/json"
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
+)
+
+func TestImportScalesSubdivisionsAndKeepsOrthogonality(t *testing.T) {
+	assertDefaultParityState(t)
+	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(640, 480)
+	// Make current grid use 16 subdivisions per beat instead of default 32.
+	g.grid.SetSubs([]Subdivision{{Div: 1}, {Div: 2}, {Div: 4}, {Div: 8}, {Div: 16}})
+
+	// Build an export-like JSON with subdiv=32 and a 1x1 beat rectangle.
+	type node struct {
+		ID      int    `json:"id"`
+		I       int    `json:"i"`
+		J       int    `json:"j"`
+		Type    string `json:"type"`
+		Inputs  []int  `json:"inputs"`
+		Outputs []int  `json:"outputs"`
+	}
+	type inst struct {
+		Name   string        `json:"name"`
+		ID     instrument.ID `json:"id"`
+		Kind   string        `json:"kind"`
+		Volume float64       `json:"volume"`
+		Origin int           `json:"origin"`
+		Color  string        `json:"color"`
+	}
+	type file struct {
+		SchemaVersion string `json:"schema_version"`
+		Subdiv        int    `json:"subdiv"`
+		BPM           int    `json:"bpm"`
+		Instruments   []inst `json:"instruments"`
+		Nodes         []node `json:"nodes"`
+	}
+	f := file{
+		SchemaVersion: schema.Version,
+		Subdiv:        32,
+		BPM:           110,
+		Instruments:   []inst{{Name: "Kick", ID: roster.Kick, Kind: "builtin", Volume: 1, Origin: 1, Color: "#FFFFFFFF"}},
+		Nodes: []node{
+			{ID: 1, I: 0, J: 32, Type: "regular", Inputs: []int{4}, Outputs: []int{2}},
+			{ID: 2, I: 32, J: 32, Type: "regular", Inputs: []int{1}, Outputs: []int{3}},
+			{ID: 3, I: 32, J: 64, Type: "regular", Inputs: []int{2}, Outputs: []int{4}},
+			{ID: 4, I: 0, J: 64, Type: "regular", Inputs: []int{3}, Outputs: []int{1}},
+		},
+	}
+	data, _ := json.Marshal(f)
+	if err := g.Import(data); err != nil {
+		t.Fatalf("import failed: %v", err)
+	}
+
+	// With import applying the JSON's subdiv, the grid now uses 32 and node
+	// coordinates match the file exactly.
+	if g.grid.MaxDiv() != 32 {
+		t.Fatalf("import should set grid subdiv to 32; got %d", g.grid.MaxDiv())
+	}
+	pts := [][2]int{{0, 32}, {32, 32}, {32, 64}, {0, 64}}
+	for _, p := range pts {
+		if n := g.nodeAt(p[0], p[1]); n == nil {
+			t.Fatalf("expected node at (%d,%d)", p[0], p[1])
+		}
+	}
+	// Orthogonality: check the first two nodes share same J (horizontal), next share same I (vertical).
+	a := g.nodeAt(0, 32)
+	b := g.nodeAt(32, 32)
+	c := g.nodeAt(32, 64)
+	if a == nil || b == nil || c == nil {
+		t.Fatalf("missing nodes after import")
+	}
+	if a.J != b.J {
+		t.Fatalf("not horizontal: a.J=%d b.J=%d", a.J, b.J)
+	}
+	if b.I != c.I {
+		t.Fatalf("not vertical: b.I=%d c.I=%d", b.I, c.I)
+	}
+	if g.drum.BPM() != 110 {
+		t.Fatalf("bpm not imported: %d", g.drum.BPM())
+	}
+}

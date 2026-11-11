@@ -1,6 +1,62 @@
 src/js/main.wasm
 src/js/node_modules/
 src/js/playtest.wasm
-src/js/drums.js
+src/js/play_ui.wasm
 src/js/drums.wasm
 build/
+.tools
+src/js/testdata/golden/*.png
+!src/js/testdata/golden/.gitkeep
+src/js/recordings/*/
+!src/js/recordings/.gitkeep
+coverage/
+.superpowers/
+src/go/recordings
+src/go/internal/ui/recordings
+screenshots/
+!screenshots/.gitkeep
+src/go/bench-results
+
+# Audio: NO audio file is ever committed or shipped -- never force-add one.
+# Reference recordings are local dev tooling and live in $BEATMO_WAV_REFS
+# (default ~/.beatmo/wav-refs, see internal/wavref); test audio that must exist
+# everywhere is GENERATED (cmd/wavgen / internal/wavgen). Patterns are
+# case-insensitive because sample libraries ship .WAV / .Wav / .MP3.
+# Enforced by TestNoAudioFilesInRepository (internal/deploy) and the
+# pre-commit hook scripts/precommit/no-audio-files.sh (`make install-hooks`).
+*.[wW][aA][vV]
+*.[wW][aA][vV][eE]
+*.[mM][pP]3
+*.[aA][iI][fF]
+*.[aA][iI][fF][fF]
+*.[aA][iI][fF][cC]
+*.[fF][lL][aA][cC]
+*.[oO][gG][gG]
+*.[oO][gG][aA]
+*.[oO][pP][uU][sS]
+*.[mM]4[aA]
+*.[aA][aA][cC]
+*.[wW][mM][aA]
+*.[cC][aA][fF]
+# Sample-library sidecars (Ableton analysis files, Finder metadata).
+*.asd
+.DS_Store
+# The local desktop sample library (scanned by audio.AssetsRoot). Never versioned.
+/assets/
+
+# gograph tool binary (go build output inside scripts/gograph)
+/scripts/gograph/gograph
+scope_export.jsonl
+__pycache__/
+# go build / go test -c outputs dropped in src/go by hand
+/src/go/clone
+/src/go/export_audio
+/src/go/gen-chain-spec
+/src/go/gen-showcase
+/src/go/gen_design_tokens
+/src/go/measure-loudness
+/src/go/refs
+/src/go/synth-analyze
+/src/go/synth-match
+/src/go/*.test
+src/go/internal/audio/clib_hash.gen.go

@@ -1,0 +1,50 @@
+[
+  {
+    "inst": "oboe",
+    "why": "ab-tuned 11-07 y: \"needs a bit more nasal\". The recording concentrates on H3 (H5 a -31 dB hole, H6+ near -21 dB); ours carried H5/H6 at -14/-11 dB, intermodulation of a partial sum past the output limit. Round 2 halves the partial gains (less clipping) and trims H2/H6: H1-H6 within 3 dB of the recording"
+  },
+  {
+    "inst": "flute",
+    "why": "ab-tuned 11-07 y: \"sounds like a clarinet or oboe, is the reference a flute?\". It is: Iowa MIS Flute.nonvib.ff.A4, a FORTE non-vibrato note, H2 > H1. Ours had a tenth of its breath (noise 0.003 vs 0.018); round 2 gives a held breath at the recording's level and a little more fundamental"
+  },
+  {
+    "inst": "clarinet",
+    "why": "ab-tuned 11-07 p: \"too airy and breathy, if we clean it up it could be better than the current version\". T's breath was 2.5x the recording's (noise 0.157 vs 0.063). The Iowa ff A4 also carries every EVEN harmonic (H2 -10, H4 -12, H6 -24 dB) where ours had only odd ones: round 2 = T with the breath at the recording's level and H2/H4/H6 added"
+  },
+  {
+    "inst": "trombone",
+    "why": "ab-tuned 11-07 y: \"a bit shinier and brighter, more trumpet like\". Its upper harmonics are intermodulation of five loud partials past the limiter, so a partial added there cancels; round 2 brightens through drive (brass wave-steepening), a 4 kHz cutoff, Crisp and a filter-envelope bloom on the attack"
+  },
+  {
+    "inst": "tuba",
+    "why": "ab-tuned 11-07 y: \"remove audible waviness that the reference does not have\". Two unison voices detuned 5 c beat every harmonic at n x 0.32 Hz (4-7 dB wobble on H1-H3 vs 2 dB in the recording); round 2 plays one voice"
+  },
+  {
+    "inst": "cello",
+    "why": "ab-tuned 11-07 y: \"vibrating too mechanically instead of having that deep reverberation of the bowing act\". The 4 Hz LFO vibrato is the only periodic motion (the recording has none: a 1.6 Hz drift); round 2 drops it, lowers bow dynamics, opens the body and the cutoff, and softens the bow-noise burst"
+  },
+  {
+    "inst": "violin",
+    "why": "ab-tuned 11-07 y: \"more string-like sound, brighter, crispier and less wavy (the sound waves in volume or intensity)\". Bow dynamics 0.25 swung the level; round 2 lowers it to 0.08, moves the vibrato to 5 Hz, opens the cutoff to 4.8 kHz with Crisp and a brighter bow-noise band (brightness ratio 3.6 -> 4.9, the recording 4.8)"
+  },
+  {
+    "inst": "rimshot",
+    "why": "ab-tuned 11-07 y: \"overall ball park but needs more punch and crack and less air\". Noisier than the recording (0.83 vs 0.72); round 2 rings the body longer (tone decay 76 -> 45), raises the wire bands (tune 0.41 -> 0.6) and their attack boost, less low noise, more drive: 2-6 kHz crack +2.6 dB, 30-80 ms body +4 dB, noise share 0.72"
+  },
+  {
+    "inst": "snare",
+    "why": "ab-tuned 11-07 n: \"the current needs a lot of improvement also but T sounds like a airy breathy high tom, not at all like the snare reference\". snare-fat's document already ranks #1 on snare-freesound-alt (raw 0.461 vs the shipped snare 0.586), so the search starts from snare-fat. Round 1 averaged in snare-vcsl, a VCSL HitNS take: the snares OFF (472 Hz, noise 0.15 against this recording's 1278 Hz, 0.64), a tom-like head; it pulled the voice toward exactly the \"high tom\" heard, so it is skipped",
+    "from": "snare-fat",
+    "skip": [
+      "snare-vcsl"
+    ]
+  },
+  {
+    "inst": "guitar-nylon",
+    "why": "ab-tuned 11-07 y: \"the string pluck sound needs to be stronger\". The tune had softened the pluck (ks_pluck 0.09 -> 0.018, cutoff 3.6 -> 1.8 kHz) and the recording has 3x our onset noise; round 2 adds a filter-envelope bloom on the attack and a short finger-noise burst, the sustain untouched"
+  },
+  {
+    "inst": "harp",
+    "why": "ab-tuned 11-07 y: \"needs longer ring and more metallic feel but overall sounds good (although nylon-y)\". Ours fell 11 dB below the recording by 1 s; round 2 rings longer (ks_sustain 0.9985, amp_decay 8), plucks brighter (ks_pluck 0.6, cutoff 6 kHz) through the steel-guitar body. Its partials stay fundamental-heavy (tristimulus 0.96 vs 0.30): metallic needs plucked-string engine work (spec D6)"
+  }
+]

@@ -1,0 +1,116 @@
+{
+  "schema_version": "0.0.1",
+  "id": "cowbell-lofi",
+  "name": "Lo-Fi Cowbell",
+  "category": "modular",
+  "render": {
+    "seconds": 0.2,
+    "amplitude": 0.5813,
+    "gate_tail": 0,
+    "melodic": false
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "amp_attack": 0.005,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.2,
+        "amp_sustain": 0.6
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "filter_cutoff": 8000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 0,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 12,
+        "post_drive": 0,
+        "post_pitch": 0
+      },
+      "notes": "out_clamp: no output limit (these voices never had one)"
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "cym.cowbell",
+      "v": 1,
+      "on": true,
+      "values": {
+        "cym_env_fast": 260,
+        "cym_env_tail": 9,
+        "cym_noise_d": 60,
+        "cym_noise_m": 0.55,
+        "cym_tone_m": 1,
+        "cym_tune": 1,
+        "wave": 0
+      }
+    }
+  ],
+  "fx": [
+    {
+      "type": "fx.bitcrusher",
+      "v": 1,
+      "on": true,
+      "values": {
+        "bits": 4,
+        "mix": 1,
+        "rate": 1
+      }
+    },
+    {
+      "type": "fx.filter",
+      "v": 1,
+      "on": true,
+      "values": {
+        "cutoff": 2500,
+        "mix": 1,
+        "mode": 0,
+        "q": 0.707
+      }
+    }
+  ]
+}

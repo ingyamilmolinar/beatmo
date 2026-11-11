@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 var testLogger *game_log.Logger
@@ -25,6 +25,7 @@ func TestCalculateBeatRow_SimplePath(t *testing.T) {
 
 	initialPath := []BeatInfo{
 		{NodeID: n0, NodeType: NodeTypeRegular, I: 0, J: 0},
+		{NodeID: InvalidNodeID, NodeType: NodeTypeInvisible, I: 0, J: 1},
 		{NodeID: n1, NodeType: NodeTypeRegular, I: 0, J: 2},
 	}
 
@@ -95,6 +96,22 @@ func TestCalculateBeatRow_Disconnected(t *testing.T) {
 	}
 }
 
+func TestCalculateBeatRow_NoStartReturnsInvisible(t *testing.T) {
+	g := NewGraph(testLogger)
+	beatInfos, isLoop, loopStart := g.CalculateBeatRow()
+	if isLoop || loopStart != -1 {
+		t.Fatalf("expected no loop; isLoop=%v loopStart=%d", isLoop, loopStart)
+	}
+	if len(beatInfos) != g.BeatLength() {
+		t.Fatalf("unexpected beat row length: %d", len(beatInfos))
+	}
+	for i, bi := range beatInfos {
+		if bi.NodeID != InvalidNodeID || bi.NodeType != NodeTypeInvisible || bi.I != -1 || bi.J != -1 {
+			t.Fatalf("expected invisible entry at %d, got %+v", i, bi)
+		}
+	}
+}
+
 func TestIsLoop(t *testing.T) {
 	g := NewGraph(testLogger)
 	n0 := g.AddNode(0, 0, NodeTypeRegular)
@@ -112,6 +129,54 @@ func TestIsLoop(t *testing.T) {
 
 	if !g.IsLoop() {
 		t.Fatal("Expected IsLoop to be true for a looping graph")
+	}
+}
+
+func TestCalculateBeatRowFromDoesNotMutateStart(t *testing.T) {
+	g := NewGraph(testLogger)
+	n0 := g.AddNode(0, 0, NodeTypeRegular)
+	n1 := g.AddNode(0, 1, NodeTypeRegular)
+	g.StartNodeID = n0
+	g.Edges[[2]NodeID{n1, n0}] = struct{}{}
+
+	row, _, _ := g.CalculateBeatRowFrom(n1)
+	if g.StartNodeID != n0 {
+		t.Fatalf("expected StartNodeID preserved, got %d", g.StartNodeID)
+	}
+	if len(row) == 0 || row[0].NodeID != n1 {
+		t.Fatalf("expected row to start at node %d, got %+v", n1, row)
+	}
+}
+
+func TestCalculateBeatRowUnboundedNoPadding(t *testing.T) {
+	g := NewGraph(testLogger)
+	n0 := g.AddNode(0, 0, NodeTypeRegular)
+	n1 := g.AddNode(0, 1, NodeTypeRegular)
+	g.StartNodeID = n0
+	g.Edges[[2]NodeID{n0, n1}] = struct{}{}
+	g.SetBeatLength(16)
+
+	row, _, _ := g.CalculateBeatRowUnbounded()
+	if len(row) != 2 {
+		t.Fatalf("expected unbounded length 2, got %d", len(row))
+	}
+}
+
+func TestIntermediateRegularNodesAreInvisible(t *testing.T) {
+	g := NewGraph(testLogger)
+	n0 := g.AddNode(0, 0, NodeTypeRegular)
+	nMid := g.AddNode(0, 1, NodeTypeRegular)
+	n1 := g.AddNode(0, 2, NodeTypeRegular)
+	g.StartNodeID = n0
+	g.Edges[[2]NodeID{n0, n1}] = struct{}{}
+
+	beatInfos, _, _ := g.CalculateBeatRow()
+	if len(beatInfos) < 3 {
+		t.Fatalf("unexpected beat row length: %d", len(beatInfos))
+	}
+	mid := beatInfos[1]
+	if mid.NodeID != InvalidNodeID || mid.NodeType != NodeTypeInvisible || mid.I != 0 || mid.J != 1 {
+		t.Fatalf("expected intermediate regular node to be invisible placeholder, got %+v (node=%d)", mid, nMid)
 	}
 }
 
@@ -152,5 +217,169 @@ func TestCalculateBeatRow_ComplexLoopWithInvisibleNodes(t *testing.T) {
 
 	if !reflect.DeepEqual(beatInfos, expected) {
 		t.Fatalf("Expected beatInfos %v, got %v", expected, beatInfos)
+	}
+}
+
+func TestAddNodeDefaultsAndRemoveClearsEdges(t *testing.T) {
+	g := NewGraph(testLogger)
+	n0 := g.AddNode(0, 0, NodeTypeRegular)
+	n1 := g.AddNode(0, 1, NodeTypeRegular)
+	g.Edges[[2]NodeID{n0, n1}] = struct{}{}
+	node, ok := g.GetNodeByID(n0)
+	if !ok {
+		t.Fatalf("expected node present")
+	}
+	if node.Params.Volume != 1 || node.Params.Duration != 1 {
+		t.Fatalf("expected default params volume/duration=1, got %+v", node.Params)
+	}
+	g.RemoveNode(n0)
+	if _, ok := g.Edges[[2]NodeID{n0, n1}]; ok {
+		t.Fatalf("expected edge removed after node deletion")
+	}
+}
+
+func TestSetNodeParamsAppliesLogic(t *testing.T) {
+	g := NewGraph(testLogger)
+	n0 := g.AddNode(0, 0, NodeTypeRegular)
+	n1 := g.AddNode(1, 0, NodeTypeRegular)
+
+	// skip_every_n with explicit N is applied as-is.
+	g.SetNodeParams(n0, NodeParams{LogicKind: LogicSkipEveryN, LogicN: 3})
+	n, _ := g.GetNodeByID(n0)
+	if n.Params.LogicKind != LogicSkipEveryN {
+		t.Fatalf("expected skip_every_n, got %q", n.Params.LogicKind)
+	}
+	if n.Params.LogicN != 3 {
+		t.Fatalf("expected logic N=3, got %d", n.Params.LogicN)
+	}
+
+	g.SetNodeParams(n1, NodeParams{LogicKind: LogicIfPrevTriggered})
+	n, _ = g.GetNodeByID(n1)
+	if n.Params.LogicKind != LogicIfPrevTriggered || n.Params.LogicN != 0 {
+		t.Fatalf("logic = %v N=%d", n.Params.LogicKind, n.Params.LogicN)
+	}
+}
+
+func TestNodeChangedHookFiresOnMutations(t *testing.T) {
+	g := NewGraph(testLogger)
+	var hits []NodeID
+	g.SetNodeChangedHook(func(id NodeID) { hits = append(hits, id) })
+	n0 := g.AddNode(0, 0, NodeTypeRegular)
+	g.SetNodeParams(n0, NodeParams{Volume: 0.5})
+	g.SetNodeLogic(n0, func(NodeContext) NodeDecision { return NodeDecision{} })
+	g.RemoveNode(n0)
+
+	if len(hits) < 4 {
+		t.Fatalf("expected hook on add/params/logic/remove, got %v", hits)
+	}
+	if hits[0] != n0 {
+		t.Fatalf("expected hook to receive node id %d, got %v", n0, hits)
+	}
+}
+
+func TestMoveNode(t *testing.T) {
+	g := NewGraph(testLogger)
+	n0 := g.AddNode(0, 0, NodeTypeRegular)
+	n1 := g.AddNode(4, 0, NodeTypeRegular)
+
+	// Set some params to verify they're preserved
+	g.SetNodeParams(n0, NodeParams{Volume: 0.7, Pitch: 0.3, Duration: 0.5})
+
+	// Move node to new position
+	ok := g.MoveNode(n0, 3, 5)
+	if !ok {
+		t.Fatal("MoveNode returned false for valid node")
+	}
+
+	// Verify position changed
+	moved, exists := g.GetNodeByID(n0)
+	if !exists {
+		t.Fatal("node not found after move")
+	}
+	if moved.I != 3 || moved.J != 5 {
+		t.Fatalf("expected (3,5), got (%d,%d)", moved.I, moved.J)
+	}
+
+	// Verify params preserved
+	if moved.Params.Volume != 0.7 || moved.Params.Pitch != 0.3 || moved.Params.Duration != 0.5 {
+		t.Fatalf("params not preserved: %+v", moved.Params)
+	}
+
+	// Verify other node unaffected
+	other, exists := g.GetNodeByID(n1)
+	if !exists {
+		t.Fatal("other node missing")
+	}
+	if other.I != 4 || other.J != 0 {
+		t.Fatalf("other node moved: (%d,%d)", other.I, other.J)
+	}
+
+	// Move nonexistent node should return false
+	if g.MoveNode(999, 1, 1) {
+		t.Fatal("MoveNode should return false for nonexistent node")
+	}
+}
+
+func TestSetNodeParamsCopiesOverrides(t *testing.T) {
+	g := NewGraph(testLogger)
+	n0 := g.AddNode(0, 0, NodeTypeRegular)
+
+	overrides := []EffectOverride{
+		{Type: "distortion", Param: "drive", Value: 0.8},
+		{Type: "delay", Param: "time", Value: 0.5},
+	}
+	p := NodeParams{
+		Volume:          0.7,
+		Pitch:           2,
+		Duration:        1.5,
+		EffectOverrides: overrides,
+	}
+	g.SetNodeParams(n0, p)
+
+	n, ok := g.GetNodeByID(n0)
+	if !ok {
+		t.Fatal("node not found")
+	}
+	if len(n.Params.EffectOverrides) != 2 {
+		t.Fatalf("EffectOverrides: got %d want 2", len(n.Params.EffectOverrides))
+	}
+	if n.Params.EffectOverrides[0].Type != "distortion" || n.Params.EffectOverrides[0].Value != 0.8 {
+		t.Errorf("EffectOverrides[0]: %+v", n.Params.EffectOverrides[0])
+	}
+	if n.Params.EffectOverrides[1].Type != "delay" || n.Params.EffectOverrides[1].Value != 0.5 {
+		t.Errorf("EffectOverrides[1]: %+v", n.Params.EffectOverrides[1])
+	}
+}
+
+func TestCalculateBeatRow_SelfLoopDoesNotHang(t *testing.T) {
+	g := NewGraph(testLogger)
+	n0 := g.AddNode(0, 0, NodeTypeRegular)
+	g.StartNodeID = n0
+	g.Edges[[2]NodeID{n0, n0}] = struct{}{}
+
+	g.SetBeatLength(8)
+
+	beatInfos, isLoop, loopStart := g.CalculateBeatRow()
+	if !isLoop || loopStart != 0 {
+		t.Fatalf("expected self-loop detected; isLoop=%v loopStart=%d", isLoop, loopStart)
+	}
+	if len(beatInfos) != g.BeatLength() {
+		t.Fatalf("unexpected beat row length: got=%d want=%d", len(beatInfos), g.BeatLength())
+	}
+	for i := 0; i < g.BeatLength(); i++ {
+		if beatInfos[i].NodeID != n0 || beatInfos[i].NodeType != NodeTypeRegular || beatInfos[i].I != 0 || beatInfos[i].J != 0 {
+			t.Fatalf("unexpected beat info at %d: %+v", i, beatInfos[i])
+		}
+	}
+
+	raw, rawLoop, rawStart := g.CalculateBeatRowUnbounded()
+	if !rawLoop || rawStart != 0 {
+		t.Fatalf("expected self-loop detected in unbounded; loop=%v start=%d", rawLoop, rawStart)
+	}
+	if len(raw) != 1 {
+		t.Fatalf("unexpected unbounded length: got=%d want=1", len(raw))
+	}
+	if raw[0].NodeID != n0 || raw[0].NodeType != NodeTypeRegular || raw[0].I != 0 || raw[0].J != 0 {
+		t.Fatalf("unexpected unbounded beat info: %+v", raw[0])
 	}
 }

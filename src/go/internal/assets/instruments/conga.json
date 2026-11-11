@@ -1,0 +1,172 @@
+{
+  "schema_version": "0.0.1",
+  "id": "conga",
+  "name": "Conga",
+  "category": "modular",
+  "notes": "congaSeed: MODAL synthesis conga — tuned membrane modes + slap transient.\nNot just a brightened tom: three sine oscillators simulate the air-loaded\nmembrane modes (ratios ~1 : 1.5 : 2 as in real hand-drums after air-loading\nstretches inharmonic Bessel modes toward quasi-harmonic), each with its own\nfast per-slot decay via gen_env_fast_rate. A short noise burst (gen4) at\n~4kHz provides the finger-slap crack on attack. A downward pitch drop on\nattack (pitchenv_enabled) gives the characteristic \"thump-to-ring\" swoosh.\nOSC disabled — all tone comes from the gen bank.\nBase frequency: voice freq ≈ 220 Hz (A3) when node pitch = 0; quinto sits\na few semitones higher (node pitch +3 to +7), tumba lower (pitch -5 to -3).\nQUINTO MUTED SLAP — a sharp, BRIGHT, NOISY percussive crack (the slap) over a\nbrief muted membrane thump (no ring; the hand mutes the head). Tuned to a real\nquinto muted slap (mrrentapercussionist): very short (~50ms), almost all noise\n(~1.0), bright (centroid ~3874), membrane modes ~380-516Hz. The SLAP NOISE\nDOMINATES; the tonal membrane modes are a short under-thump.",
+  "render": {
+    "seconds": 0.25,
+    "amplitude": 1,
+    "gate_tail": 0,
+    "melodic": false
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.0008,
+        "amp_curve": 1,
+        "amp_decay": 0.05,
+        "amp_release": 0.03,
+        "amp_sustain": 0
+      },
+      "notes": "amp_decay: MUTED — dies in ~50ms (was 0.15 open-tone)"
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.95,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 4500,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      },
+      "notes": "filter_cutoff: OPEN — let the bright slap crack through"
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    },
+    "pitch_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "pitchenv_amt": 2,
+        "pitchenv_decay": 0.02
+      },
+      "notes": "pitchenv_enabled: attack pitch snap"
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 18,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 1,
+        "freq_mode": 0,
+        "gain": 0.75,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen1_source: membrane under-thump — brief, the quinto's inharmonic modes, SECONDARY to the slap"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 22,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 1.5,
+        "freq_mode": 0,
+        "gain": 0.45,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 26,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 2.3,
+        "freq_mode": 0,
+        "gain": 0.3,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.noise",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 70,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 2700,
+        "filt_q": 0.7,
+        "filt_type": 5,
+        "gain": 0.9,
+        "noise_offset": 0
+      },
+      "notes": "gen4_source: THE SLAP — broadband BRIGHT noise crack, DOMINANT, very fast decay"
+    }
+  ]
+}

@@ -1,0 +1,309 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/ingyamilmolinar/beatmo/scripts/gen_design_tokens/schema.json",
+  "title": "DESIGN.md YAML front matter",
+  "description": "JSON Schema for the YAML front matter of DESIGN.md. The generator (cmd/gen_design_tokens) validates against this schema BEFORE running the typed yaml.v3 unmarshal pass — KnownFields(true) catches unknown keys but not value-range, format, or missing-required-field errors. This schema closes those gaps. Bumping `version` to a new integer-string is the breaking-change escape hatch.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "name", "colors", "spacing", "rounded", "icon", "alpha", "components", "profileOverrides"],
+  "properties": {
+    "version": {
+      "description": "Schema version. Currently '1'. Bumping requires a generator update.",
+      "type": "string",
+      "enum": ["1"]
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "colors": {
+      "description": "Primitive color tokens. Values are #RRGGBB or #RRGGBBAA hex strings.",
+      "type": "object",
+      "minProperties": 1,
+      "patternProperties": {
+        "^[a-z][a-z0-9-]*$": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "typography": {
+      "description": "Reserved typography roles; values must be objects (size/weight/family etc.).",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object"
+      }
+    },
+    "spacing": {
+      "description": "Pixel spacing primitives. Values are positive-integer pixel sizes (e.g. '4px').",
+      "type": "object",
+      "minProperties": 1,
+      "patternProperties": {
+        "^[a-z][a-z0-9-]*$": {
+          "type": "string",
+          "pattern": "^[0-9]+px$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "rounded": {
+      "description": "Corner radius primitives. Values are positive-integer pixel sizes (e.g. '8px').",
+      "type": "object",
+      "minProperties": 1,
+      "patternProperties": {
+        "^[a-z][a-z0-9-]*$": {
+          "type": "string",
+          "pattern": "^[0-9]+px$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "icon": {
+      "description": "Icon-system primitives in 24-unit logical grid. `grid`, `padding`, `radius` are integer logical units; `stroke` is a fractional logical-unit stroke weight (e.g. 1.75 for Lucide-style).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["grid", "padding", "radius", "stroke"],
+      "properties": {
+        "grid":    { "type": "integer", "minimum": 8,  "maximum": 64 },
+        "padding": { "type": "integer", "minimum": 0,  "maximum": 8  },
+        "radius":  { "type": "integer", "minimum": 0,  "maximum": 8  },
+        "stroke":  { "type": "number",  "minimum": 0.5, "maximum": 5.0 }
+      }
+    },
+    "alpha": {
+      "description": "Named alpha buckets. Values are uint8 (0-255).",
+      "type": "object",
+      "minProperties": 1,
+      "patternProperties": {
+        "^[a-z][a-z0-9-]*$": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        }
+      },
+      "additionalProperties": false
+    },
+    "components": {
+      "description": "Component specs. Each entry follows the extended Stitch component schema (with our additions: category, border, iconColor, topEdgeHighlight, interaction, dynamic, animation).",
+      "type": "object",
+      "minProperties": 1,
+      "patternProperties": {
+        "^[a-z][a-z0-9-]*$": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "category": {
+              "description": "Closed enum gating the component's purpose.",
+              "type": "string",
+              "enum": ["button", "input", "panel", "menu", "container", "viz", "widget", "decoration"]
+            },
+            "backgroundColor": { "$ref": "#/$defs/colorRef" },
+            "textColor":       { "$ref": "#/$defs/colorRef" },
+            "iconColor":       { "$ref": "#/$defs/colorRef" },
+            "rounded":         { "$ref": "#/$defs/roundedRef" },
+            "height":          { "$ref": "#/$defs/spacingRef" },
+            "typography":      { "type": "string" },
+            "topEdgeHighlight": { "type": "boolean" },
+            "border": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["color"],
+              "properties": {
+                "color": { "$ref": "#/$defs/colorRef" },
+                "alpha": {
+                  "description": "Alpha bucket name (must exist in alpha:); omitted = opaque.",
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]*$"
+                }
+              }
+            },
+            "interaction": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "hover": { "$ref": "#/$defs/interactionDelta" },
+                "press": { "$ref": "#/$defs/interactionDelta" },
+                "focus": { "$ref": "#/$defs/interactionDelta" }
+              }
+            },
+            "dynamic": {
+              "description": "Runtime-bound color closure; resolved via spec_registry.go BindDynamic.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "anchor"],
+              "properties": {
+                "kind":   { "type": "string", "enum": ["callback"] },
+                "anchor": { "type": "string", "minLength": 1 }
+              }
+            },
+            "animation": {
+              "description": "Runtime-bound animator; resolved via spec_registry.go BindAnimation.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "anchor"],
+              "properties": {
+                "kind":   { "type": "string", "enum": ["pulse", "fade", "spin"] },
+                "anchor": { "type": "string", "minLength": 1 },
+                "target": { "type": "string" }
+              }
+            },
+            "variants": {
+              "description": "Reserved for full token rebindings keyed by string.",
+              "type": "object"
+            },
+            "profileOverrides": {
+              "description": "Reserved per-component profile-specific deltas.",
+              "type": "object"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "profileOverrides": {
+      "description": "Per-profile dimensional/style overrides. Each profile must set every field declared in any sibling profile (the generator enforces uniform field sets for stable struct emission).",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "minProperties": 1,
+        "patternProperties": {
+          "^[a-z][a-zA-Z0-9]*$": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "densities": {
+      "description": "Per-density dimensional fields. Orthogonal to profileOverrides — density carries control-sizing decisions (finger-vs-mouse) decoupled from screen-class (viewport-narrow-vs-wide). Selected at runtime via Profile().Density(); defaults to Comfortable on desktop and Spacious on mobile. Each density block must set every field declared in any sibling density.",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "minProperties": 1,
+        "patternProperties": {
+          "^[a-z][a-zA-Z0-9]*$": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "instrumentSwatches": {
+      "description": "Curated suggestion palette for the per-row instrument color picker. Beatmo-only extension (not part of the canonical Stitch schema). Each entry is a {name, hex} pair; users can still pick arbitrary hex via the color wheel.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "hex"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "hex":  { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$" }
+        }
+      }
+    },
+    "instrumentSequence": {
+      "description": "Canonical ordered instrument color series. Each entry is the NAME of a swatch in instrumentSwatches:. Row N of any demo circuit or genre template takes instrumentSequence[N % len]. Beatmo-only extension.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }
+    },
+    "instrumentDefaults": {
+      "description": "Per-built-in-instrument default color. Consumed by the chrome runtime: rows referencing one of these IDs inherit the hex as their cell tint, edge tint, and rack swatch.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "color"],
+        "properties": {
+          "id":    { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$" }
+        }
+      }
+    },
+    "geometry": {
+      "description": "Theme-level visual geometry primitives (sizes, multipliers, fractions). Profile-dependent geometry lives in profileOverrides:.",
+      "type": "object",
+      "minProperties": 1,
+      "patternProperties": {
+        "^[a-z][a-z0-9-]*$": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "animations": {
+      "description": "Animation primitives. Each entry has a closed `kind` and per-kind required fields. Beatmo extension — not part of canonical Stitch schema.",
+      "type": "object",
+      "minProperties": 1,
+      "patternProperties": {
+        "^[a-z][a-z0-9-]*$": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": ["exp-decay", "sin-pulse", "fade"]
+            },
+            "rate":        { "type": "number", "minimum": 0, "maximum": 1 },
+            "threshold":   { "type": "number", "minimum": 0, "maximum": 1 },
+            "frame-step":  { "type": "number", "minimum": 0, "maximum": 10 },
+            "amplitude":   { "type": "number", "minimum": 0, "maximum": 1 },
+            "base":        { "type": "number", "minimum": 0, "maximum": 1 },
+            "alpha-scale": { "type": "integer", "minimum": 0, "maximum": 255 },
+            "factor":      { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "instrumentFallbackPalette": {
+      "description": "Fallback colors cycled for instrument IDs not present in instrumentDefaults.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["color"],
+        "properties": {
+          "color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "colorRef": {
+      "description": "Reference to a primitive color token: '{colors.NAME}' where NAME exists in colors:.",
+      "type": "string",
+      "pattern": "^\\{colors\\.[a-z][a-z0-9-]*\\}$"
+    },
+    "spacingRef": {
+      "type": "string",
+      "pattern": "^\\{spacing\\.[a-z][a-z0-9-]*\\}$"
+    },
+    "roundedRef": {
+      "type": "string",
+      "pattern": "^\\{rounded\\.[a-z][a-z0-9-]*\\}$"
+    },
+    "interactionDelta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fillDelta":      { "type": "integer", "minimum": -127, "maximum": 127 },
+        "borderDelta":    { "type": "integer", "minimum": -127, "maximum": 127 },
+        "highlightDelta": { "type": "integer", "minimum": -127, "maximum": 127 }
+      }
+    }
+  }
+}

@@ -1,0 +1,211 @@
+{
+  "schema_version": "0.0.1",
+  "id": "piano-grand",
+  "name": "Piano Grand",
+  "category": "modular",
+  "notes": "pianoGrandSeed: additive sine partials at ratios 1/2/3/4 + hammer noise tap.\nACOUSTIC-PIANO note (struck string). The previous version sounded ELECTRONIC\nbecause its partials were EXACT integer harmonics (freq 2,3,4). A real piano\nstring is STIFF, so its partials are STRETCHED progressively SHARP:\nf_n = n·f0·√(1+B·n²). Measured on the ref (pinkyfinger piano-g, G5≈792Hz):\nH3 +5, H4 +15, H5 +28, H6 +42 cents (B≈0.0013) — the inharmonic shimmer that\nreads as a real struck string, NOT a synth/organ. Also: more upper partials +\na brighter filter (the ref centroid is ~1686 Hz, not the old dark 1021), a\nslightly-detuned unison for beating, and a SHORT (~20 ms) percussive HAMMER\ntransient (the felt thunk of the strike — NOT sustained hiss).",
+  "render": {
+    "seconds": 1,
+    "amplitude": 0.7698,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.006,
+        "amp_curve": 1,
+        "amp_decay": 0.9,
+        "amp_release": 0.3,
+        "amp_sustain": 0
+      },
+      "notes": "amp_attack: sharp hammer strike\namp_decay: struck decay — longer ring (the ref sustains, less plinky)"
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.9,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 1.5,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      },
+      "notes": "osc_detune: slight unison detune = the piano's mistuned string pairs (beating/warmth)"
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 6000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      },
+      "notes": "filter_cutoff: let H5/H6 through — the ref is brighter (centroid ~1686 Hz)"
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": true,
+    "values": {
+      "osc_type": 0
+    },
+    "notes": "osc_type: sine fundamental (exact; the stiffness stretch is in the upper partials)"
+  },
+  "layers": [
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 3,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 2,
+        "freq_mode": 0,
+        "gain": 0.48,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen1_env_fast_rate: H2\ngen1_freq: H2\ngen1_freq_mode: H2\ngen1_gain: H2\ngen1_source: STRETCHED upper partials (stiff-string inharmonicity) — the anti-electronic fix.\nFrequencies = n·2^(measured cents/1200); upper partials boosted + slower decay\nso the sustained tone keeps the ref's brightness (not just the strike). H2\ngen1_wave: H2"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 4,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 3.0087,
+        "freq_mode": 0,
+        "gain": 0.26,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen2_env_fast_rate: H3 +5c\ngen2_freq: H3 +5c\ngen2_freq_mode: H3 +5c\ngen2_gain: H3 +5c\ngen2_source: H3 +5c\ngen2_wave: H3 +5c"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 5,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 4.0347,
+        "freq_mode": 0,
+        "gain": 0.26,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen3_env_fast_rate: H4 +15c\ngen3_freq: H4 +15c\ngen3_freq_mode: H4 +15c\ngen3_gain: H4 +15c\ngen3_source: H4 +15c\ngen3_wave: H4 +15c"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 6,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 5.0813,
+        "freq_mode": 0,
+        "gain": 0.2,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen4_env_fast_rate: H5 +28c\ngen4_freq: H5 +28c\ngen4_freq_mode: H5 +28c\ngen4_gain: H5 +28c\ngen4_source: H5 +28c\ngen4_wave: H5 +28c"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 7,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 6.1466,
+        "freq_mode": 0,
+        "gain": 0.13,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen5_env_fast_rate: H6 +42c\ngen5_freq: H6 +42c\ngen5_freq_mode: H6 +42c\ngen5_gain: H6 +42c\ngen5_source: H6 +42c\ngen5_wave: H6 +42c"
+    },
+    {
+      "type": "gen.noise",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 45,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 2600,
+        "filt_q": 0.4,
+        "filt_type": 5,
+        "gain": 0.22,
+        "noise_offset": 0
+      },
+      "notes": "gen6_source: percussive hammer strike — brief broadband thunk, gone in ~20 ms (no sustained hiss)"
+    }
+  ]
+}

@@ -1,0 +1,261 @@
+{
+  "schema_version": "0.0.1",
+  "id": "tubular-bells",
+  "name": "Tubular Bells",
+  "category": "modular",
+  "notes": "tubularBellsSeed: orchestral tubular bells — REBUILT 2026-08-22 from scratch\nper the listener's own verdict: \"simple clean tone vs resonant wavy metallic\nring that prolongs\" (\"scrape this and try again from scratch\"). The old\n2-op FM voice (single inharmonic ratio 1.41, one shared decay) measured only\nTWO partials (1.00, 3.00x f0) against the reference's SEVEN non-consecutive\nones, and its overall post-peak decay rate (-6.5 dB/s) was ~1.5x faster than\nthe reference's (-4.3 dB/s) even though both clips clamp at the same 2.97s\nclip-length ceiling (see ringT60Axis's decay-rate escalation).\n\nNew architecture: ADDITIVE gens placed directly at the reference's own\nmeasured partial ratios (tubular-bells-vcsl: 0.62, 1.01, 1.47, 1.71, 2.01,\n2.61, 3.26x f0 -- a genuine inharmonic, non-consecutive struck-tube series,\nnot a mistuned harmonic stack), each with its OWN per-gen decay rate (higher\npartials fade faster, matching real bell/bar physics -- same technique as\nxylophoneSeed/bassoonSeed's per-partial gen_env_fast_rate). amp_decay and\namp_release are both pinned at 4.0 -- the ParamDef schema's declared max\nfor both (modular_recipe.go) -- so those per-gen rates (not the master\nenvelope) govern the audible ring length, closing the \"prolongs\" gap. Two\npartials are placed half a percent apart (1.01 and 1.015x f0) so they beat\nagainst each other at a few Hz -- the \"waving\" the listener described -- and\na slow lfo_target:0 amplitude wobble reinforces the same effect (also moves\nthe \"sustain modulation\" bonus axis). gen_env_fast_mix defaults to 1 with\nfast_rate>0 ⇒ genuine DECAY (not a sustained bed) per each partial's own rate.\n\nRESULT (headline axis): ring T60 moved MISMATCH-adjacent drift (-6.5 dB/s,\nworse than the OLD FM voice was) -> ok (-5.0 dB/s vs ref -4.3 dB/s) after\nthree iterations: (1) amp_release was originally left short (0.6-1.2s) and\nwas silently truncating the ring during the reference's own note-off\nwindow -- raised toward the schema max so the per-gen decay rates, not the\nrelease stage, govern the tail; (2) the initial per-gen fast_rate values\n(guessed from bell physics, ~0.12-1.2) still decayed ~1.5x too fast in\naggregate -- scaled ALL of them down ~4x to land the measured overall\ndecay rate on the reference's; (3) an intermediate pass set amp_decay/\namp_release to 16.0/20.0, which measured fine via `refs diagnose` (that\ntool renders through the same clamped recipe path real gameplay uses --\nsee below) but silently diverged from the Sampler-preview's no-edit fast\npath, which applies the raw seed with NO clamp -- caught by\nTestModularNoEditFastPathMatchesRecipe. Pinned both at 4.0 (the schema's\nactual ceiling for amp_decay/amp_release, modular_recipe.go) so the two\npaths render identically; this changes nothing about the ACTUAL rendered\naudio measured above, since BuildBuiltinRecipeDocs (synth_recipe.go)\nalready clamped the seed to [Min,Max] when building this recipe's\nParamDef.Default -- 16.0/20.0 were already being played back as 4.0/4.0\neverywhere except the no-edit fast path.\n\nKNOWN CAVEAT (bonus axes, not this instrument's headline): refs diagnose's\nown F0 detector locks onto ~1/6.5x the true fundamental for this recipe\nspecifically at the reference's high render pitch (~932Hz) -- confirmed via\ncmd/synth-analyze (pitch=0 detects correctly at 221Hz; pitch=+25, the\nreference's own transposition, detects 144Hz instead of ~932Hz) -- a\npre-existing tool limitation with inharmonic, weak-low-partial material at\nhigh absolute pitch (same family of issue flagged for harp/kalimba/rimshot\nin AGENTS.synth.instruments.md), not a synthesis defect: the measured\npartial RATIOS scale in perfect lockstep with the intended design ratios,\njust against the wrong anchor. This inflates \"partial series deviation\"\ninto MISMATCH even though the actual spectral structure is the intended\nnon-consecutive one. \"sustain modulation\" also overshot into MISMATCH\n(too much wobble, having previously been \"ok\" pre-rebuild) from the\ngen2/gen3 beat pair + LFO combination; lfo_depth was already pulled back\n0.15->0.04 to reduce the overshoot without removing the beating character.",
+  "render": {
+    "seconds": 1.5,
+    "amplitude": 0.8265,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.001,
+        "amp_curve": 1,
+        "amp_decay": 4,
+        "amp_release": 4,
+        "amp_sustain": 0
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.8,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 9000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    },
+    "lfo": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "lfo_delay": 0.1,
+        "lfo_depth": 0.04,
+        "lfo_rate": 3.2,
+        "lfo_target": 0
+      },
+      "notes": "lfo_enabled: slow amplitude wobble -- reinforces the \"waves in time\" character\nalongside the gen2/gen3 beat pair (belt-and-suspenders on the same axis)."
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0.03,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 0.62,
+        "freq_mode": 0,
+        "gain": 0.28,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen1_source: hum (sub-partial, slowest decay -- bell hum tones linger longest)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0.05,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 1,
+        "freq_mode": 0,
+        "gain": 0.55,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen2_source: prime/strike partial (~1x f0) -- the dominant perceived pitch"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0.05,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 1.005,
+        "freq_mode": 0,
+        "gain": 0.42,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen3_source: close beating partner (~0.5% away from gen2) -- slow amplitude \"wave\"\nfrom real partial-to-partial beating, not just an LFO trick."
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0.1,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 1.47,
+        "freq_mode": 0,
+        "gain": 0.3,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0.11,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 1.71,
+        "freq_mode": 0,
+        "gain": 0.26,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0.16,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 2.01,
+        "freq_mode": 0,
+        "gain": 0.22,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0.22,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 2.61,
+        "freq_mode": 0,
+        "gain": 0.16,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0.3,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 3.26,
+        "freq_mode": 0,
+        "gain": 0.11,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    }
+  ]
+}

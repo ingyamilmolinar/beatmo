@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Pre-commit dispatcher installed by `make install-hooks`. Runs every check in
+# scripts/precommit/ from the CURRENT tree, so editing a check needs no
+# reinstall:
+#   no-audio-files.sh     rejects committing any audio file (always runs)
+#   gen-design-tokens.sh  rejects stale generated design tokens
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+dir="${repo_root}/scripts/precommit"
+
+for check in no-audio-files.sh gen-design-tokens.sh; do
+    if [ ! -f "${dir}/${check}" ]; then
+        echo "pre-commit: ${dir}/${check} is missing; refusing to commit unchecked" >&2
+        exit 1
+    fi
+    bash "${dir}/${check}"
+done

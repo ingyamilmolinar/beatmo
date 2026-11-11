@@ -1,0 +1,103 @@
+{
+  "module": "example.com/fixture",
+  "config": {
+    "goos": "linux",
+    "tags": ""
+  },
+  "packages": [
+    {
+      "path": "example.com/fixture/bar",
+      "loc": 4,
+      "files": 1,
+      "funcs": [
+        {
+          "name": "Run",
+          "loc": 4,
+          "nesting": 0,
+          "cyclo": 1,
+          "callDepth": 2
+        }
+      ],
+      "imports": [
+        "example.com/fixture/foo"
+      ]
+    },
+    {
+      "path": "example.com/fixture/foo",
+      "loc": 20,
+      "files": 3,
+      "types": [
+        {
+          "name": "Thing",
+          "kind": "struct",
+          "loc": 1,
+          "methods": [
+            {
+              "name": "Deep",
+              "recv": "Thing",
+              "loc": 1,
+              "nesting": 0,
+              "cyclo": 1,
+              "callDepth": 2
+            },
+            {
+              "name": "Extra",
+              "recv": "Thing",
+              "loc": 1,
+              "nesting": 0,
+              "cyclo": 1,
+              "callDepth": 1
+            },
+            {
+              "name": "Process",
+              "recv": "Thing",
+              "loc": 1,
+              "nesting": 0,
+              "cyclo": 1,
+              "callDepth": 1
+            }
+          ]
+        }
+      ],
+      "funcs": [
+        {
+          "name": "Helper",
+          "loc": 10,
+          "nesting": 3,
+          "cyclo": 4,
+          "callDepth": 1
+        },
+        {
+          "name": "Plat",
+          "loc": 6,
+          "nesting": 1,
+          "cyclo": 2,
+          "callDepth": 2
+        }
+      ],
+      "memberEdges": [
+        {
+          "from": "Plat",
+          "to": "Helper",
+          "calls": 1
+        },
+        {
+          "from": "Thing",
+          "to": "Helper",
+          "calls": 1
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "example.com/fixture/bar",
+      "to": "example.com/fixture/foo",
+      "calls": 2,
+      "methods": [
+        "(foo.Thing).Process",
+        "foo.Helper"
+      ]
+    }
+  ]
+}

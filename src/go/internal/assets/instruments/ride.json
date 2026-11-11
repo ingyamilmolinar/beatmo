@@ -1,0 +1,109 @@
+{
+  "schema_version": "0.0.1",
+  "id": "ride",
+  "name": "Ride",
+  "category": "modular",
+  "notes": "REBUILT 2026-09-28 as a MODAL PLATE (gen1_cym_modes > 0 — see\ngen_cymbal_modal in modular_stages.c) against the user-supplied jazz-ride\nreference (ride-local). The legacy variant-4 voice — 10 fixed partials, a\nwhite-noise burst and a 3 kHz sine bell — could not lose its \"clappy, noisy\"\nstrike by config: the noise burst alone put -7..-12 dB of flat energy above\n11 kHz into the first 100 ms, where the reference has none. The reference\nis a clean ring: partials clustered at 1.2-1.6 kHz and 2.3-3.4 kHz, sparse\nsparkle at 8-15 kHz, doublets 4-12 Hz apart that beat (the \"fuzz\"), and a\ndecay that slows toward the bass (~17 dB/s at 1 kHz, ~45 dB/s at 11 kHz).\n\nThe values below were FITTED: a band x time energy map of the reference\n(1/3-octave, 0.4-16 kHz, six windows 0-1.6 s) against the rendered voice,\nminimized by coordinate descent — mean |error| 2.95 dB, against 12.8 dB for\nthe best legacy-voice candidate. Units: env_tail / env_fast are Np/s, the\n*_f knobs Hz, the *_w knobs octaves.\n\nChosen BY EAR (2026-09-28) from five fitted takes: this one (\"a bit more\nmetallic\") over a faster-shimmer variant (cym_beat 0.0075, which matches the\nreference's 8-20 Hz beating on the modulation spectrum) and a less-bright\none (HF residuals weighted 2x). The energy map cannot see beat rate, so the\nmodulation measurement lost to the ear here — keep that in mind before\n\"correcting\" cym_beat toward the reference.\n\ncym_variant stays 4: the modal plate runs only on the ride/crash variants, so\npicking another Variant in the Synth tab still switches voice.",
+  "render": {
+    "seconds": 1.8,
+    "amplitude": 1,
+    "gate_tail": 0,
+    "melodic": false
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "amp_attack": 0.005,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.2,
+        "amp_sustain": 0.6
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "filter_cutoff": 8000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 0,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 12,
+        "post_drive": 0,
+        "post_pitch": 0
+      },
+      "notes": "out_clamp: no output limit (these voices never had one)"
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "cym.ride",
+      "v": 1,
+      "on": true,
+      "values": {
+        "cym_attack": 0.0005,
+        "cym_beat": 0.0031,
+        "cym_body": 0.845,
+        "cym_body_f": 1463.8,
+        "cym_body_w": 0.1728,
+        "cym_decay_tilt": 0.506,
+        "cym_env_fast": 13.52,
+        "cym_env_tail": 1.7,
+        "cym_hf_corner": 12000,
+        "cym_mode_hi": 16000,
+        "cym_mode_lo": 240.8,
+        "cym_modes": 316,
+        "cym_noise_d": 4,
+        "cym_noise_m": 0,
+        "cym_spark": 1.485,
+        "cym_spark_f": 11991.8,
+        "cym_spark_w": 0.432,
+        "cym_tone_f": 3062.7,
+        "cym_tone_m": 1,
+        "cym_tone_w": 0.3433,
+        "cym_tune": 1,
+        "cym_wash": 0.21
+      }
+    }
+  ]
+}

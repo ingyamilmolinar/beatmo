@@ -1,0 +1,320 @@
+{
+ "eq_3": [
+  {
+   "op": "open",
+   "value": "0",
+   "step_mul": "0.1",
+   "rung": 2,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "drag-3-down",
+   "value": "0.3",
+   "step_mul": "0.1",
+   "rung": 2,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "click-row+2",
+   "value": "0.5",
+   "step_mul": "0.1",
+   "rung": 2,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "wheel-7-down",
+   "value": "0.7",
+   "step_mul": "0.1",
+   "rung": 2,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "wheel-3-strip",
+   "value": "0.7",
+   "step_mul": "0.2",
+   "rung": 3,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "rung-tap-1",
+   "value": "0.7",
+   "step_mul": "0.05",
+   "rung": 1,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "key-up-2",
+   "value": "0.8",
+   "step_mul": "0.05",
+   "rung": 1,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "key-right",
+   "value": "0.8",
+   "step_mul": "0.1",
+   "rung": 2,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "shift-wheel-3",
+   "value": "0.85",
+   "step_mul": "0.1",
+   "rung": 2,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "esc",
+   "value": "0",
+   "step_mul": "0.1",
+   "rung": 2,
+   "open": false,
+   "commits": 0
+  },
+  {
+   "op": "reopen",
+   "value": "0",
+   "step_mul": "0.1",
+   "rung": 2,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "key-down",
+   "value": "-0.1",
+   "step_mul": "0.1",
+   "rung": 2,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "enter",
+   "value": "-0.1",
+   "step_mul": "0.1",
+   "rung": 2,
+   "open": false,
+   "commits": 1
+  }
+ ],
+ "sampler_0": [
+  {
+   "op": "open",
+   "value": "0",
+   "step_mul": "1",
+   "rung": 4,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "drag-3-down",
+   "value": "0.03",
+   "step_mul": "1",
+   "rung": 4,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "click-row+2",
+   "value": "0.05",
+   "step_mul": "1",
+   "rung": 4,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "wheel-7-down",
+   "value": "0.07",
+   "step_mul": "1",
+   "rung": 4,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "wheel-3-strip",
+   "value": "0.07",
+   "step_mul": "2",
+   "rung": 5,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "rung-tap-1",
+   "value": "0.07",
+   "step_mul": "0.1",
+   "rung": 1,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "key-up-2",
+   "value": "0.072",
+   "step_mul": "0.1",
+   "rung": 1,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "key-right",
+   "value": "0.072",
+   "step_mul": "0.2",
+   "rung": 2,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "shift-wheel-3",
+   "value": "0.073",
+   "step_mul": "0.2",
+   "rung": 2,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "esc",
+   "value": "0",
+   "step_mul": "0.2",
+   "rung": 2,
+   "open": false,
+   "commits": 0
+  },
+  {
+   "op": "reopen",
+   "value": "0",
+   "step_mul": "0.2",
+   "rung": 2,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "key-down",
+   "value": "0",
+   "step_mul": "0.2",
+   "rung": 2,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "enter",
+   "value": "0",
+   "step_mul": "0.2",
+   "rung": 2,
+   "open": false,
+   "commits": 0
+  }
+ ],
+ "sampler_2": [
+  {
+   "op": "open",
+   "value": "0.5",
+   "step_mul": "0.1",
+   "rung": 1,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "drag-3-down",
+   "value": "0.50625",
+   "step_mul": "0.1",
+   "rung": 1,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "click-row+2",
+   "value": "0.510416666667",
+   "step_mul": "0.1",
+   "rung": 1,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "wheel-7-down",
+   "value": "0.514583333333",
+   "step_mul": "0.1",
+   "rung": 1,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "wheel-3-strip",
+   "value": "0.514583333333",
+   "step_mul": "0.2",
+   "rung": 2,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "rung-tap-1",
+   "value": "0.514583333333",
+   "step_mul": "0.1",
+   "rung": 1,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "key-up-2",
+   "value": "0.51875",
+   "step_mul": "0.1",
+   "rung": 1,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "key-right",
+   "value": "0.51875",
+   "step_mul": "0.2",
+   "rung": 2,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "shift-wheel-3",
+   "value": "0.520833333333",
+   "step_mul": "0.2",
+   "rung": 2,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "esc",
+   "value": "0.5",
+   "step_mul": "0.2",
+   "rung": 2,
+   "open": false,
+   "commits": 0
+  },
+  {
+   "op": "reopen",
+   "value": "0.5",
+   "step_mul": "0.2",
+   "rung": 2,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "key-down",
+   "value": "0.495833333333",
+   "step_mul": "0.2",
+   "rung": 2,
+   "open": true,
+   "commits": 0
+  },
+  {
+   "op": "enter",
+   "value": "0.495833333333",
+   "step_mul": "0.2",
+   "rung": 2,
+   "open": false,
+   "commits": 1
+  }
+ ]
+}

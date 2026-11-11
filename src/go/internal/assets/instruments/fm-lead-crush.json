@@ -1,0 +1,115 @@
+{
+  "schema_version": "0.0.1",
+  "id": "fm-lead-crush",
+  "name": "Crush FM Lead",
+  "category": "modular",
+  "render": {
+    "seconds": 0.35,
+    "amplitude": 0.5088,
+    "gate_tail": 0.6,
+    "melodic": false
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "amp_attack": 0.005,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.2,
+        "amp_sustain": 0.6
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "filter_cutoff": 8000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 0,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 6,
+        "post_drive": 0,
+        "post_pitch": 0
+      },
+      "notes": "out_clamp: no output limit (these voices never had one)"
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "fm",
+      "v": 1,
+      "on": true,
+      "values": {
+        "fm_base": 220,
+        "fm_d1": 0,
+        "fm_d2": 3.5,
+        "fm_d3": 2,
+        "fm_d4": 0,
+        "fm_dec1": 0.2,
+        "fm_dec2": 0.12,
+        "fm_dec3": 0.08,
+        "fm_dec4": 0,
+        "fm_pe_amt": 1.5,
+        "fm_pe_decay": 0.04,
+        "fm_r1": 1,
+        "fm_r2": 2,
+        "fm_r3": 3,
+        "fm_r4": 0,
+        "fm_variant": 2,
+        "wave": 0
+      }
+    }
+  ],
+  "fx": [
+    {
+      "type": "fx.bitcrusher",
+      "v": 1,
+      "on": true,
+      "values": {
+        "bits": 5,
+        "mix": 1,
+        "rate": 1
+      }
+    }
+  ]
+}

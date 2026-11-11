@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="4.0">
+  <work><work-title>Korobeiniki</work-title></work>
+  <identification>
+    <creator type="composer">Traditional (Russian folk song)</creator>
+    <rights>Beatmo (CC0)</rights>
+    <encoding><software>Beatmo</software></encoding>
+    <source>https://commons.wikimedia.org/wiki/File:Korobeiniki.jpg</source>
+  </identification>
+  <part-list>
+    <score-part id="P1"><part-name>Melody</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>4</divisions><key><fifths>0</fifths></key><time><beats>2</beats><beat-type>4</beat-type></time></attributes>
+      <direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>140</per-minute></metronome></direction-type><sound tempo="140"/></direction>
+      <note><pitch><step>G</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice></note>
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice></note>
+      <note><pitch><step>E</step><alter>-1</alter><octave>5</octave></pitch><duration>2</duration><voice>1</voice></note>
+    </measure>
+    <measure number="2">
+      <note><pitch><step>F</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice></note>
+      <note><pitch><step>E</step><alter>-1</alter><octave>5</octave></pitch><duration>2</duration><voice>1</voice><notations><ornaments><trill-mark/></ornaments></notations></note>
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice></note>
+    </measure>
+    <measure number="3">
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice></note>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice></note>
+      <note><pitch><step>E</step><alter>-1</alter><octave>5</octave></pitch><duration>2</duration><voice>1</voice></note>
+    </measure>
+    <measure number="4">
+      <note><pitch><step>G</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice></note>
+      <note><pitch><step>F</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice></note>
+      <note><pitch><step>E</step><alter>-1</alter><octave>5</octave></pitch><duration>2</duration><voice>1</voice></note>
+    </measure>
+    <measure number="5">
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>6</duration><voice>1</voice></note>
+      <note><pitch><step>E</step><alter>-1</alter><octave>5</octave></pitch><duration>2</duration><voice>1</voice></note>
+    </measure>
+    <measure number="6">
+      <note><pitch><step>F</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice></note>
+      <note><pitch><step>G</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice></note>
+    </measure>
+    <measure number="7">
+      <note><pitch><step>E</step><alter>-1</alter><octave>5</octave></pitch><duration>4</duration><voice>1</voice><notations><articulations><staccato/></articulations></notations></note>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><notations><articulations><staccato/></articulations></notations></note>
+    </measure>
+    <measure number="8">
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><notations><articulations><staccato/></articulations></notations></note>
+      <note><rest/><duration>4</duration><voice>1</voice></note>
+    </measure>
+    <measure number="9">
+      <note><rest/><duration>2</duration><voice>1</voice></note>
+      <note><pitch><step>F</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice></note>
+      <note><pitch><step>A</step><alter>-1</alter><octave>5</octave></pitch><duration>2</duration><voice>1</voice></note>
+    </measure>
+    <measure number="10">
+      <note><pitch><step>C</step><octave>6</octave></pitch><duration>4</duration><voice>1</voice></note>
+      <note><pitch><step>B</step><alter>-1</alter><octave>5</octave></pitch><duration>2</duration><voice>1</voice></note>
+      <note><pitch><step>A</step><alter>-1</alter><octave>5</octave></pitch><duration>2</duration><voice>1</voice></note>
+    </measure>
+    <measure number="11">
+      <note><pitch><step>G</step><octave>5</octave></pitch><duration>6</duration><voice>1</voice></note>
+      <note><pitch><step>E</step><alter>-1</alter><octave>5</octave></pitch><duration>2</duration><voice>1</voice></note>
+    </measure>
+    <measure number="12">
+      <note><pitch><step>G</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice></note>
+      <note><pitch><step>F</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice></note>
+      <note><pitch><step>E</step><alter>-1</alter><octave>5</octave></pitch><duration>2</duration><voice>1</voice></note>
+    </measure>
+    <measure number="13">
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice></note>
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice></note>
+      <note><pitch><step>E</step><alter>-1</alter><octave>5</octave></pitch><duration>2</duration><voice>1</voice></note>
+    </measure>
+    <measure number="14">
+      <note><pitch><step>F</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice></note>
+      <note><pitch><step>G</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice></note>
+    </measure>
+    <measure number="15">
+      <note><pitch><step>E</step><alter>-1</alter><octave>5</octave></pitch><duration>4</duration><voice>1</voice><notations><articulations><staccato/></articulations></notations></note>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><notations><articulations><staccato/></articulations></notations></note>
+    </measure>
+    <measure number="16">
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><notations><articulations><staccato/></articulations></notations></note>
+      <note><rest/><duration>4</duration><voice>1</voice></note>
+    </measure>
+  </part>
+</score-partwise>

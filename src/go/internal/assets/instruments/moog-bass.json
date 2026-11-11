@@ -1,0 +1,112 @@
+{
+  "schema_version": "0.0.1",
+  "id": "moog-bass",
+  "name": "Moog Bass",
+  "category": "modular",
+  "notes": "moogBassSeed: a fat mono analog bass — a saw through a resonant low-pass swept\nby a filter envelope, with a sine sub-partial for weight. Round, punchy, ladder-\nfilter growl. Defaults to A3 (pitch nodes down for a bassline).",
+  "render": {
+    "seconds": 0.75,
+    "amplitude": 0.4054,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.004,
+        "amp_curve": 1,
+        "amp_decay": 0.25,
+        "amp_release": 0.15,
+        "amp_sustain": 0.7
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.9,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0.2
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 800,
+        "filter_resonance": 3,
+        "filter_type": 0
+      }
+    },
+    "filter_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filtenv_amt": 2,
+        "filtenv_attack": 0,
+        "filtenv_decay": 0.3
+      },
+      "notes": "filtenv_amt: the moog \"wow\"\nfiltenv_attack: the moog \"wow\"\nfiltenv_decay: the moog \"wow\"\nfiltenv_enabled: the moog \"wow\""
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": true,
+    "values": {
+      "osc_type": 1
+    },
+    "notes": "osc_enabled: saw\nosc_type: saw"
+  },
+  "layers": [
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 1,
+        "freq_mode": 0,
+        "gain": 0.4,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen1_source: sine sub for body weight"
+    }
+  ]
+}

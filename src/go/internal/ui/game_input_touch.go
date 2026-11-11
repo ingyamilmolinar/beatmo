@@ -1,0 +1,313 @@
+package ui
+
+import (
+	"image"
+
+	"github.com/ingyamilmolinar/beatmo/core/model"
+)
+
+// handleArmedModeTap resolves a grid tap while a grid mode is armed. Returns
+// true when the tap was consumed (whether it committed or canceled the mode).
+// Move placement is edge-only: the tapped cell must lie on an existing edge
+// segment (GuideEdge); anything else cancels the mode and the node stays put.
+func (g *Game) handleArmedModeTap(x, y int) bool {
+	switch g.modes.Active() {
+	case GridModeMove:
+		gt := g.guideTargetAt(x, y)
+		n := g.modes.Subject()
+		if gt.Kind != GuideEdge {
+			g.modes.Cancel("invalid-target")
+			return true
+		}
+		if g.moveHealPlan(n).class == healUnhealable {
+			// Breaking move: confirm before committing. Mode stays armed;
+			// the portal owns the decision (Break → commit, Cancel → retry).
+			g.beginBreakConfirm(n, gt.I, gt.J)
+			return true
+		}
+		if g.moveNode(n, gt.I, gt.J) {
+			g.modes.Commit()
+		} else {
+			g.modes.Cancel("move-failed")
+		}
+		return true
+	case GridModeCopy:
+		gt := g.guideTargetAt(x, y)
+		if existing := g.nodeAt(gt.I, gt.J); existing != nil {
+			// Existing paste semantics: occupied cell → overwrite confirm
+			// (portal). The confirm takes over; the armed mode's job is done.
+			g.beginPasteConfirm(gt.I, gt.J)
+			g.modes.Commit()
+			return true
+		}
+		g.pasteNodeFrom(gt.I, gt.J, g.clipboard)
+		g.modes.Commit()
+		return true
+	case GridModeConnect:
+		g.handleConnectModeTap(x, y)
+		return true
+	}
+	return false
+}
+
+// handleTapInGrid handles a tap gesture in the grid area.
+// This provides direct tap-to-click handling without relying on the mouse state machine.
+func (g *Game) handleTapInGrid(x, y int) {
+	// A blocking overlay (e.g. the mobile synth-control wheel popup) owns input
+	// exclusively. A tap on the scrim outside it must only close the overlay
+	// (the tree's click-outside path), never reach the grid to create/select a
+	// node beneath it.
+	if g.modalOverlayActive() {
+		return
+	}
+	// Mobile landscape is unsupported: the rotate-to-portrait notice covers the
+	// screen, so taps must not reach the (invisible) grid beneath it.
+	if g.landscapeUnsupported() {
+		return
+	}
+	if g.inTopRightButtonZone(x, y) {
+		// The top-right button cluster (gear + folder + logs) is the
+		// inputDispatcher's job: each handler toggles its menu on the press edge
+		// (mouse, and touch via the override). A normal tap always presents at
+		// least one pressed frame to the dispatcher, so by the time this
+		// release-time GestureTap fires the menu is already open/closed. Consume
+		// the tap for the WHOLE cluster (buttons + gaps + margin): toggling again
+		// would double-fire, and falling through would create a stray node between
+		// or under the buttons.
+		return
+	}
+
+	// Armed grid mode (move/copy/connect): the tap is the placement/target.
+	if g.handleArmedModeTap(x, y) {
+		return
+	}
+
+	// A gesture the sidebar owned at its press edge stays the sidebar's at the
+	// lift, even when the region it was pressed in has since gone: a picker cell
+	// that confirms (re-selecting the current note/chord) closes the picker
+	// during this very gesture, and its cells float OUTSIDE the card — so a
+	// release-time Hit would read the confirming tap as a tap outside the card
+	// and close the card with it.
+	if g.sidebar.IsOpen() && !g.sidebar.Hit(x, y) && g.inputDispatcher.PressOwner() == InputHandler(g.sidebar) {
+		if g.sidebar.scroll.TouchActive() || g.sidebar.scroll.Dragging() {
+			g.sidebar.HandleInput(x, y, false)
+		}
+		return
+	}
+	// Check for sidebar interaction first
+	if g.sidebar.IsOpen() && g.sidebar.Hit(x, y) {
+		// If the sidebar has active scroll/touch tracking (from the
+		// InputDispatcher's captured frames), send only a release to let
+		// the sidebar's deferred-tap + scroll pattern resolve correctly:
+		// - If scroll committed: cancels deferred tap, no section toggle.
+		// - If scroll NOT committed: fires deferred tap → section toggles.
+		// This prevents the instant press+release from bypassing scroll
+		// disambiguation.
+		if g.sidebar.scroll.TouchActive() || g.sidebar.scroll.Dragging() {
+			g.sidebar.HandleInput(x, y, false)
+			return
+		}
+		// Touch-to-mouse override normally handles sidebar presses via
+		// handleEditor. When suppress is active the override already
+		// processed this tap; just consume the gesture.
+		if !suppressClicksUntilRelease {
+			g.handleNodeMenuButtons(x, y, true)
+			g.handleNodeMenuButtons(x, y, false)
+		}
+		return
+	}
+	// Group badge hit (outside the sidebar card): open that group's menu and
+	// close the sidebar in one tap. Checked BEFORE the generic outside-close so a
+	// badge click while the sidebar is open still opens the menu — the sidebar is
+	// now a node-anchored card, so this ordering matters (a plain outside tap
+	// would otherwise just close it and swallow the badge). Badges under the card
+	// are handled by the card itself via the Hit branch above.
+	if gid, ok := g.groupBadgeAt(x, y); ok {
+		g.sidebar.Close()
+		g.openGroupMenuForBadge(gid, x, y)
+		return
+	}
+	if g.sidebar.IsOpen() {
+		// Tap outside sidebar closes it
+		g.sidebar.Close()
+		return
+	}
+
+	// Guard: sidebar was closed recently. Don't create nodes at the tap position.
+	if g.sidebar.ClosedGuard() > 0 {
+		return
+	}
+
+	// Handle origin selection if a row requested it
+	if g.pendingStartRow >= 0 {
+		if n := g.nodeAtScreen(x, y); n != nil {
+			if mn, ok := g.graph.GetNodeByID(n.ID); ok && mn.Type != model.NodeTypeInvisible {
+				row := g.pendingStartRow
+				// Disallow selecting a node from another audible circuit
+				if other, ok := g.nodeRows[n.ID]; ok && other != row {
+					if g.Playing() && g.rowIsAudible(other) {
+						return
+					}
+				}
+				if row >= 0 && row < len(g.drum.Rows) {
+					if old := g.drum.Rows[row].Node; old != nil {
+						old.Start = false
+					}
+					g.drum.Rows[row].Origin = n.ID
+					g.drum.Rows[row].Node = n
+					n.Start = true
+					if row == 0 {
+						g.start = n
+						g.graph.StartNodeID = n.ID
+					}
+					g.updateBeatInfos()
+				}
+				g.pendingStartRow = -1
+				return
+			}
+		}
+	}
+
+	// (Group badge hit is handled earlier, before the sidebar outside-close rung,
+	// so a badge tap opens its menu whether or not the sidebar is open.)
+
+	// Check if tapping on existing node
+	if n := g.nodeAtScreen(x, y); n != nil {
+		// Select node and open menu
+		if g.sel != nil {
+			g.sel.Selected = false
+		}
+		g.sel = n
+		n.Selected = true
+		g.sidebar.Open(n)
+		g.computeSelNeighbors()
+		g.coordBadgeNode = n
+		g.coordBadgeFrame = g.frame
+		return
+	}
+
+	// Tap on empty space: resolve through the grid guide (nearest node/edge
+	// cell within the snap radius; free cell otherwise).
+	g.commitGuideTarget(x, y)
+}
+
+// handleTouchLongPress handles a long press gesture, equivalent to right-click.
+// In the grid pane, deletes the node under the touch point.
+// In the drum pane, opens the mobile context menu for the row label.
+func (g *Game) handleTouchLongPress(x, y int) {
+	// A blocking overlay owns input exclusively — a long-press over the scrim
+	// must not delete a node or open a context menu on a background surface.
+	// Mobile landscape is unsupported, so suppress here too.
+	if g.modalOverlayActive() || g.landscapeUnsupported() {
+		return
+	}
+	// Audio panel: Levels icon-row long-press → tooltip with the
+	// unabbreviated readout value (Phase 4 audio-panel redesign).
+	if g.drum != nil && g.drum.eqPanelZone != nil {
+		if g.drum.eqPanelZone.HandleLevelsAggregateLongPress(x, y) {
+			return
+		}
+	}
+	// Check if long-press is in the drum pane on a row label (mobile context menu).
+	if Profile().IsMobile() && g.drum != nil && image.Pt(x, y).In(g.drum.Bounds) {
+		for i, lbl := range g.drum.rowLabels() {
+			if image.Pt(x, y).In(lbl.Rect()) {
+				g.drum.openContextMenu(i)
+				return
+			}
+		}
+	}
+
+	if y < gridTopOffset() || !g.split.InGridPane(x, y) {
+		return
+	}
+
+	// Long-press on a node: show quick-action popup (all platforms).
+	if n := g.nodeAtScreen(x, y); n != nil {
+		g.showLongPressPopup(n, x, y)
+	}
+}
+
+// handleTouchPinch handles a pinch zoom gesture.
+// Uses direct 1:1 scale mapping: camera scale tracks finger distance ratio.
+//
+// Three regions can absorb a pinch, decided by the gesture center:
+//   - Inside the drum rows zone on mobile (Theme 3): scales dv.rowZoom.
+//   - Inside the grid pane: scales the camera (the original behavior).
+//   - Anywhere else: ignored.
+func (g *Game) handleTouchPinch(centerX, centerY int, scale float64) {
+	// A blocking overlay owns input exclusively — a pinch over the scrim must
+	// not zoom the camera beneath it. Mobile landscape is unsupported, so
+	// suppress here too.
+	if g.modalOverlayActive() || g.landscapeUnsupported() {
+		return
+	}
+	// Drum rows zone has priority on mobile so two-finger pinches over
+	// the rack are absorbed (do not bleed into camera zoom). The legacy
+	// "pinch to scale row height" behavior was retired alongside the
+	// row-zoom chip refactor — per-row dimensions are fixed, and the
+	// chips now resize the drum-view pane instead.
+	if Profile().IsMobile() && g.drum != nil {
+		rr := g.drum.rowsRect()
+		if !rr.Empty() && image.Pt(centerX, centerY).In(rr) {
+			return
+		}
+	}
+
+	if centerY < gridTopOffset() || !g.split.InGridPane(centerX, centerY) {
+		return
+	}
+
+	// Record baseline on first pinch event of this gesture
+	if g.pinchBaseScale == 0 {
+		g.pinchBaseScale = g.cam.Scale
+		g.pinchBaseGestureScale = scale
+		return
+	}
+
+	// Direct 1:1 mapping: camera tracks finger distance ratio
+	ratio := scale / g.pinchBaseGestureScale
+	targetScale := g.pinchBaseScale * ratio
+
+	if targetScale < 0.1 {
+		targetScale = 0.1
+	} else if targetScale > 10.0 {
+		targetScale = 10.0
+	}
+
+	// Anchor zoom at pinch center (same transform as zoomAtScreen)
+	sx, sy := float64(centerX), float64(centerY)
+	wx := (sx - g.cam.OffsetX) / g.cam.Scale
+	wy := (sy - float64(gridTopOffset()) - g.cam.OffsetY) / g.cam.Scale
+	g.cam.OffsetX = sx - wx*targetScale
+	g.cam.OffsetY = sy - float64(gridTopOffset()) - wy*targetScale
+	g.cam.Scale = targetScale
+	g.cam.Snap()
+}
+
+// handleTouchTwoFingerPan handles a two-finger pan gesture.
+//
+// Over the drum cell grid the pan moves the timeline view (horizontal) or
+// scrolls the instrument rows (vertical), direction-locked, mirroring the
+// single-finger grid drag — it must NOT pan the grid/graph camera, and a
+// left/right swipe must never scroll rows. Anywhere else (the graph pane) the
+// pan keeps moving the camera.
+func (g *Game) handleTouchTwoFingerPan(deltaX, deltaY, centerX, centerY int) {
+	// A blocking overlay owns input exclusively — a two-finger pan over the
+	// scrim must not pan the camera or timeline beneath it. Mobile landscape is
+	// unsupported, so suppress here too.
+	if g.modalOverlayActive() || g.landscapeUnsupported() {
+		return
+	}
+	if g.drum != nil && g.drum.HandleTwoFingerPan(centerX, centerY) {
+		return
+	}
+	g.cam.OffsetX += float64(deltaX)
+	g.cam.OffsetY += float64(deltaY)
+	g.cam.Snap()
+}
+
+// IsTouchActive returns true if any touch is currently active.
+func (g *Game) IsTouchActive() bool {
+	return globalTouchState.ActiveTouchCount() > 0
+}

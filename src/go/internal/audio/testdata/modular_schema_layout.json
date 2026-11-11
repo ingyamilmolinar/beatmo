@@ -1,0 +1,5286 @@
+[
+ {
+  "Name": "osc_type",
+  "Identity": 0
+ },
+ {
+  "Name": "osc_detune",
+  "Identity": 0
+ },
+ {
+  "Name": "osc_octave",
+  "Identity": 0
+ },
+ {
+  "Name": "fm_algorithm",
+  "Identity": 0
+ },
+ {
+  "Name": "fm_op1_ratio",
+  "Identity": 1
+ },
+ {
+  "Name": "fm_op2_ratio",
+  "Identity": 1
+ },
+ {
+  "Name": "fm_op3_ratio",
+  "Identity": 1
+ },
+ {
+  "Name": "fm_op4_ratio",
+  "Identity": 1
+ },
+ {
+  "Name": "fm_op1_depth",
+  "Identity": 0
+ },
+ {
+  "Name": "fm_op2_depth",
+  "Identity": 0
+ },
+ {
+  "Name": "fm_op3_depth",
+  "Identity": 0
+ },
+ {
+  "Name": "fm_op4_depth",
+  "Identity": 0
+ },
+ {
+  "Name": "fm_op1_level",
+  "Identity": 1
+ },
+ {
+  "Name": "fm_op2_level",
+  "Identity": 0
+ },
+ {
+  "Name": "fm_op3_level",
+  "Identity": 0
+ },
+ {
+  "Name": "fm_op4_level",
+  "Identity": 0
+ },
+ {
+  "Name": "amp_attack",
+  "Identity": 0.005
+ },
+ {
+  "Name": "amp_decay",
+  "Identity": 0.3
+ },
+ {
+  "Name": "amp_sustain",
+  "Identity": 0.6
+ },
+ {
+  "Name": "amp_release",
+  "Identity": 0.2
+ },
+ {
+  "Name": "amp_curve",
+  "Identity": 1
+ },
+ {
+  "Name": "filter_type",
+  "Identity": 0
+ },
+ {
+  "Name": "filter_cutoff",
+  "Identity": 8000
+ },
+ {
+  "Name": "filter_resonance",
+  "Identity": 0.707
+ },
+ {
+  "Name": "drive",
+  "Identity": 0
+ },
+ {
+  "Name": "pitch",
+  "Identity": 0
+ },
+ {
+  "Name": "gain",
+  "Identity": 1
+ },
+ {
+  "Name": "osc_enabled",
+  "Identity": 1
+ },
+ {
+  "Name": "fm_enabled",
+  "Identity": 1
+ },
+ {
+  "Name": "env_enabled",
+  "Identity": 1
+ },
+ {
+  "Name": "filter_enabled",
+  "Identity": 1
+ },
+ {
+  "Name": "drive_enabled",
+  "Identity": 1
+ },
+ {
+  "Name": "noise_seed",
+  "Identity": 0
+ },
+ {
+  "Name": "noise_draws",
+  "Identity": 1
+ },
+ {
+  "Name": "noise_prelude",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_source",
+  "Identity": 0
+ },
+ {
+  "Name": "gen2_source",
+  "Identity": 0
+ },
+ {
+  "Name": "gen3_source",
+  "Identity": 0
+ },
+ {
+  "Name": "gen4_source",
+  "Identity": 0
+ },
+ {
+  "Name": "gen5_source",
+  "Identity": 0
+ },
+ {
+  "Name": "gen6_source",
+  "Identity": 0
+ },
+ {
+  "Name": "gen7_source",
+  "Identity": 0
+ },
+ {
+  "Name": "gen8_source",
+  "Identity": 0
+ },
+ {
+  "Name": "gen9_source",
+  "Identity": 0
+ },
+ {
+  "Name": "gen10_source",
+  "Identity": 0
+ },
+ {
+  "Name": "gen11_source",
+  "Identity": 0
+ },
+ {
+  "Name": "gen12_source",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_wave",
+  "Identity": 0
+ },
+ {
+  "Name": "gen2_wave",
+  "Identity": 0
+ },
+ {
+  "Name": "gen3_wave",
+  "Identity": 0
+ },
+ {
+  "Name": "gen4_wave",
+  "Identity": 0
+ },
+ {
+  "Name": "gen5_wave",
+  "Identity": 0
+ },
+ {
+  "Name": "gen6_wave",
+  "Identity": 0
+ },
+ {
+  "Name": "gen7_wave",
+  "Identity": 0
+ },
+ {
+  "Name": "gen8_wave",
+  "Identity": 0
+ },
+ {
+  "Name": "gen9_wave",
+  "Identity": 0
+ },
+ {
+  "Name": "gen10_wave",
+  "Identity": 0
+ },
+ {
+  "Name": "gen11_wave",
+  "Identity": 0
+ },
+ {
+  "Name": "gen12_wave",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_freq_mode",
+  "Identity": 0
+ },
+ {
+  "Name": "gen2_freq_mode",
+  "Identity": 0
+ },
+ {
+  "Name": "gen3_freq_mode",
+  "Identity": 0
+ },
+ {
+  "Name": "gen4_freq_mode",
+  "Identity": 0
+ },
+ {
+  "Name": "gen5_freq_mode",
+  "Identity": 0
+ },
+ {
+  "Name": "gen6_freq_mode",
+  "Identity": 0
+ },
+ {
+  "Name": "gen7_freq_mode",
+  "Identity": 0
+ },
+ {
+  "Name": "gen8_freq_mode",
+  "Identity": 0
+ },
+ {
+  "Name": "gen9_freq_mode",
+  "Identity": 0
+ },
+ {
+  "Name": "gen10_freq_mode",
+  "Identity": 0
+ },
+ {
+  "Name": "gen11_freq_mode",
+  "Identity": 0
+ },
+ {
+  "Name": "gen12_freq_mode",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_freq",
+  "Identity": 1
+ },
+ {
+  "Name": "gen2_freq",
+  "Identity": 1
+ },
+ {
+  "Name": "gen3_freq",
+  "Identity": 1
+ },
+ {
+  "Name": "gen4_freq",
+  "Identity": 1
+ },
+ {
+  "Name": "gen5_freq",
+  "Identity": 1
+ },
+ {
+  "Name": "gen6_freq",
+  "Identity": 1
+ },
+ {
+  "Name": "gen7_freq",
+  "Identity": 1
+ },
+ {
+  "Name": "gen8_freq",
+  "Identity": 1
+ },
+ {
+  "Name": "gen9_freq",
+  "Identity": 1
+ },
+ {
+  "Name": "gen10_freq",
+  "Identity": 1
+ },
+ {
+  "Name": "gen11_freq",
+  "Identity": 1
+ },
+ {
+  "Name": "gen12_freq",
+  "Identity": 1
+ },
+ {
+  "Name": "gen1_gain",
+  "Identity": 1
+ },
+ {
+  "Name": "gen2_gain",
+  "Identity": 1
+ },
+ {
+  "Name": "gen3_gain",
+  "Identity": 1
+ },
+ {
+  "Name": "gen4_gain",
+  "Identity": 1
+ },
+ {
+  "Name": "gen5_gain",
+  "Identity": 1
+ },
+ {
+  "Name": "gen6_gain",
+  "Identity": 1
+ },
+ {
+  "Name": "gen7_gain",
+  "Identity": 1
+ },
+ {
+  "Name": "gen8_gain",
+  "Identity": 1
+ },
+ {
+  "Name": "gen9_gain",
+  "Identity": 1
+ },
+ {
+  "Name": "gen10_gain",
+  "Identity": 1
+ },
+ {
+  "Name": "gen11_gain",
+  "Identity": 1
+ },
+ {
+  "Name": "gen12_gain",
+  "Identity": 1
+ },
+ {
+  "Name": "gen1_env_fast_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "gen2_env_fast_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "gen3_env_fast_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "gen4_env_fast_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "gen5_env_fast_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "gen6_env_fast_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "gen7_env_fast_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "gen8_env_fast_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "gen9_env_fast_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "gen10_env_fast_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "gen11_env_fast_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "gen12_env_fast_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_env_tail_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "gen2_env_tail_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "gen3_env_tail_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "gen4_env_tail_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "gen5_env_tail_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "gen6_env_tail_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "gen7_env_tail_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "gen8_env_tail_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "gen9_env_tail_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "gen10_env_tail_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "gen11_env_tail_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "gen12_env_tail_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_env_fast_mix",
+  "Identity": 1
+ },
+ {
+  "Name": "gen2_env_fast_mix",
+  "Identity": 1
+ },
+ {
+  "Name": "gen3_env_fast_mix",
+  "Identity": 1
+ },
+ {
+  "Name": "gen4_env_fast_mix",
+  "Identity": 1
+ },
+ {
+  "Name": "gen5_env_fast_mix",
+  "Identity": 1
+ },
+ {
+  "Name": "gen6_env_fast_mix",
+  "Identity": 1
+ },
+ {
+  "Name": "gen7_env_fast_mix",
+  "Identity": 1
+ },
+ {
+  "Name": "gen8_env_fast_mix",
+  "Identity": 1
+ },
+ {
+  "Name": "gen9_env_fast_mix",
+  "Identity": 1
+ },
+ {
+  "Name": "gen10_env_fast_mix",
+  "Identity": 1
+ },
+ {
+  "Name": "gen11_env_fast_mix",
+  "Identity": 1
+ },
+ {
+  "Name": "gen12_env_fast_mix",
+  "Identity": 1
+ },
+ {
+  "Name": "gen1_env_tail_mix",
+  "Identity": 0
+ },
+ {
+  "Name": "gen2_env_tail_mix",
+  "Identity": 0
+ },
+ {
+  "Name": "gen3_env_tail_mix",
+  "Identity": 0
+ },
+ {
+  "Name": "gen4_env_tail_mix",
+  "Identity": 0
+ },
+ {
+  "Name": "gen5_env_tail_mix",
+  "Identity": 0
+ },
+ {
+  "Name": "gen6_env_tail_mix",
+  "Identity": 0
+ },
+ {
+  "Name": "gen7_env_tail_mix",
+  "Identity": 0
+ },
+ {
+  "Name": "gen8_env_tail_mix",
+  "Identity": 0
+ },
+ {
+  "Name": "gen9_env_tail_mix",
+  "Identity": 0
+ },
+ {
+  "Name": "gen10_env_tail_mix",
+  "Identity": 0
+ },
+ {
+  "Name": "gen11_env_tail_mix",
+  "Identity": 0
+ },
+ {
+  "Name": "gen12_env_tail_mix",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_filt_type",
+  "Identity": 0
+ },
+ {
+  "Name": "gen2_filt_type",
+  "Identity": 0
+ },
+ {
+  "Name": "gen3_filt_type",
+  "Identity": 0
+ },
+ {
+  "Name": "gen4_filt_type",
+  "Identity": 0
+ },
+ {
+  "Name": "gen5_filt_type",
+  "Identity": 0
+ },
+ {
+  "Name": "gen6_filt_type",
+  "Identity": 0
+ },
+ {
+  "Name": "gen7_filt_type",
+  "Identity": 0
+ },
+ {
+  "Name": "gen8_filt_type",
+  "Identity": 0
+ },
+ {
+  "Name": "gen9_filt_type",
+  "Identity": 0
+ },
+ {
+  "Name": "gen10_filt_type",
+  "Identity": 0
+ },
+ {
+  "Name": "gen11_filt_type",
+  "Identity": 0
+ },
+ {
+  "Name": "gen12_filt_type",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_filt_alpha",
+  "Identity": 0
+ },
+ {
+  "Name": "gen2_filt_alpha",
+  "Identity": 0
+ },
+ {
+  "Name": "gen3_filt_alpha",
+  "Identity": 0
+ },
+ {
+  "Name": "gen4_filt_alpha",
+  "Identity": 0
+ },
+ {
+  "Name": "gen5_filt_alpha",
+  "Identity": 0
+ },
+ {
+  "Name": "gen6_filt_alpha",
+  "Identity": 0
+ },
+ {
+  "Name": "gen7_filt_alpha",
+  "Identity": 0
+ },
+ {
+  "Name": "gen8_filt_alpha",
+  "Identity": 0
+ },
+ {
+  "Name": "gen9_filt_alpha",
+  "Identity": 0
+ },
+ {
+  "Name": "gen10_filt_alpha",
+  "Identity": 0
+ },
+ {
+  "Name": "gen11_filt_alpha",
+  "Identity": 0
+ },
+ {
+  "Name": "gen12_filt_alpha",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_filt_freq",
+  "Identity": 1000
+ },
+ {
+  "Name": "gen2_filt_freq",
+  "Identity": 1000
+ },
+ {
+  "Name": "gen3_filt_freq",
+  "Identity": 1000
+ },
+ {
+  "Name": "gen4_filt_freq",
+  "Identity": 1000
+ },
+ {
+  "Name": "gen5_filt_freq",
+  "Identity": 1000
+ },
+ {
+  "Name": "gen6_filt_freq",
+  "Identity": 1000
+ },
+ {
+  "Name": "gen7_filt_freq",
+  "Identity": 1000
+ },
+ {
+  "Name": "gen8_filt_freq",
+  "Identity": 1000
+ },
+ {
+  "Name": "gen9_filt_freq",
+  "Identity": 1000
+ },
+ {
+  "Name": "gen10_filt_freq",
+  "Identity": 1000
+ },
+ {
+  "Name": "gen11_filt_freq",
+  "Identity": 1000
+ },
+ {
+  "Name": "gen12_filt_freq",
+  "Identity": 1000
+ },
+ {
+  "Name": "gen1_filt_q",
+  "Identity": 0.707
+ },
+ {
+  "Name": "gen2_filt_q",
+  "Identity": 0.707
+ },
+ {
+  "Name": "gen3_filt_q",
+  "Identity": 0.707
+ },
+ {
+  "Name": "gen4_filt_q",
+  "Identity": 0.707
+ },
+ {
+  "Name": "gen5_filt_q",
+  "Identity": 0.707
+ },
+ {
+  "Name": "gen6_filt_q",
+  "Identity": 0.707
+ },
+ {
+  "Name": "gen7_filt_q",
+  "Identity": 0.707
+ },
+ {
+  "Name": "gen8_filt_q",
+  "Identity": 0.707
+ },
+ {
+  "Name": "gen9_filt_q",
+  "Identity": 0.707
+ },
+ {
+  "Name": "gen10_filt_q",
+  "Identity": 0.707
+ },
+ {
+  "Name": "gen11_filt_q",
+  "Identity": 0.707
+ },
+ {
+  "Name": "gen12_filt_q",
+  "Identity": 0.707
+ },
+ {
+  "Name": "gen1_phase_mode",
+  "Identity": 0
+ },
+ {
+  "Name": "gen2_phase_mode",
+  "Identity": 0
+ },
+ {
+  "Name": "gen3_phase_mode",
+  "Identity": 0
+ },
+ {
+  "Name": "gen4_phase_mode",
+  "Identity": 0
+ },
+ {
+  "Name": "gen5_phase_mode",
+  "Identity": 0
+ },
+ {
+  "Name": "gen6_phase_mode",
+  "Identity": 0
+ },
+ {
+  "Name": "gen7_phase_mode",
+  "Identity": 0
+ },
+ {
+  "Name": "gen8_phase_mode",
+  "Identity": 0
+ },
+ {
+  "Name": "gen9_phase_mode",
+  "Identity": 0
+ },
+ {
+  "Name": "gen10_phase_mode",
+  "Identity": 0
+ },
+ {
+  "Name": "gen11_phase_mode",
+  "Identity": 0
+ },
+ {
+  "Name": "gen12_phase_mode",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_phase",
+  "Identity": 0
+ },
+ {
+  "Name": "gen2_phase",
+  "Identity": 0
+ },
+ {
+  "Name": "gen3_phase",
+  "Identity": 0
+ },
+ {
+  "Name": "gen4_phase",
+  "Identity": 0
+ },
+ {
+  "Name": "gen5_phase",
+  "Identity": 0
+ },
+ {
+  "Name": "gen6_phase",
+  "Identity": 0
+ },
+ {
+  "Name": "gen7_phase",
+  "Identity": 0
+ },
+ {
+  "Name": "gen8_phase",
+  "Identity": 0
+ },
+ {
+  "Name": "gen9_phase",
+  "Identity": 0
+ },
+ {
+  "Name": "gen10_phase",
+  "Identity": 0
+ },
+ {
+  "Name": "gen11_phase",
+  "Identity": 0
+ },
+ {
+  "Name": "gen12_phase",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_noise_offset",
+  "Identity": 0
+ },
+ {
+  "Name": "gen2_noise_offset",
+  "Identity": 0
+ },
+ {
+  "Name": "gen3_noise_offset",
+  "Identity": 0
+ },
+ {
+  "Name": "gen4_noise_offset",
+  "Identity": 0
+ },
+ {
+  "Name": "gen5_noise_offset",
+  "Identity": 0
+ },
+ {
+  "Name": "gen6_noise_offset",
+  "Identity": 0
+ },
+ {
+  "Name": "gen7_noise_offset",
+  "Identity": 0
+ },
+ {
+  "Name": "gen8_noise_offset",
+  "Identity": 0
+ },
+ {
+  "Name": "gen9_noise_offset",
+  "Identity": 0
+ },
+ {
+  "Name": "gen10_noise_offset",
+  "Identity": 0
+ },
+ {
+  "Name": "gen11_noise_offset",
+  "Identity": 0
+ },
+ {
+  "Name": "gen12_noise_offset",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_pitch_env_amt",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_pitch_env_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_harm_mix",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_atk_amt",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_atk_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_sat_k",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_out_scale",
+  "Identity": 1
+ },
+ {
+  "Name": "voice_freq_hz",
+  "Identity": 0
+ },
+ {
+  "Name": "post_pitch",
+  "Identity": 0
+ },
+ {
+  "Name": "post_decay",
+  "Identity": 1
+ },
+ {
+  "Name": "post_decay_rate",
+  "Identity": 8
+ },
+ {
+  "Name": "post_body",
+  "Identity": 0
+ },
+ {
+  "Name": "post_brightness",
+  "Identity": 0
+ },
+ {
+  "Name": "post_darken",
+  "Identity": 0
+ },
+ {
+  "Name": "post_drive",
+  "Identity": 0
+ },
+ {
+  "Name": "out_clamp",
+  "Identity": 1.5
+ },
+ {
+  "Name": "gen1_ks_sustain",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_ks_pluck",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_ks_blow",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_kick_variant",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_kick_h2",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_kick_h3",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_kick_h4",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_kick_env0",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_kick_env1",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_kick_pe_amt",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_kick_pe_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_kick_click",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_kick_noise",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_tom_variant",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_tom_sweep",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_tom_ring",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_tom_o1",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_tom_o2",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_tom_stick",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_tom_room",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_snare_variant",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_snare_tone2",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_snare_tune",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_snare_tone_d",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_snare_noise_d",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_snare_tail_d",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_snare_tone_m",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_snare_noise_m",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_snare_wire_m",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_snare_attack",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_cym_variant",
+  "Identity": 0
+ },
+ {
+  "Name": "gen2_cym_variant",
+  "Identity": 0
+ },
+ {
+  "Name": "gen3_cym_variant",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_cym_tune",
+  "Identity": 1
+ },
+ {
+  "Name": "gen2_cym_tune",
+  "Identity": 1
+ },
+ {
+  "Name": "gen3_cym_tune",
+  "Identity": 1
+ },
+ {
+  "Name": "gen1_cym_env_fast",
+  "Identity": 0
+ },
+ {
+  "Name": "gen2_cym_env_fast",
+  "Identity": 0
+ },
+ {
+  "Name": "gen3_cym_env_fast",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_cym_env_tail",
+  "Identity": 1.7
+ },
+ {
+  "Name": "gen2_cym_env_tail",
+  "Identity": 1.7
+ },
+ {
+  "Name": "gen3_cym_env_tail",
+  "Identity": 1.7
+ },
+ {
+  "Name": "gen1_cym_tone_m",
+  "Identity": 0
+ },
+ {
+  "Name": "gen2_cym_tone_m",
+  "Identity": 0
+ },
+ {
+  "Name": "gen3_cym_tone_m",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_cym_noise_m",
+  "Identity": 0
+ },
+ {
+  "Name": "gen2_cym_noise_m",
+  "Identity": 0
+ },
+ {
+  "Name": "gen3_cym_noise_m",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_cym_noise_d",
+  "Identity": 4
+ },
+ {
+  "Name": "gen2_cym_noise_d",
+  "Identity": 4
+ },
+ {
+  "Name": "gen3_cym_noise_d",
+  "Identity": 4
+ },
+ {
+  "Name": "gen1_fm_variant",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_fm_base",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_fm_pe_amt",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_fm_pe_decay",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_fm_r1",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_fm_r2",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_fm_r3",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_fm_r4",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_fm_d1",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_fm_d2",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_fm_d3",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_fm_d4",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_fm_dec1",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_fm_dec2",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_fm_dec3",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_fm_dec4",
+  "Identity": 0
+ },
+ {
+  "Name": "pitchenv_enabled",
+  "Identity": 0
+ },
+ {
+  "Name": "pitchenv_amt",
+  "Identity": 0
+ },
+ {
+  "Name": "pitchenv_decay",
+  "Identity": 0
+ },
+ {
+  "Name": "lfo_enabled",
+  "Identity": 0
+ },
+ {
+  "Name": "lfo_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "lfo_depth",
+  "Identity": 0
+ },
+ {
+  "Name": "burst_enabled",
+  "Identity": 0
+ },
+ {
+  "Name": "burst_sharp",
+  "Identity": 0
+ },
+ {
+  "Name": "burst1_off",
+  "Identity": 0
+ },
+ {
+  "Name": "burst1_amp",
+  "Identity": 0
+ },
+ {
+  "Name": "burst2_off",
+  "Identity": 0
+ },
+ {
+  "Name": "burst2_amp",
+  "Identity": 0
+ },
+ {
+  "Name": "burst3_off",
+  "Identity": 0
+ },
+ {
+  "Name": "burst3_amp",
+  "Identity": 0
+ },
+ {
+  "Name": "burst4_off",
+  "Identity": 0
+ },
+ {
+  "Name": "burst4_amp",
+  "Identity": 0
+ },
+ {
+  "Name": "lfo_target",
+  "Identity": 0
+ },
+ {
+  "Name": "filtenv_enabled",
+  "Identity": 0
+ },
+ {
+  "Name": "filtenv_amt",
+  "Identity": 0
+ },
+ {
+  "Name": "filtenv_decay",
+  "Identity": 0
+ },
+ {
+  "Name": "filtenv_attack",
+  "Identity": 0
+ },
+ {
+  "Name": "unison_voices",
+  "Identity": 1
+ },
+ {
+  "Name": "unison_detune",
+  "Identity": 0
+ },
+ {
+  "Name": "unison_mix",
+  "Identity": 0.5
+ },
+ {
+  "Name": "unison_drift_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "unison_drift_depth",
+  "Identity": 0
+ },
+ {
+  "Name": "lfo_delay",
+  "Identity": 0
+ },
+ {
+  "Name": "body_model",
+  "Identity": 0
+ },
+ {
+  "Name": "body_mix",
+  "Identity": 0
+ },
+ {
+  "Name": "bow_dynamics",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_kick_attack",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_kick_fade",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_kick_sat",
+  "Identity": 0
+ },
+ {
+  "Name": "kick_enabled",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_kick_mode_detune",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_kick_mode_gain",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_kick_mode_decay",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_kick_reverb",
+  "Identity": 0
+ },
+ {
+  "Name": "osc_sax_blow",
+  "Identity": 0.15
+ },
+ {
+  "Name": "osc_sax_reed_off",
+  "Identity": 0.58
+ },
+ {
+  "Name": "osc_sax_reed_slope",
+  "Identity": 0.28
+ },
+ {
+  "Name": "osc_sax_reflect",
+  "Identity": -0.94
+ },
+ {
+  "Name": "osc_sax_breath",
+  "Identity": 0.85
+ },
+ {
+  "Name": "osc_sax_loss",
+  "Identity": 0.7
+ },
+ {
+  "Name": "osc_bow_pos",
+  "Identity": 0.13
+ },
+ {
+  "Name": "osc_bow_slope",
+  "Identity": 3
+ },
+ {
+  "Name": "osc_bow_vel",
+  "Identity": 0.25
+ },
+ {
+  "Name": "osc_bow_loss",
+  "Identity": 0.55
+ },
+ {
+  "Name": "formant_enabled",
+  "Identity": 0
+ },
+ {
+  "Name": "formant_vowel",
+  "Identity": 0
+ },
+ {
+  "Name": "formant_voice_type",
+  "Identity": 0
+ },
+ {
+  "Name": "formant_mix",
+  "Identity": 0
+ },
+ {
+  "Name": "formant_shift",
+  "Identity": 1
+ },
+ {
+  "Name": "formant_breath",
+  "Identity": 0
+ },
+ {
+  "Name": "formant_sing",
+  "Identity": 0
+ },
+ {
+  "Name": "formant_morph_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "formant_morph_to",
+  "Identity": 0
+ },
+ {
+  "Name": "ens_scatter",
+  "Identity": 0
+ },
+ {
+  "Name": "ens_vib_rate",
+  "Identity": 0
+ },
+ {
+  "Name": "ens_vib_depth",
+  "Identity": 0
+ },
+ {
+  "Name": "ens_humanize",
+  "Identity": 0
+ },
+ {
+  "Name": "ens_jitter",
+  "Identity": 0
+ },
+ {
+  "Name": "formant_dry",
+  "Identity": 1
+ },
+ {
+  "Name": "snare_enabled",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_cym_modes",
+  "Identity": 0
+ },
+ {
+  "Name": "gen2_cym_modes",
+  "Identity": 0
+ },
+ {
+  "Name": "gen3_cym_modes",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_cym_mode_lo",
+  "Identity": 300
+ },
+ {
+  "Name": "gen2_cym_mode_lo",
+  "Identity": 300
+ },
+ {
+  "Name": "gen3_cym_mode_lo",
+  "Identity": 300
+ },
+ {
+  "Name": "gen1_cym_mode_hi",
+  "Identity": 18000
+ },
+ {
+  "Name": "gen2_cym_mode_hi",
+  "Identity": 18000
+ },
+ {
+  "Name": "gen3_cym_mode_hi",
+  "Identity": 18000
+ },
+ {
+  "Name": "gen1_cym_decay_tilt",
+  "Identity": 0
+ },
+ {
+  "Name": "gen2_cym_decay_tilt",
+  "Identity": 0
+ },
+ {
+  "Name": "gen3_cym_decay_tilt",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_cym_hf_corner",
+  "Identity": 10000
+ },
+ {
+  "Name": "gen2_cym_hf_corner",
+  "Identity": 10000
+ },
+ {
+  "Name": "gen3_cym_hf_corner",
+  "Identity": 10000
+ },
+ {
+  "Name": "gen1_cym_beat",
+  "Identity": 0
+ },
+ {
+  "Name": "gen2_cym_beat",
+  "Identity": 0
+ },
+ {
+  "Name": "gen3_cym_beat",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_cym_tone_f",
+  "Identity": 3000
+ },
+ {
+  "Name": "gen2_cym_tone_f",
+  "Identity": 3000
+ },
+ {
+  "Name": "gen3_cym_tone_f",
+  "Identity": 3000
+ },
+ {
+  "Name": "gen1_cym_tone_w",
+  "Identity": 0.6
+ },
+ {
+  "Name": "gen2_cym_tone_w",
+  "Identity": 0.6
+ },
+ {
+  "Name": "gen3_cym_tone_w",
+  "Identity": 0.6
+ },
+ {
+  "Name": "gen1_cym_body_f",
+  "Identity": 1500
+ },
+ {
+  "Name": "gen2_cym_body_f",
+  "Identity": 1500
+ },
+ {
+  "Name": "gen3_cym_body_f",
+  "Identity": 1500
+ },
+ {
+  "Name": "gen1_cym_body_w",
+  "Identity": 0.15
+ },
+ {
+  "Name": "gen2_cym_body_w",
+  "Identity": 0.15
+ },
+ {
+  "Name": "gen3_cym_body_w",
+  "Identity": 0.15
+ },
+ {
+  "Name": "gen1_cym_body",
+  "Identity": 0
+ },
+ {
+  "Name": "gen2_cym_body",
+  "Identity": 0
+ },
+ {
+  "Name": "gen3_cym_body",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_cym_spark_f",
+  "Identity": 11000
+ },
+ {
+  "Name": "gen2_cym_spark_f",
+  "Identity": 11000
+ },
+ {
+  "Name": "gen3_cym_spark_f",
+  "Identity": 11000
+ },
+ {
+  "Name": "gen1_cym_spark_w",
+  "Identity": 0.3
+ },
+ {
+  "Name": "gen2_cym_spark_w",
+  "Identity": 0.3
+ },
+ {
+  "Name": "gen3_cym_spark_w",
+  "Identity": 0.3
+ },
+ {
+  "Name": "gen1_cym_spark",
+  "Identity": 0
+ },
+ {
+  "Name": "gen2_cym_spark",
+  "Identity": 0
+ },
+ {
+  "Name": "gen3_cym_spark",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_cym_wash",
+  "Identity": 0
+ },
+ {
+  "Name": "gen2_cym_wash",
+  "Identity": 0
+ },
+ {
+  "Name": "gen3_cym_wash",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_cym_attack",
+  "Identity": 0.0005
+ },
+ {
+  "Name": "gen2_cym_attack",
+  "Identity": 0.0005
+ },
+ {
+  "Name": "gen3_cym_attack",
+  "Identity": 0.0005
+ },
+ {
+  "Name": "gen1_cym_rattle",
+  "Identity": 1
+ },
+ {
+  "Name": "gen2_cym_rattle",
+  "Identity": 1
+ },
+ {
+  "Name": "gen3_cym_rattle",
+  "Identity": 1
+ },
+ {
+  "Name": "gen1_cym_rattle_rate",
+  "Identity": 2000
+ },
+ {
+  "Name": "gen2_cym_rattle_rate",
+  "Identity": 2000
+ },
+ {
+  "Name": "gen3_cym_rattle_rate",
+  "Identity": 2000
+ },
+ {
+  "Name": "gen1_cym_rattle_decay",
+  "Identity": 0.06
+ },
+ {
+  "Name": "gen2_cym_rattle_decay",
+  "Identity": 0.06
+ },
+ {
+  "Name": "gen3_cym_rattle_decay",
+  "Identity": 0.06
+ },
+ {
+  "Name": "gen1_cym_drive_delay",
+  "Identity": 0
+ },
+ {
+  "Name": "gen2_cym_drive_delay",
+  "Identity": 0
+ },
+ {
+  "Name": "gen3_cym_drive_delay",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_cym_rattle_hold",
+  "Identity": 0
+ },
+ {
+  "Name": "gen2_cym_rattle_hold",
+  "Identity": 0
+ },
+ {
+  "Name": "gen3_cym_rattle_hold",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_kick_hold",
+  "Identity": 0
+ },
+ {
+  "Name": "gen1_kick_hiss",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_enabled",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq_mode",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_tune",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_stretch",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay_x",
+  "Identity": 1
+ },
+ {
+  "Name": "modal_bright",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_keep",
+  "Identity": 128
+ },
+ {
+  "Name": "modal_law_a",
+  "Identity": 1
+ },
+ {
+  "Name": "modal_law_p",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_law_b",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_count",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[0]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[1]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[2]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[3]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[4]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[5]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[6]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[7]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[8]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[9]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[10]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[11]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[12]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[13]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[14]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[15]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[16]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[17]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[18]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[19]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[20]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[21]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[22]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[23]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[24]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[25]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[26]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[27]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[28]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[29]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[30]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[31]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[32]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[33]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[34]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[35]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[36]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[37]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[38]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[39]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[40]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[41]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[42]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[43]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[44]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[45]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[46]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[47]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[48]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[49]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[50]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[51]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[52]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[53]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[54]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[55]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[56]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[57]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[58]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[59]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[60]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[61]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[62]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[63]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[64]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[65]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[66]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[67]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[68]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[69]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[70]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[71]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[72]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[73]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[74]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[75]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[76]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[77]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[78]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[79]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[80]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[81]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[82]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[83]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[84]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[85]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[86]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[87]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[88]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[89]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[90]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[91]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[92]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[93]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[94]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[95]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[96]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[97]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[98]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[99]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[100]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[101]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[102]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[103]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[104]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[105]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[106]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[107]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[108]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[109]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[110]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[111]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[112]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[113]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[114]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[115]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[116]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[117]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[118]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[119]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[120]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[121]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[122]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[123]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[124]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[125]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[126]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_freq[127]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[0]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[1]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[2]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[3]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[4]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[5]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[6]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[7]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[8]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[9]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[10]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[11]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[12]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[13]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[14]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[15]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[16]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[17]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[18]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[19]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[20]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[21]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[22]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[23]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[24]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[25]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[26]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[27]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[28]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[29]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[30]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[31]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[32]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[33]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[34]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[35]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[36]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[37]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[38]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[39]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[40]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[41]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[42]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[43]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[44]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[45]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[46]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[47]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[48]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[49]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[50]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[51]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[52]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[53]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[54]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[55]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[56]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[57]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[58]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[59]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[60]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[61]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[62]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[63]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[64]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[65]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[66]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[67]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[68]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[69]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[70]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[71]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[72]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[73]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[74]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[75]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[76]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[77]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[78]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[79]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[80]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[81]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[82]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[83]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[84]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[85]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[86]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[87]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[88]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[89]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[90]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[91]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[92]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[93]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[94]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[95]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[96]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[97]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[98]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[99]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[100]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[101]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[102]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[103]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[104]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[105]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[106]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[107]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[108]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[109]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[110]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[111]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[112]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[113]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[114]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[115]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[116]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[117]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[118]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[119]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[120]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[121]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[122]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[123]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[124]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[125]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[126]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_decay[127]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[0]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[1]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[2]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[3]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[4]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[5]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[6]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[7]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[8]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[9]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[10]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[11]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[12]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[13]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[14]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[15]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[16]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[17]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[18]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[19]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[20]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[21]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[22]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[23]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[24]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[25]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[26]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[27]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[28]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[29]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[30]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[31]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[32]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[33]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[34]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[35]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[36]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[37]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[38]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[39]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[40]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[41]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[42]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[43]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[44]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[45]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[46]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[47]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[48]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[49]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[50]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[51]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[52]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[53]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[54]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[55]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[56]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[57]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[58]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[59]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[60]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[61]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[62]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[63]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[64]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[65]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[66]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[67]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[68]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[69]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[70]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[71]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[72]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[73]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[74]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[75]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[76]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[77]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[78]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[79]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[80]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[81]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[82]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[83]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[84]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[85]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[86]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[87]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[88]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[89]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[90]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[91]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[92]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[93]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[94]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[95]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[96]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[97]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[98]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[99]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[100]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[101]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[102]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[103]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[104]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[105]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[106]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[107]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[108]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[109]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[110]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[111]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[112]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[113]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[114]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[115]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[116]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[117]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[118]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[119]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[120]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[121]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[122]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[123]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[124]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[125]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[126]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_amp[127]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[0]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[1]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[2]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[3]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[4]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[5]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[6]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[7]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[8]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[9]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[10]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[11]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[12]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[13]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[14]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[15]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[16]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[17]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[18]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[19]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[20]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[21]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[22]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[23]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[24]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[25]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[26]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[27]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[28]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[29]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[30]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[31]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[32]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[33]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[34]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[35]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[36]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[37]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[38]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[39]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[40]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[41]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[42]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[43]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[44]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[45]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[46]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[47]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[48]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[49]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[50]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[51]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[52]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[53]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[54]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[55]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[56]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[57]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[58]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[59]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[60]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[61]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[62]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[63]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[64]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[65]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[66]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[67]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[68]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[69]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[70]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[71]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[72]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[73]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[74]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[75]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[76]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[77]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[78]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[79]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[80]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[81]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[82]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[83]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[84]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[85]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[86]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[87]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[88]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[89]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[90]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[91]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[92]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[93]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[94]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[95]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[96]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[97]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[98]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[99]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[100]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[101]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[102]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[103]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[104]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[105]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[106]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[107]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[108]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[109]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[110]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[111]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[112]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[113]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[114]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[115]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[116]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[117]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[118]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[119]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[120]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[121]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[122]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[123]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[124]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[125]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[126]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_phase[127]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[0]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[1]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[2]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[3]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[4]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[5]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[6]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[7]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[8]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[9]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[10]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[11]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[12]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[13]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[14]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[15]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[16]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[17]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[18]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[19]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[20]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[21]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[22]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[23]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[24]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[25]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[26]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[27]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[28]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[29]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[30]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[31]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[32]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[33]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[34]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[35]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[36]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[37]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[38]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[39]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[40]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[41]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[42]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[43]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[44]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[45]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[46]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[47]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[48]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[49]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[50]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[51]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[52]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[53]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[54]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[55]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[56]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[57]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[58]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[59]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[60]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[61]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[62]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[63]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[64]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[65]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[66]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[67]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[68]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[69]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[70]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[71]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[72]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[73]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[74]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[75]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[76]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[77]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[78]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[79]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[80]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[81]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[82]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[83]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[84]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[85]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[86]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[87]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[88]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[89]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[90]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[91]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[92]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[93]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[94]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[95]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[96]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[97]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[98]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[99]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[100]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[101]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[102]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[103]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[104]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[105]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[106]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[107]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[108]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[109]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[110]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[111]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[112]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[113]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[114]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[115]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[116]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[117]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[118]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[119]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[120]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[121]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[122]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[123]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[124]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[125]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[126]",
+  "Identity": 0
+ },
+ {
+  "Name": "modal_attack[127]",
+  "Identity": 0
+ },
+ {
+  "Name": "strike_enabled",
+  "Identity": 0
+ },
+ {
+  "Name": "strike_tc",
+  "Identity": 0
+ },
+ {
+  "Name": "strike_hardness",
+  "Identity": 0
+ },
+ {
+  "Name": "strike_click",
+  "Identity": 0
+ },
+ {
+  "Name": "noiseband_enabled",
+  "Identity": 0
+ },
+ {
+  "Name": "noiseband_level",
+  "Identity": 0
+ },
+ {
+  "Name": "noiseband_count",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[0]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[1]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[2]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[3]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[4]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[5]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[6]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[7]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[8]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[9]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[10]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[11]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[12]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[13]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[14]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[15]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[16]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[17]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[18]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[19]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[20]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[21]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[22]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[23]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[24]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[25]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[26]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[27]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[28]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[29]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[30]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_center[31]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[0]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[1]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[2]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[3]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[4]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[5]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[6]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[7]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[8]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[9]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[10]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[11]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[12]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[13]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[14]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[15]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[16]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[17]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[18]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[19]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[20]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[21]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[22]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[23]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[24]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[25]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[26]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[27]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[28]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[29]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[30]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_q[31]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[0]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[1]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[2]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[3]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[4]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[5]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[6]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[7]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[8]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[9]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[10]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[11]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[12]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[13]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[14]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[15]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[16]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[17]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[18]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[19]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[20]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[21]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[22]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[23]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[24]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[25]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[26]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[27]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[28]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[29]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[30]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_level[31]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[0]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[1]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[2]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[3]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[4]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[5]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[6]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[7]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[8]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[9]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[10]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[11]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[12]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[13]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[14]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[15]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[16]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[17]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[18]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[19]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[20]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[21]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[22]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[23]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[24]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[25]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[26]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[27]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[28]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[29]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[30]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_attack[31]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[0]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[1]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[2]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[3]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[4]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[5]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[6]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[7]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[8]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[9]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[10]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[11]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[12]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[13]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[14]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[15]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[16]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[17]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[18]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[19]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[20]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[21]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[22]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[23]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[24]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[25]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[26]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[27]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[28]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[29]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[30]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_rate[31]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[0]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[1]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[2]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[3]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[4]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[5]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[6]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[7]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[8]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[9]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[10]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[11]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[12]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[13]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[14]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[15]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[16]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[17]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[18]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[19]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[20]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[21]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[22]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[23]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[24]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[25]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[26]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[27]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[28]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[29]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[30]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_fast_mix[31]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[0]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[1]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[2]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[3]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[4]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[5]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[6]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[7]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[8]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[9]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[10]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[11]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[12]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[13]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[14]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[15]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[16]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[17]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[18]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[19]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[20]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[21]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[22]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[23]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[24]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[25]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[26]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[27]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[28]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[29]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[30]",
+  "Identity": 0
+ },
+ {
+  "Name": "nb_tail_rate[31]",
+  "Identity": 0
+ }
+]

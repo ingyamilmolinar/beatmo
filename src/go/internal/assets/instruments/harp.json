@@ -1,0 +1,109 @@
+{
+  "schema_version": "0.0.1",
+  "id": "harp",
+  "name": "Harp",
+  "category": "modular",
+  "notes": "harpSeed: CELTIC HARP — a bright, clean, long-RINGING plucked string (Karplus-\nStrong, like the guitars but more OPEN/shimmering): a brighter clear pluck, a\nmuch longer free sustain (the strings ring out), and a lighter soundboard than\na guitar's box. Reference: celtic harp G2 (daphne_in_wonderland, CC0).",
+  "render": {
+    "seconds": 2,
+    "amplitude": 0.7676,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.001,
+        "amp_curve": 1,
+        "amp_decay": 4,
+        "amp_release": 0.5,
+        "amp_sustain": 0
+      },
+      "notes": "amp_attack: instant pluck transient\namp_decay: long ring-out (schema max for amp_decay is 4.0 -- see modular_recipe.go)"
+    },
+    "body": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "body_mix": 0.18,
+        "body_model": 2,
+        "bow_dynamics": 0
+      },
+      "notes": "body_model: light soundboard coloration (harps are more open than a guitar box)"
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.9,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 3300,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      },
+      "notes": "filter_cutoff: open/bright"
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "ks",
+      "v": 1,
+      "on": true,
+      "values": {
+        "atk_amt": 0,
+        "atk_rate": 0,
+        "env_fast_rate": 0,
+        "freq": 1,
+        "freq_mode": 0,
+        "gain": 1,
+        "ks_blow": 0,
+        "ks_pluck": 0.25,
+        "ks_sustain": 0.997,
+        "out_scale": 1
+      },
+      "notes": "gen1_ks_pluck: bright, clear, shimmering pluck\ngen1_ks_sustain: 2026-08-22 tuning round: refs diagnose measured ring T60 1.9x too short\n(ref 1.95s vs synth 1.04s, at the corpus's own render pitch ~777Hz —\nthe \"harp-freesound-alt\" ref's DetectF0 locks onto a HIGH note, see the\nAGENTS.synth.instruments.md note on this reference). KS loop-gain math:\nT60 = ln(1000)/(ln(1/ks_sustain)*f0 + 1/amp_decay); at 0.993 that gave\n~1.2s. Raised ks_sustain 0.993->0.997 (halves the loop-gain deficit) and\namp_decay 3.5->4.0 (the master envelope no longer clips the ring as\nshort; 4.0 is the ParamDef schema's declared max for amp_decay --\nmodular_recipe.go's `{Name: \"amp_decay\", ... Max: 4}` -- an earlier pass\nat 6.0 rendered fine here but silently diverged from the no-edit fast\npath, which clamps to the schema bound before rendering; caught by\nTestModularNoEditFastPathMatchesRecipe/harp) to close the gap toward\nthe reference's ~1.95s. longer ring — harp strings sustain freely"
+    }
+  ]
+}

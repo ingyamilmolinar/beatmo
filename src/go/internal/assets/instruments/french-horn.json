@@ -1,0 +1,291 @@
+{
+  "schema_version": "0.0.1",
+  "id": "french-horn",
+  "name": "French Horn",
+  "category": "modular",
+  "notes": "frenchHornSeed: SUBTRACTIVE horn synthesis (mirrors trumpetSeed's saw→filter→filtenv\narchitecture, but DARKER and SLOWER). The previous additive sine-bank had a ~37ms onset\n(gen-slots fired instantly); a SAW source routed through the amp ADSR gives a genuine slow\nmellow horn onset (real horn ≈0.43s). Architecture:\n  - osc_enabled=1, osc_type=1 (SAW) — full odd+even harmonic series, the horn's mellow body.\n  - global LOW-PASS @550Hz (filter_type=0) — horn is DARK and dominated by P1-P2, so a LP\n    (not a band-pass) keeps the fundamental dominant and rolls off the bright upper partials.\n  - filtenv +2.6 oct / 0.55s decay — a GENTLE slow bloom (gentler than trumpet): the cutoff\n    opens from dark→mellow over the long onset, so the centroid EVOLVES without getting bright.\n  - gen1 = a soft mid lift (low-passed saw) for the P2-P3 \"horn\" body the main LP rolls off.\n  - amp_attack=0.30 — slow mellow horn onset; the saw routing makes this measure.\n  - light 4.8Hz vibrato + lfo_delay for breath; unison 3 for ensemble warmth.\n\nfrenchHornSeed — ADDITIVE, matched to the real horn envelope (henkonen fhorn-18, CC0, C5 ≈525Hz).\nA saw+LP gave \"harp+organ\"/wrong spectrum: the real horn has a BRASS FORMANT — a plateau/bump at H4\n(~2100Hz, H4≈H3) that a monotonic LP cannot make (at the cutoff that gets H2 right, H4 is always too\nweak). So PLACE the partials directly at the measured ratios (H2 −18, H3 −29, H4 −31 plateau, then\ngentle rolloff). Unison drift + a continuous breath-noise tap give movement (anti-organ); a gentle\nfilter-env bloom gives the brass attack. (gen-slot path renders upper partials ~10 dB under their gain,\nso H4+ gains are boosted above the bare measured ratios — verified by the A/B harmonic table.)",
+  "render": {
+    "seconds": 1,
+    "amplitude": 0.7598,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.02,
+        "amp_curve": 1,
+        "amp_decay": 0.06,
+        "amp_release": 0.15,
+        "amp_sustain": 0.9
+      },
+      "notes": "amp_attack: fast horn onset — the ref speaks in ~12ms; the old 80ms + drift beating pushed the measured attack to ~0.7s"
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.85,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 2600,
+        "filter_resonance": 1,
+        "filter_type": 0
+      },
+      "notes": "filter_cutoff: gentle top roll-off only; the SPECTRUM is set by the gen gains below"
+    },
+    "filter_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filtenv_amt": 0.6,
+        "filtenv_attack": 0,
+        "filtenv_decay": 0.12
+      },
+      "notes": "filtenv_enabled: gentle attack-brightness bloom (the brassy onset)"
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    },
+    "lfo": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "lfo_delay": 0.05,
+        "lfo_depth": 0.02,
+        "lfo_rate": 4,
+        "lfo_target": 1
+      },
+      "notes": "lfo_enabled: gentle vibrato — horn is steady (real ~3 Hz / 5 cents); short delay so it doesn't delay the onset peak"
+    },
+    "unison": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "ens_humanize": 0,
+        "ens_jitter": 0,
+        "ens_scatter": 0,
+        "ens_vib_depth": 0,
+        "ens_vib_rate": 0,
+        "unison_detune": 6,
+        "unison_drift_depth": 8,
+        "unison_drift_rate": 2.5,
+        "unison_mix": 0.35,
+        "unison_voices": 3
+      },
+      "notes": "unison_voices: unison + drift = warmth + movement (kills the static \"organ\" purity)"
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "gen.noise",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 0.5,
+        "env_fast_rate": 14,
+        "env_tail_mix": 0.8,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1200,
+        "filt_q": 0.5,
+        "filt_type": 5,
+        "gain": 0.03,
+        "noise_offset": 0
+      },
+      "notes": "gen1_source: continuous breath/air noise — low, band-passed (real horn has some air)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 1,
+        "freq_mode": 0,
+        "gain": 0.32,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen2_freq: H1 (ref: H2 is LOUDER)\ngen2_freq_mode: H1 (ref: H2 is LOUDER)\ngen2_gain: H1 (ref: H2 is LOUDER)\ngen2_source: measured harmonic ladder (rel f0): H2 −18, H3 −29, H4 −31 (formant plateau), H5 −41, H6 −49.\nUpper gens are boosted above the bare ratio to offset the gen-slot ~10 dB attenuation. H1 (ref: H2 is LOUDER)\ngen2_wave: H1 (ref: H2 is LOUDER)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 2,
+        "freq_mode": 0,
+        "gain": 0.65,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen3_freq: H2 DOMINANT (ref 2.08)\ngen3_freq_mode: H2 DOMINANT (ref 2.08)\ngen3_gain: H2 DOMINANT (ref 2.08)\ngen3_source: H2 DOMINANT (ref 2.08)\ngen3_wave: H2 DOMINANT (ref 2.08)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 3,
+        "freq_mode": 0,
+        "gain": 0.34,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen4_freq: H3 strong (ref 1.13)\ngen4_freq_mode: H3 strong (ref 1.13)\ngen4_gain: H3 strong (ref 1.13)\ngen4_source: H3 strong (ref 1.13)\ngen4_wave: H3 strong (ref 1.13)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 4,
+        "freq_mode": 0,
+        "gain": 0.12,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen5_freq: H4 (ref 0.32)\ngen5_freq_mode: H4 (ref 0.32)\ngen5_gain: H4 (ref 0.32)\ngen5_source: H4 (ref 0.32)\ngen5_wave: H4 (ref 0.32)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 5,
+        "freq_mode": 0,
+        "gain": 0.05,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen6_freq: H5\ngen6_freq_mode: H5\ngen6_gain: H5\ngen6_source: H5\ngen6_wave: H5"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 6,
+        "freq_mode": 0,
+        "gain": 0.016,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen7_freq: H6\ngen7_freq_mode: H6\ngen7_gain: H6\ngen7_source: H6\ngen7_wave: H6"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 7,
+        "freq_mode": 0,
+        "gain": 0.008,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen8_freq: H7\ngen8_freq_mode: H7\ngen8_gain: H7\ngen8_source: H7\ngen8_wave: H7"
+    }
+  ]
+}

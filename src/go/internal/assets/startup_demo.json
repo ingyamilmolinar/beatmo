@@ -1,0 +1,1797 @@
+{
+  "schema_version": "0.0.1",
+  "subdiv": 8,
+  "bpm": 120,
+  "master_volume": 0.72,
+  "instruments": [
+    {
+      "name": "Kick Wood v2",
+      "id": "kick-wood",
+      "kind": "builtin",
+      "volume": 0.85,
+      "origin": 0,
+      "color": "#EE00DDFF",
+      "eq": {
+        "gains_db": [
+          12,
+          3.3,
+          -3.5,
+          -7.3,
+          -12,
+          0,
+          -0.8,
+          0,
+          0,
+          0
+        ],
+        "bands_hz": [
+          [
+            22,
+            44
+          ],
+          [
+            44,
+            88
+          ],
+          [
+            88,
+            177
+          ],
+          [
+            177,
+            354
+          ],
+          [
+            354,
+            707
+          ],
+          [
+            707,
+            1414
+          ],
+          [
+            1414,
+            2828
+          ],
+          [
+            2828,
+            5657
+          ],
+          [
+            5657,
+            11314
+          ],
+          [
+            11314,
+            20000
+          ]
+        ],
+        "hpf_cutoff_hz": 20,
+        "lpf_enabled": true,
+        "lpf_cutoff_hz": 1000
+      },
+      "effects": [
+        {
+          "type": "waveshaper",
+          "enabled": true,
+          "params": {
+            "curve": 1.049079754601227,
+            "drive": 2.0490797546012267,
+            "mix": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "Snare Punch",
+      "id": "snare-punch",
+      "kind": "builtin",
+      "volume": 0.37,
+      "origin": 3,
+      "color": "#00C8E0FF",
+      "eq": {
+        "gains_db": [
+          -6,
+          -6,
+          -1,
+          -1,
+          -1.8,
+          1.7,
+          3.5,
+          3.9,
+          1.3,
+          -4
+        ],
+        "bands_hz": [
+          [
+            22,
+            44
+          ],
+          [
+            44,
+            88
+          ],
+          [
+            88,
+            177
+          ],
+          [
+            177,
+            354
+          ],
+          [
+            354,
+            707
+          ],
+          [
+            707,
+            1414
+          ],
+          [
+            1414,
+            2828
+          ],
+          [
+            2828,
+            5657
+          ],
+          [
+            5657,
+            11314
+          ],
+          [
+            11314,
+            20000
+          ]
+        ],
+        "hpf_enabled": true,
+        "hpf_cutoff_hz": 180,
+        "lpf_enabled": true,
+        "lpf_cutoff_hz": 8998.186611481351
+      },
+      "effects": [
+        {
+          "type": "distortion",
+          "enabled": true,
+          "params": {
+            "drive": 2.4901960784313726,
+            "mix": 1,
+            "tone": 2952.9411764705883
+          }
+        }
+      ]
+    },
+    {
+      "name": "Hihat Lofi",
+      "id": "hihat-lofi",
+      "kind": "builtin",
+      "volume": 0.6,
+      "origin": 6,
+      "color": "#FFD319FF",
+      "eq": {
+        "gains_db": [
+          -6,
+          -6,
+          -6,
+          -3,
+          -1.6,
+          -3,
+          -0.9,
+          1.6,
+          5,
+          -0.2
+        ],
+        "bands_hz": [
+          [
+            22,
+            44
+          ],
+          [
+            44,
+            88
+          ],
+          [
+            88,
+            177
+          ],
+          [
+            177,
+            354
+          ],
+          [
+            354,
+            707
+          ],
+          [
+            707,
+            1414
+          ],
+          [
+            1414,
+            2828
+          ],
+          [
+            2828,
+            5657
+          ],
+          [
+            5657,
+            11314
+          ],
+          [
+            11314,
+            20000
+          ]
+        ],
+        "hpf_enabled": true,
+        "hpf_cutoff_hz": 343.70531311604617,
+        "lpf_cutoff_hz": 20000
+      },
+      "effects": [
+        {
+          "type": "tremolo",
+          "enabled": true,
+          "params": {
+            "depth": 0.4009216589861751,
+            "mix": 1,
+            "rate": 4.0046082949308754,
+            "shape": 0
+          }
+        },
+        {
+          "type": "bitcrusher",
+          "enabled": true,
+          "params": {
+            "bits": 8,
+            "mix": 0.6036866359447005,
+            "rate": 0.20161290322580647
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cowbell",
+      "id": "cowbell",
+      "kind": "builtin",
+      "volume": 0.26,
+      "origin": 13,
+      "color": "#A030FFFF",
+      "eq": {
+        "gains_db": [
+          -8,
+          -8,
+          -8,
+          -0.8,
+          5.9,
+          1.4,
+          -2.1,
+          -12,
+          1.5,
+          0.4
+        ],
+        "bands_hz": [
+          [
+            22,
+            44
+          ],
+          [
+            44,
+            88
+          ],
+          [
+            88,
+            177
+          ],
+          [
+            177,
+            354
+          ],
+          [
+            354,
+            707
+          ],
+          [
+            707,
+            1414
+          ],
+          [
+            1414,
+            2828
+          ],
+          [
+            2828,
+            5657
+          ],
+          [
+            5657,
+            11314
+          ],
+          [
+            11314,
+            20000
+          ]
+        ],
+        "hpf_enabled": true,
+        "hpf_cutoff_hz": 203.6303443436362,
+        "lpf_enabled": true,
+        "lpf_cutoff_hz": 6485.858889696262
+      }
+    },
+    {
+      "name": "Piano Felt",
+      "id": "piano-felt",
+      "kind": "builtin",
+      "volume": 0.5,
+      "origin": 44,
+      "color": "#3FD67AFF",
+      "eq": {
+        "gains_db": [
+          -1.6,
+          -7.3,
+          -8,
+          4.3,
+          -1.7,
+          2,
+          -0.6,
+          -1.8,
+          -11.2,
+          0
+        ],
+        "bands_hz": [
+          [
+            22,
+            44
+          ],
+          [
+            44,
+            88
+          ],
+          [
+            88,
+            177
+          ],
+          [
+            177,
+            354
+          ],
+          [
+            354,
+            707
+          ],
+          [
+            707,
+            1414
+          ],
+          [
+            1414,
+            2828
+          ],
+          [
+            2828,
+            5657
+          ],
+          [
+            5657,
+            11314
+          ],
+          [
+            11314,
+            20000
+          ]
+        ],
+        "hpf_cutoff_hz": 20,
+        "lpf_enabled": true,
+        "lpf_cutoff_hz": 6944.724082391961
+      },
+      "effects": [
+        {
+          "type": "reverb",
+          "enabled": true,
+          "params": {
+            "damping": 0.601010101010101,
+            "mix": 0.40404040404040403,
+            "room": 0.7512437810945274
+          }
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": 0,
+      "i": -16,
+      "j": -8,
+      "type": "regular",
+      "inputs": [
+        18
+      ],
+      "outputs": [
+        16
+      ],
+      "volume": 1.778279410038922,
+      "pitch": 1.0751183190479168
+    },
+    {
+      "id": 1,
+      "i": -8,
+      "j": 0,
+      "type": "regular",
+      "inputs": [
+        78
+      ],
+      "outputs": [
+        72
+      ],
+      "volume": 1.778279410038922
+    },
+    {
+      "id": 2,
+      "i": -16,
+      "j": 0,
+      "type": "regular",
+      "inputs": [
+        72
+      ],
+      "outputs": [
+        18
+      ],
+      "volume": 1.6950450535473047
+    },
+    {
+      "id": 3,
+      "i": 0,
+      "j": -16,
+      "type": "regular",
+      "inputs": [
+        50
+      ],
+      "outputs": [
+        19
+      ],
+      "volume": 1.2
+    },
+    {
+      "id": 4,
+      "i": 16,
+      "j": -16,
+      "type": "regular",
+      "inputs": [
+        17
+      ],
+      "outputs": [
+        26
+      ],
+      "volume": 1.5
+    },
+    {
+      "id": 5,
+      "i": 16,
+      "j": 0,
+      "type": "regular",
+      "inputs": [
+        25
+      ],
+      "outputs": [
+        51
+      ],
+      "volume": 1.5
+    },
+    {
+      "id": 6,
+      "i": 8,
+      "j": 8,
+      "type": "regular",
+      "inputs": [
+        35
+      ],
+      "outputs": [
+        49
+      ]
+    },
+    {
+      "id": 7,
+      "i": -8,
+      "j": 8,
+      "type": "regular",
+      "inputs": [
+        37
+      ],
+      "outputs": [
+        38
+      ]
+    },
+    {
+      "id": 8,
+      "i": -24,
+      "j": 24,
+      "type": "regular",
+      "inputs": [
+        29
+      ],
+      "outputs": [
+        27
+      ]
+    },
+    {
+      "id": 9,
+      "i": -8,
+      "j": -8,
+      "type": "regular",
+      "inputs": [
+        16
+      ],
+      "outputs": [
+        78
+      ],
+      "volume": 1.5,
+      "pitch": 15,
+      "duration": 2.45
+    },
+    {
+      "id": 10,
+      "i": 0,
+      "j": 0,
+      "type": "regular",
+      "inputs": [
+        52
+      ],
+      "outputs": [
+        23
+      ],
+      "volume": 1.5
+    },
+    {
+      "id": 11,
+      "i": 12,
+      "j": 8,
+      "type": "regular",
+      "inputs": [
+        49
+      ],
+      "outputs": [
+        63
+      ],
+      "volume": 0.9999999999999992,
+      "groove_kind": "rush"
+    },
+    {
+      "id": 12,
+      "i": 8,
+      "j": 12,
+      "type": "regular",
+      "inputs": [
+        59
+      ],
+      "outputs": [
+        57
+      ],
+      "volume": 1.412537544622754,
+      "groove_kind": "delay",
+      "groove_pct": 1.3877787807814457e-17
+    },
+    {
+      "id": 13,
+      "i": -24,
+      "j": 8,
+      "type": "regular",
+      "inputs": [
+        20
+      ],
+      "outputs": [
+        37
+      ]
+    },
+    {
+      "id": 14,
+      "i": -8,
+      "j": 24,
+      "type": "regular",
+      "inputs": [
+        30
+      ],
+      "outputs": [
+        36
+      ]
+    },
+    {
+      "id": 16,
+      "i": -12,
+      "j": -8,
+      "type": "regular",
+      "inputs": [
+        0
+      ],
+      "outputs": [
+        9
+      ],
+      "volume": 1.6950450535473047,
+      "pitch": -7.924881680952083,
+      "duration": 0.8
+    },
+    {
+      "id": 17,
+      "i": 14,
+      "j": -16,
+      "type": "regular",
+      "inputs": [
+        53
+      ],
+      "outputs": [
+        4
+      ],
+      "volume": 1.2
+    },
+    {
+      "id": 18,
+      "i": -16,
+      "j": -2,
+      "type": "regular",
+      "inputs": [
+        2
+      ],
+      "outputs": [
+        0
+      ],
+      "volume": 1.6950450535473047,
+      "pitch": -2,
+      "duration": 0.8
+    },
+    {
+      "id": 19,
+      "i": 2,
+      "j": -16,
+      "type": "regular",
+      "inputs": [
+        3
+      ],
+      "outputs": [
+        21
+      ],
+      "volume": 1.2
+    },
+    {
+      "id": 20,
+      "i": -24,
+      "j": 10,
+      "type": "regular",
+      "inputs": [
+        28
+      ],
+      "outputs": [
+        13
+      ]
+    },
+    {
+      "id": 21,
+      "i": 8,
+      "j": -16,
+      "type": "regular",
+      "inputs": [
+        19
+      ],
+      "outputs": [
+        53
+      ]
+    },
+    {
+      "id": 22,
+      "i": 8,
+      "j": 0,
+      "type": "regular",
+      "inputs": [
+        51
+      ],
+      "outputs": [
+        52
+      ]
+    },
+    {
+      "id": 23,
+      "i": 0,
+      "j": -4,
+      "type": "regular",
+      "inputs": [
+        10
+      ],
+      "outputs": [
+        24
+      ],
+      "volume": 0.3,
+      "logic_kind": "probability",
+      "logic_p": 0.3
+    },
+    {
+      "id": 24,
+      "i": 0,
+      "j": -6,
+      "type": "regular",
+      "inputs": [
+        23
+      ],
+      "outputs": [
+        50
+      ]
+    },
+    {
+      "id": 25,
+      "i": 16,
+      "j": -4,
+      "type": "regular",
+      "inputs": [
+        26
+      ],
+      "outputs": [
+        5
+      ]
+    },
+    {
+      "id": 26,
+      "i": 16,
+      "j": -10,
+      "type": "regular",
+      "inputs": [
+        4
+      ],
+      "outputs": [
+        25
+      ]
+    },
+    {
+      "id": 27,
+      "i": -24,
+      "j": 20,
+      "type": "regular",
+      "inputs": [
+        8
+      ],
+      "outputs": [
+        28
+      ]
+    },
+    {
+      "id": 28,
+      "i": -24,
+      "j": 18,
+      "type": "regular",
+      "inputs": [
+        27
+      ],
+      "outputs": [
+        20
+      ]
+    },
+    {
+      "id": 29,
+      "i": -22,
+      "j": 24,
+      "type": "regular",
+      "inputs": [
+        40
+      ],
+      "outputs": [
+        8
+      ]
+    },
+    {
+      "id": 30,
+      "i": -8,
+      "j": 20,
+      "type": "regular",
+      "inputs": [
+        31
+      ],
+      "outputs": [
+        14
+      ],
+      "logic_kind": "skip_every_n",
+      "logic_n": 2
+    },
+    {
+      "id": 31,
+      "i": -8,
+      "j": 16,
+      "type": "regular",
+      "inputs": [
+        38
+      ],
+      "outputs": [
+        30
+      ]
+    },
+    {
+      "id": 32,
+      "i": 12,
+      "j": 12,
+      "type": "regular",
+      "inputs": [
+        66
+      ],
+      "outputs": [
+        59
+      ]
+    },
+    {
+      "id": 35,
+      "i": 8,
+      "j": 10,
+      "type": "regular",
+      "inputs": [
+        57
+      ],
+      "outputs": [
+        6
+      ],
+      "volume": 1.412537544622754,
+      "logic_kind": "every_n_triggers",
+      "logic_n": 2,
+      "groove_kind": "delay",
+      "groove_pct": 0.25
+    },
+    {
+      "id": 36,
+      "i": -12,
+      "j": 24,
+      "type": "regular",
+      "inputs": [
+        14
+      ],
+      "outputs": [
+        39
+      ],
+      "logic_kind": "every_n_triggers",
+      "logic_n": 2
+    },
+    {
+      "id": 37,
+      "i": -10,
+      "j": 8,
+      "type": "regular",
+      "inputs": [
+        13
+      ],
+      "outputs": [
+        7
+      ]
+    },
+    {
+      "id": 38,
+      "i": -8,
+      "j": 12,
+      "type": "regular",
+      "inputs": [
+        7
+      ],
+      "outputs": [
+        31
+      ]
+    },
+    {
+      "id": 39,
+      "i": -14,
+      "j": 24,
+      "type": "regular",
+      "inputs": [
+        36
+      ],
+      "outputs": [
+        40
+      ],
+      "logic_kind": "every_n_triggers",
+      "logic_n": 2
+    },
+    {
+      "id": 40,
+      "i": -18,
+      "j": 24,
+      "type": "regular",
+      "inputs": [
+        39
+      ],
+      "outputs": [
+        29
+      ],
+      "logic_kind": "skip_every_n",
+      "logic_n": 2
+    },
+    {
+      "id": 41,
+      "i": -40,
+      "j": -8,
+      "type": "regular",
+      "inputs": [
+        46
+      ],
+      "outputs": [
+        47
+      ],
+      "pitch": -2,
+      "duration": 0.40000000000000013
+    },
+    {
+      "id": 42,
+      "i": -32,
+      "j": -8,
+      "type": "chord",
+      "inputs": [
+        45
+      ],
+      "outputs": [
+        46
+      ],
+      "volume": 3.981071705534972,
+      "duration": 0.5000000000000001,
+      "chord": {
+        "quality": "maj"
+      }
+    },
+    {
+      "id": 43,
+      "i": -32,
+      "j": -16,
+      "type": "chord",
+      "inputs": [
+        44
+      ],
+      "outputs": [
+        45
+      ],
+      "volume": 2.511886431509579,
+      "pitch": 5,
+      "duration": 0.8,
+      "chord": {
+        "quality": "add9",
+        "inversion": 1
+      }
+    },
+    {
+      "id": 44,
+      "i": -40,
+      "j": -16,
+      "type": "chord",
+      "inputs": [
+        47
+      ],
+      "outputs": [
+        43
+      ],
+      "volume": 2.511886431509579,
+      "pitch": -5,
+      "chord": {
+        "quality": "m"
+      }
+    },
+    {
+      "id": 45,
+      "i": -32,
+      "j": -14,
+      "type": "regular",
+      "inputs": [
+        43
+      ],
+      "outputs": [
+        42
+      ],
+      "duration": 0.40000000000000013
+    },
+    {
+      "id": 46,
+      "i": -36,
+      "j": -8,
+      "type": "regular",
+      "inputs": [
+        42
+      ],
+      "outputs": [
+        41
+      ],
+      "duration": 1.5000000000000004
+    },
+    {
+      "id": 47,
+      "i": -40,
+      "j": -12,
+      "type": "regular",
+      "inputs": [
+        41
+      ],
+      "outputs": [
+        44
+      ],
+      "duration": 0.9
+    },
+    {
+      "id": 49,
+      "i": 10,
+      "j": 8,
+      "type": "regular",
+      "inputs": [
+        6
+      ],
+      "outputs": [
+        11
+      ],
+      "logic_kind": "every_n_triggers",
+      "logic_n": 2
+    },
+    {
+      "id": 50,
+      "i": 0,
+      "j": -14,
+      "type": "regular",
+      "inputs": [
+        24
+      ],
+      "outputs": [
+        3
+      ]
+    },
+    {
+      "id": 51,
+      "i": 12,
+      "j": 0,
+      "type": "regular",
+      "inputs": [
+        5
+      ],
+      "outputs": [
+        22
+      ]
+    },
+    {
+      "id": 52,
+      "i": 6,
+      "j": 0,
+      "type": "regular",
+      "inputs": [
+        22
+      ],
+      "outputs": [
+        10
+      ]
+    },
+    {
+      "id": 53,
+      "i": 10,
+      "j": -16,
+      "type": "regular",
+      "inputs": [
+        21
+      ],
+      "outputs": [
+        17
+      ]
+    },
+    {
+      "id": 57,
+      "i": 8,
+      "j": 11,
+      "type": "regular",
+      "inputs": [
+        12
+      ],
+      "outputs": [
+        35
+      ],
+      "volume": 1.9952623149688788,
+      "pitch": -2,
+      "duration": 0.9,
+      "logic_kind": "every_n_triggers",
+      "logic_n": 4
+    },
+    {
+      "id": 59,
+      "i": 10,
+      "j": 12,
+      "type": "regular",
+      "inputs": [
+        32
+      ],
+      "outputs": [
+        12
+      ]
+    },
+    {
+      "id": 63,
+      "i": 12,
+      "j": 9,
+      "type": "regular",
+      "inputs": [
+        11
+      ],
+      "outputs": [
+        67
+      ],
+      "logic_kind": "every_n_triggers",
+      "logic_n": 2
+    },
+    {
+      "id": 66,
+      "i": 12,
+      "j": 11,
+      "type": "regular",
+      "inputs": [
+        67
+      ],
+      "outputs": [
+        32
+      ]
+    },
+    {
+      "id": 67,
+      "i": 12,
+      "j": 10,
+      "type": "regular",
+      "inputs": [
+        63
+      ],
+      "outputs": [
+        66
+      ]
+    },
+    {
+      "id": 72,
+      "i": -14,
+      "j": 0,
+      "type": "regular",
+      "inputs": [
+        1
+      ],
+      "outputs": [
+        2
+      ]
+    },
+    {
+      "id": 78,
+      "i": -8,
+      "j": -2,
+      "type": "regular",
+      "inputs": [
+        9
+      ],
+      "outputs": [
+        1
+      ],
+      "pitch": -1.9248816809520832
+    }
+  ],
+  "instrument_docs": {
+    "cowbell": {
+      "id": "cowbell",
+      "origin": "cowbell",
+      "name": "Cowbell",
+      "category": "modular",
+      "render": {
+        "seconds": 0.4,
+        "amplitude": 0.6923,
+        "gate_tail": 0,
+        "melodic": false
+      },
+      "stages": {
+        "amp_env": {
+          "v": 1,
+          "on": false,
+          "values": {
+            "amp_attack": 0.005,
+            "amp_curve": 1,
+            "amp_decay": 0.3,
+            "amp_release": 0.2,
+            "amp_sustain": 0.6
+          }
+        },
+        "core": {
+          "v": 1,
+          "on": true,
+          "values": {
+            "gain": 1,
+            "noise_draws": 1,
+            "noise_prelude": 0,
+            "osc_detune": 0,
+            "osc_octave": 0,
+            "pitch": 0,
+            "voice_freq_hz": 0
+          }
+        },
+        "drive": {
+          "v": 1,
+          "on": true,
+          "values": {
+            "drive": 0
+          }
+        },
+        "filter": {
+          "v": 1,
+          "on": false,
+          "values": {
+            "filter_cutoff": 8000,
+            "filter_resonance": 0.707,
+            "filter_type": 0
+          }
+        },
+        "finish": {
+          "v": 1,
+          "on": true,
+          "values": {
+            "out_clamp": 0,
+            "post_body": 0,
+            "post_brightness": 0.25,
+            "post_darken": 0,
+            "post_decay": 1,
+            "post_decay_rate": 12,
+            "post_drive": 0,
+            "post_pitch": 0
+          },
+          "notes": "out_clamp: no output limit (these voices never had one)"
+        }
+      },
+      "source": {
+        "type": "osc.wavetable",
+        "v": 1,
+        "on": false,
+        "values": {
+          "osc_type": 0
+        }
+      },
+      "layers": [
+        {
+          "type": "cym.cowbell",
+          "v": 1,
+          "on": true,
+          "values": {
+            "cym_env_fast": 260,
+            "cym_env_tail": 9,
+            "cym_noise_d": 60,
+            "cym_noise_m": 0.55,
+            "cym_tone_m": 1,
+            "cym_tune": 1,
+            "wave": 0
+          }
+        }
+      ]
+    },
+    "hihat-lofi": {
+      "id": "hihat-lofi",
+      "origin": "hihat-lofi",
+      "name": "Lo-Fi Hi-Hat",
+      "category": "modular",
+      "notes": "REBUILT 2026-09-28 as a MODAL PLATE with collision RATTLE (see\ngen_cymbal_modal in modular_stages.c) against a user-supplied acoustic\nclosed hi-hat. The legacy variant-0 voice was six square oscillators plus\nflat white noise: measured on the reference it was all wrong in the way that\nreads \"electronic\" — spectral flatness 0.006 (six tones) where the real hat\nis 0.29 (noise-like), energy flat to 20 kHz where the real hat centres on\n8-12 kHz and rolls off above 14 kHz, and a peak at 0.4 ms where the real hat\nswells over ~8 ms and holds a CHATTERING ~40 ms plateau before it decays.\n\nThat plateau is the physics of a hi-hat (Sekiguchi \u0026 Samejima 2023): two\ncymbals clamped together, the top one re-colliding with the bottom after the\nstick hit. The voice models it directly — the plate's impulse response\nre-struck by a decaying Poisson train of collision impulses — so the noise\nis the plate itself rattling, not a noise generator.\n\nFITTED on the real C render: 1/3-octave x time energy map (1-16 kHz, 0-320\nms) + the 2 ms envelope over the first 60 ms + spectral flatness, minimized\nby coordinate descent. Score 4.1 against 32 for the legacy voice on the same\nmeasure. Units: env_tail / env_fast Np/s, *_f Hz, *_w octaves, rattle_rate\ncollisions/s, rattle_decay s.\n\nChosen BY EAR (2026-09-28) from five fitted takes: this is \"H4 — tight\"\n(rattle_decay 0.058 -\u003e 0.042, env_tail 28 -\u003e 36); the looser takes were\njudged \"too low pitched\". The fit's best-scoring take (4.1) was the looser\nH1; the ear preferred the tighter chick.\n\nShared by hihat, hihat-lofi and hihat-pedal (each keeps its own DefaultFX).",
+      "render": {
+        "seconds": 0.1,
+        "amplitude": 1,
+        "gate_tail": 0.35,
+        "melodic": false
+      },
+      "stages": {
+        "amp_env": {
+          "v": 1,
+          "on": false,
+          "values": {
+            "amp_attack": 0.005,
+            "amp_curve": 1,
+            "amp_decay": 0.3,
+            "amp_release": 0.2,
+            "amp_sustain": 0.6
+          }
+        },
+        "core": {
+          "v": 1,
+          "on": true,
+          "values": {
+            "gain": 1,
+            "noise_draws": 1,
+            "noise_prelude": 0,
+            "osc_detune": 0,
+            "osc_octave": 0,
+            "pitch": 0,
+            "voice_freq_hz": 0
+          }
+        },
+        "drive": {
+          "v": 1,
+          "on": true,
+          "values": {
+            "drive": 0
+          }
+        },
+        "filter": {
+          "v": 1,
+          "on": false,
+          "values": {
+            "filter_cutoff": 8000,
+            "filter_resonance": 0.707,
+            "filter_type": 0
+          }
+        },
+        "finish": {
+          "v": 1,
+          "on": true,
+          "values": {
+            "out_clamp": 0,
+            "post_body": 0.475,
+            "post_brightness": 0,
+            "post_darken": 0.25,
+            "post_decay": 1,
+            "post_decay_rate": 20,
+            "post_drive": 0,
+            "post_pitch": 0
+          },
+          "notes": "out_clamp: no output limit (these voices never had one)"
+        }
+      },
+      "source": {
+        "type": "osc.wavetable",
+        "v": 1,
+        "on": false,
+        "values": {
+          "osc_type": 0
+        }
+      },
+      "layers": [
+        {
+          "type": "cym.hihat",
+          "v": 1,
+          "on": true,
+          "values": {
+            "cym_attack": 0.008041200000000002,
+            "cym_beat": 0.0052,
+            "cym_body": 1.2,
+            "cym_body_f": 1500,
+            "cym_body_w": 0.105,
+            "cym_decay_tilt": 0.302,
+            "cym_drive_delay": 0,
+            "cym_env_fast": 14.01,
+            "cym_env_tail": 36,
+            "cym_hf_corner": 16674,
+            "cym_mode_hi": 16038,
+            "cym_mode_lo": 1081,
+            "cym_modes": 396,
+            "cym_noise_d": 4,
+            "cym_noise_m": 0.44999999999999996,
+            "cym_rattle": 1.1036,
+            "cym_rattle_decay": 0.042,
+            "cym_rattle_hold": 0,
+            "cym_rattle_rate": 1950,
+            "cym_spark": 0,
+            "cym_spark_f": 11000,
+            "cym_spark_w": 0.3,
+            "cym_tone_f": 9275,
+            "cym_tone_m": 1,
+            "cym_tone_w": 0.805,
+            "cym_tune": 1,
+            "cym_wash": 0.44699999999999995
+          }
+        }
+      ],
+      "fx": [
+        {
+          "type": "fx.bitcrusher",
+          "v": 1,
+          "on": true,
+          "values": {
+            "bits": 4,
+            "mix": 1,
+            "rate": 1
+          }
+        }
+      ]
+    },
+    "kick-wood": {
+      "id": "kick-wood",
+      "origin": "user.kick-wood-v2.533cf1",
+      "name": "Kick Wood v2",
+      "category": "modular",
+      "notes": "kickWoodSeed: WOOD BEATER: the brutal kick struck by the hardest beater (max\nslap + skin cluster) with more drive.",
+      "render": {
+        "seconds": 0.5,
+        "amplitude": 1,
+        "gate_tail": 0,
+        "melodic": false
+      },
+      "stages": {
+        "amp_env": {
+          "v": 1,
+          "on": false,
+          "values": {
+            "amp_attack": 0.005,
+            "amp_curve": 1,
+            "amp_decay": 0.3,
+            "amp_release": 0.2,
+            "amp_sustain": 0.6
+          }
+        },
+        "core": {
+          "v": 1,
+          "on": true,
+          "values": {
+            "gain": 1,
+            "noise_draws": 1,
+            "noise_prelude": 0,
+            "osc_detune": 0,
+            "osc_octave": 0,
+            "pitch": 0,
+            "voice_freq_hz": 50
+          }
+        },
+        "drive": {
+          "v": 1,
+          "on": false,
+          "values": {
+            "drive": 0
+          }
+        },
+        "filter": {
+          "v": 1,
+          "on": false,
+          "values": {
+            "filter_cutoff": 8000,
+            "filter_resonance": 0.707,
+            "filter_type": 0
+          }
+        },
+        "finish": {
+          "v": 1,
+          "on": true,
+          "values": {
+            "out_clamp": 1.5,
+            "post_body": 0.18367346938775514,
+            "post_brightness": 0.10000000000000003,
+            "post_darken": 0.7999999999999999,
+            "post_decay": 1,
+            "post_decay_rate": 8,
+            "post_drive": 0.03157894736842104,
+            "post_pitch": 0
+          }
+        }
+      },
+      "source": {
+        "type": "osc.wavetable",
+        "v": 1,
+        "on": false,
+        "values": {
+          "osc_type": 0
+        }
+      },
+      "layers": [
+        {
+          "type": "kick.tight",
+          "v": 1,
+          "on": true,
+          "values": {
+            "freq": 1,
+            "freq_mode": 0,
+            "kick_attack": 0,
+            "kick_click": 1,
+            "kick_env0": 25.570259469901703,
+            "kick_env1": 13.499054546588011,
+            "kick_fade": 0,
+            "kick_h2": 0.4979591836734695,
+            "kick_h3": 0.18367346938775514,
+            "kick_noise": 0.18367346938775514,
+            "kick_pe_amt": 0.15000000000000002,
+            "kick_pe_rate": 25,
+            "kick_sat": 1.536842105263158,
+            "wave": 0
+          }
+        }
+      ]
+    },
+    "piano-felt": {
+      "id": "piano-felt",
+      "origin": "piano-felt",
+      "name": "Piano Felt",
+      "category": "modular",
+      "notes": "pianoFeltSeed: felt-damped piano — darker filter, softer attack, fewer partials.\nCLEAN felt-damped piano — a darker, softer sibling of pianoGrandSeed: the same\nclean struck-string approach (sine + gentle decaying partials + slight string\ndetune; NO hammer-noise gen, NO phantom sub-octave) but a duller filter, a\nsofter strike, and weaker upper partials (the felt over the hammers mutes the\nhighs). Pure note, no background hiss.",
+      "render": {
+        "seconds": 1,
+        "amplitude": 0.6261,
+        "gate_tail": 0,
+        "melodic": true
+      },
+      "stages": {
+        "amp_env": {
+          "v": 1,
+          "on": true,
+          "values": {
+            "amp_attack": 0.08360158103145097,
+            "amp_curve": 1,
+            "amp_decay": 0.9,
+            "amp_release": 0.3,
+            "amp_sustain": 0
+          },
+          "notes": "amp_attack: softer felt strike\namp_curve: exponential struck decay"
+        },
+        "core": {
+          "v": 1,
+          "on": true,
+          "values": {
+            "gain": 0.9,
+            "noise_draws": 1,
+            "noise_prelude": 0,
+            "osc_detune": 1.5,
+            "osc_octave": 0,
+            "pitch": 0,
+            "voice_freq_hz": 0
+          }
+        },
+        "drive": {
+          "v": 1,
+          "on": true,
+          "values": {
+            "drive": 0
+          }
+        },
+        "filter": {
+          "v": 1,
+          "on": true,
+          "values": {
+            "filter_cutoff": 9311.49133805909,
+            "filter_resonance": 6.059549999999999,
+            "filter_type": 0
+          },
+          "notes": "filter_cutoff: duller, felt-damped tone (darker than the grand)"
+        },
+        "finish": {
+          "v": 1,
+          "on": true,
+          "values": {
+            "out_clamp": 1.5,
+            "post_body": 0,
+            "post_brightness": 0.75,
+            "post_darken": 0,
+            "post_decay": 1,
+            "post_decay_rate": 8,
+            "post_drive": 0,
+            "post_pitch": 0
+          }
+        }
+      },
+      "source": {
+        "type": "osc.wavetable",
+        "v": 1,
+        "on": true,
+        "values": {
+          "osc_type": 0
+        }
+      },
+      "layers": [
+        {
+          "type": "gen.wavetable",
+          "v": 1,
+          "on": true,
+          "values": {
+            "env_fast_mix": 1,
+            "env_fast_rate": 4,
+            "env_tail_mix": 0,
+            "env_tail_rate": 0,
+            "filt_alpha": 0,
+            "filt_freq": 1000,
+            "filt_q": 0.707,
+            "filt_type": 0,
+            "freq": 2,
+            "freq_mode": 0,
+            "gain": 0.38,
+            "phase": 0,
+            "phase_mode": 0,
+            "wave": 0
+          },
+          "notes": "gen1_env_fast_rate: H2\ngen1_freq: H2\ngen1_freq_mode: H2\ngen1_gain: H2\ngen1_source: STRETCHED partials (stiff-string inharmonicity — the anti-electronic fix),\nbut weaker/darker upper partials than the grand (felt mutes the highs). H2\ngen1_wave: H2"
+        },
+        {
+          "type": "gen.wavetable",
+          "v": 1,
+          "on": true,
+          "values": {
+            "env_fast_mix": 1,
+            "env_fast_rate": 6,
+            "env_tail_mix": 0,
+            "env_tail_rate": 0,
+            "filt_alpha": 0,
+            "filt_freq": 1000,
+            "filt_q": 0.707,
+            "filt_type": 0,
+            "freq": 3.0087,
+            "freq_mode": 0,
+            "gain": 0.16,
+            "phase": 0,
+            "phase_mode": 0,
+            "wave": 0
+          },
+          "notes": "gen2_env_fast_rate: H3 +5c\ngen2_freq: H3 +5c\ngen2_freq_mode: H3 +5c\ngen2_gain: H3 +5c\ngen2_source: H3 +5c\ngen2_wave: H3 +5c"
+        },
+        {
+          "type": "gen.wavetable",
+          "v": 1,
+          "on": true,
+          "values": {
+            "env_fast_mix": 1,
+            "env_fast_rate": 8,
+            "env_tail_mix": 0,
+            "env_tail_rate": 0,
+            "filt_alpha": 0,
+            "filt_freq": 1000,
+            "filt_q": 0.707,
+            "filt_type": 0,
+            "freq": 4.0347,
+            "freq_mode": 0,
+            "gain": 0.1,
+            "phase": 0,
+            "phase_mode": 0,
+            "wave": 0
+          },
+          "notes": "gen3_env_fast_rate: H4 +15c\ngen3_freq: H4 +15c\ngen3_freq_mode: H4 +15c\ngen3_gain: H4 +15c\ngen3_source: H4 +15c\ngen3_wave: H4 +15c"
+        },
+        {
+          "type": "gen.wavetable",
+          "v": 1,
+          "on": true,
+          "values": {
+            "env_fast_mix": 1,
+            "env_fast_rate": 10,
+            "env_tail_mix": 0,
+            "env_tail_rate": 0,
+            "filt_alpha": 0,
+            "filt_freq": 1000,
+            "filt_q": 0.707,
+            "filt_type": 0,
+            "freq": 5.0813,
+            "freq_mode": 0,
+            "gain": 0.05,
+            "phase": 0,
+            "phase_mode": 0,
+            "wave": 0
+          },
+          "notes": "gen4_env_fast_rate: H5 +28c\ngen4_freq: H5 +28c\ngen4_freq_mode: H5 +28c\ngen4_gain: H5 +28c\ngen4_source: H5 +28c\ngen4_wave: H5 +28c"
+        },
+        {
+          "type": "gen.noise",
+          "v": 1,
+          "on": true,
+          "values": {
+            "env_fast_mix": 1,
+            "env_fast_rate": 55,
+            "env_tail_mix": 0,
+            "env_tail_rate": 0,
+            "filt_alpha": 0,
+            "filt_freq": 1800,
+            "filt_q": 0.4,
+            "filt_type": 5,
+            "gain": 0.14,
+            "noise_offset": 0
+          },
+          "notes": "gen5_source: soft felt-hammer thunk — quieter + darker than the grand"
+        }
+      ]
+    },
+    "snare-punch": {
+      "id": "snare-punch",
+      "origin": "snare-punch",
+      "name": "Punchy Snare",
+      "category": "modular",
+      "notes": "snarePunchSeed: the old open hi-hat heard as \"a cool tight, fuzzy snare\",\nrebuilt organic — the classic head (snare's variant, 210 / 315 Hz) plus a\nmodal-plate wire layer with Buzz Hold (round 3: \"still a bit noisy\", TailRattle\n168 -\u003e 0 with the hold). Then retuned for CRACK (2026-09-30, \"sounds fire\"),\nfitted like snareFatSeed: the plate wires move DOWN (centre 7.3 kHz -\u003e 1.2 kHz,\nmodes 1.1-6.1 kHz), the classic head's own 1.8-4.5 kHz wire burst comes back\non at a low level (which makes snare_attack / snare_tail_d live again), and the\nhead drives harder. Crack -26 -\u003e -16 dB, fizz \u003e7 kHz -22 -\u003e -34 dB (at peak 1).",
+      "render": {
+        "seconds": 0.9,
+        "amplitude": 1,
+        "gate_tail": 0,
+        "melodic": false
+      },
+      "stages": {
+        "amp_env": {
+          "v": 1,
+          "on": false,
+          "values": {
+            "amp_attack": 0.005,
+            "amp_curve": 1,
+            "amp_decay": 0.3,
+            "amp_release": 0.2,
+            "amp_sustain": 0.6
+          }
+        },
+        "core": {
+          "v": 1,
+          "on": true,
+          "values": {
+            "gain": 1,
+            "noise_draws": 1,
+            "noise_prelude": 0,
+            "osc_detune": 0,
+            "osc_octave": 0,
+            "pitch": 0,
+            "voice_freq_hz": 210
+          }
+        },
+        "drive": {
+          "v": 1,
+          "on": true,
+          "values": {
+            "drive": 0
+          }
+        },
+        "filter": {
+          "v": 1,
+          "on": false,
+          "values": {
+            "filter_cutoff": 8000,
+            "filter_resonance": 0.707,
+            "filter_type": 0
+          }
+        },
+        "finish": {
+          "v": 1,
+          "on": true,
+          "values": {
+            "out_clamp": 0,
+            "post_body": 0,
+            "post_brightness": 0,
+            "post_darken": 0,
+            "post_decay": 1,
+            "post_decay_rate": 8,
+            "post_drive": 0,
+            "post_pitch": 0
+          }
+        }
+      },
+      "source": {
+        "type": "osc.wavetable",
+        "v": 1,
+        "on": false,
+        "values": {
+          "osc_type": 0
+        }
+      },
+      "layers": [
+        {
+          "type": "snare.main",
+          "v": 1,
+          "on": true,
+          "values": {
+            "freq": 1,
+            "freq_mode": 0,
+            "snare_attack": 0.2032,
+            "snare_noise_d": 16.2,
+            "snare_noise_m": 1.8683,
+            "snare_tail_d": 15,
+            "snare_tone2": 315,
+            "snare_tone_d": 25.24,
+            "snare_tone_m": 2.3474,
+            "snare_tune": 1.862,
+            "snare_wire_m": 0.2222,
+            "wave": 0
+          }
+        },
+        {
+          "type": "cym.hihat",
+          "v": 1,
+          "on": true,
+          "values": {
+            "cym_attack": 0.002,
+            "cym_beat": 0.004,
+            "cym_body": 0,
+            "cym_body_f": 1500,
+            "cym_body_w": 0.15,
+            "cym_decay_tilt": 0.622,
+            "cym_drive_delay": 0,
+            "cym_env_fast": 30,
+            "cym_env_tail": 26.337,
+            "cym_hf_corner": 9427.6,
+            "cym_mode_hi": 6135,
+            "cym_mode_lo": 1097.4,
+            "cym_modes": 360,
+            "cym_noise_d": 4,
+            "cym_noise_m": 0,
+            "cym_rattle": 0.2907,
+            "cym_rattle_decay": 0.06,
+            "cym_rattle_hold": 1.5,
+            "cym_rattle_rate": 1923.1,
+            "cym_spark": 0,
+            "cym_spark_f": 11000,
+            "cym_spark_w": 0.3,
+            "cym_tone_f": 1201.4,
+            "cym_tone_m": 0.7425,
+            "cym_tone_w": 1.5437,
+            "cym_tune": 1,
+            "cym_wash": 0.661
+          }
+        }
+      ]
+    }
+  }
+}

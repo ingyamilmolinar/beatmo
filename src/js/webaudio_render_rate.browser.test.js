@@ -1,0 +1,70 @@
+import { chromium } from "playwright";
+import http from "http";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import { flushCoverage, isCoverageEnabled } from "./coverage_helpers.js";
+import { readAppInstrumentBlocks } from "./real_input_test_helpers.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const jsDir = __dirname;
+
+// A bare audio.js page has no instruments until Go pushes their blocks.
+const { snare: SNARE } = await readAppInstrumentBlocks(["snare"]);
+
+// Serve audio.js (and drums.single.js) directly from the repo.
+const server = http.createServer((req, res) => { const file = req.url === "/" ? "/rate.html" : req.url;
+  if (req.url === "/" || req.url === "/rate.html") { const html = `<!doctype html><html><body>
+<script type="module">
+  import './audio.js';
+</script>
+</body></html>`;
+    res.writeHead(200, { "Content-Type": "text/html" });
+    res.end(html);
+    return;
+  }
+  const filePath = path.join(jsDir, file.replace(/^\//, ""));
+  fs.readFile(filePath, (err, data) => { if (err) { res.writeHead(404); res.end(); return; }
+    let ct = "text/plain";
+    if (filePath.endsWith(".html")) ct = "text/html";
+    else if (filePath.endsWith(".js")) ct = "application/javascript";
+    else if (filePath.endsWith(".wasm")) ct = "application/wasm";
+    res.writeHead(200, { "Content-Type": ct });
+    res.end(data);
+  });
+});
+await new Promise((r) => server.listen(0, r));
+const port = server.address().port;
+
+const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
+const page = await browser.newPage();
+await page.goto(`http://localhost:${port}/`);
+await page.waitForFunction(() => typeof window.ensureSynthSample === 'function' && typeof window.resetRenderCache === 'function');
+await page.evaluate((b) => window.setInstrumentBlock("snare", Float64Array.from(b.block), b.seconds, b.amp, b.melodic, b.gateTail, b.fx), SNARE);
+
+const result = await page.evaluate(async () => { // Force a fresh render at the current AudioContext sample rate.
+  window.resetRenderCache();
+  window.__renderMeta = {};
+  await window.ensureSynthSample('snare');
+  const meta = window.__renderMeta?.snare || null;
+  const stats = (typeof window.getRenderCacheStats === 'function') ? window.getRenderCacheStats() : {};
+  const cache = stats.snare || null;
+  const ctxSR = window.__audioCtxSR || (window.__audioCtx && window.__audioCtx.sampleRate) || null;
+  return { meta, cache, ctxSR };
+});
+
+if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "audio_render_rate");
+await browser.close();
+server.close();
+
+if (!result.meta) { throw new Error('missing render meta for snare');
+}
+const expectedSR = result.ctxSR ?? 48000;
+if (expectedSR !== result.meta.sr) { throw new Error(`sample rate mismatch: ctx=${result.ctxSR}, render=${result.meta.sr}`);
+}
+const expectedFrames = Math.round(result.meta.sr * SNARE.seconds); // the document's render.seconds
+const tolerance = Math.max(16, Math.round(expectedFrames * 0.02)); // ±2%
+if (Math.abs(result.meta.frames - expectedFrames) > tolerance) { throw new Error(`rendered frames off: got ${result.meta.frames}, expected ~${expectedFrames} (±${tolerance})`);
+}
+if (!result.cache || !result.cache.frames) { throw new Error('render cache missing snare entry');
+}

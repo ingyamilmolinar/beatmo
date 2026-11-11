@@ -1,0 +1,107 @@
+{
+  "schema_version": "0.0.1",
+  "id": "kick-acoustic",
+  "name": "Acoustic Kick",
+  "category": "modular",
+  "notes": "acousticKickSeed: a natural tight acoustic kick — a beater click on a woody\nbody with controlled harmonics and a short, gated tail (the tight variant's\nband-pass beater + room give the real-drum character).\nacousticKickSeed: a tight, punchy, ORGANIC acoustic-style kick, tuned (harness\n+ fingerprint metrics) toward the real recorded sample 36010__sandyrb__dnb-\nkick-003: fundamental ~85-90 Hz with 60-120 Hz DOMINANT (~85% of energy — NOT\na sub-boom), almost no <60 Hz, a SHARP beater attack (high crest ~7-8, the\nnatural-kick transient) and a fast body decay. The old seed sat at ~55 Hz and\n~50% sub with a soft beater — boomy and un-acoustic; these values move it to a\nreal tight-kick character (the tight variant's band-pass beater does the rest).\n2026-10-02 FULLNESS RETUNE (user A/B at equal peak, approved): LOUDER, same\ncharacter — trim the onset spike, a little more body drive (roughness unchanged\n0.003: no creak). The heavier version ships separately as kick-acoustic-heavy.\nChanged: attack 1.0→0.5, sat 0.25→0.6\nRe-tuned toward the reference as a REAL KICK (the earlier bright modal tuning\nread as a high tom — that sound is now the \"High Tom Organic\" instrument):\nLOWER (~60 Hz) and fundamental-DOMINANT at the loud onset (low mid-mode\ngains → a kick, not a tom), more BRUTAL (harder saturation + click), and a\nroom REVERB tail (the recorded kick's space). Variant 7's inharmonic modal\nbank keeps the organic timbre; the low fundamental + reverb make it a kick.",
+  "render": {
+    "seconds": 0.65,
+    "amplitude": 1,
+    "gate_tail": 0,
+    "melodic": false
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "amp_attack": 0.005,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.2,
+        "amp_sustain": 0.6
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 54
+      },
+      "notes": "voice_freq_hz: LOWER / HEAVIER — a deep real kick, not a high tom"
+    },
+    "drive": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "filter_cutoff": 8000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "kick.acoustic",
+      "v": 1,
+      "on": true,
+      "values": {
+        "freq": 1,
+        "freq_mode": 0,
+        "kick_attack": 0.5,
+        "kick_click": 0.9,
+        "kick_env0": 8,
+        "kick_env1": 22,
+        "kick_fade": 2.5,
+        "kick_h2": 0.35,
+        "kick_h3": 0.08,
+        "kick_h4": 0.02,
+        "kick_mode_decay": 45,
+        "kick_mode_detune": 0.03,
+        "kick_mode_gain": 0.45,
+        "kick_noise": 0.03,
+        "kick_pe_amt": 0.25,
+        "kick_pe_rate": 55,
+        "kick_reverb": 0.85,
+        "kick_sat": 0.6,
+        "wave": 0
+      },
+      "notes": "gen1_kick_click: a hard sharp click carries the punch/crest (the aggressive soul); the body\nsaturation is kept LOW — saturating the summed inharmonic modes makes\nintermodulation roughness that reads as a \"creak\"/wooden buzz.\ngen1_kick_env0: a bit more fundamental sustain = weight\ngen1_kick_env1: a bit more fundamental sustain = weight\ngen1_kick_h2: mid modes kept LOW + high modes minimal, and NEAR-HARMONIC (small stretch) so\nthey don't buzz — the deep fundamental dominates. Heavy and organic, not creaky.\ngen1_kick_pe_amt: subtler downward drop (less \"closing-door\" sweep)\ngen1_kick_pe_rate: subtler downward drop (less \"closing-door\" sweep)\ngen1_kick_variant: acoustic (inharmonic modal bank + beater excitation)"
+    }
+  ]
+}
