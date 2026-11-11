@@ -164,7 +164,6 @@ INSTS=$(extract instruments)
 # ── Pprof diff blocks ──
 INUSE_END=$(pprof_top 3 "" "${END}" "")
 ALLOC_DIFF_WARM_END=$(pprof_top 1 "${WARMUP}" "${END}" "")
-ALLOC_DIFF_WARM_MID=$(pprof_top 1 "${WARMUP}" "${MID}" "")
 INUSE_DIFF_WARM_END=$(pprof_top 3 "${WARMUP}" "${END}" "")
 ALLOCS_TOP=$(pprof_top 1 "" "${ALLOCS}" "")
 
@@ -298,8 +297,6 @@ Comparison view (warmup vs end) to find retained constructors.
 EOF
 
 # Compute desktop slope from the heap probe.
-DESKTOP_BENCH_FRAMES=3420   # from BENCH Complete log line
-DESKTOP_HEAP_DELTA_KB=$(awk "BEGIN{printf \"%.0f\", (1415014-260537)}") # frame 3360 - frame 120
 DESKTOP_BYTES_PER_FRAME=$(awk "BEGIN{printf \"%.0f\", (1415014-260537)*1024/(3360-120)}")
 cat <<EOF
 - Desktop observed HeapAlloc growth (frame 120 → 3360, between GCs):

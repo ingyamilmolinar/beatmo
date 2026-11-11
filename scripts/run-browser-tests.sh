@@ -136,7 +136,7 @@ else
     done
 
     # Sort tests alphabetically for consistent ordering
-    IFS=$'\n' TEST_FILES=($(sort <<<"${TEST_FILES[*]}")); unset IFS
+    mapfile -t TEST_FILES < <(printf '%s\n' "${TEST_FILES[@]}" | sort)
 fi
 
 # Split into parallel and sequential lists
@@ -183,7 +183,7 @@ declare -a FAILED_TESTS=()
 
 # Create temp directory for per-test logs
 LOG_DIR=$(mktemp -d)
-trap "rm -rf $LOG_DIR" EXIT
+trap 'rm -rf "$LOG_DIR"' EXIT
 
 echo "========================================"
 echo "Running $TOTAL browser tests (${#PARALLEL_FILES[@]} parallel @ $JOBS jobs, ${#SEQUENTIAL_FILES[@]} sequential)"
@@ -265,7 +265,6 @@ if [[ $PARALLEL_COUNT -gt 0 ]]; then
                 BATCH_END=$PARALLEL_COUNT
             fi
 
-            BATCH_SIZE=$((BATCH_END - BATCH_START))
             echo "── Batch $((BATCH_START / JOBS + 1)): tests $((BATCH_START+1))-$BATCH_END of $PARALLEL_COUNT (parallel) ──"
 
             # Launch batch

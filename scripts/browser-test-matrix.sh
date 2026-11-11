@@ -73,7 +73,7 @@ for test_file in *.browser.test.js; do
 done
 
 # Sort for consistent ordering
-IFS=$'\n' TEST_FILES=($(sort <<<"${TEST_FILES[*]}")); unset IFS
+mapfile -t TEST_FILES < <(printf '%s\n' "${TEST_FILES[@]}" | sort)
 
 TOTAL=${#TEST_FILES[@]}
 
