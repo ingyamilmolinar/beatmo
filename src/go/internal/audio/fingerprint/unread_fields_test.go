@@ -187,12 +187,22 @@ func consumersOutsidePackage(t *testing.T) []string {
 func TestNoUnreadMetricFields(t *testing.T) {
 	dir := "."
 	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, dir, func(fi os.FileInfo) bool {
-		return strings.HasSuffix(fi.Name(), ".go") && !strings.HasSuffix(fi.Name(), "_test.go")
-	}, 0)
+	goFiles, err := filepath.Glob(filepath.Join(dir, "*.go"))
 	if err != nil {
-		t.Fatalf("parse package: %v", err)
+		t.Fatal(err)
 	}
+	parsed := map[string]*ast.File{}
+	for _, name := range goFiles {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(fset, name, nil, 0)
+		if err != nil {
+			t.Fatalf("parse package: %v", err)
+		}
+		parsed[name] = f
+	}
+	pkgs := []struct{ Files map[string]*ast.File }{{parsed}}
 
 	// file contents, for textual read-detection
 	srcs := map[string]string{}
