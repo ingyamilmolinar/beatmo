@@ -104,8 +104,13 @@ func TestTrackBeatConsumesCanonicalPlayhead(t *testing.T) {
 	if err := g.Update(); err != nil {
 		t.Fatalf("update at play: %v", err)
 	}
-	advancePlaybackByAbs(g, 200*g.grid.MaxDiv())
+	startAbs := max(g.elapsedBeats, 0)
+	steps := 200 * g.grid.MaxDiv()
+	advancePlaybackByAbs(g, steps)
 	g.drum.Draw(dst, nil, 0, nil, 0)
+	// The playhead runs on the wall clock: pin it back to the last frame's
+	// position, or a slow Draw (the race detector) moves it under the check.
+	setPlayStartForAbs(g, startAbs+steps)
 
 	// After auto-scroll settles, drum.Offset must equal what TrackBeat
 	// would compute from playheadAbsSubdiv (cur - length*frac). If

@@ -99,6 +99,9 @@ func openOverflowFrameCost(t *testing.T, page int) (allocs float64, bytesPerFram
 // It fails when the menu's item model (items, closures, BPM captions, label
 // width measurements) is rebuilt per access instead of memoized on menu state.
 func TestTemplateMenuFrameCost(t *testing.T) {
+	if raceEnabled {
+		t.Skip("race instrumentation allocates on its own; the budget is for real code")
+	}
 	allocs, bytesPerFrame := openOverflowFrameCost(t, 1)
 	t.Logf("templates page: %.0f allocs/frame, %d bytes/frame", allocs, bytesPerFrame)
 

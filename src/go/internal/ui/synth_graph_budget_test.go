@@ -23,6 +23,9 @@ func TestGraphAnalysisStaysInBudget(t *testing.T) {
 	if testing.Short() {
 		t.Skip("timing")
 	}
+	if raceEnabled {
+		t.Skip("the race detector slows these loops several-fold; the budget is for real code")
+	}
 	rng := rand.New(rand.NewSource(3))
 	pcm := make([]float32, testViewSR)
 	ph := 0.0
