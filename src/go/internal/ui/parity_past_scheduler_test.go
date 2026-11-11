@@ -14,7 +14,7 @@ func TestParityCheckIgnoresPastBeats(t *testing.T) {
 	t.Cleanup(func() { SetParityFatal(prevFatal) })
 
 	g := buildTestGame(t)
-	g.parityWatch = parityWatchPanic
+	g.parityWatch.Store(parityWatchPanic)
 	t.Cleanup(g.CloseForTest)
 
 	root := g.tryAddNode(0, 0, model.NodeTypeRegular)

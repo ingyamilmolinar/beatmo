@@ -30,6 +30,7 @@ func TestWarmupPushesExactlyOneNotification(t *testing.T) {
 	waitForAskedCount(t, be, total)
 	be.completeAll()
 	g.warmup.Tick(1)
+	g.drainWorkerPosts() // the next frame applies what the pool posted
 	if got := g.drum.notifStore.Len(); got != before+1 {
 		t.Errorf("warm-up completion pushed %d notifications, want 1", got-before)
 	}
@@ -50,6 +51,7 @@ func TestWarmupTimeoutPushesAnError(t *testing.T) {
 
 	g.warmup.Begin() // fakeWarmBackend never completes
 	g.warmup.Tick(warmupDeadlineMS + 1)
+	g.drainWorkerPosts() // the next frame applies what the pool posted
 
 	latest := g.drum.notifStore.Latest()
 	if latest == nil || !latest.isErr {
@@ -126,6 +128,7 @@ func TestWarmupSourceAttributionCarriesAcrossFinishPaths(t *testing.T) {
 		endEvt := awaitEmit(t, hooks.EventWarmupComplete, func() {
 			be.completeAll()
 			g.warmup.Tick(1)
+			g.drainWorkerPosts() // the next frame applies what the pool posted
 		})
 		if startEvt.Source != endEvt.Source {
 			t.Errorf("natural-completion source %+v != start source %+v", endEvt.Source, startEvt.Source)
@@ -140,6 +143,7 @@ func TestWarmupSourceAttributionCarriesAcrossFinishPaths(t *testing.T) {
 		})
 		endEvt := awaitEmit(t, hooks.EventWarmupComplete, func() {
 			g.warmup.Tick(warmupDeadlineMS + 1)
+			g.drainWorkerPosts() // the next frame applies what the pool posted
 		})
 		if startEvt.Source != endEvt.Source {
 			t.Errorf("timeout source %+v != start source %+v", endEvt.Source, startEvt.Source)
@@ -154,6 +158,7 @@ func TestWarmupSourceAttributionCarriesAcrossFinishPaths(t *testing.T) {
 		})
 		endEvt := awaitEmit(t, hooks.EventWarmupComplete, func() {
 			g.warmup.Cancel()
+			g.drainWorkerPosts() // the next frame applies what the pool posted
 		})
 		if startEvt.Source != endEvt.Source {
 			t.Errorf("cancel source %+v != start source %+v", endEvt.Source, startEvt.Source)

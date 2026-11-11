@@ -12,7 +12,7 @@ func buildParityMismatchGame(t *testing.T) *Game {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
-	g.parityWatch = parityWatchLog
+	g.parityWatch.Store(parityWatchLog)
 
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.start = a

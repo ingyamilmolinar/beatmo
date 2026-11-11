@@ -24,7 +24,7 @@ func (g *Game) parityCheck(row, idx int, info model.BeatInfo, scheduled bool, so
 	if g == nil || g.drum == nil {
 		return
 	}
-	if g.parityWatch == parityWatchOff && !parityFatalEnabled.Load() {
+	if g.parityWatch.Load() == parityWatchOff && !parityFatalEnabled.Load() {
 		return
 	}
 	if g.importDialog || g.importing || (g.drum != nil && g.drum.importing) {

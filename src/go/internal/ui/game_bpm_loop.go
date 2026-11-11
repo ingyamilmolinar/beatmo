@@ -39,8 +39,8 @@ func (g *Game) bpmLoop() {
 				// This prevents flakiness where the last requested value was
 				// dropped from bpmCh by coalescing.
 				for {
-					cur := g.drum.BPM()
-					if cur == b {
+					cur := int(g.desiredBPM.Load())
+					if cur == 0 || cur == b {
 						break
 					}
 					b = cur

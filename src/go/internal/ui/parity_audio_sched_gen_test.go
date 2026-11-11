@@ -34,7 +34,7 @@ func TestParityAudioCarriesSchedulingGenAcrossMutation(t *testing.T) {
 	g.addEdge(b, a)
 	g.updateBeatInfos()
 
-	g.parityWatch = parityWatchLog
+	g.parityWatch.Store(parityWatchLog)
 	g.drum.SetLength(8)
 	g.drum.Offset = 0
 	g.refreshDrumRow()

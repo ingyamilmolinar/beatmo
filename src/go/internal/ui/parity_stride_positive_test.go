@@ -20,7 +20,7 @@ func TestParityStrideEventuallyFiresMismatch(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
-	g.parityWatch = parityWatchLog
+	g.parityWatch.Store(parityWatchLog)
 	g.ClearParityMismatches()
 
 	// Self-looping single node so the predictor considers every abs visible

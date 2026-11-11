@@ -17,7 +17,7 @@ import (
 func TestParityHighlightDroppedBeatExempt(t *testing.T) {
 	assertDefaultParityState(t)
 	g := buildInflightHighlightGame(t, time.Now().Add(-500*time.Millisecond)) // stale: past grace
-	g.parityWatch = parityWatchPanic
+	g.parityWatch.Store(parityWatchPanic)
 
 	const abs = 139
 	// The sequencer dropped this beat's highlight (hlCh was full).

@@ -99,7 +99,7 @@ func New(logger *game_log.Logger) *Game {
 	// composite literal.
 	g.parityRing = newMismatchRing(256)
 	g.parityStreak = make(map[string]int)
-	g.parityWatch = parityWatchDefault
+	g.parityWatch.Store(parityWatchDefault)
 	g.parityTimingWatch = parityTimingWatchDefault
 	g.parityAudioMaxIdx = []int{}
 	g.paritySeqDecisions = make(map[int]map[int]paritySeqDecision)

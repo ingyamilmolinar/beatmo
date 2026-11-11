@@ -156,9 +156,9 @@ func (g *Game) parityInGrace() bool {
 func (g *Game) startImportDialog() {
 	g.importDialog = true
 	g.importPrevParityFatal = parityFatalEnabled.Load()
-	g.importPrevParityWatch = g.parityWatch
+	g.importPrevParityWatch = g.parityWatch.Load()
 	parityFatalEnabled.Store(false)
-	g.parityWatch = parityWatchOff
+	g.parityWatch.Store(parityWatchOff)
 }
 
 // endImportDialog restores parity settings after the import dialog closes.
@@ -167,7 +167,7 @@ func (g *Game) endImportDialog() {
 		return
 	}
 	parityFatalEnabled.Store(g.importPrevParityFatal)
-	g.parityWatch = g.importPrevParityWatch
+	g.parityWatch.Store(g.importPrevParityWatch)
 	g.importDialog = false
 }
 
@@ -180,7 +180,7 @@ func (g *Game) recordParityAudio(row, abs int, when float64, inst instrument.ID,
 	if g == nil {
 		return
 	}
-	if g.parityWatch == parityWatchOff && !parityFatalEnabled.Load() {
+	if g.parityWatch.Load() == parityWatchOff && !parityFatalEnabled.Load() {
 		return
 	}
 	if row < 0 {
@@ -224,7 +224,7 @@ func (g *Game) recordSeqDecision(row, abs int, audible bool, typ model.NodeType,
 	if g == nil {
 		return
 	}
-	if g.parityWatch == parityWatchOff && !parityFatalEnabled.Load() {
+	if g.parityWatch.Load() == parityWatchOff && !parityFatalEnabled.Load() {
 		return
 	}
 	// Record view truth (VisibleAt) separately from audio truth (AudibleAt).
@@ -293,7 +293,7 @@ func (g *Game) markSeqAudioEnqueued(row, abs int) {
 	if g == nil || row < 0 {
 		return
 	}
-	if g.parityWatch == parityWatchOff && !parityFatalEnabled.Load() {
+	if g.parityWatch.Load() == parityWatchOff && !parityFatalEnabled.Load() {
 		return
 	}
 	g.parityMu.Lock()
@@ -318,7 +318,7 @@ func (g *Game) parityPrune(minAbs int) {
 	if g == nil {
 		return
 	}
-	if g.parityWatch == parityWatchOff && !parityFatalEnabled.Load() {
+	if g.parityWatch.Load() == parityWatchOff && !parityFatalEnabled.Load() {
 		return
 	}
 	g.parityPruneCallsForTest++
@@ -353,7 +353,7 @@ func (g *Game) parityReport(entry mismatchEntry) {
 	if g == nil {
 		return
 	}
-	if g.parityWatch == parityWatchOff && !parityFatalEnabled.Load() {
+	if g.parityWatch.Load() == parityWatchOff && !parityFatalEnabled.Load() {
 		return
 	}
 	if entry.GenAtScan == 0 {
@@ -371,7 +371,7 @@ func (g *Game) parityReport(entry mismatchEntry) {
 		return
 	}
 	g.parityRing.add(entry)
-	switch g.parityWatch {
+	switch g.parityWatch.Load() {
 	case parityWatchOff:
 		if !parityFatalEnabled.Load() {
 			return
@@ -477,7 +477,7 @@ func (g *Game) parityScanSettings() (every, stride int) {
 		return every, stride
 	}
 	// Reduce scan frequency in runtime logging mode to lower CPU use.
-	if g != nil && g.parityWatch == parityWatchLog && !parityFatalEnabled.Load() {
+	if g != nil && g.parityWatch.Load() == parityWatchLog && !parityFatalEnabled.Load() {
 		if every < 6 {
 			every = 6
 		}

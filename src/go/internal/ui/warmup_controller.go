@@ -214,6 +214,13 @@ func (w *warmupController) finish(timedOut bool) {
 	}
 }
 
+// currentEpoch identifies the warm-up session now in progress (or last run).
+func (w *warmupController) currentEpoch() uint64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.epoch
+}
+
 // Ready reports whether playback may start.
 func (w *warmupController) Ready() bool {
 	if w == nil {
@@ -260,39 +267,58 @@ func (g *Game) wireWarmupNotifications() {
 		_, skipped, _ := w.BenchStats()
 		emitWarmupStarted(src, total, skipped)
 	}
+	// onUpdate and onEnd fire from itemDone on the render pool's goroutines;
+	// the toast and the notification ring belong to the UI goroutine. A post
+	// that arrives after a newer session began is dropped, or it would close
+	// that session's toast.
 	w.onUpdate = func(done, total int) {
-		g.drum.logsToast.updateTask(done)
+		ep := w.currentEpoch()
+		g.postFromWorker(func() {
+			if w.currentEpoch() == ep {
+				g.drum.logsToast.updateTask(done)
+			}
+		})
 	}
 	w.onEnd = func(elapsedMS float64, rendered, skipped int, timedOut bool, src hooks.Source) {
-		g.drum.logsToast.endTask()
+		ep := w.currentEpoch()
 		total := rendered
 		if d, tt := w.Progress(); tt > 0 {
 			total, rendered = tt, d
 		}
-		// pushed tracks whether a notification actually went into the ring —
-		// the fully-cached fast path calls finish() (and thus onEnd) without
-		// ever calling onBegin, so total==0 and timedOut==false here. Publishing
-		// EventWarmupComplete in that case would be an orphan "circuit ready —
-		// 0 sounds" line for a session the user never saw start. Gate the hooks
-		// event on the same predicate as the notification so start/complete
-		// stay paired: neither fires, or both do.
-		pushed := false
-		if timedOut {
-			g.drum.notifyErrorKey(i18n.KeyNotifCircuitWarmupTimedOut,
-				strconv.Itoa(rendered), strconv.Itoa(total))
-			pushed = true
-		} else if total > 0 {
-			g.drum.notifyInfoKey(i18n.KeyNotifCircuitReady,
-				strconv.Itoa(rendered), strconv.FormatFloat(elapsedMS, 'f', 0, 64),
-				strconv.Itoa(skipped))
-			pushed = true
-		}
-		if pushed {
-			emitWarmupComplete(src, hooks.WarmupPayload{
-				Total: total, Rendered: rendered, Cached: skipped,
-				ElapsedMS: elapsedMS, TimedOut: timedOut,
-			})
-		}
+		g.postFromWorker(func() {
+			if w.currentEpoch() == ep {
+				g.warmupEnded(elapsedMS, rendered, total, skipped, timedOut, src)
+			}
+		})
+	}
+}
+
+// warmupEnded closes the progress toast and reports the finished warm-up.
+func (g *Game) warmupEnded(elapsedMS float64, rendered, total, skipped int, timedOut bool, src hooks.Source) {
+	g.drum.logsToast.endTask()
+	// pushed tracks whether a notification actually went into the ring —
+	// the fully-cached fast path calls finish() (and thus onEnd) without
+	// ever calling onBegin, so total==0 and timedOut==false here. Publishing
+	// EventWarmupComplete in that case would be an orphan "circuit ready —
+	// 0 sounds" line for a session the user never saw start. Gate the hooks
+	// event on the same predicate as the notification so start/complete
+	// stay paired: neither fires, or both do.
+	pushed := false
+	if timedOut {
+		g.drum.notifyErrorKey(i18n.KeyNotifCircuitWarmupTimedOut,
+			strconv.Itoa(rendered), strconv.Itoa(total))
+		pushed = true
+	} else if total > 0 {
+		g.drum.notifyInfoKey(i18n.KeyNotifCircuitReady,
+			strconv.Itoa(rendered), strconv.FormatFloat(elapsedMS, 'f', 0, 64),
+			strconv.Itoa(skipped))
+		pushed = true
+	}
+	if pushed {
+		emitWarmupComplete(src, hooks.WarmupPayload{
+			Total: total, Rendered: rendered, Cached: skipped,
+			ElapsedMS: elapsedMS, TimedOut: timedOut,
+		})
 	}
 }
 

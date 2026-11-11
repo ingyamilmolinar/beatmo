@@ -21,7 +21,7 @@ func runRuntimeMutationCase(t *testing.T, c runtimeMutationCase) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(1024, 720)
-	g.parityWatch = parityWatchPanic
+	g.parityWatch.Store(parityWatchPanic)
 
 	// Two-row playable circuit.
 	a0 := g.tryAddNode(0, 0, model.NodeTypeRegular)

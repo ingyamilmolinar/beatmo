@@ -14,7 +14,7 @@ func TestParityFatalTriggersWithoutWatch(t *testing.T) {
 	t.Cleanup(func() { SetParityFatal(prevFatal) })
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
-	g.parityWatch = parityWatchOff
+	g.parityWatch.Store(parityWatchOff)
 	g.Layout(640, 480)
 
 	// Prepare a minimal playing state with a single audible cell.

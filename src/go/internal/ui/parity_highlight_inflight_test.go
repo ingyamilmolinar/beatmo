@@ -94,7 +94,7 @@ func TestParityHighlightInFlightGraceFreshAudio(t *testing.T) {
 	defer restoreNow()
 
 	g := buildInflightHighlightGame(t, fixedNow) // freshly recorded (pinned)
-	g.parityWatch = parityWatchPanic
+	g.parityWatch.Store(parityWatchPanic)
 
 	// Without the grace, parityScan panics with highlight_vs_audio here.
 	g.parityScan("test-inflight-highlight")
@@ -113,7 +113,7 @@ func TestParityHighlightInFlightGraceFreshAudio(t *testing.T) {
 func TestParityHighlightInFlightGraceExpired(t *testing.T) {
 	assertDefaultParityState(t)
 	g := buildInflightHighlightGame(t, time.Now().Add(-500*time.Millisecond))
-	g.parityWatch = parityWatchLog
+	g.parityWatch.Store(parityWatchLog)
 
 	g.parityScan("test-stale-highlight")
 

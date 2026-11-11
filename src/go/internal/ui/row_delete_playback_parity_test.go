@@ -112,7 +112,7 @@ func TestDeleteRowDuringPlayback_DoesNotTripSequencerParityWhileRowsShift(t *tes
 	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	g.drum.SetLength(64)
-	g.parityWatch = parityWatchPanic
+	g.parityWatch.Store(parityWatchPanic)
 
 	// Ensure at least three rows so deleting a middle row shifts indices.
 	for len(g.drum.Rows) < 3 {

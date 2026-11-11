@@ -22,7 +22,7 @@ func TestParityIgnoresExpiredHighlightInPast(t *testing.T) {
 	assertDefaultParityState(t)
 	g := buildTestGame(t)
 	t.Cleanup(g.CloseForTest)
-	g.parityWatch = parityWatchPanic
+	g.parityWatch.Store(parityWatchPanic)
 
 	// Single-row playable circuit.
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)

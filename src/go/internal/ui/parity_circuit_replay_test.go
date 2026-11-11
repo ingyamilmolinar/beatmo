@@ -14,7 +14,7 @@ func TestCircuitReplayParityStable(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
-	g.parityWatch = parityWatchPanic
+	g.parityWatch.Store(parityWatchPanic)
 	g.Layout(1280, 720)
 
 	if err := g.Import(assets_pkg.TestFixtureDemoJSON); err != nil {

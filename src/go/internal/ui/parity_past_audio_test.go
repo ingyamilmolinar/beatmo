@@ -15,7 +15,7 @@ func TestParityIgnoresPastAudioEvents(t *testing.T) {
 	t.Cleanup(func() { SetParityFatal(prevFatal) })
 
 	g := buildTestGame(t)
-	g.parityWatch = parityWatchPanic
+	g.parityWatch.Store(parityWatchPanic)
 
 	// Single-beat loop to keep predictor/state simple.
 	start := g.tryAddNode(0, 0, model.NodeTypeRegular)

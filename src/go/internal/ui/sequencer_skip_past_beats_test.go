@@ -28,7 +28,7 @@ func TestSequencerSkipsSchedulingBeatsBehindPlayhead(t *testing.T) {
 
 	// Enable parity audio recording (via recordParityAudio) while leaving
 	// parity checks in their default state so the test reflects runtime behavior.
-	g.parityWatch = parityWatchLog
+	g.parityWatch.Store(parityWatchLog)
 	g.parityMu.Lock()
 	g.parityAudio = nil
 	g.parityAudioMaxIdx = nil

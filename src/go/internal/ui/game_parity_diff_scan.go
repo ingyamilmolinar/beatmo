@@ -127,7 +127,7 @@ func (g *Game) parityScan(reason string) {
 		return
 	}
 	g.parityScanCallsForTest++
-	if g.parityWatch == parityWatchOff && !parityFatalEnabled.Load() {
+	if g.parityWatch.Load() == parityWatchOff && !parityFatalEnabled.Load() {
 		g.parityScanReturnsForTest[0]++
 		return
 	}
@@ -153,7 +153,7 @@ func (g *Game) parityScan(reason string) {
 	}
 	if !g.Playing() && !g.state.Paused() {
 		// If parity is effectively disabled, skip scans entirely when stopped.
-		if g.parityWatch == parityWatchOff && !parityFatalEnabled.Load() {
+		if g.parityWatch.Load() == parityWatchOff && !parityFatalEnabled.Load() {
 			g.parityScanReturnsForTest[3]++
 			return
 		}
@@ -204,7 +204,7 @@ func (g *Game) parityScan(reason string) {
 		look = 1
 	}
 	lookahead := look * 4 // 4 beats in subdivisions
-	if g.parityWatch == parityWatchLog && !parityFatalEnabled.Load() && !runningUnderGoTest() {
+	if g.parityWatch.Load() == parityWatchLog && !parityFatalEnabled.Load() && !runningUnderGoTest() {
 		// Reduce scan width when logging only to keep parity overhead small.
 		if lookahead > look {
 			lookahead = look

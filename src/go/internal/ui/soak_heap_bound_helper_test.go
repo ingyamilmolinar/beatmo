@@ -153,7 +153,7 @@ func runSoakHeapBound(
 	g.Layout(1280, 720)
 	// Belt-and-suspenders: respect parityWatchLog even though New() reads
 	// parityWatchDefault at construction time.
-	g.parityWatch = parityWatchLog
+	g.parityWatch.Store(parityWatchLog)
 	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 
 	// Subdiv 16 + BPM 240 picks an absolute index advance rate comparable to

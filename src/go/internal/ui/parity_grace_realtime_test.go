@@ -29,7 +29,7 @@ func TestParityGraceDemotesMismatchThenRefiresAfterExpiry(t *testing.T) {
 	defer restore()
 
 	g := buildParityMismatchGame(t)
-	g.parityWatch = parityWatchPanic
+	g.parityWatch.Store(parityWatchPanic)
 	prevFatal := parityFatalEnabled.Load()
 	SetParityFatal(true)
 	t.Cleanup(func() { SetParityFatal(prevFatal) })
