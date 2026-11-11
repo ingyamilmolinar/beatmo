@@ -1885,14 +1885,9 @@ var sceneCatalog = []Scene{
 	// control, i.e. "renders desktop".
 	{Name: "crop_chain_segmented_mobile", Description: "Chain mobile segmented OVR/SPL/DIF control",
 		Mobile: true, SettleFrames: 150, Subject: SubjectChain,
-		Setup: func(g *Game) {
-			// Desktop fallback Setup still forces the mobile profile so even a
-			// desktop-pass capture shows the segmented control rather than the
-			// desktop pills.
-			g.SetForceMobileProfile(true)
-			g.drum.SetMobileEQMode(true)
-			activateScopeTab(g)
-		},
+		// The desktop pass shows the desktop pills: a mobile profile forced
+		// into a desktop window drew nothing where the Chain tab belongs.
+		Setup: activateScopeTab,
 		MobileSetup: func(g *Game) {
 			g.SetForceMobileProfile(true)
 			g.drum.SetMobileEQMode(true)
