@@ -26,7 +26,7 @@ import (
 type parityTracker struct {
 	parityRing   mismatchRing
 	parityStreak map[string]int
-	parityWatch  parityWatchMode
+	parityWatch  watchSetting
 	// parityTimingWatch is the per-Game timing-gate watch mode, seeded from
 	// parityTimingWatchDefault at construction (mirrors parityWatch).
 	parityTimingWatch   parityWatchMode

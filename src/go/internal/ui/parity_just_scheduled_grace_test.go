@@ -19,7 +19,7 @@ func TestParityJustScheduledBeatGracedUnderFatal(t *testing.T) {
 	t.Cleanup(func() { SetParityFatal(prevFatal) })
 
 	g := buildTestGame(t)
-	g.parityWatch = parityWatchPanic // fatal mode
+	g.parityWatch.Store(parityWatchPanic) // fatal mode
 	t.Cleanup(g.CloseForTest)
 
 	root := g.tryAddNode(0, 0, model.NodeTypeRegular)

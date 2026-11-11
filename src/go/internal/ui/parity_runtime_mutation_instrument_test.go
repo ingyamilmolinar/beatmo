@@ -29,7 +29,7 @@ func TestParityToleratesInstrumentChangeMidPlay(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(1024, 720)
-	g.parityWatch = parityWatchPanic
+	g.parityWatch.Store(parityWatchPanic)
 
 	// Row 0: 4-step rectangle starting at (0,0).
 	a0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
@@ -114,7 +114,7 @@ func TestParityToleratesSameRowInstrumentChange(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(1024, 720)
-	g.parityWatch = parityWatchPanic
+	g.parityWatch.Store(parityWatchPanic)
 
 	a0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	a1 := g.tryAddNode(1, 0, model.NodeTypeRegular)

@@ -36,7 +36,7 @@ func TestParityIgnoresInFlightAudioForEnqueuedDecision(t *testing.T) {
 	g.addEdge(b, a)
 	g.updateBeatInfos()
 
-	g.parityWatch = parityWatchLog
+	g.parityWatch.Store(parityWatchLog)
 	g.drum.SetLength(1)
 	g.drum.Offset = 0
 	g.refreshDrumRow()

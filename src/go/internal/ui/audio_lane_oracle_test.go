@@ -123,7 +123,8 @@ func oracleKey(row int, grid float64) [2]int {
 func runLaneOracle(t *testing.T, seed int64) int {
 	a := newLaneCircuitGame(t)
 	b := newLaneCircuitGame(t)
-	a.parityWatch, b.parityWatch = parityWatchLog, parityWatchLog // see TestLaneHeardEqualsLegacyDispatched
+	a.parityWatch.Store(parityWatchLog) // see TestLaneHeardEqualsLegacyDispatched
+	b.parityWatch.Store(parityWatchLog)
 	// A custom-logic node on both: its decision (gain + a position-dependent
 	// transpose) reaches the lane only through the predictor's recorded
 	// DecisionAt — the oracle must see it match legacy. Keyed on

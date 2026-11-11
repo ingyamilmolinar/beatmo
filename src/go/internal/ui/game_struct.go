@@ -236,6 +236,15 @@ type Game struct {
 	// queued UI actions to decouple button handlers from state changes
 	uiQueue []func()
 
+	// UI work handed over by other goroutines (postFromWorker), run at the top
+	// of Update; uiQueue above is UI-goroutine only.
+	workerPostMu sync.Mutex
+	workerPosts  []func()
+
+	// desiredBPM is the BPM the UI last asked for, read by bpmLoop's
+	// reconcile instead of the transport zone's UI-owned field.
+	desiredBPM atomic.Int64
+
 	// Pending import data to be processed after seqMu is released. The import
 	// callback from drum.Update() sets this; game.Update() processes it after
 	// seqMu.Unlock() to avoid recursive locking.

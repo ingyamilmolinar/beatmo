@@ -16,7 +16,7 @@ func TestSchedulerParityTime_NoMismatch(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
-	g.parityWatch = parityWatchPanic
+	g.parityWatch.Store(parityWatchPanic)
 
 	root := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	next := g.tryAddNode(1, 0, model.NodeTypeRegular)
@@ -52,7 +52,7 @@ func TestSchedulerParityTime_DetectsMismatch(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
-	g.parityWatch = parityWatchPanic
+	g.parityWatch.Store(parityWatchPanic)
 
 	root := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	next := g.tryAddNode(1, 0, model.NodeTypeRegular)

@@ -42,8 +42,8 @@ func TestParityCheckSkippedDuringImportDialog(t *testing.T) {
 	if g.importDialog {
 		t.Fatalf("importDialog flag not cleared after endImportDialog")
 	}
-	if g.parityWatch != prevWatch {
-		t.Fatalf("parity watch not restored after import dialog end: %v (want %v)", g.parityWatch, prevWatch)
+	if g.parityWatch.Load() != prevWatch {
+		t.Fatalf("parity watch not restored after import dialog end: %v (want %v)", g.parityWatch.Load(), prevWatch)
 	}
 	if parityFatalEnabled.Load() != prevFatal {
 		t.Fatalf("parity fatal not restored after import dialog end: %v (want %v)", parityFatalEnabled.Load(), prevFatal)

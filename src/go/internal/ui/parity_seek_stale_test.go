@@ -103,7 +103,7 @@ func newSeekParityGame(t *testing.T, lane bool) *Game {
 		t.Cleanup(restore)
 		g = newLaneCircuitGame(t)
 	}
-	g.parityWatch = parityWatchLog
+	g.parityWatch.Store(parityWatchLog)
 	g.ClearParityMismatches()
 	return g
 }
@@ -122,7 +122,7 @@ func parityHasAudio(g *Game) bool {
 // a note the engine was in fact playing — and never lit its trigger.
 func TestLanePlayStartObservesTheFirstCell(t *testing.T) {
 	g, sink := newLaneGame(t)
-	g.parityWatch = parityWatchLog
+	g.parityWatch.Store(parityWatchLog)
 	g.ClearParityMismatches()
 	restore := SetParityRecordNowForTest(func() time.Time { return time.Now().Add(time.Second) })
 	defer restore()

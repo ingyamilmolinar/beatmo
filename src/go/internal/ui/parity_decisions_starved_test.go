@@ -35,7 +35,7 @@ func TestParityDecisionsBoundedUnderScanStarvation(t *testing.T) {
 
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
-	g.parityWatch = parityWatchLog
+	g.parityWatch.Store(parityWatchLog)
 
 	// Simulate the production failure mode: sequencer-goroutine writes happen
 	// without ever calling parityScan (which is what would call the deferred

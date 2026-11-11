@@ -30,7 +30,7 @@ func TestParityIgnoresStaleAudioGeneration(t *testing.T) {
 	g.refreshDrumRow()
 
 	// Activate parity checks after setup to avoid setup-time panics.
-	g.parityWatch = parityWatchPanic
+	g.parityWatch.Store(parityWatchPanic)
 	g.ClearParityMismatches()
 
 	// Simulate a running transport where abs=0 is the current beat.

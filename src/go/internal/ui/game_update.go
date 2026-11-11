@@ -80,6 +80,7 @@ func (g *Game) Update() error {
 		// Timing-gate metrics window — always on, independent of PERF_LOG.
 		g.maybeResetSchedMetricsWindow(time.Now())
 	}()
+	g.drainWorkerPosts()
 	// Tick the transient error toast (grid-pane alert) once per frame.
 	if g.drum != nil {
 		g.drum.logsToast.tick()
@@ -991,7 +992,7 @@ eventsDone:
 			g.lastHLIdxByRow[i] = -1
 		}
 		g.clearParityState()
-		g.parityWatch = parityWatchDefault
+		g.parityWatch.Store(parityWatchDefault)
 		parityFatalEnabled.Store(true)
 	}
 	g.drainSeekRequest()
@@ -1083,6 +1084,7 @@ eventsDone:
 		}
 	}
 	g.bpm = newBPM
+	g.desiredBPM.Store(int64(g.bpm))
 	if g.bpm != g.state.AppliedBPM() {
 		g.logger.Debugf("[game] queue BPM %d", g.bpm)
 		sendLatestBPM(g.bpmCh, g.bpm)

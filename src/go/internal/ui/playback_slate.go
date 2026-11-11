@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"sync"
 	"sync/atomic"
 
 	"github.com/ingyamilmolinar/beatmo/core/engine"
@@ -40,7 +41,9 @@ type playbackSlate struct {
 	seqQuit     chan struct{}
 	// lookaheadFloor/lookaheadGen ratchet runtimeAudioLookahead within one
 	// transport generation (g.audioGen) so UI timings can grow the audio
-	// cushion but never make it oscillate. Accessed under seqMu (scheduleSound).
+	// cushion but never make it oscillate. scheduleSound has callers on more
+	// than one goroutine, so they are read and written under lookaheadMu.
+	lookaheadMu    sync.Mutex
 	lookaheadFloor float64
 	lookaheadGen   uint64
 	// seqPathSnap holds an immutable snapshot of per-row beat paths for the

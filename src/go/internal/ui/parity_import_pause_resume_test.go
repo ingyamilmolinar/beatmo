@@ -12,7 +12,7 @@ func TestImportPauseResumeParityStable(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
-	g.parityWatch = parityWatchPanic
+	g.parityWatch.Store(parityWatchPanic)
 	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 	g.Layout(1024, 720)
 

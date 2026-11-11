@@ -128,6 +128,8 @@ func (s *playbackSlate) runtimeAudioLookahead() float64 {
 	// the playback probe: 20 ms tempo hiccups while nothing about the circuit
 	// changed). Growing still costs one shift, but at most three per session;
 	// the floor resets on the next transport generation (Stop/Pause/seek).
+	s.lookaheadMu.Lock()
+	defer s.lookaheadMu.Unlock()
 	if gen := g.audioGen.Load(); gen != s.lookaheadGen {
 		s.lookaheadGen = gen
 		s.lookaheadFloor = 0

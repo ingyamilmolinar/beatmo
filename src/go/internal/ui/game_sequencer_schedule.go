@@ -31,7 +31,7 @@ func (s *playbackSlate) seqScheduleTime() {
 	defer g.observePendingLaneCells()
 	defer s.laneTick()
 
-	parityEnabled := !runningUnderGoTest() || g.parityWatch != parityWatchOff
+	parityEnabled := !runningUnderGoTest() || g.parityWatch.Load() != parityWatchOff
 
 	// Skip entire tick when the audio channel is near-full. The audioLoop
 	// goroutine hasn't drained pending events yet; computing more would

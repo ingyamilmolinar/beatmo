@@ -711,7 +711,7 @@ func stopPlaybackForTest(g *Game) {
 	}
 	g.frozenUpToByRow = nil
 	g.clearParityState()
-	g.parityWatch = parityWatchDefault
+	g.parityWatch.Store(parityWatchDefault)
 	parityFatalEnabled.Store(true)
 }
 

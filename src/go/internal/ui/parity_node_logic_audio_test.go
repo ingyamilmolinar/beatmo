@@ -15,7 +15,7 @@ func TestParityScanSkipsAudioMissingWhenNodeLogicDisables(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
-	g.parityWatch = parityWatchLog
+	g.parityWatch.Store(parityWatchLog)
 	g.ClearParityMismatches()
 
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
@@ -70,7 +70,7 @@ func TestParityNodeLogicParamAdjustmentsNoMismatch(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
-	g.parityWatch = parityWatchLog
+	g.parityWatch.Store(parityWatchLog)
 	g.ClearParityMismatches()
 
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)

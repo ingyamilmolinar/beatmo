@@ -15,7 +15,7 @@ func TestParityHighlightSkippedWhenAudioClockUnknown(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
-	g.parityWatch = parityWatchLog
+	g.parityWatch.Store(parityWatchLog)
 
 	// Single row with one ON step at abs=0.
 	root := g.start
@@ -62,7 +62,7 @@ func TestParityHighlightRequiredWhenAudioNow(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
-	g.parityWatch = parityWatchLog
+	g.parityWatch.Store(parityWatchLog)
 
 	root := g.start
 	if root == nil {

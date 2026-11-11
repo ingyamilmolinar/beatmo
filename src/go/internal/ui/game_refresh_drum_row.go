@@ -354,7 +354,7 @@ func (s *playbackSlate) refreshDrumRow() {
 
 		// Capture timeline vs predictor mismatches so parity can flag stale
 		// commits or missed predictor updates (e.g., delete/re-add flows).
-		if scanTimeline && (parityFatalEnabled.Load() || g.parityWatch != parityWatchOff || (timelineTrace && rowIdx == timelineTraceRow)) {
+		if scanTimeline && (parityFatalEnabled.Load() || g.parityWatch.Load() != parityWatchOff || (timelineTrace && rowIdx == timelineTraceRow)) {
 			if mismatches := g.diffPredictorTimeline(rowIdx, windowStart, g.drum.Length, freezeLimit); len(mismatches) > 0 {
 				indices := make([]int, 0, len(mismatches))
 				for _, m := range mismatches {

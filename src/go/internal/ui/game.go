@@ -88,6 +88,13 @@ func SetParityFatal(enabled bool) { parityFatalEnabled.Store(enabled) }
 
 type parityWatchMode int
 
+// watchSetting is a parityWatchMode the audio goroutine reads (recordParityAudio)
+// while the UI goroutine sets it (import, restart).
+type watchSetting struct{ v atomic.Int32 }
+
+func (w *watchSetting) Load() parityWatchMode   { return parityWatchMode(w.v.Load()) }
+func (w *watchSetting) Store(m parityWatchMode) { w.v.Store(int32(m)) }
+
 const (
 	parityWatchOff parityWatchMode = iota
 	parityWatchLog

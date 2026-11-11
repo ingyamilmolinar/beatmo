@@ -16,7 +16,7 @@ func TestParityScanSkipsAudioMissingWhenRowMuted(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
-	g.parityWatch = parityWatchLog
+	g.parityWatch.Store(parityWatchLog)
 	g.ClearParityMismatches()
 
 	// Minimal 1-node regular loop so abs=0 is "audible" in predictor truth.

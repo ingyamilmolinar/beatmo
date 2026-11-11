@@ -16,7 +16,7 @@ func TestParityDetectsAudioMismatchOnCurrentBeat(t *testing.T) {
 	g := buildTestGame(t)
 	t.Cleanup(g.CloseForTest)
 
-	g.parityWatch = parityWatchLog
+	g.parityWatch.Store(parityWatchLog)
 	g.ClearParityMismatches()
 
 	g.drum.SetLength(8)

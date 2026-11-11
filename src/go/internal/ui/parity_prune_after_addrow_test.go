@@ -44,7 +44,7 @@ func TestParityPruneRunsAfterAddRow(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(1280, 720)
-	g.parityWatch = parityWatchLog
+	g.parityWatch.Store(parityWatchLog)
 	g.SetPlayFunc(func(instrument.ID, float64, ...float64) {})
 
 	if err := g.SetSubdivisions(16); err != nil {

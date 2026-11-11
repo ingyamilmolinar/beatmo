@@ -7,7 +7,7 @@ func TestParityMismatchSnapshotAndClear(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 
-	g.parityWatch = parityWatchLog
+	g.parityWatch.Store(parityWatchLog)
 	g.parityReport(mismatchEntry{
 		Row:      0,
 		Abs:      3,
@@ -50,7 +50,7 @@ func TestParityReportDoesNotRecordWhenWatchOffAndNonfatal(t *testing.T) {
 	parityFatalEnabled.Store(false)
 	t.Cleanup(func() { parityFatalEnabled.Store(prevFatal) })
 
-	g.parityWatch = parityWatchOff
+	g.parityWatch.Store(parityWatchOff)
 	g.parityReport(mismatchEntry{
 		Row:      0,
 		Abs:      1,

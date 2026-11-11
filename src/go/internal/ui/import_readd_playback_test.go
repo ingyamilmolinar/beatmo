@@ -425,7 +425,7 @@ func TestImportPlaybackAddRemoveReaddParityWatch(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
-	g.parityWatch = parityWatchLog
+	g.parityWatch.Store(parityWatchLog)
 	g.Layout(1024, 720)
 
 	if err := g.Import([]byte(beatmoProjectJSON)); err != nil {
@@ -452,7 +452,7 @@ func TestImportPlaybackAddRemoveReaddParityWatch(t *testing.T) {
 	driveSchedulerToAbs(t, g, row, g.grid.MaxDiv()*4)
 	// Clear any warm-up mismatches so the test focuses on the add/remove/readd sequence.
 	g.ClearParityMismatches()
-	g.parityWatch = parityWatchPanic
+	g.parityWatch.Store(parityWatchPanic)
 
 	insert := g.tryAddNode(-36, 9, model.NodeTypeRegular)
 	if insert == nil {
@@ -486,7 +486,7 @@ func TestImportPlaybackDeleteReaddSameNodeKeepsPredictorParity(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(1024, 720)
-	g.parityWatch = parityWatchLog
+	g.parityWatch.Store(parityWatchLog)
 
 	if err := g.Import([]byte(beatmoProjectJSON)); err != nil {
 		t.Fatalf("import beatmo project: %v", err)

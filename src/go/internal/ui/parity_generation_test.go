@@ -58,7 +58,7 @@ func TestParityGenStampedOnRecord(t *testing.T) {
 	assertDefaultParityState(t)
 	g := buildTestGame(t)
 	t.Cleanup(g.CloseForTest)
-	g.parityWatch = parityWatchLog // ensure record paths run
+	g.parityWatch.Store(parityWatchLog) // ensure record paths run
 
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	b := g.tryAddNode(1, 0, model.NodeTypeRegular)
