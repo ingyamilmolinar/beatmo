@@ -2,7 +2,7 @@ module github.com/ingyamilmolinar/beatmo
 
 go 1.24.0
 
-toolchain go1.26.5
+toolchain go1.26.10
 
 require (
 	github.com/grafana/pyroscope-go v1.2.7
