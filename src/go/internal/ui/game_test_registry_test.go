@@ -10,6 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/channel"
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
 	"go.uber.org/goleak"
 )
 
@@ -19,6 +20,10 @@ var (
 	// Which live test Games started in English: closing one puts English back,
 	// since a scene switches the language for its Game's life and never back.
 	testGameStartedEN = map[*Game]bool{}
+	// The display names when each test Game was built: an import renames
+	// instruments process-wide (a fixture's hihat is "Closed Hat"), and a later
+	// test that finds a menu button by its label must not see that.
+	testGameNames = map[*Game]map[instrument.ID]string{}
 
 	defaultDrawRect      = drawRect
 	defaultDrawEdgeLine  = drawEdgeLine
@@ -39,6 +44,7 @@ func init() {
 		testGamesMu.Lock()
 		testGames = append(testGames, g)
 		testGameStartedEN[g] = i18n.ActiveLocale() == i18n.LocaleEN
+		testGameNames[g] = audio.InstrumentDisplayNames()
 		testGamesMu.Unlock()
 	}
 	unregisterGameForTest = func(g *Game) {
@@ -54,7 +60,12 @@ func init() {
 		}
 		startedEN := testGameStartedEN[g]
 		delete(testGameStartedEN, g)
+		names, hadNames := testGameNames[g]
+		delete(testGameNames, g)
 		testGamesMu.Unlock()
+		if hadNames {
+			audio.RestoreInstrumentDisplayNames(names)
+		}
 		if startedEN && i18n.ActiveLocale() != i18n.LocaleEN {
 			i18n.SetLocale(i18n.LocaleEN)
 		}

@@ -81,6 +81,10 @@ func newProjectGame(t *testing.T) (*Game, *uiNode) {
 // audio chain.
 func TestEQBandMuteRoundTripsThroughProject(t *testing.T) {
 	assertDefaultParityState(t)
+	// The chain indices below assume no filter an earlier test left in the
+	// process-wide EQ store.
+	audio.ResetEQSettings()
+	t.Cleanup(audio.ResetEQSettings)
 	g, _ := newProjectGame(t)
 	inst := g.drum.Rows[0].Instrument
 

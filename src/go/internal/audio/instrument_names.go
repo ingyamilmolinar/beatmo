@@ -32,6 +32,28 @@ func SetInstrumentDisplayName(id instrument.ID, name string) {
 	instNameMu.Unlock()
 }
 
+// InstrumentDisplayNames copies every display-name override.
+func InstrumentDisplayNames() map[instrument.ID]string {
+	instNameMu.RLock()
+	defer instNameMu.RUnlock()
+	out := make(map[instrument.ID]string, len(instNameOverrides))
+	for id, n := range instNameOverrides {
+		out[id] = n
+	}
+	return out
+}
+
+// RestoreInstrumentDisplayNames replaces every override with names, a copy
+// InstrumentDisplayNames took.
+func RestoreInstrumentDisplayNames(names map[instrument.ID]string) {
+	instNameMu.Lock()
+	instNameOverrides = make(map[instrument.ID]string, len(names))
+	for id, n := range names {
+		instNameOverrides[id] = n
+	}
+	instNameMu.Unlock()
+}
+
 // InstrumentDisplayNameOverride returns id's display-name override ("" when
 // none is set).
 func InstrumentDisplayNameOverride(id instrument.ID) string {

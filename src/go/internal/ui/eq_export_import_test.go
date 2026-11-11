@@ -82,6 +82,7 @@ func TestImportAppliesEQ(t *testing.T) {
 
 func TestExportImportHPFLPF(t *testing.T) {
 	assertDefaultParityState(t)
+	t.Cleanup(audio.ResetEQSettings) // a row's EQ lives in the process-wide bundle store
 	logger := game_log.New(nil, game_log.LevelError)
 	g := New(logger)
 	t.Cleanup(g.CloseForTest)
