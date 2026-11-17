@@ -12,116 +12,50 @@
 #define EXPORT
 #endif
 
-EXPORT void render_snare(float *out, int sampleRate, int samples) {
-  ma_noise_config nc =
-      ma_noise_config_init(ma_format_f32, 1, ma_noise_type_white, 0, 1.0);
-  ma_noise noise;
-  if (ma_noise_init(&nc, NULL, &noise) != MA_SUCCESS) {
-    return;
-  }
-  double lp = 0.0, phase = 0.0;
-  for (int i = 0; i < samples; ++i) {
-    double t = (double)i / (double)samples;
-    float n;
-    ma_noise_read_pcm_frames(&noise, &n, 1, NULL);
-    lp = lp * 0.7 + n * 0.3;
-    double hp = n - lp;
-    double env = exp(-6.0 * t);
-    double noiseVal = (hp * 0.5 + lp * 0.5) * env;
-    double freq = 200.0 - 60.0 * t;
-    phase += 2.0 * M_PI * freq / (double)sampleRate;
-    double tone = sin(phase) * exp(-4.0 * t);
-    out[i] = (float)(noiseVal * 0.7 + tone * 0.3);
-  }
-  ma_noise_uninit(&noise, NULL);
+/* softsat_shared / osc_wave_shared: the single compiled copy of the
+ * saturation + generator-waveform primitives, declared in synth_post.h and
+ * called by the modular engine's voice sources. */
+float softsat_shared(float x) {
+  // gentle tanh saturation
+  return (float)tanh(x * 1.5);
 }
 
-EXPORT void render_kick(float *out, int sampleRate, int samples) {
-  ma_noise_config nc =
-      ma_noise_config_init(ma_format_f32, 1, ma_noise_type_white, 0, 1.0);
-  ma_noise noise;
-  if (ma_noise_init(&nc, NULL, &noise) != MA_SUCCESS) {
-    return;
+/* osc_wave_shared: discrete generator waveform for the gen-slot voices
+ * (the gen<N>_wave knob). 0=Sine 1=Saw 2=Square 3=Triangle.
+ * Phase is in radians (possibly unbounded — saw/triangle wrap via floor).
+ *
+ * BYTE-PARITY CONTRACT: the Sine case is the exact `sin(phase)` expression
+ * the engines used as literals, and the Square case is the exact
+ * `(sin(phase) >= 0) ? 1 : -1` expression from the hi-hat cluster — so an
+ * explicit selection of the engine's default waveform (the browser path,
+ * which does not elide defaults) renders bit-identically to the NaN
+ * fallback path. */
+double osc_wave_shared(int wave, double phase) {
+  switch (wave) {
+  case 1: { /* saw */
+    double t = phase * (1.0 / (2.0 * M_PI));
+    t -= floor(t);
+    return 2.0 * t - 1.0;
   }
-  double phase = 0.0;
-  for (int i = 0; i < samples; ++i) {
-    double t = (double)i / (double)samples;
-    float n;
-    ma_noise_read_pcm_frames(&noise, &n, 1, NULL);
-    double freq = 150.0 - 100.0 * t;
-    phase += 2.0 * M_PI * freq / (double)sampleRate;
-    double env = exp(-5.0 * t);
-    double tone = sin(phase) * env;
-    double attack = n * exp(-40.0 * t);
-    out[i] = (float)(tone + attack);
+  case 2: /* square — mirrors the hi-hat cluster expression exactly */
+    return (sin(phase) >= 0.0) ? 1.0 : -1.0;
+  case 3: { /* triangle */
+    double t = phase * (1.0 / (2.0 * M_PI));
+    t -= floor(t);
+    return (t < 0.5) ? (4.0 * t - 1.0) : (3.0 - 4.0 * t);
   }
-  ma_noise_uninit(&noise, NULL);
+  default: /* sine — mirrors the engines' literal sin(phase) */
+    return sin(phase);
+  }
 }
 
-EXPORT void render_hihat(float *out, int sampleRate, int samples) {
-  ma_noise_config nc =
-      ma_noise_config_init(ma_format_f32, 1, ma_noise_type_white, 0, 1.0);
-  ma_noise noise;
-  if (ma_noise_init(&nc, NULL, &noise) != MA_SUCCESS) {
-    return;
-  }
-  double lp = 0.0;
-  for (int i = 0; i < samples; ++i) {
-    double t = (double)i / (double)samples;
-    float n;
-    ma_noise_read_pcm_frames(&noise, &n, 1, NULL);
-    lp = lp * 0.95 + n * 0.05;
-    double hp = n - lp;
-    double env = exp(-40.0 * t);
-    out[i] = (float)(hp * env);
-  }
-  ma_noise_uninit(&noise, NULL);
-}
-
-EXPORT void render_tom(float *out, int sampleRate, int samples) {
-  ma_noise_config nc =
-      ma_noise_config_init(ma_format_f32, 1, ma_noise_type_white, 0, 1.0);
-  ma_noise noise;
-  if (ma_noise_init(&nc, NULL, &noise) != MA_SUCCESS) {
-    return;
-  }
-  double phase = 0.0;
-  double lp = 0.0;
-  for (int i = 0; i < samples; ++i) {
-    double t = (double)i / (double)samples;
-    float n;
-    ma_noise_read_pcm_frames(&noise, &n, 1, NULL);
-    double freq = 300.0 - 200.0 * t;
-    phase += 2.0 * M_PI * freq / (double)sampleRate;
-    double tone = sin(phase) * exp(-3.0 * t);
-    lp = lp * 0.8 + n * 0.2;
-    double env = exp(-6.0 * t);
-    out[i] = (float)(tone + lp * 0.2 * env);
-  }
-  ma_noise_uninit(&noise, NULL);
-}
-
-EXPORT void render_clap(float *out, int sampleRate, int samples) {
-  ma_noise_config nc =
-      ma_noise_config_init(ma_format_f32, 1, ma_noise_type_white, 0, 1.0);
-  ma_noise noise;
-  if (ma_noise_init(&nc, NULL, &noise) != MA_SUCCESS) {
-    return;
-  }
-  for (int i = 0; i < samples; ++i) {
-    double t = (double)i / (double)sampleRate;
-    float n;
-    ma_noise_read_pcm_frames(&noise, &n, 1, NULL);
-    double burst = exp(-100.0 * fabs(t - 0.00)) + exp(-100.0 * fabs(t - 0.02)) +
-                   exp(-100.0 * fabs(t - 0.04));
-    double env = exp(-6.0 * t);
-    out[i] = (float)(n * burst * env);
-  }
-  ma_noise_uninit(&noise, NULL);
-}
-
-EXPORT int load_wav(const char *path, float **buffer, int *sampleRate) {
-  ma_decoder_config cfg = ma_decoder_config_init(ma_format_f32, 1, 0);
+// Decode an audio file (WAV/MP3/FLAC/OGG where enabled) into mono f32 at
+// targetSampleRate, or at the file's own rate when it is 0 (how Beatmo calls
+// it: the rate conversion is Go's, shared with the browser). Returns frame
+// count or a negative ma_result code.
+int load_audio(const char *path, int targetSampleRate, float **buffer, int *sampleRate) {
+  const ma_uint32 targetRate = (ma_uint32)targetSampleRate;
+  ma_decoder_config cfg = ma_decoder_config_init(ma_format_f32, 1, targetRate);
   ma_decoder dec;
   ma_result res = ma_decoder_init_file(path, &cfg, &dec);
   if (res != MA_SUCCESS) {
@@ -151,6 +85,9 @@ EXPORT int load_wav(const char *path, float **buffer, int *sampleRate) {
   return (int)frames;
 }
 
-EXPORT const char *result_description(int code) {
+#include "synth_post.h"
+
+
+const char *result_description(int code) {
   return ma_result_description((ma_result)code);
 }

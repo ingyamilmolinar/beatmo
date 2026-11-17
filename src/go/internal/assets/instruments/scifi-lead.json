@@ -1,0 +1,131 @@
+{
+  "schema_version": "0.0.1",
+  "id": "scifi-lead",
+  "name": "Sci-Fi Lead",
+  "category": "modular",
+  "notes": "sciFiLeadSeed: another happy accident — the cello's bowed-saw-through-body tuning,\nbefore the body resonator was dialed in, read as a bright sci-fi / 8-bit synth lead\n(a raw sawtooth through a resonant low-pass = the classic analog-synth-lead timbre).\nKept verbatim as its own instrument. osc_octave:-1 retained.",
+  "render": {
+    "seconds": 1,
+    "amplitude": 1,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.08,
+        "amp_curve": 1,
+        "amp_decay": 0.12,
+        "amp_release": 0.3,
+        "amp_sustain": 0.9
+      }
+    },
+    "body": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "body_mix": 0.7,
+        "body_model": 1,
+        "bow_dynamics": 0.2
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.55,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": -1,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 2300,
+        "filter_resonance": 0.8,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    },
+    "lfo": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "lfo_delay": 0.3,
+        "lfo_depth": 0.03,
+        "lfo_rate": 4,
+        "lfo_target": 1
+      }
+    },
+    "unison": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "ens_humanize": 0,
+        "ens_jitter": 0,
+        "ens_scatter": 0,
+        "ens_vib_depth": 0,
+        "ens_vib_rate": 0,
+        "unison_detune": 0,
+        "unison_drift_depth": 0,
+        "unison_drift_rate": 0,
+        "unison_mix": 0.5,
+        "unison_voices": 1
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": true,
+    "values": {
+      "osc_type": 1
+    }
+  },
+  "layers": [
+    {
+      "type": "gen.noise",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 0.4,
+        "env_fast_rate": 10,
+        "env_tail_mix": 0.35,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1800,
+        "filt_q": 0.7,
+        "filt_type": 4,
+        "gain": 0.007,
+        "noise_offset": 0
+      }
+    }
+  ]
+}

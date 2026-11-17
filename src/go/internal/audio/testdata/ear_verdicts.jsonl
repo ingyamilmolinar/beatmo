@@ -1,0 +1,44 @@
+{"family":"bassoon","reference":"bassoon-A2","options":["bassoon"],"verdict":"p","chosen":"bassoon","note":"needs more nasal sound, a bit too dark and mellow","tags":["nasal","dark"],"semis_from_a3":-12}
+{"family":"cello","reference":"cello-A3","options":["cello","cello-warm"],"verdict":"1","chosen":"cello","note":"but still too airy and breathy","semis_from_a3":0}
+{"family":"clap","reference":"clap-vcsl","options":["clap","clap-tight"],"verdict":"2","chosen":"clap-tight","note":"but it's too airy and breathy, it should be crispier, tighter and brighter","semis_from_a3":-10}
+{"family":"clarinet","reference":"clarinet-A4","options":["clarinet"],"verdict":"p","chosen":"clarinet","semis_from_a3":-7}
+{"family":"conga","reference":"conga-freesound-alt","options":["conga","conga-open","conga-tumba"],"verdict":"1","chosen":"conga","note":"but it is not the correct pitch","semis_from_a3":22}
+{"family":"cowbell","reference":"cowbell-vcsl","options":["cowbell"],"verdict":"p","chosen":"cowbell","semis_from_a3":14}
+{"family":"crash","reference":"crash-vcsl","options":["crash"],"verdict":"p","chosen":"crash","semis_from_a3":0}
+{"family":"dnb-kick","reference":"dnb-kick-freesound","options":["dnb-kick"],"verdict":"p","chosen":"dnb-kick","semis_from_a3":-19}
+{"family":"double-bass","reference":"double-bass-A2","options":["double-bass"],"verdict":"y","chosen":"double-bass","semis_from_a3":-12}
+{"family":"flute","reference":"flute-A4","options":["flute","flute-breathy"],"verdict":"2","chosen":"flute-breathy","note":"but it is very breathy","semis_from_a3":12}
+{"family":"french-horn","reference":"french-horn-A3","options":["french-horn","french-horn-loud"],"verdict":"2","chosen":"french-horn-loud","note":"r","semis_from_a3":0}
+{"family":"glass-armonica","reference":"glass-armonica-vcsl","options":["glass-armonica"],"verdict":"p","chosen":"glass-armonica","semis_from_a3":18}
+{"family":"glockenspiel","reference":"glockenspiel-vcsl","options":["glockenspiel"],"verdict":"p","chosen":"glockenspiel","semis_from_a3":27}
+{"family":"guitar-nylon","reference":"guitar-nylon-freesound","options":["guitar-nylon","guitar-nylon-bright"],"verdict":"1","chosen":"guitar-nylon","note":"but it is too pitched up or bright","semis_from_a3":15}
+{"family":"harp","reference":"harp-freesound-alt","options":["harp"],"verdict":"n","note":"both sound like strings being plucked but the synth version needs much longer decay and let it ring for a while (build or reuse DSP analysis tooling to detect and correct these clear cut big differences in sound duration and split it up into multiple sections and also get duration of attack, release, peak, etc). Thanks!","tags":["decay","attack"],"semis_from_a3":22}
+{"family":"harpsichord","reference":"harpsichord-vcsl","options":["harpsichord"],"verdict":"y","chosen":"harpsichord","semis_from_a3":-23}
+{"family":"hihat","reference":"hihat-vcsl","options":["hihat","hihat-pedal"],"verdict":"1","chosen":"hihat","note":"for a close hat or bright bell but it is nothing like the reference at all, please tune this much further","semis_from_a3":-24}
+{"family":"kalimba","reference":"kalimba-vcsl","options":["kalimba"],"verdict":"n","note":"Totaly different, the synth sounds totally like a string being plucked maybe harp or piano. We need to provide the wooden marimba-esq feel to it. This one needs a lot of work","semis_from_a3":-10}
+{"family":"kick-acoustic","reference":"kick-acoustic-freesound-alt1","options":["kick-acoustic"],"verdict":"p","chosen":"kick-acoustic","semis_from_a3":-24}
+{"family":"koto","reference":"koto-vcsl","options":["koto"],"verdict":"y","chosen":"koto","semis_from_a3":-13}
+{"family":"marimba","reference":"marimba-vcsl","options":["marimba"],"verdict":"y","chosen":"marimba","semis_from_a3":2}
+{"family":"oboe","reference":"oboe-A4","options":["oboe","oboe-full"],"verdict":"n","note":"they sound the same, they do not sound terrible but they sound way too airy/breathy, they need warmness and the pitch is not right","semis_from_a3":12}
+{"family":"organ-church","reference":"organ-church-vcsl","options":["organ-church"],"verdict":"y","chosen":"organ-church","semis_from_a3":12}
+{"family":"pan-flute","reference":"pan-flute-vcsl","options":["pan-flute"],"verdict":"p","chosen":"pan-flute","semis_from_a3":-6}
+{"family":"piano-felt","reference":"piano-felt-vcsl","options":["piano-felt"],"verdict":"p","chosen":"piano-felt","semis_from_a3":-15}
+{"family":"piano-grand","reference":"piano-grand-freesound-alt","options":["piano-grand"],"verdict":"p","chosen":"piano-grand","semis_from_a3":22}
+{"family":"ride","reference":"ride-vcsl","options":["ride"],"verdict":"p","chosen":"ride","semis_from_a3":17}
+{"family":"rimshot","reference":"rimshot-vcsl","options":["rimshot"],"verdict":"n","note":"the synth version sounds like a marimba or wooden snare or something, the rimshot sounds much more full, deep, lower in tone and rattly/vibrational and cracky (snap).","semis_from_a3":-10}
+{"family":"sax","reference":"sax-A4","options":["sax"],"verdict":"p","chosen":"sax","semis_from_a3":12}
+{"family":"shaker","reference":"shaker-vcsl","options":["shaker"],"verdict":"p","chosen":"shaker","semis_from_a3":35}
+{"family":"sidestick","reference":"sidestick-vcsl","options":["sidestick"],"verdict":"p","chosen":"sidestick","semis_from_a3":-8}
+{"family":"singing-bowl","reference":"singing-bowl-freesound","options":["singing-bowl"],"verdict":"p","chosen":"singing-bowl","semis_from_a3":-14}
+{"family":"snare","reference":"snare-vcsl","options":["snare","snare-ghost"],"verdict":"n","note":"these need a LOT of work. Totally different sound","semis_from_a3":-17}
+{"family":"tom","reference":"tom-vcsl","options":["high-tom-organic","tom"],"verdict":"1","chosen":"high-tom-organic","note":"but nees refinement","semis_from_a3":-12}
+{"family":"trombone","reference":"trombone-A3","options":["trombone"],"verdict":"p","chosen":"trombone","semis_from_a3":0}
+{"family":"trumpet","reference":"trumpet-freesound-alt","options":["trumpet","trumpet-mellow"],"verdict":"1","chosen":"trumpet","note":"close but needs refinement","semis_from_a3":10}
+{"family":"tuba","reference":"tuba-A2","options":["tuba"],"verdict":"p","chosen":"tuba","semis_from_a3":-12}
+{"family":"tubular-bells","reference":"tubular-bells-vcsl","options":["tubular-bells"],"verdict":"n","note":"Totally different, the synth instrument sounds like a simple clean tone. The bell sounds like a resonant wavy mettalic ring that prolongs and waves in time. Scrape this and try again from scratch. It's not even close","semis_from_a3":25}
+{"family":"vibraphone","reference":"vibraphone-vcsl","options":["vibraphone"],"verdict":"y","chosen":"vibraphone","semis_from_a3":24}
+{"family":"viola","reference":"viola-A4","options":["viola"],"verdict":"y","chosen":"viola","note":"it is better than before for sure but still has this slightly fluty quality, we should somehow produce the classic viola/violin slow string quality","semis_from_a3":12}
+{"family":"violin","reference":"violin-A4","options":["violin","violin-ensemble"],"verdict":"1","chosen":"violin","note":"it is better than before for sure but still has this slightly fluty quality, we should somehow produce the classic viola/violin slow string quality","semis_from_a3":12}
+{"family":"voice-ahh","reference":"voice-ahh-freesound","options":["voice-ahh"],"verdict":"p","chosen":"voice-ahh","semis_from_a3":-23}
+{"family":"xylophone","reference":"xylophone-vcsl","options":["xylophone"],"verdict":"y","chosen":"xylophone","semis_from_a3":15}
+{"family":"zgump-kick","reference":"zgump-kick-freesound","options":["zgump-kick"],"verdict":"p","chosen":"zgump-kick","semis_from_a3":-26}

@@ -1,0 +1,271 @@
+package ui
+
+import (
+	"encoding/json"
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
+
+	"github.com/ingyamilmolinar/beatmo/internal/schema"
+)
+
+func TestExportIncludesEQ(t *testing.T) {
+	assertDefaultParityState(t)
+	logger := game_log.New(nil, game_log.LevelError)
+	g := New(logger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(640, 480)
+	// Ensure at least one node references the row origin so export is valid.
+	ui := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	g.drum.Rows[0].Origin = ui.ID
+	g.drum.Rows[0].Node = ui
+	// Set EQ gains.
+	g.drum.eqPanelZone.bandGainsDB = make([]float64, len(eqBandDefs))
+	g.drum.eqBandGainsDB()[0] = 3
+	g.drum.eqBandGainsDB()[5] = -2
+
+	data, err := g.drum.exportBytes()
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	var f projectFile
+	if err := json.Unmarshal(data, &f); err != nil {
+		t.Fatalf("json: %v", err)
+	}
+	if f.EQ == nil || len(f.EQ.GainsDB) != len(eqBandDefs) {
+		t.Fatalf("expected EQ gains exported")
+	}
+	if f.EQ.GainsDB[0] != 3 || f.EQ.GainsDB[5] != -2 {
+		t.Fatalf("unexpected gains %+v", f.EQ.GainsDB)
+	}
+	if len(f.EQ.BandsHz) != len(eqBandDefs) {
+		t.Fatalf("expected band metadata")
+	}
+}
+
+func TestImportAppliesEQ(t *testing.T) {
+	assertDefaultParityState(t)
+	file := projectFile{
+		Envelope: schema.Current(),
+		Subdiv:   32,
+		BPM:      120,
+		Instruments: []exportInstrument{{
+			Name: "Row", ID: roster.Snare, Kind: kindBuiltin, Volume: 1, Origin: 1, Color: "#FFFFFFFF",
+		}},
+		Nodes: []exportNode{{ID: 1, I: 0, J: 0, Type: model.NodeTypeRegular}},
+		EQ: &exportEQ{
+			GainsDB: []float64{6, -3, 0},
+		},
+	}
+	data, _ := json.Marshal(file)
+	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(400, 200)
+	if err := g.Import(data); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	if len(g.drum.eqBandGainsDB()) == 0 || g.drum.eqBandGainsDB()[0] != 6 {
+		t.Fatalf("eq gains not applied: %+v", g.drum.eqBandGainsDB())
+	}
+	rec := audio.ChannelEQSnapshot(channel.Master)
+	if rec.ID != "main" {
+		t.Fatalf("expected main EQ applied")
+	}
+	if len(rec.Bands) == 0 || rec.Bands[0].GainDB != 6 {
+		t.Fatalf("expected gain applied to audio chain")
+	}
+}
+
+func TestExportImportHPFLPF(t *testing.T) {
+	assertDefaultParityState(t)
+	t.Cleanup(audio.ResetEQSettings) // a row's EQ lives in the process-wide bundle store
+	logger := game_log.New(nil, game_log.LevelError)
+	g := New(logger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(640, 480)
+	ui := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	g.drum.Rows[0].Origin = ui.ID
+	g.drum.Rows[0].Node = ui
+
+	// Enable master HPF and LPF.
+	g.drum.hpfEnabled = true
+	g.drum.hpfCutoffHz = 150
+	g.drum.lpfEnabled = true
+	g.drum.lpfCutoffHz = 12000
+
+	// Set per-row HPF.
+	rowEQ(g.drum.Rows[0]).HPF = true
+	rowEQ(g.drum.Rows[0]).HPFHz = 80
+	rowEQ(g.drum.Rows[0]).LPF = false
+	rowEQ(g.drum.Rows[0]).LPFHz = 20000
+
+	data, err := g.drum.exportBytes()
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+
+	// Parse and verify master EQ.
+	var f projectFile
+	if err := json.Unmarshal(data, &f); err != nil {
+		t.Fatalf("json: %v", err)
+	}
+	if f.EQ == nil {
+		t.Fatal("expected master EQ exported")
+	}
+	if !f.EQ.HPFEnabled || f.EQ.HPFCutoffHz != 150 {
+		t.Errorf("master HPF: enabled=%v cutoff=%.0f", f.EQ.HPFEnabled, f.EQ.HPFCutoffHz)
+	}
+	if !f.EQ.LPFEnabled || f.EQ.LPFCutoffHz != 12000 {
+		t.Errorf("master LPF: enabled=%v cutoff=%.0f", f.EQ.LPFEnabled, f.EQ.LPFCutoffHz)
+	}
+
+	// Verify per-instrument EQ.
+	if len(f.Instruments) == 0 || f.Instruments[0].EQ == nil {
+		t.Fatal("expected per-instrument EQ exported")
+	}
+	instEQ := f.Instruments[0].EQ
+	if !instEQ.HPFEnabled || instEQ.HPFCutoffHz != 80 {
+		t.Errorf("inst HPF: enabled=%v cutoff=%.0f", instEQ.HPFEnabled, instEQ.HPFCutoffHz)
+	}
+	if instEQ.LPFEnabled {
+		t.Error("expected inst LPF disabled")
+	}
+
+	// Import into a new game and verify state restored.
+	g2 := New(logger)
+	t.Cleanup(g2.CloseForTest)
+	g2.Layout(640, 480)
+	if err := g2.Import(data); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+
+	// Master HPF/LPF.
+	if !g2.drum.hpfEnabled || g2.drum.hpfCutoffHz != 150 {
+		t.Errorf("imported master HPF: enabled=%v cutoff=%.0f", g2.drum.hpfEnabled, g2.drum.hpfCutoffHz)
+	}
+	if !g2.drum.lpfEnabled || g2.drum.lpfCutoffHz != 12000 {
+		t.Errorf("imported master LPF: enabled=%v cutoff=%.0f", g2.drum.lpfEnabled, g2.drum.lpfCutoffHz)
+	}
+
+	// Per-row HPF/LPF.
+	if len(g2.drum.Rows) == 0 {
+		t.Fatal("no rows after import")
+	}
+	row := g2.drum.Rows[0]
+	if !rowEQ(row).HPF || rowEQ(row).HPFHz != 80 {
+		t.Errorf("imported row HPF: enabled=%v cutoff=%.0f", rowEQ(row).HPF, rowEQ(row).HPFHz)
+	}
+	if rowEQ(row).LPF {
+		t.Error("expected imported row LPF disabled")
+	}
+}
+
+func TestImportLegacyNoFilters(t *testing.T) {
+	assertDefaultParityState(t)
+	// Old file without HPF/LPF fields should load correctly with filters disabled.
+	file := projectFile{
+		Envelope: schema.Current(),
+		Subdiv:   32,
+		BPM:      120,
+		Instruments: []exportInstrument{{
+			Name: "Row", ID: roster.Snare, Kind: kindBuiltin, Volume: 1, Origin: 1, Color: "#FFFFFFFF",
+		}},
+		Nodes: []exportNode{{ID: 1, I: 0, J: 0, Type: model.NodeTypeRegular}},
+		EQ: &exportEQ{
+			GainsDB: []float64{3, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+		},
+	}
+	data, _ := json.Marshal(file)
+	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(400, 200)
+	if err := g.Import(data); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	// HPF/LPF should default to disabled.
+	if g.drum.hpfEnabled {
+		t.Error("expected HPF disabled for legacy file")
+	}
+	if g.drum.lpfEnabled {
+		t.Error("expected LPF disabled for legacy file")
+	}
+	if g.drum.hpfCutoffHz != 20 {
+		t.Errorf("expected HPF cutoff 20, got %.0f", g.drum.hpfCutoffHz)
+	}
+	if g.drum.lpfCutoffHz != 20000 {
+		t.Errorf("expected LPF cutoff 20000, got %.0f", g.drum.lpfCutoffHz)
+	}
+}
+
+func TestImportSyncsEQGains(t *testing.T) {
+	assertDefaultParityState(t)
+	// Create a file with master EQ gains and per-instrument EQ gains.
+	file := projectFile{
+		Envelope: schema.Current(),
+		Subdiv:   32,
+		BPM:      120,
+		Instruments: []exportInstrument{{
+			Name: "Kick", ID: roster.Kick, Kind: kindBuiltin, Volume: 1, Origin: 1, Color: "#FFFFFFFF",
+			EQ: &exportEQ{
+				GainsDB: []float64{-12, 6, 0, 3, -6, 12, 0, 0, 0, 0},
+			},
+		}},
+		Nodes: []exportNode{{ID: 1, I: 0, J: 0, Type: model.NodeTypeRegular}},
+		EQ: &exportEQ{
+			GainsDB: []float64{12, -6, 0, 3, -3, 6, 0, 0, 0, 0},
+		},
+	}
+	data, _ := json.Marshal(file)
+
+	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(400, 300)
+
+	// Import the file.
+	if err := g.Import(data); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+
+	// Verify master EQ gains are synced (master is active by default).
+	if g.drum.activeEQChannel() != channel.Master {
+		t.Fatalf("expected main channel active, got %s", g.drum.activeEQChannel())
+	}
+	gains := g.drum.eqBandGainsDB()
+	if len(gains) < 2 {
+		t.Fatalf("expected EQ gains initialized, got %d", len(gains))
+	}
+	// Band 0: gain 12 dB.
+	if gains[0] != 12 {
+		t.Errorf("band[0] expected 12 dB, got %f", gains[0])
+	}
+	// Band 1: gain -6 dB.
+	if gains[1] != -6 {
+		t.Errorf("band[1] expected -6 dB, got %f", gains[1])
+	}
+	// Band 2: gain 0 dB.
+	if gains[2] != 0 {
+		t.Errorf("band[2] expected 0 dB, got %f", gains[2])
+	}
+
+	// Switch to the instrument channel and verify per-instrument gains.
+	g.drum.setEQActiveChannel(channel.Of(roster.Kick))
+	if g.drum.activeEQChannel() != channel.Of(roster.Kick) {
+		t.Fatalf("expected kick channel active, got %s", g.drum.activeEQChannel())
+	}
+	kickGains := g.drum.eqBandGainsDB()
+	if len(kickGains) < 2 {
+		t.Fatalf("expected kick EQ gains, got %d", len(kickGains))
+	}
+	// Band 0: gain -12 dB.
+	if kickGains[0] != -12 {
+		t.Errorf("kick band[0] expected -12 dB, got %f", kickGains[0])
+	}
+	// Band 1: gain 6 dB.
+	if kickGains[1] != 6 {
+		t.Errorf("kick band[1] expected 6 dB, got %f", kickGains[1])
+	}
+}

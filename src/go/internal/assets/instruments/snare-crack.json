@@ -1,0 +1,110 @@
+{
+  "schema_version": "0.0.1",
+  "id": "snare-crack",
+  "name": "Crack Snare",
+  "category": "modular",
+  "notes": "snareRimshotSeed is the RIMSHOT voice (C snare variant 1) as config — the\nformer drum-snare-rimshot C literals written out explicitly. Variant 1 does\nnot read tail_d or wire_m, which is why they are absent; the engine has no\ndefaults, so every parameter the branch actually READS is spelled out here.",
+  "render": {
+    "seconds": 0.25,
+    "amplitude": 0.8306,
+    "gate_tail": 0.5,
+    "melodic": false
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "amp_attack": 0.005,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.2,
+        "amp_sustain": 0.6
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 500
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "filter_cutoff": 8000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 0,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      },
+      "notes": "out_clamp: no output limit (these voices never had one)"
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "snare.rimshot",
+      "v": 1,
+      "on": true,
+      "values": {
+        "freq": 1,
+        "freq_mode": 0,
+        "snare_attack": 2,
+        "snare_noise_d": 200,
+        "snare_noise_m": 0.7,
+        "snare_tone2": 1050,
+        "snare_tone_d": 40,
+        "snare_tone_m": 1,
+        "snare_tune": 1,
+        "wave": 0
+      },
+      "notes": "gen1_snare_variant: rimshot"
+    }
+  ],
+  "fx": [
+    {
+      "type": "fx.distortion",
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 2.5,
+        "mix": 1,
+        "tone": 8000
+      }
+    }
+  ]
+}

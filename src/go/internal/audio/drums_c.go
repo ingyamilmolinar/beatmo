@@ -15,71 +15,64 @@ import (
 	"unsafe"
 )
 
-func renderSnare(buf []float32, sampleRate, samples int) {
-	if samples > len(buf) {
-		panic("renderSnare: samples exceeds buffer length")
-	}
-	if len(buf) == 0 || samples == 0 {
-		return
-	}
-	C.render_snare((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
-}
+// renderSnare deleted — the snare family migrated to the modular engine
+// (Phase-5). The no-edit native fast path is renderSnareVoice
+// (snare_modular_native.go), which renders the baked recipe-default
+// param block through render_modular_p.
 
-func renderKick(buf []float32, sampleRate, samples int) {
-	if samples > len(buf) {
-		panic("renderKick: samples exceeds buffer length")
-	}
-	if len(buf) == 0 || samples == 0 {
-		return
-	}
-	C.render_kick((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
-}
+// renderKick deleted — the base kick migrated to the modular engine (Phase-3).
+// The no-edit native fast path is renderKickVoice (kick_modular_native.go),
+// which renders the baked recipe-default param block through render_modular_p.
 
-func renderHiHat(buf []float32, sampleRate, samples int) {
-	if samples > len(buf) {
-		panic("renderHiHat: samples exceeds buffer length")
-	}
-	if len(buf) == 0 || samples == 0 {
-		return
-	}
-	C.render_hihat((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
-}
+// renderHiHat / renderOpenHiHat / renderCowbell / renderShaker / renderRide /
+// renderCrash deleted — the cymbal family migrated to the modular engine
+// (Phase-6). The no-edit native fast paths are renderHiHatVoice /
+// renderOpenHiHatVoice / renderCowbellVoice / renderShakerVoice / renderRideVoice
+// / renderCrashVoice (cymbal_modular_native.go), which render the baked
+// recipe-default param block through render_modular_p; the recipe/edit path
+// renders through the modular binding (cymbalRecipeToModular).
 
-func renderTom(buf []float32, sampleRate, samples int) {
-	if samples > len(buf) {
-		panic("renderTom: samples exceeds buffer length")
-	}
-	if len(buf) == 0 || samples == 0 {
-		return
-	}
-	C.render_tom((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
-}
+// renderTom / renderTomHigh / renderTomLow deleted — the tom family migrated to
+// the modular engine (Phase-4). The no-edit fast path is renderTomVoice /
+// renderTomHighVoice / renderTomLowVoice (tom_modular_native.go); the recipe/edit
+// path renders through the modular binding (tomRecipeToModular).
 
-func renderClap(buf []float32, sampleRate, samples int) {
-	if samples > len(buf) {
-		panic("renderClap: samples exceeds buffer length")
-	}
-	if len(buf) == 0 || samples == 0 {
-		return
-	}
-	C.render_clap((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
-}
+// renderClap deleted — the clap migrated to the modular engine (Phase-5). The
+// no-edit native fast path is renderClapVoice (snare_modular_native.go).
 
-func loadWav(path string) ([]float32, int, error) {
+// renderBassGuitar / renderSubBass deleted — the bass family migrated to the
+// modular engine (Phase-2). The no-edit native fast path is renderSubBassVoice
+// / renderSubBassVoice (bass_modular_native.go), which renders the baked
+// recipe-default param block through render_modular_p.
+
+// renderSnareRimshot / renderSnareSidestick deleted — the snare family migrated
+// to the modular engine (Phase-5). The no-edit native fast paths are
+// renderSnareRimshotVoice / renderSnareSidestickVoice (snare_modular_native.go).
+
+// renderKickDeep / renderKickPunchy / renderKickLofi / renderKickTight deleted —
+// the kick family migrated to the modular engine (Phase-3). The no-edit native
+// fast paths are renderKickDeepVoice / renderKickPunchyVoice /
+// renderKickLofiVoice / renderKickTightVoice (kick_modular_native.go).
+
+func loadAudio(path string) ([]float32, int, error) {
 	cpath := C.CString(path)
 	defer C.free(unsafe.Pointer(cpath))
 	var ptr *C.float
 	var sr C.int
-	frames := C.load_wav(cpath, &ptr, &sr)
+	// Target rate 0: decode at the file's OWN rate. The conversion to the
+	// engine rate is pcmAtEngineRate (ResampleToRate), the same Go the browser
+	// runs on the same decoded PCM — never miniaudio's resampler on one side
+	// and decodeAudioData's on the other.
+	frames := C.load_audio(cpath, 0, &ptr, &sr) //nolint:gocritic // dupSubExpr false positive in CGo
 	if frames < 0 {
 		msg := C.GoString(C.result_description(C.int(frames)))
-		return nil, 0, fmt.Errorf("load_wav: %s", msg)
+		return nil, 0, fmt.Errorf("load_audio: %s", msg)
 	}
 	if frames == 0 {
-		return nil, 0, errors.New("load_wav: no frames")
+		return nil, 0, errors.New("load_audio: no frames")
 	}
 	if ptr == nil {
-		return nil, 0, errors.New("load_wav: C returned nil pointer")
+		return nil, 0, errors.New("load_audio: C returned nil pointer")
 	}
 	tmp := unsafe.Slice((*float32)(unsafe.Pointer(ptr)), int(frames))
 	buf := make([]float32, int(frames))
@@ -100,4 +93,22 @@ func (v *cVoice) Sample() (float64, bool) {
 	f := float64(v.buf[v.i])
 	v.i++
 	return f, false
+}
+
+// SampleBlock performs bulk float32→float64 conversion, avoiding per-sample
+// function call overhead. Implements the BlockVoice interface.
+func (v *cVoice) SampleBlock(dst []float64) (int, bool) {
+	remaining := len(v.buf) - v.i
+	if remaining <= 0 {
+		return 0, true
+	}
+	n := len(dst)
+	if n > remaining {
+		n = remaining
+	}
+	for j := 0; j < n; j++ {
+		dst[j] = float64(v.buf[v.i+j])
+	}
+	v.i += n
+	return n, v.i >= len(v.buf)
 }

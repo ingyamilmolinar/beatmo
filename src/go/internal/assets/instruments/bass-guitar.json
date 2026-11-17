@@ -1,0 +1,206 @@
+{
+  "schema_version": "0.0.1",
+  "id": "bass-guitar",
+  "name": "Bass Guitar",
+  "category": "modular",
+  "notes": "bassGuitarSeed: plucked/punchy electric bass — strong fundamental, controlled harmonics,\nclear attack + decay, not a sustained organ drone. (Renamed from synthBassSeed.)\nSaw OSC at -1 octave for that warm bass register; filter envelope gives the \"pluck wow\";\nsub-sine at moderate gain for body weight without mud; no drive (removes grit/saturation).\nPLUCKED electric bass (finger), matched to the reference (ixwolf C2~=65Hz). The\nref's harmonic profile (FFT, reliable at 65Hz; synth-analyze mis-detects low\nbass): H1:H2:H3:H4:H5 ~= 1:0.34:0.18:0.08:0.10 — fundamental-dominant, warm, a\nfew harmonics, NOT bright. A sine fundamental + that harmonic set + a short\nfinger-PLUCK noise click + a PLUCKED DECAY envelope (amp_sustain 0: each note\nplucks and rings DOWN over a few seconds, articulating — not a flat synth drone,\nnot the harsh sustained sizzle of the earlier attempt).",
+  "render": {
+    "seconds": 0.75,
+    "amplitude": 0.5506,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.002,
+        "amp_curve": 1,
+        "amp_decay": 4,
+        "amp_release": 0.15,
+        "amp_sustain": 0
+      },
+      "notes": "amp_attack: sharp finger pluck\namp_decay: honest ParamDef max (was 8, silently clamped to 4 in the recipe path); long natural ring-down\namp_sustain: PLUCKS AND DECAYS"
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": -1,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      },
+      "notes": "osc_octave: bass register (octave below the played note)"
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 2200,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": true,
+    "values": {
+      "osc_type": 0
+    },
+    "notes": "osc_type: sine fundamental (warm, dominant)"
+  },
+  "layers": [
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0.8,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 2,
+        "freq_mode": 0,
+        "gain": 0.5,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen1_source: harmonic set matched to the reference (upper partials decay a little faster = the\ntone warms as it rings down, like a real string)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 1.1,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 3,
+        "freq_mode": 0,
+        "gain": 0.3,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.noise",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 45,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1100,
+        "filt_q": 0.5,
+        "filt_type": 5,
+        "gain": 0.08,
+        "noise_offset": 0
+      },
+      "notes": "gen3_source: short finger-PLUCK click — band-passed noise at the attack only (the ref's pluck noise)"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 1.4,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 4,
+        "freq_mode": 0,
+        "gain": 0.14,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 1.7,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 5,
+        "freq_mode": 0,
+        "gain": 0.14,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 2,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 6,
+        "freq_mode": 0,
+        "gain": 0.08,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    }
+  ]
+}

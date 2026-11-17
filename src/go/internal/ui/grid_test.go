@@ -1,14 +1,291 @@
 package ui
 
-import "testing"
+import (
+	"io"
+	"math"
+	"reflect"
+	"testing"
+
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
+)
 
 func TestStepPixelsAlignment(t *testing.T) {
-    scales := []float64{0.5, 0.75, 1.0, 1.25, 1.7}
-    for _, s := range scales {
-        step := StepPixels(s)
-        sx := int((float64(GridStep)*s)+0.5)
-        if step != sx {
-            t.Fatalf("step=%d want %d for scale %f", step, sx, s)
-        }
-    }
+	assertDefaultParityState(t)
+	g := NewGrid(DefaultGridStep)
+	scales := []float64{0.5, 0.75, 1.0, 1.25, 1.7}
+	for _, s := range scales {
+		step := g.StepPixels(s)
+		sx := int((float64(g.Step) * s) + 0.5)
+		if step != sx {
+			t.Fatalf("step=%d want %d for scale %f", step, sx, s)
+		}
+	}
+}
+
+func TestSubdivisionVisibility(t *testing.T) {
+	assertDefaultParityState(t)
+	g := NewGrid(DefaultGridStep)
+	cam := &Camera{Scale: 1}
+	groups := g.Lines(cam, 640, 480)
+	var divs []int
+	for _, gr := range groups {
+		divs = append(divs, gr.Subdiv.Div)
+	}
+	if !reflect.DeepEqual(divs, []int{1, 4}) {
+		t.Fatalf("divs=%v want [1 4]", divs)
+	}
+
+	cam.Scale = 2
+	groups = g.Lines(cam, 640, 480)
+	divs = divs[:0]
+	for _, gr := range groups {
+		divs = append(divs, gr.Subdiv.Div)
+	}
+	if !reflect.DeepEqual(divs, []int{1, 2, 4, 8}) {
+		t.Fatalf("divs=%v want [1 2 4 8]", divs)
+	}
+}
+
+func TestLinesNoOverlap(t *testing.T) {
+	assertDefaultParityState(t)
+	g := NewGrid(DefaultGridStep)
+	cam := &Camera{Scale: 2}
+	groups := g.Lines(cam, 200, 200)
+	seenX := map[int]struct{}{}
+	seenY := map[int]struct{}{}
+	for _, gr := range groups {
+		for _, x := range gr.Xs {
+			k := int(math.Round(x * 1000))
+			if _, ok := seenX[k]; ok {
+				t.Fatalf("duplicate x %v for div %d", x, gr.Subdiv.Div)
+			}
+			seenX[k] = struct{}{}
+		}
+		for _, y := range gr.Ys {
+			k := int(math.Round(y * 1000))
+			if _, ok := seenY[k]; ok {
+				t.Fatalf("duplicate y %v for div %d", y, gr.Subdiv.Div)
+			}
+			seenY[k] = struct{}{}
+		}
+	}
+}
+
+func TestSnapFinestSubdivision(t *testing.T) {
+	assertDefaultParityState(t)
+	g := NewGrid(DefaultGridStep)
+	unit := g.Unit()
+	gx, gy, i, j := g.Snap(0.6*unit, 1.2*unit)
+	if i != 1 || j != 1 {
+		t.Fatalf("snap coarse i=%d j=%d", i, j)
+	}
+	if math.Abs(gx-unit) > 1e-9 || math.Abs(gy-unit) > 1e-9 {
+		t.Fatalf("coords (%f,%f) want (%f,%f)", gx, gy, unit, unit)
+	}
+	gx, _, i, _ = g.Snap(1.6*unit, 0)
+	if i != 2 || math.Abs(gx-2*unit) > 1e-9 {
+		t.Fatalf("snap fine i=%d gx=%f", i, gx)
+	}
+}
+
+func TestRadiusScaling(t *testing.T) {
+	assertDefaultParityState(t)
+	g := NewGrid(DefaultGridStep)
+	// Node radius never overlaps neighbors
+	r1 := g.NodeRadius(1)
+	r2 := g.NodeRadius(2)
+	if r1*2 >= g.Unit() {
+		t.Fatalf("node radius overlaps unit: r=%f unit=%f", r1, g.Unit())
+	}
+	if r2*2 >= g.Unit() {
+		t.Fatalf("node radius overlaps unit at scale2: r=%f unit=%f", r2, g.Unit())
+	}
+	// Screen radius is non-decreasing with scale (may clamp to a minimum or maximum).
+	if r1*1 > r2*2+1e-9 { // compare screen pixels: r*scale
+		t.Fatalf("node screen radius shrank with larger scale: r1=%f r2=%f", r1, r2)
+	}
+	// Signal radius is also non-decreasing and enforces a minimum on-screen size.
+	sr1 := g.SignalRadius(1)
+	sr2 := g.SignalRadius(2)
+	if sr1*1 > sr2*2+1e-9 {
+		t.Fatalf("signal screen radius shrank with larger scale: r1=%f r2=%f", sr1, sr2)
+	}
+	// At extreme zoom-in, both nodes and signals clamp to their maximum on-screen sizes.
+	if g.NodeRadius(100)*100 > 16+1e-6 || g.SignalRadius(100)*100 > 6+1e-6 {
+		t.Fatalf("radius clamp failed at extreme zoom")
+	}
+}
+
+func TestMinPixelSizesWhenPossible(t *testing.T) {
+	assertDefaultParityState(t)
+	g := NewGrid(DefaultGridStep)
+	// Choose a scale where node min pixels (8px) are achievable without overlap.
+	need := 8.0 / (0.4 * g.Unit())
+	scale := need + 2 // safely above threshold
+	scr := g.NodeRadius(scale) * scale
+	if scr < 7.9 { // ~8px with tolerance
+		t.Fatalf("node min px not enforced: got %.2fpx at scale %.2f (need>=%.2f)", scr, scale, need)
+	}
+	// Signals should enforce a 4px minimum even at moderate zoom-outs.
+	s1 := g.SignalRadius(0.5) * 0.5
+	if s1 < 3.9 {
+		t.Fatalf("signal min px not enforced at zoom-out: got %.2fpx", s1)
+	}
+}
+
+func TestEdgeStyleScaling(t *testing.T) {
+	assertDefaultParityState(t)
+	g := NewGrid(DefaultGridStep)
+	t1 := g.EdgeThickness(1)
+	t2 := g.EdgeThickness(2)
+	if math.Abs(t1*1-t2*2) > 1e-9 {
+		t.Fatalf("edge thickness mismatch: t1=%f t2=%f", t1, t2)
+	}
+	want := 0.15 * g.Step
+	if g.EdgeArrowSize() != want {
+		t.Fatalf("arrow size=%f want=%f", g.EdgeArrowSize(), want)
+	}
+}
+
+func TestLinesExtendBeyondView(t *testing.T) {
+	assertDefaultParityState(t)
+	g := NewGrid(DefaultGridStep)
+	// Pan the camera by a non-integer multiple of the step to simulate
+	// arbitrary movement across the lattice.
+	cam := &Camera{Scale: 1, OffsetX: 30, OffsetY: -45}
+	minX, maxX, minY, maxY := visibleWorldRect(cam, 100, 100)
+	groups := g.Lines(cam, 100, 100)
+	// Subdivision Div=1 corresponds to beat lines; ensure they extend beyond
+	// the computed visible rectangle on all sides so panning never reveals
+	// empty space.
+	for _, gr := range groups {
+		if gr.Subdiv.Div != 1 {
+			continue
+		}
+		left := math.MaxFloat64
+		right := -math.MaxFloat64
+		top := math.MaxFloat64
+		bottom := -math.MaxFloat64
+		for _, x := range gr.Xs {
+			if x < left {
+				left = x
+			}
+			if x > right {
+				right = x
+			}
+		}
+		for _, y := range gr.Ys {
+			if y < top {
+				top = y
+			}
+			if y > bottom {
+				bottom = y
+			}
+		}
+		if left > minX || right < maxX || top > minY || bottom < maxY {
+			t.Fatalf("grid lines do not extend beyond view: left %f right %f top %f bottom %f", left, right, top, bottom)
+		}
+		return
+	}
+	t.Fatalf("no beat-level lines found")
+}
+
+func TestLineWidthConstantAcrossZoom(t *testing.T) {
+	assertDefaultParityState(t)
+	g := NewGrid(DefaultGridStep)
+	scales := []float64{0.5, 1, 2, 4}
+	for _, s := range scales {
+		unitPx := g.UnitPixels(s)
+		camScale := unitPx / g.Unit()
+		world := g.Subs[0].Style.Width / camScale
+		screen := world * camScale
+		if math.Abs(screen-g.Subs[0].Style.Width) > 1e-9 {
+			t.Fatalf("screen width=%f want=%f at scale %f", screen, g.Subs[0].Style.Width, s)
+		}
+	}
+}
+
+func TestPrimaryGridVisibleAfterSubdivChangeAtMinZoom(t *testing.T) {
+	assertDefaultParityState(t)
+	logger := game_log.New(io.Discard, game_log.LevelError)
+	g := New(logger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(800, 600)
+	if err := g.SetSubdivisions(16); err != nil {
+		t.Fatalf("SetSubdivisions: %v", err)
+	}
+	g.cam.Scale = 0.1
+	g.cam.Snap()
+	groups := g.grid.Lines(g.cam, 800, g.split.Y)
+	found := false
+	for _, gr := range groups {
+		if gr.Subdiv.Div == 1 {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("beat grid lines hidden at min zoom; groups=%v", groups)
+	}
+}
+
+func TestBeatAxisLabel(t *testing.T) {
+	g := NewGrid(DefaultGridStep)
+	var subs []Subdivision
+	for _, sub := range g.Subs {
+		if sub.Div <= 8 {
+			subs = append(subs, sub)
+		}
+	}
+	g.SetSubs(subs) // MaxDiv = 8, so half-beat = 4 subdivisions
+	// The user-reported sequence walking rightward through the negative axis at
+	// half-beat steps: -2:1/2, -2, -1:1/2, -1, then across the origin.
+	cases := []struct {
+		idx  int
+		want string
+	}{
+		{-20, "-2:1/2"}, // -2.5 beats (magnitude, NOT floor's "-3:1/2")
+		{-16, "-2"},     // exactly -2 beats (no ":0")
+		{-12, "-1:1/2"}, // -1.5 beats
+		{-8, "-1"},      // exactly -1 beat
+		{-4, "-0:1/2"},  // -0.5 beats — sign preserved even with zero whole beats
+		{0, "0"},        // origin
+		{4, "0:1/2"},    // +0.5 beats (positive unchanged)
+		{20, "2:1/2"},   // +2.5 beats
+	}
+	for _, c := range cases {
+		if got := g.BeatAxisLabel(c.idx); got != c.want {
+			t.Errorf("BeatAxisLabel(%d) = %q, want %q", c.idx, got, c.want)
+		}
+	}
+}
+
+func TestBeatSlot(t *testing.T) {
+	g := NewGrid(DefaultGridStep)
+	// Set up subdivisions to have MaxDiv=8 by filtering out Div>8
+	var subs []Subdivision
+	for _, sub := range g.Subs {
+		if sub.Div <= 8 {
+			subs = append(subs, sub)
+		}
+	}
+	g.SetSubs(subs)
+	cases := []struct {
+		idx, beat, num, den int
+	}{
+		{0, 1, 0, 8},  // exactly on beat 1
+		{3, 1, 3, 8},  // 3/8 into beat 1
+		{4, 1, 4, 8},  // midpoint of beat 1 (between two beat-aligned nodes)
+		{7, 1, 7, 8},  // last subdivision of beat 1
+		{8, 2, 0, 8},  // exactly on beat 2 (num resets to 0)
+		{19, 3, 3, 8}, // beat 3, 3/8 in
+		{-4, 1, 0, 8}, // negative clamps to start of beat 1
+	}
+	for _, c := range cases {
+		beat, num, den := g.BeatSlot(c.idx)
+		if beat != c.beat || num != c.num || den != c.den {
+			t.Errorf("BeatSlot(%d) = (%d,%d,%d), want (%d,%d,%d)",
+				c.idx, beat, num, den, c.beat, c.num, c.den)
+		}
+	}
 }

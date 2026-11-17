@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>beatmo · go-graph</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; font:13px system-ui,sans-serif; background:#0d1117; color:#c9d1d9; }
+  header { display:flex; gap:12px; align-items:center; padding:8px 12px; background:#161b22; border-bottom:1px solid #30363d; }
+  header b { color:#58a6ff; }
+  select, input { background:#0d1117; color:#c9d1d9; border:1px solid #30363d; border-radius:6px; padding:4px 6px; }
+  #wrap { display:flex; height:calc(100vh - 45px); }
+  #graph { flex:1; overflow:hidden; }
+  #graphwrap { flex:1; position:relative; overflow:hidden; }
+  #graphwrap svg { width:100%; height:100%; display:block; }
+  #note { position:absolute; left:10px; bottom:10px; font-size:11px; color:#8b949e;
+          background:rgba(13,17,23,0.8); border:1px solid #30363d; border-radius:6px;
+          padding:4px 8px; pointer-events:none; max-width:60%; }
+  #note:empty { display:none; }
+  #panel { width:320px; border-left:1px solid #30363d; padding:12px; overflow:auto; background:#0d1117; }
+  #panel h2 { font-size:14px; color:#58a6ff; margin:0 0 8px; }
+  .metric { display:flex; justify-content:space-between; border-bottom:1px solid #21262d; padding:3px 0; }
+  .hot { color:#f0883e; } .cool { color:#3fb950; }
+  text { fill:#c9d1d9; pointer-events:none; }
+  .node { cursor:pointer; }
+  .edge { stroke:#484f58; fill:none; }
+  .edge.call { stroke:#58a6ff; }
+  .medge { stroke:#8b949e; fill:none; opacity:0.38; }
+  .medge-hi { stroke:#58a6ff; opacity:0.95; }
+  .dim { opacity:0.12; }
+  #crumb { font-size:13px; }
+  #crumb .seg { color:#58a6ff; cursor:pointer; }
+  #crumb .seg:hover { text-decoration:underline; }
+  #crumb .cur { color:#c9d1d9; }
+  #crumb .sep { color:#484f58; margin:0 4px; }
+</style>
+<header>
+  <b>beatmo · go-graph</b>
+  <span id="crumb"></span>
+  <input id="filter" placeholder="filter…" size="18">
+  <span id="meta"></span>
+</header>
+<div id="wrap">
+  <div id="graphwrap">
+    <svg id="graph"></svg>
+    <div id="note"></div>
+  </div>
+  <div id="panel"><h2>Packages</h2><div>Click a package to open its types &amp; functions as nodes. Click a type to open its methods. Scroll to zoom (at the cursor), drag to pan, filter to find any member.</div></div>
+</div>
+<script id="model" type="application/json">__MODEL__</script>
+<script>__APP__</script>

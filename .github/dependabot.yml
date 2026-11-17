@@ -1,0 +1,26 @@
+# Weekly, one grouped PR per ecosystem. Tool versions inside the CI images are
+# pinned in ci/versions.env, which Dependabot does not read: a Playwright bump
+# here fails TestImagePlaywrightMatchesLockfile until that file follows.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: gomod
+    directory: /src/go
+    schedule:
+      interval: weekly
+    groups:
+      go:
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /src/js
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        patterns: ["*"]

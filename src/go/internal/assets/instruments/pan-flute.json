@@ -1,0 +1,173 @@
+{
+  "schema_version": "0.0.1",
+  "id": "pan-flute",
+  "name": "Pan Flute",
+  "category": "modular",
+  "notes": "panFluteSeed: a breathy hollow pan flute — a near-sine tone (weak upper partials)\nunder a PROMINENT sustained air-noise band, gentle breathy onset, light vibrato.\nThe air is louder here than the concert flute — the pan pipe is all breath.",
+  "render": {
+    "seconds": 1,
+    "amplitude": 0.6577,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.05,
+        "amp_curve": 1,
+        "amp_decay": 0.05,
+        "amp_release": 0.12,
+        "amp_sustain": 0.9
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.9,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 3500,
+        "filter_resonance": 1,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    },
+    "lfo": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "lfo_delay": 0.25,
+        "lfo_depth": 0.04,
+        "lfo_rate": 5.5,
+        "lfo_target": 1
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 1,
+        "freq_mode": 0,
+        "gain": 0.6,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen1_freq: H1\ngen1_freq_mode: H1\ngen1_gain: H1\ngen1_source: H1\ngen1_wave: H1"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 2,
+        "freq_mode": 0,
+        "gain": 0.1,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen2_freq: H2\ngen2_freq_mode: H2\ngen2_gain: H2\ngen2_source: H2\ngen2_wave: H2"
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 0,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 3,
+        "freq_mode": 0,
+        "gain": 0.04,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      },
+      "notes": "gen3_freq: H3\ngen3_freq_mode: H3\ngen3_gain: H3\ngen3_source: H3\ngen3_wave: H3"
+    },
+    {
+      "type": "gen.noise",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 0.5,
+        "env_fast_rate": 5,
+        "env_tail_mix": 0.85,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 2200,
+        "filt_q": 0.4,
+        "filt_type": 5,
+        "gain": 0.35,
+        "noise_offset": 0
+      },
+      "notes": "gen4_source: prominent, sustained breath air — the defining pan-pipe sound"
+    }
+  ]
+}

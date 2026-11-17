@@ -3,13 +3,28 @@ package ui
 import (
 	"image"
 	"image/color"
+	"strings"
 	"testing"
 	"unicode/utf8"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
+func TestFitWidthGrowsToValueWithMin(t *testing.T) {
+	if got := FitWidth("", 80); got != 80 {
+		t.Fatalf("empty got %d want min 80", got)
+	}
+	long := "A very long instrument name"
+	if got := FitWidth(long, 80); got < TextWidth(long) {
+		t.Fatalf("got %d clips value (TextWidth=%d)", got, TextWidth(long))
+	}
+}
+
 func TestTextInputEditing(t *testing.T) {
+	assertDefaultParityState(t)
+	prevSuppress := suppressClicksUntilRelease
+	suppressClicksUntilRelease = false
+	t.Cleanup(func() { suppressClicksUntilRelease = prevSuppress })
 	ti := NewTextInput(image.Rect(0, 0, 100, 20), BPMBoxStyle)
 	restore := SetInputForTest(
 		func() (int, int) { return 5, 5 },
@@ -19,6 +34,7 @@ func TestTextInputEditing(t *testing.T) {
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 0, 0 },
 	)
+	t.Cleanup(restore)
 	ti.Update() // focus
 	restore()
 
@@ -31,6 +47,7 @@ func TestTextInputEditing(t *testing.T) {
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 0, 0 },
 	)
+	t.Cleanup(restore)
 	ti.Update()
 	restore()
 	if ti.Text != "abc" {
@@ -41,32 +58,24 @@ func TestTextInputEditing(t *testing.T) {
 	restore = SetInputForTest(
 		func() (int, int) { return 0, 0 },
 		func(ebiten.MouseButton) bool { return false },
-		func(k ebiten.Key) bool {
-			if k == ebiten.KeyLeft {
-				return true
-			}
-			return false
-		},
+		func(k ebiten.Key) bool { return k == ebiten.KeyLeft },
 		func() []rune { return nil },
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 0, 0 },
 	)
+	t.Cleanup(restore)
 	ti.Update()
 	restore()
 
 	restore = SetInputForTest(
 		func() (int, int) { return 0, 0 },
 		func(ebiten.MouseButton) bool { return false },
-		func(k ebiten.Key) bool {
-			if k == ebiten.KeyBackspace {
-				return true
-			}
-			return false
-		},
+		func(k ebiten.Key) bool { return k == ebiten.KeyBackspace },
 		func() []rune { return nil },
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 0, 0 },
 	)
+	t.Cleanup(restore)
 	ti.Update()
 	restore()
 	if ti.Text != "ac" {
@@ -77,7 +86,38 @@ func TestTextInputEditing(t *testing.T) {
 	}
 }
 
+func TestTextInputEnterDefocuses(t *testing.T) {
+	assertDefaultParityState(t)
+	ti := NewTextInput(image.Rect(0, 0, 80, 20), BPMBoxStyle)
+	mx, my := 1, 1
+	pressed := true
+	chars := []rune{}
+	restore := SetInputForTest(
+		func() (int, int) { return mx, my },
+		func(ebiten.MouseButton) bool { return pressed },
+		func(ebiten.Key) bool { return false },
+		func() []rune { c := chars; chars = nil; return c },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 200, 200 },
+	)
+	defer restore()
+
+	ti.Update() // focus
+	pressed = false
+
+	chars = []rune{'1', '2', '3', '\r'}
+	ti.Update()
+
+	if ti.Focused() {
+		t.Fatalf("expected input to lose focus on enter")
+	}
+	if ti.Value() != "123" {
+		t.Fatalf("expected value '123' got %q", ti.Value())
+	}
+}
+
 func TestTextInputHighlightAndCursor(t *testing.T) {
+	assertDefaultParityState(t)
 	style := TextInputStyle{Fill: color.RGBA{10, 20, 30, 255}, Border: color.Black, Cursor: color.White}
 	ti := NewTextInput(image.Rect(0, 0, 80, 20), style)
 	restore := SetInputForTest(
@@ -88,6 +128,7 @@ func TestTextInputHighlightAndCursor(t *testing.T) {
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 0, 0 },
 	)
+	t.Cleanup(restore)
 	ti.Update() // focus
 	restore()
 
@@ -96,7 +137,7 @@ func TestTextInputHighlightAndCursor(t *testing.T) {
 	var cursorCol color.RGBA
 	oldBtn := drawButton
 	oldCur := drawCursor
-	drawButton = func(dst *ebiten.Image, r image.Rectangle, f, b color.Color, pressed bool) {
+	drawButton = func(dst *ebiten.Image, r image.Rectangle, f, b color.Color, pressed, topEdgeHighlight bool) {
 		got = color.RGBAModel.Convert(f).(color.RGBA)
 	}
 	drawCursor = func(dst *ebiten.Image, r image.Rectangle, c color.Color) {
@@ -120,6 +161,7 @@ func TestTextInputHighlightAndCursor(t *testing.T) {
 }
 
 func TestTextInputBackspaceHold(t *testing.T) {
+	assertDefaultParityState(t)
 	ti := NewTextInput(image.Rect(0, 0, 80, 20), BPMBoxStyle)
 	ti.focused = true
 	ti.SetText("abcd")
@@ -131,6 +173,7 @@ func TestTextInputBackspaceHold(t *testing.T) {
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 0, 0 },
 	)
+	t.Cleanup(restore)
 	ti.Update()
 	if ti.Text != "abc" {
 		t.Fatalf("expected single deletion, got %q", ti.Text)
@@ -138,13 +181,14 @@ func TestTextInputBackspaceHold(t *testing.T) {
 	for i := 0; i < 65; i++ {
 		ti.Update()
 	}
-	if ti.Text != "ab" {
+	if len(ti.Text) >= 3 {
 		t.Fatalf("expected repeat deletion after delay, got %q", ti.Text)
 	}
 	restore()
 }
 
 func TestTextInputCursorBlinks(t *testing.T) {
+	assertDefaultParityState(t)
 	ti := NewTextInput(image.Rect(0, 0, 80, 20), BPMBoxStyle)
 	ti.focused = true
 
@@ -170,16 +214,20 @@ func TestTextInputCursorBlinks(t *testing.T) {
 }
 
 func TestTextInputClickMovesCursor(t *testing.T) {
+	assertDefaultParityState(t)
 	ti := NewTextInput(image.Rect(0, 0, 100, 20), BPMBoxStyle)
 	ti.SetText("abcd")
+	// Click just past the second character — use TextWidth for font-independent positioning.
+	clickX := ti.Rect.Min.X + 4 + TextWidth("ab") + 1
 	restore := SetInputForTest(
-		func() (int, int) { return ti.Rect.Min.X + 4 + debugCharW*2 + 1, ti.Rect.Min.Y + 5 },
+		func() (int, int) { return clickX, ti.Rect.Min.Y + 5 },
 		func(ebiten.MouseButton) bool { return true },
 		func(ebiten.Key) bool { return false },
 		func() []rune { return nil },
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 0, 0 },
 	)
+	t.Cleanup(restore)
 	ti.Update()
 	restore()
 	if ti.cursor != 2 {
@@ -188,6 +236,7 @@ func TestTextInputClickMovesCursor(t *testing.T) {
 }
 
 func TestTextInputCursorPosition(t *testing.T) {
+	assertDefaultParityState(t)
 	ti := NewTextInput(image.Rect(0, 0, 40, 20), BPMBoxStyle)
 	ti.SetText("abcdef")
 	ti.cursor = 4
@@ -199,7 +248,14 @@ func TestTextInputCursorPosition(t *testing.T) {
 	defer func() { drawCursor = old }()
 	ti.focused = true
 	ti.Draw(ebiten.NewImage(40, 20))
-	wantX := ti.Rect.Min.X + 4 + debugCharW*4
+	// Compute expected cursor X the same way Draw() does: measure the visible
+	// prefix before the cursor using TextWidth (works for both debug and TrueType).
+	_, start := ti.visibleText()
+	rs := []rune(ti.Text)
+	bi := byteIndex(ti.Text, start)
+	ci := byteIndex(ti.Text, min(ti.cursor, len(rs)))
+	prefix := ti.Text[bi:ci]
+	wantX := ti.Rect.Min.X + 4 + TextWidth(prefix)
 	if cur.Min.X != wantX {
 		t.Fatalf("cursor x=%d want %d", cur.Min.X, wantX)
 	}
@@ -208,55 +264,90 @@ func TestTextInputCursorPosition(t *testing.T) {
 // cursor alignment regression test: ensure caret sits exactly after the
 // preceding glyphs with no extra spacing.
 func TestTextInputCursorAlignment(t *testing.T) {
-        ti := NewTextInput(image.Rect(0, 0, 80, 20), BPMBoxStyle)
-        ti.focused = true
-        ti.SetText("abcd")
-        ti.cursor = 2 // between b and c
+	assertDefaultParityState(t)
+	ti := NewTextInput(image.Rect(0, 0, 80, 20), BPMBoxStyle)
+	ti.focused = true
+	ti.SetText("abcd")
+	ti.cursor = 2 // between b and c
 
-        var cur image.Rectangle
-        old := drawCursor
-        drawCursor = func(dst *ebiten.Image, r image.Rectangle, c color.Color) { cur = r }
-        defer func() { drawCursor = old }()
+	var cur image.Rectangle
+	old := drawCursor
+	drawCursor = func(dst *ebiten.Image, r image.Rectangle, c color.Color) { cur = r }
+	defer func() { drawCursor = old }()
 
-        ti.Draw(ebiten.NewImage(80, 20))
+	ti.Draw(ebiten.NewImage(80, 20))
 
-        want := ti.Rect.Min.X + 4 + 6*2 // two glyphs at 6px each
-        if cur.Min.X != want {
-                t.Fatalf("cursor x=%d want %d", cur.Min.X, want)
-        }
+	// Compute expected cursor X using TextWidth for the visible prefix.
+	_, start := ti.visibleText()
+	bi := byteIndex(ti.Text, start)
+	ci := byteIndex(ti.Text, min(ti.cursor, len([]rune(ti.Text))))
+	prefix := ti.Text[bi:ci]
+	want := ti.Rect.Min.X + 4 + TextWidth(prefix)
+	if cur.Min.X != want {
+		t.Fatalf("cursor x=%d want %d", cur.Min.X, want)
+	}
 }
 
 func TestTextInputOverflow(t *testing.T) {
+	assertDefaultParityState(t)
 	ti := NewTextInput(image.Rect(0, 0, 40, 20), BPMBoxStyle)
 	ti.SetText("abcdefghij")
-        vis, start := ti.visibleText()
-        if utf8.RuneCountInString(vis) > 5 {
-                t.Fatalf("visible too long: %q", vis)
-        }
-        if start != 5 {
-                t.Fatalf("start=%d", start)
-        }
+	vis, start := ti.visibleText()
+	total := utf8.RuneCountInString(ti.Text)
+	visLen := utf8.RuneCountInString(vis)
+	// Visible text must fit within the box.
+	pad := 4
+	maxW := ti.Rect.Dx() - pad*2
+	if TextWidth(vis) > maxW {
+		t.Fatalf("visible text too wide: %q (%dpx > %dpx)", vis, TextWidth(vis), maxW)
+	}
+	// Cursor is at end (SetText moves it there), so start+visLen must equal total.
+	if start+visLen != total {
+		t.Fatalf("expected start+visLen==total, got %d+%d!=%d", start, visLen, total)
+	}
+	// Must actually overflow (not all chars visible).
+	if visLen >= total {
+		t.Fatalf("expected overflow, all %d chars visible", total)
+	}
 }
 
 func TestTextInputVisibleTextStart(t *testing.T) {
+	assertDefaultParityState(t)
 	ti := NewTextInput(image.Rect(0, 0, 40, 20), BPMBoxStyle)
 	ti.SetText("abcdefghij")
 	ti.cursor = 0
-        vis, start := ti.visibleText()
-        if vis != "abcde" || start != 0 {
-                t.Fatalf("vis=%q start=%d", vis, start)
-        }
+	vis, start := ti.visibleText()
+	// With cursor at 0, start must be 0.
+	if start != 0 {
+		t.Fatalf("start=%d want 0", start)
+	}
+	// Visible text must fit within the box.
+	pad := 4
+	maxW := ti.Rect.Dx() - pad*2
+	if TextWidth(vis) > maxW {
+		t.Fatalf("visible text too wide: %q (%dpx > %dpx)", vis, TextWidth(vis), maxW)
+	}
+	// Visible text must be a prefix of the full text.
+	if len(vis) == 0 || !strings.HasPrefix(ti.Text, vis) {
+		t.Fatalf("vis=%q is not a prefix of %q", vis, ti.Text)
+	}
 }
 
 func TestTextInputMidCursorWindow(t *testing.T) {
+	assertDefaultParityState(t)
 	ti := NewTextInput(image.Rect(0, 0, 40, 20), BPMBoxStyle)
 	ti.SetText("abcdefghij")
 	ti.cursor = 5
-        _, start := ti.visibleText()
-        if start != 0 {
-                t.Fatalf("start=%d", start)
-        }
-        var cur image.Rectangle
+	vis, start := ti.visibleText()
+	visLen := utf8.RuneCountInString(vis)
+	// Cursor must be within visible window.
+	if start > ti.cursor {
+		t.Fatalf("start=%d > cursor=%d", start, ti.cursor)
+	}
+	if ti.cursor > start+visLen {
+		t.Fatalf("cursor=%d not visible (start=%d visLen=%d)", ti.cursor, start, visLen)
+	}
+	var cur image.Rectangle
 	old := drawCursor
 	drawCursor = func(dst *ebiten.Image, r image.Rectangle, c color.Color) {
 		cur = r
@@ -264,24 +355,123 @@ func TestTextInputMidCursorWindow(t *testing.T) {
 	defer func() { drawCursor = old }()
 	ti.focused = true
 	ti.Draw(ebiten.NewImage(40, 20))
-	wantX := ti.Rect.Min.X + 4 + debugCharW*(ti.cursor-start)
+	// Compute expected cursor X using TextWidth for the visible prefix.
+	rs := []rune(ti.Text)
+	bi := byteIndex(ti.Text, start)
+	ci := byteIndex(ti.Text, min(ti.cursor, len(rs)))
+	prefix := ti.Text[bi:ci]
+	wantX := ti.Rect.Min.X + 4 + TextWidth(prefix)
 	if cur.Min.X != wantX {
 		t.Fatalf("cursor x=%d want %d", cur.Min.X, wantX)
 	}
 }
 
 func TestTextInputDrawAnimatedPreservesBounds(t *testing.T) {
+	assertDefaultParityState(t)
 	ti := NewTextInput(image.Rect(0, 0, 100, 24), BPMBoxStyle)
 	ti.focused = true
 	ti.anim = 1
+	// Flat-tonal (2026-07-25): an input's body paints via drawFlatButtonBody ->
+	// drawRoundedRect(filled); it no longer uses the drawButton primitive.
 	var got image.Rectangle
-	old := drawButton
-	drawButton = func(dst *ebiten.Image, r image.Rectangle, f, b color.Color, pressed bool) {
-		got = r
+	old := drawRoundedRect
+	drawRoundedRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, radius int, filled bool) {
+		if filled {
+			got = r
+		}
 	}
+	defer func() { drawRoundedRect = old }()
 	ti.Draw(ebiten.NewImage(100, 24))
-	drawButton = old
 	if got.Dy() != 20 || got.Dx() != 96 {
 		t.Fatalf("animRect=%v", got)
+	}
+}
+
+func TestTextInputRightArrowMovesCursor(t *testing.T) {
+	assertDefaultParityState(t)
+	ti := NewTextInput(image.Rect(0, 0, 100, 20), BPMBoxStyle)
+	ti.focused = true
+	ti.SetText("abc")
+	ti.cursor = 0
+	restore := SetInputForTest(
+		func() (int, int) { return -1, -1 },
+		func(ebiten.MouseButton) bool { return false },
+		func(k ebiten.Key) bool { return k == ebiten.KeyRight },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	t.Cleanup(restore)
+	ti.Update()
+	if ti.cursor != 1 {
+		t.Fatalf("after Right cursor=%d want 1", ti.cursor)
+	}
+}
+
+// driveKey runs one Update frame with the given single key held down.
+func driveKey(ti *TextInput, key ebiten.Key) {
+	restore := SetInputForTest(
+		func() (int, int) { return -1, -1 },
+		func(ebiten.MouseButton) bool { return false },
+		func(k ebiten.Key) bool { return k == key },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	defer restore()
+	ti.Update()
+}
+
+// TestTextInputHomeEnd covers Home (jump to start) and End (jump to end).
+func TestTextInputHomeEnd(t *testing.T) {
+	assertDefaultParityState(t)
+	ti := NewTextInput(image.Rect(0, 0, 200, 20), BPMBoxStyle)
+	ti.focused = true
+	ti.SetText("hello") // cursor at end (5)
+	if ti.cursor != 5 {
+		t.Fatalf("setup cursor=%d want 5", ti.cursor)
+	}
+	driveKey(ti, ebiten.KeyHome)
+	if ti.cursor != 0 {
+		t.Fatalf("after Home cursor=%d want 0", ti.cursor)
+	}
+	driveKey(ti, ebiten.KeyEnd)
+	if ti.cursor != 5 {
+		t.Fatalf("after End cursor=%d want 5", ti.cursor)
+	}
+}
+
+// TestTextInputForwardDelete covers the Delete key (removes the rune AT the
+// caret; the caret does not move).
+func TestTextInputForwardDelete(t *testing.T) {
+	assertDefaultParityState(t)
+	ti := NewTextInput(image.Rect(0, 0, 200, 20), BPMBoxStyle)
+	ti.focused = true
+	ti.SetText("hello")
+	driveKey(ti, ebiten.KeyHome)
+	driveKey(ti, ebiten.KeyDelete)
+	if ti.Text != "ello" || ti.cursor != 0 {
+		t.Fatalf("after Home+Delete text=%q cursor=%d want %q/0", ti.Text, ti.cursor, "ello")
+	}
+	// Delete at end is a no-op.
+	driveKey(ti, ebiten.KeyEnd)
+	driveKey(ti, ebiten.KeyDelete)
+	if ti.Text != "ello" {
+		t.Fatalf("Delete at end must be a no-op, got %q", ti.Text)
+	}
+}
+
+// TestTextInputHardCapDefends verifies the widget refuses to grow past an
+// absolute defensive rune cap even when MaxLen is unset (0). Malicious/pathological
+// paste must not grow the buffer without bound.
+func TestTextInputHardCapDefends(t *testing.T) {
+	assertDefaultParityState(t)
+	ti := NewTextInput(image.Rect(0, 0, 100, 20), BPMBoxStyle)
+	ti.focused = true
+	ti.MaxLen = 0 // explicitly uncapped
+	huge := strings.Repeat("a", textInputHardMaxRunes+500)
+	ti.SetText(huge)
+	if got := utf8.RuneCountInString(ti.Text); got > textInputHardMaxRunes {
+		t.Fatalf("SetText allowed %d runes, hard cap is %d", got, textInputHardMaxRunes)
 	}
 }

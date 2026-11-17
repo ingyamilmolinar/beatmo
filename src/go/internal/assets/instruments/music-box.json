@@ -1,0 +1,90 @@
+{
+  "schema_version": "0.0.1",
+  "id": "music-box",
+  "name": "Music Box",
+  "category": "modular",
+  "notes": "musicBoxSeed: a delicate wind-up music box — a plucked FM bell (inharmonic\nmodulator ratio) with a clean glassy ring, quiet and fragile.",
+  "render": {
+    "seconds": 1,
+    "amplitude": 0.4265,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.001,
+        "amp_curve": 1,
+        "amp_decay": 1.3,
+        "amp_release": 0.3,
+        "amp_sustain": 0
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.7,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 7000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.fm",
+    "v": 1,
+    "on": true,
+    "values": {
+      "fm_algorithm": 0,
+      "fm_enabled": 1,
+      "fm_op1_depth": 0,
+      "fm_op1_level": 1,
+      "fm_op1_ratio": 1,
+      "fm_op2_depth": 2,
+      "fm_op2_level": 0,
+      "fm_op2_ratio": 3,
+      "fm_op3_depth": 0,
+      "fm_op3_level": 0,
+      "fm_op3_ratio": 1,
+      "fm_op4_depth": 0,
+      "fm_op4_level": 0,
+      "fm_op4_ratio": 1
+    }
+  }
+}

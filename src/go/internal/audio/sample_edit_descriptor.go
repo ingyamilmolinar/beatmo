@@ -1,0 +1,303 @@
+package audio
+
+import (
+	"math"
+	"sync"
+
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+)
+
+// Per-instrument non-destructive sample-edit descriptors.
+//
+// A descriptor keeps a synth instrument a SYNTH: instead of baking the
+// Sampler tab's edit into PCM and clearing the recipe binding (which made
+// later synth changes silently inaudible), Save stores the SampleEdit here
+// and the voice dispatcher applies it to the freshly-rendered recipe buffer
+// at trigger time (tryRecipeVoice → ApplySampleEditToBuffer). Synth knob
+// edits, recipe Saves, and descriptor changes all funnel through the same
+// next-trigger model: mutate → the binding's KEY ROTATES → the next trigger
+// renders the new sound under the new key.
+//
+// Note the mechanism: rotation, NOT invalidation. hashSampleEdit(e) is XORed
+// into the voice-cache key (synth_recipe_dispatch.go:138/:192/:264), so a new
+// descriptor already maps to a different key and the stale entry simply goes
+// unread. SetSampleEdit/ClearSampleEdit therefore do NOT call
+// voiceCacheInvalidate — doing so dropped EVERY pitch's entry and made each
+// following note cold-render ~24ms+ on the audioLoop dispatch goroutine
+// (measured: 30-44 dispatch renders per sampler edit, worst render 310ms
+// against an 11.6ms realtime budget; removing it took that to 0). Same storm,
+// same fix as SetInstrumentParam — see the NOTE at synth_recipe.go:256-267.
+//
+// This file is build-tag-free so the registry exists identically on native,
+// WASM, and -tags test builds (the same contract as sample_edit.go).
+
+var (
+	sampleEditsMu sync.RWMutex
+	sampleEdits   = map[instrument.ID]SampleEdit{}
+)
+
+// platformSampleEditChanged is invoked after every Set/Clear so platform
+// bridges (WASM → window.updateSampleEdit) can sync state. Clear pushes the
+// identity edit so the JS side deletes its entry. Default is a no-op; the
+// js+wasm build overrides it from synth_recipe_wasm.go. Mirrors
+// platformInstrumentParamsChanged (synth_recipe.go:172).
+var platformSampleEditChanged = func(id instrument.ID, e SampleEdit) {}
+
+// SwapPlatformSampleEditChangedForTest replaces the platform callback hook
+// and returns the previous value, mirroring
+// SwapPlatformInstrumentParamsChangedForTest.
+func SwapPlatformSampleEditChangedForTest(fn func(id instrument.ID, e SampleEdit)) func(id instrument.ID, e SampleEdit) {
+	prev := platformSampleEditChanged
+	if fn != nil {
+		platformSampleEditChanged = fn
+	}
+	return prev
+}
+
+// ApplySampleEditLive makes an edit descriptor AUDIBLE without announcing it:
+// it stores the descriptor (the edit hash rotates the voice-cache key so the
+// next trigger naturally re-renders through it — see the NOTE below), re-derives
+// a user sample's playable PCM, and pushes to the platform bridge. It publishes
+// NOTHING and records no undo step. Reports whether the stored descriptor
+// actually changed. Storing the identity edit is equivalent to clearing.
+//
+// This is the seam every live Sampler control writes through — a knob turn, an
+// arrow keypress, a trim-handle drag. Sound must not wait for a gesture to end:
+// the undo STEP is one-per-gesture, but the descriptor behind it is applied the
+// moment the value moves. The matching narrative event is published ONCE by the
+// UI's commit site (commitSamplerEdit), which is also where the undo step is
+// recorded — so a spin produces one log line, not one per detent.
+//
+// SetSampleEdit is this plus that publish, for callers that ARE the whole
+// gesture (import, the JS bridge, undo/redo replay).
+func ApplySampleEditLive(instID instrument.ID, e SampleEdit) bool {
+	if e.isIdentity() {
+		return clearSampleEditLive(instID)
+	}
+	sampleEditsMu.Lock()
+	// No-op skip: re-applying the identical edit (as a full re-import does on
+	// every undo/redo) would re-render the sample for nothing.
+	if cur, ok := sampleEdits[instID]; ok && cur == e {
+		sampleEditsMu.Unlock()
+		return false
+	}
+	sampleEdits[instID] = e
+	bumpVoiceRev(instID)
+	sampleEditsMu.Unlock()
+
+	// NOTE: no voiceCacheInvalidate here — deliberately. hashSampleEdit(e) is
+	// already XORed into the voice-cache key (synth_recipe_dispatch.go:138,
+	// :192, :264), so a new edit maps to a DIFFERENT key: dispatch renders the
+	// new sound there and the old-value entry is simply not read. Blanket-
+	// clearing dropped EVERY pitch's entry, making each following note a cold
+	// ~24ms render on the audio dispatch goroutine — the same 93%-miss storm
+	// SetInstrumentParam was fixed to avoid (synth_recipe.go:256-267).
+	// WAV/user-sample instruments do not rely on the cache here: they are
+	// re-derived below through RegisterSamplePCM, which is not cache-keyed.
+	reapplyUserSampleEdit(instID, e)
+	platformSampleEditChanged(instID, e)
+	return true
+}
+
+// SetSampleEdit stores the non-destructive edit descriptor for an instrument
+// and announces it (EventSampleEditChanged). For a control being TURNED, use
+// ApplySampleEditLive per change and publish once at the commit site instead —
+// publishing per detent would put one narrative line per notch in the log.
+func SetSampleEdit(instID instrument.ID, e SampleEdit) {
+	if e.isIdentity() {
+		ClearSampleEdit(instID)
+		return
+	}
+	if !ApplySampleEditLive(instID, e) {
+		return
+	}
+	hooks.PublishKind(hooks.EventSampleEditChanged, hooks.SamplePayload{SampleID: instID})
+}
+
+// reapplyUserSampleEdit makes a Sampler edit on a WAV / user-sample instrument
+// audible IMMEDIATELY — the real-time, no-Save path. A user sample has no synth
+// recipe to re-render, so the edit cannot be applied through the recipe voice
+// dispatch (tryRecipeVoice); instead we re-derive the playable PCM from the
+// instrument's PRISTINE source through descriptor e and re-register it via
+// RegisterSamplePCM. That one bridge updates the native Sample table AND the
+// browser renderCache, so the edited chop plays on the next trigger on every
+// platform without baking destructively (the pristine stays the source of truth
+// in the user-sample store, so further edits and Reset are non-destructive).
+//
+// No-op for instruments without a stored pristine source — i.e. synths, which
+// re-render through the recipe path and apply the descriptor there instead.
+//
+// The source is UserSamplePCM (the CURRENT canonical pristine), not
+// OriginalUserSamplePCM (first-put-wins): project import calls PutUserSample with
+// the embedded pristine PCM and THEN SetSampleEdit, so baking from the current
+// store re-derives the playable buffer from the freshly imported source —
+// OriginalUserSamplePCM could still hold a prior session's first-loaded buffer.
+func reapplyUserSampleEdit(id instrument.ID, e SampleEdit) {
+	rec, ok := UserSamplePCM(id)
+	if !ok || len(rec.PCM) == 0 {
+		return
+	}
+	sr := rec.SampleRate
+	if sr <= 0 {
+		sr = SampleRate()
+	}
+	RegisterSamplePCM(id, BakeSample(rec.PCM, sr, e), sr)
+}
+
+// ClearSampleEdit removes the descriptor for an instrument and announces it.
+// A no-op (no invalidation, no bridge push, no event) when none exists.
+func ClearSampleEdit(instID instrument.ID) {
+	if clearSampleEditLive(instID) {
+		hooks.PublishKind(hooks.EventSampleEditChanged, hooks.SamplePayload{SampleID: instID})
+	}
+}
+
+// clearSampleEditLive is ClearSampleEdit without the announcement — the identity
+// case of ApplySampleEditLive (a control turned back to its neutral position
+// must be audible immediately, like any other value). Reports whether a
+// descriptor was actually removed.
+func clearSampleEditLive(instID instrument.ID) bool {
+	sampleEditsMu.Lock()
+	_, had := sampleEdits[instID]
+	delete(sampleEdits, instID)
+	sampleEditsMu.Unlock()
+	if !had {
+		return false
+	}
+	bumpVoiceRev(instID)
+	// NOTE: no voiceCacheInvalidate here — deliberately. hashSampleEdit(e) is
+	// already XORed into the voice-cache key (synth_recipe_dispatch.go:138,
+	// :192, :264), so a new edit maps to a DIFFERENT key: dispatch renders the
+	// new sound there and the old-value entry is simply not read. Blanket-
+	// clearing dropped EVERY pitch's entry, making each following note a cold
+	// ~24ms render on the audio dispatch goroutine — the same 93%-miss storm
+	// SetInstrumentParam was fixed to avoid (synth_recipe.go:256-267).
+	// WAV/user-sample instruments do not rely on the cache here: they are
+	// re-derived below through RegisterSamplePCM, which is not cache-keyed.
+	// Restore a user sample's pristine playback (identity bake) so clearing the
+	// edit reverts the chop in real time, mirroring SetSampleEdit. No-op for synths.
+	reapplyUserSampleEdit(instID, SampleEdit{StartFrac: 0, EndFrac: 1})
+	platformSampleEditChanged(instID, SampleEdit{EndFrac: 1}) // identity ⇒ JS deletes its entry
+	return true
+}
+
+// SampleEditFor returns the descriptor for an instrument and whether one
+// exists.
+func SampleEditFor(instID instrument.ID) (SampleEdit, bool) {
+	sampleEditsMu.RLock()
+	defer sampleEditsMu.RUnlock()
+	e, ok := sampleEdits[instID]
+	return e, ok
+}
+
+// HasSampleEdit reports whether a descriptor exists for an instrument —
+// the dispatch-gate helper for tryRecipeVoice.
+func HasSampleEdit(instID instrument.ID) bool {
+	sampleEditsMu.RLock()
+	defer sampleEditsMu.RUnlock()
+	_, ok := sampleEdits[instID]
+	return ok
+}
+
+// hashSampleEdit returns a deterministic FNV-1a fingerprint of the edit,
+// folded into the voice-cache paramsHash so descriptor changes miss the
+// cache exactly like param changes do.
+func hashSampleEdit(e SampleEdit) uint64 {
+	const (
+		offset64 = 14695981039346656037
+		prime64  = 1099511628211
+	)
+	h := uint64(offset64)
+	mix := func(v uint64) {
+		for i := 0; i < 8; i++ {
+			h ^= v & 0xff
+			h *= prime64
+			v >>= 8
+		}
+	}
+	mix(math.Float64bits(e.StartFrac))
+	mix(math.Float64bits(e.EndFrac))
+	mix(math.Float64bits(e.TransposeSemis))
+	mix(math.Float64bits(e.DetuneCents))
+	mix(uint64(math.Float32bits(e.GainDB)))
+	var flags uint64
+	if e.Reverse {
+		flags |= 1
+	}
+	if e.Normalize {
+		flags |= 2
+	}
+	if e.Fade {
+		flags |= 4
+	}
+	mix(flags)
+	return h
+}
+
+// SampleEditSignature returns a stable fingerprint of an instrument's
+// descriptor (0 when none). The Sampler tab folds it into its source
+// signature so an externally-changed descriptor (import, rehydration)
+// re-syncs the editor.
+func SampleEditSignature(instID instrument.ID) uint64 {
+	e, ok := SampleEditFor(instID)
+	if !ok {
+		return 0
+	}
+	return hashSampleEdit(e)
+}
+
+// Fields encodes the edit as a flat name→value map (bools as 0/1) — the
+// persistence shape userprefs.SampleEditStore stores inside prefs.json.
+// The audio package owns this conversion (mirroring how RecipeDoc bytes
+// stay opaque to userprefs).
+func (e SampleEdit) Fields() map[string]float64 {
+	b2f := func(b bool) float64 {
+		if b {
+			return 1
+		}
+		return 0
+	}
+	return map[string]float64{
+		"start_frac":      e.StartFrac,
+		"end_frac":        e.EndFrac,
+		"transpose_semis": e.TransposeSemis,
+		"detune_cents":    e.DetuneCents,
+		"gain_db":         float64(e.GainDB),
+		"fade":            b2f(e.Fade),
+		"reverse":         b2f(e.Reverse),
+		"normalize":       b2f(e.Normalize),
+	}
+}
+
+// SampleEditFromFields is the inverse of Fields. Unknown keys are ignored;
+// missing keys take their zero value (EndFrac included — persisted edits
+// always carry it, and a zero EndFrac is caught by isIdentity-adjacent
+// sanity at apply time: BakeSample yields an empty buffer, audibly wrong
+// but never unsafe).
+func SampleEditFromFields(fields map[string]float64) SampleEdit {
+	return SampleEdit{
+		StartFrac:      fields["start_frac"],
+		EndFrac:        fields["end_frac"],
+		TransposeSemis: fields["transpose_semis"],
+		DetuneCents:    fields["detune_cents"],
+		GainDB:         float32(fields["gain_db"]),
+		Fade:           fields["fade"] >= 0.5,
+		Reverse:        fields["reverse"] >= 0.5,
+		Normalize:      fields["normalize"] >= 0.5,
+	}
+}
+
+// SampleEditSource reads the Sampler edits saved before the versioned library
+// (the prefs store's sample_edits; userprefs SampleEditStore satisfies it):
+// LoadUserInstrumentLibrary reads them once into the first versions.
+type SampleEditSource interface {
+	LoadSampleEdits() (map[instrument.ID]map[string]float64, error)
+}
+
+// ApplySampleEditToBuffer renders e against a freshly-rendered recipe buffer.
+// It is a thin wrapper over BakeSample so the Sampler tab's bake path and the
+// voice dispatcher share ONE DSP implementation.
+func ApplySampleEditToBuffer(buf []float32, sampleRate int, e SampleEdit) []float32 {
+	return BakeSample(buf, sampleRate, e)
+}

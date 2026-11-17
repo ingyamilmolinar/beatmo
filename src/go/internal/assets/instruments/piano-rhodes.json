@@ -1,0 +1,90 @@
+{
+  "schema_version": "0.0.1",
+  "id": "piano-rhodes",
+  "name": "Electric Piano",
+  "category": "modular",
+  "notes": "pianoRhodesSeed: an electric-piano tine (Rhodes) — 2-op FM with the classic\nhigh modulator ratio (~14) that makes the metallic tine \"bark\", warm LP body,\nsoft attack, medium decay with a little sustain.",
+  "render": {
+    "seconds": 1,
+    "amplitude": 0.418,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.004,
+        "amp_curve": 1,
+        "amp_decay": 1.4,
+        "amp_release": 0.35,
+        "amp_sustain": 0.12
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.85,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 2800,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.fm",
+    "v": 1,
+    "on": true,
+    "values": {
+      "fm_algorithm": 0,
+      "fm_enabled": 1,
+      "fm_op1_depth": 0,
+      "fm_op1_level": 1,
+      "fm_op1_ratio": 1,
+      "fm_op2_depth": 1.3,
+      "fm_op2_level": 0,
+      "fm_op2_ratio": 14,
+      "fm_op3_depth": 0,
+      "fm_op3_level": 0,
+      "fm_op3_ratio": 1,
+      "fm_op4_depth": 0,
+      "fm_op4_level": 0,
+      "fm_op4_ratio": 1
+    }
+  }
+}

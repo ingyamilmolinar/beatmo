@@ -1,0 +1,98 @@
+{
+  "schema_version": "0.0.1",
+  "id": "conga-organic-dry",
+  "name": "Organic Conga Dry",
+  "category": "modular",
+  "notes": "congaOrganicDrySeed: the acoustic modal head tuned UP (330 / 520 Hz) with a\nlong ring and no wires — a treble conga. Came out of the piccolo-snare search:\nthe listener heard the take as \"a treble conga-like hollow sound\" and, with\nthe wires gone, \"perfect, sounds very organic\" (2026-09-30). snare_noise_d is\ndropped for the same reason as in organicSnareWires (inert with wire_m 0).",
+  "render": {
+    "seconds": 0.8,
+    "amplitude": 1,
+    "gate_tail": 0,
+    "melodic": false
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "amp_attack": 0.005,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.2,
+        "amp_sustain": 0.6
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 330
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "filter_cutoff": 8000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 0,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "snare.acoustic",
+      "v": 1,
+      "on": true,
+      "values": {
+        "freq": 1,
+        "freq_mode": 0,
+        "snare_attack": 0.8,
+        "snare_noise_d": 0,
+        "snare_noise_m": 0.5,
+        "snare_tail_d": 30,
+        "snare_tone2": 520,
+        "snare_tone_d": 50,
+        "snare_tone_m": 1.25,
+        "snare_tune": 1,
+        "snare_wire_m": 0,
+        "wave": 0
+      }
+    }
+  ]
+}

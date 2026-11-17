@@ -1,0 +1,106 @@
+{
+  "schema_version": "0.0.1",
+  "id": "high-tom-organic",
+  "name": "High Tom Organic",
+  "category": "modular",
+  "notes": "highTomOrganicSeed: the variant-7 modal voice tuned (originally as the\nacoustic kick) to a bright, organic, inharmonic-modal timbre — which the user\njudged reads as a HIGH TOM rather than a kick (its ×2.1/×3.4/×5.2 mid modes\nare prominent). Saved as its own instrument because it's a good organic tom;\nkick-acoustic is then re-tuned lower/brutaler/reverberant for a real kick.\nExplicit snapshot (NOT cloneSeed(acousticKickSeed)) so re-tuning the kick does\nnot move the tom.",
+  "render": {
+    "seconds": 0.45,
+    "amplitude": 1,
+    "gate_tail": 0,
+    "melodic": false
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "amp_attack": 0.005,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.2,
+        "amp_sustain": 0.6
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 85
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "filter_cutoff": 8000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "kick.acoustic",
+      "v": 1,
+      "on": true,
+      "values": {
+        "freq": 1,
+        "freq_mode": 0,
+        "kick_attack": 0.6,
+        "kick_click": 0.4,
+        "kick_env0": 16,
+        "kick_env1": 28,
+        "kick_fade": 5,
+        "kick_h2": 0.5,
+        "kick_h3": 0.35,
+        "kick_h4": 0.2,
+        "kick_mode_decay": 55,
+        "kick_mode_detune": 0.1,
+        "kick_mode_gain": 1,
+        "kick_noise": 0.04,
+        "kick_pe_amt": 0.25,
+        "kick_pe_rate": 60,
+        "kick_reverb": 0,
+        "kick_sat": 0.3,
+        "wave": 0
+      },
+      "notes": "gen1_kick_variant: acoustic (inharmonic modal bank)"
+    }
+  ]
+}

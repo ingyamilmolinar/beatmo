@@ -1,0 +1,1140 @@
+{
+  "bassoon": {
+    "axes": [
+      {
+        "axis": "noise fraction",
+        "direction": "",
+        "group": "noise / harmonic balance",
+        "note": "",
+        "reference": 0.008284439987974346,
+        "synth": 0.007278821237941213,
+        "verdict": "ok"
+      },
+      {
+        "axis": "spectral flatness",
+        "direction": "",
+        "group": "noise / harmonic balance",
+        "note": "",
+        "reference": 0.03943403587022325,
+        "synth": 0.003118197365906242,
+        "verdict": "ok"
+      },
+      {
+        "axis": "attack",
+        "direction": "high",
+        "group": "temporal envelope",
+        "note": "synth attack is far too slow",
+        "reference": 0.03,
+        "synth": 0.09,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "ring T60",
+        "direction": "low",
+        "group": "temporal envelope",
+        "note": "T60 NOT OBSERVABLE: both clips still ring above -60dB at clip end (ref clamped at 1.95s, synth at 1.90s) -- comparing overall decay RATE instead (ref -0.7 dB/s, synth -3.1 dB/s); synth decays far too fast",
+        "reference": 1.95,
+        "synth": 1.9000000000000001,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "release",
+        "direction": "high",
+        "group": "temporal envelope",
+        "note": "synth release is far too slow",
+        "reference": 0.03,
+        "synth": 0.14,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "inharmonicity",
+        "direction": "",
+        "group": "partial structure",
+        "note": "",
+        "reference": 0.0009965689452759161,
+        "synth": 0.002753088933325795,
+        "verdict": "ok"
+      },
+      {
+        "axis": "partial series deviation",
+        "direction": "",
+        "group": "partial structure",
+        "note": "",
+        "reference": 0.10134475885974112,
+        "synth": 0.0004810944311252552,
+        "verdict": "ok"
+      },
+      {
+        "axis": "centroid",
+        "direction": "low",
+        "group": "brightness / formant",
+        "note": "synth is darker/duller",
+        "reference": 1220.5266933868604,
+        "synth": 517.8965117599181,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "rolloff",
+        "direction": "low",
+        "group": "brightness / formant",
+        "note": "synth is missing high-frequency energy",
+        "reference": 772.503662109375,
+        "synth": 331.072998046875,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "sustain modulation",
+        "direction": "",
+        "group": "modulation",
+        "note": "",
+        "reference": 0.05980239380074504,
+        "synth": 0.05840542927448063,
+        "verdict": "ok"
+      }
+    ],
+    "instrument": "bassoon",
+    "ref_clip_truncated_sec": 2,
+    "ref_partial_ratios": [
+      0.9999744063604262,
+      1.99983120417662,
+      2.999757557729642,
+      3.9999421960190817,
+      5.000305179720487,
+      7.000787070509661,
+      8.001696884016932,
+      12.004755026821709
+    ],
+    "reference_id": "bassoon-A2",
+    "synth_partial_ratios": [
+      1.0009290037593415,
+      2.0015849749703016,
+      3.0015779630815644,
+      4.000246121870536,
+      4.999517686251774
+    ]
+  },
+  "cello": {
+    "axes": [
+      {
+        "axis": "noise fraction",
+        "direction": "low",
+        "group": "noise / harmonic balance",
+        "note": "synth is too pure/tonal (missing noise character)",
+        "reference": 0.7126274152894896,
+        "synth": 0.4926280792842317,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "spectral flatness",
+        "direction": "",
+        "group": "noise / harmonic balance",
+        "note": "",
+        "reference": 0.036891277901721004,
+        "synth": 0.005357916133786855,
+        "verdict": "ok"
+      },
+      {
+        "axis": "attack",
+        "direction": "high",
+        "group": "temporal envelope",
+        "note": "synth attack is far too slow",
+        "reference": 0.09,
+        "synth": 1.6500000000000001,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "ring T60",
+        "direction": "low",
+        "group": "temporal envelope",
+        "note": "T60 NOT OBSERVABLE: both clips still ring above -60dB at clip end (ref clamped at 1.53s, synth at 0.34s) -- comparing overall decay RATE instead (ref -0.6 dB/s, synth -98.2 dB/s); synth decays far too fast",
+        "reference": 1.53,
+        "synth": 0.34,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "release",
+        "direction": "high",
+        "group": "temporal envelope",
+        "note": "synth release is far too slow",
+        "reference": 0,
+        "synth": 0.27,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "inharmonicity",
+        "direction": "",
+        "group": "partial structure",
+        "note": "",
+        "reference": 0.009922276463489733,
+        "synth": 0.01267822712267157,
+        "verdict": "ok"
+      },
+      {
+        "axis": "partial series deviation",
+        "direction": "high",
+        "group": "partial structure",
+        "note": "synth partials skip ranks worse than the reference (less like a consecutive harmonic series)",
+        "reference": 0.24658723271063335,
+        "synth": 0.4487139859036941,
+        "verdict": "drift"
+      },
+      {
+        "axis": "centroid",
+        "direction": "low",
+        "group": "brightness / formant",
+        "note": "synth is darker/duller",
+        "reference": 977.3589907687052,
+        "synth": 835.6785644878246,
+        "verdict": "drift"
+      },
+      {
+        "axis": "rolloff",
+        "direction": "low",
+        "group": "brightness / formant",
+        "note": "synth is missing high-frequency energy",
+        "reference": 562.554931640625,
+        "synth": 390.289306640625,
+        "verdict": "drift"
+      },
+      {
+        "axis": "sustain modulation",
+        "direction": "high",
+        "group": "modulation",
+        "note": "synth sustain wobbles more than the reference",
+        "reference": 0.1461760839252499,
+        "synth": 0.28703668046912584,
+        "verdict": "drift"
+      }
+    ],
+    "instrument": "cello",
+    "ref_clip_truncated_sec": 2,
+    "ref_partial_ratios": [
+      1.9667996025881713,
+      2.7844475277290064,
+      2.978345784773281,
+      3.4122801991021046,
+      5.36606993013044,
+      5.499623717300078,
+      5.713837151174896,
+      7.046568877673764
+    ],
+    "reference_id": "cello-C2",
+    "synth_partial_ratios": [
+      0.6738515163510195,
+      1.0127763566769554,
+      1.3531888982481808,
+      1.690268169854913,
+      2.025481731266435,
+      3.381042835249327,
+      4.392865255161307,
+      6.082101958113824
+    ]
+  },
+  "clap": {
+    "axes": [
+      {
+        "axis": "noise fraction",
+        "direction": "high",
+        "group": "noise / harmonic balance",
+        "note": "synth is far too breathy/noisy (CAVEAT: reference partial series deviation=0.59 -- this instrument's true partials are strongly non-harmonic-series, so NoiseRatio's harmonic-bin assumption likely misclassifies real tonal energy as noise; treat this axis as unreliable here, see partial ratios below)",
+        "reference": 0.2868694880844045,
+        "synth": 0.9951237114317201,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "spectral flatness",
+        "direction": "high",
+        "group": "noise / harmonic balance",
+        "note": "synth is far too breathy/noisy (CAVEAT: reference partial series deviation=0.59 -- this instrument's true partials are strongly non-harmonic-series, so NoiseRatio's harmonic-bin assumption likely misclassifies real tonal energy as noise; treat this axis as unreliable here, see partial ratios below)",
+        "reference": 0.5188786508788816,
+        "synth": 0.8487863101581494,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "attack",
+        "direction": "low",
+        "group": "temporal envelope",
+        "note": "synth attack is far too fast",
+        "reference": 0.04,
+        "synth": 0.01,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "ring T60",
+        "direction": "high",
+        "group": "temporal envelope",
+        "note": "T60 NOT OBSERVABLE: both clips still ring above -60dB at clip end (ref clamped at 0.69s, synth at 0.72s) -- comparing overall decay RATE instead (ref -67.7 dB/s, synth -39.1 dB/s); synth decay/ring is far too sustained",
+        "reference": 0.6900000000000001,
+        "synth": 0.72,
+        "verdict": "drift"
+      },
+      {
+        "axis": "release",
+        "direction": "low",
+        "group": "temporal envelope",
+        "note": "synth release is far too fast",
+        "reference": 0.1,
+        "synth": 0,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "inharmonicity",
+        "direction": "high",
+        "group": "partial structure",
+        "note": "synth partials are too inharmonic",
+        "reference": 0.011195971446417432,
+        "synth": 0.018816235205124092,
+        "verdict": "drift"
+      },
+      {
+        "axis": "partial series deviation",
+        "direction": "high",
+        "group": "partial structure",
+        "note": "synth partials skip ranks worse than the reference (less like a consecutive harmonic series)",
+        "reference": 0.590555700783751,
+        "synth": 38.17113902919276,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "centroid",
+        "direction": "high",
+        "group": "brightness / formant",
+        "note": "synth is brighter",
+        "reference": 9700.676984316678,
+        "synth": 10994.987706166681,
+        "verdict": "drift"
+      },
+      {
+        "axis": "rolloff",
+        "direction": "high",
+        "group": "brightness / formant",
+        "note": "synth has too much high-frequency energy",
+        "reference": 1539.6240234375,
+        "synth": 18704.278564453125,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "sustain modulation",
+        "direction": "low",
+        "group": "modulation",
+        "note": "synth sustain is missing amplitude modulation (flat/organ-like)",
+        "reference": 0.09280029415014153,
+        "synth": 0,
+        "verdict": "drift"
+      }
+    ],
+    "instrument": "clap",
+    "ref_partial_ratios": [
+      0.700523083824585,
+      0.997963312825178,
+      1.1597771998107058,
+      1.4773848377086831,
+      1.8382733849944997,
+      1.950448639329676,
+      2.096514307166172,
+      2.623036400218806
+    ],
+    "reference_id": "clap-vcsl",
+    "synth_partial_ratios": [
+      23.98772974215635,
+      33.12650328400734,
+      62.946355512008786,
+      86.14658778514,
+      264.82379368272774,
+      392.37635511573325,
+      416.65777786250595,
+      419.32806225559483
+    ]
+  },
+  "harp": {
+    "axes": [
+      {
+        "axis": "noise fraction",
+        "direction": "",
+        "group": "noise / harmonic balance",
+        "note": "",
+        "reference": 0.023596210122671768,
+        "synth": 0.04174752000633486,
+        "verdict": "ok"
+      },
+      {
+        "axis": "spectral flatness",
+        "direction": "",
+        "group": "noise / harmonic balance",
+        "note": "",
+        "reference": 0.021947303154586713,
+        "synth": 0.02940083357331719,
+        "verdict": "ok"
+      },
+      {
+        "axis": "attack",
+        "direction": "low",
+        "group": "temporal envelope",
+        "note": "synth attack is far too fast",
+        "reference": 0.02,
+        "synth": 0,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "ring T60",
+        "direction": "low",
+        "group": "temporal envelope",
+        "note": "synth decays far too fast (NOTE: reference clip ended before -60dB was reached; its value is a LOWER BOUND, not a measured T60)",
+        "reference": 1.95,
+        "synth": 1.04,
+        "verdict": "drift"
+      },
+      {
+        "axis": "release",
+        "direction": "low",
+        "group": "temporal envelope",
+        "note": "synth release is far too fast",
+        "reference": 1.6500000000000001,
+        "synth": 0,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "inharmonicity",
+        "direction": "low",
+        "group": "partial structure",
+        "note": "synth partials are too harmonic (needs inharmonic bar/tube modes)",
+        "reference": 0.005969284688487654,
+        "synth": 0.0004522904690215352,
+        "verdict": "drift"
+      },
+      {
+        "axis": "partial series deviation",
+        "direction": "",
+        "group": "partial structure",
+        "note": "",
+        "reference": 0.0004321366548969974,
+        "synth": 0.000337655256176893,
+        "verdict": "ok"
+      },
+      {
+        "axis": "centroid",
+        "direction": "",
+        "group": "brightness / formant",
+        "note": "",
+        "reference": 1796.259320344373,
+        "synth": 1774.3567133194965,
+        "verdict": "ok"
+      },
+      {
+        "axis": "rolloff",
+        "direction": "low",
+        "group": "brightness / formant",
+        "note": "synth is missing high-frequency energy",
+        "reference": 1553.082275390625,
+        "synth": 788.653564453125,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "sustain modulation",
+        "direction": "",
+        "group": "modulation",
+        "note": "",
+        "reference": 0.031072969557519186,
+        "synth": 0,
+        "verdict": "ok"
+      }
+    ],
+    "instrument": "harp",
+    "ref_clip_truncated_sec": 2,
+    "ref_partial_ratios": [
+      0.9992794232851312,
+      1.9997126068101496
+    ],
+    "reference_id": "harp-freesound-alt",
+    "synth_partial_ratios": [
+      0.9999321334445088,
+      1.999718068789446,
+      2.9975875991767125
+    ]
+  },
+  "hihat": {
+    "axes": [
+      {
+        "axis": "noise fraction",
+        "direction": "high",
+        "group": "noise / harmonic balance",
+        "note": "synth is far too breathy/noisy",
+        "reference": 0.9186823184461446,
+        "synth": 0.9995184835685611,
+        "verdict": "drift"
+      },
+      {
+        "axis": "spectral flatness",
+        "direction": "",
+        "group": "noise / harmonic balance",
+        "note": "",
+        "reference": 0.5440812423506373,
+        "synth": 0.5751215820868802,
+        "verdict": "ok"
+      },
+      {
+        "axis": "attack",
+        "direction": "low",
+        "group": "temporal envelope",
+        "note": "synth attack is far too fast",
+        "reference": 0.01,
+        "synth": 0,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "ring T60",
+        "direction": "low",
+        "group": "temporal envelope",
+        "note": "synth decays far too fast",
+        "reference": 1.09,
+        "synth": 0.17,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "release",
+        "direction": "low",
+        "group": "temporal envelope",
+        "note": "synth release is far too fast",
+        "reference": 1.1,
+        "synth": 0,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "inharmonicity",
+        "direction": "low",
+        "group": "partial structure",
+        "note": "synth partials are too harmonic (needs inharmonic bar/tube modes)",
+        "reference": 0.017370085822466776,
+        "synth": 0.006113916354300971,
+        "verdict": "drift"
+      },
+      {
+        "axis": "partial series deviation",
+        "direction": "high",
+        "group": "partial structure",
+        "note": "synth partials skip ranks worse than the reference (less like a consecutive harmonic series)",
+        "reference": 0.43726502797997935,
+        "synth": 7.605311902055579,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "centroid",
+        "direction": "high",
+        "group": "brightness / formant",
+        "note": "synth is brighter",
+        "reference": 5816.85183791049,
+        "synth": 10595.99398123421,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "rolloff",
+        "direction": "high",
+        "group": "brightness / formant",
+        "note": "synth has too much high-frequency energy",
+        "reference": 3628.3447265625,
+        "synth": 11590.24658203125,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "sustain modulation",
+        "direction": "low",
+        "group": "modulation",
+        "note": "synth sustain is missing amplitude modulation (flat/organ-like)",
+        "reference": 0.1388167753728416,
+        "synth": 0,
+        "verdict": "drift"
+      }
+    ],
+    "instrument": "hihat",
+    "ref_partial_ratios": [
+      0.48979727825538966,
+      4.924724382791427,
+      5.143233554186206,
+      5.3808940181652565,
+      5.466027200271063,
+      5.590389835392103,
+      5.872338018457028,
+      6.8531819854766995
+    ],
+    "reference_id": "hihat-vcsl",
+    "synth_partial_ratios": [
+      14.675155592538172,
+      19.45399323024333,
+      23.61815876528224,
+      29.38836381186577,
+      35.88654765130883,
+      41.382786477707214,
+      44.02530556099811,
+      70.85409993323545
+    ]
+  },
+  "kalimba": {
+    "axes": [
+      {
+        "axis": "noise fraction",
+        "direction": "low",
+        "group": "noise / harmonic balance",
+        "note": "synth is too pure/tonal (missing noise character) (CAVEAT: reference partial series deviation=0.59 -- this instrument's true partials are strongly non-harmonic-series, so NoiseRatio's harmonic-bin assumption likely misclassifies real tonal energy as noise; treat this axis as unreliable here, see partial ratios below)",
+        "reference": 0.7237366976950901,
+        "synth": 0.1928628767452366,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "spectral flatness",
+        "direction": "low",
+        "group": "noise / harmonic balance",
+        "note": "synth is too pure/tonal (missing noise character) (CAVEAT: reference partial series deviation=0.59 -- this instrument's true partials are strongly non-harmonic-series, so NoiseRatio's harmonic-bin assumption likely misclassifies real tonal energy as noise; treat this axis as unreliable here, see partial ratios below)",
+        "reference": 0.37704092656481153,
+        "synth": 0.03343926994147591,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "attack",
+        "direction": "high",
+        "group": "temporal envelope",
+        "note": "synth attack is far too slow",
+        "reference": 0,
+        "synth": 0.01,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "ring T60",
+        "direction": "",
+        "group": "temporal envelope",
+        "note": "(NOTE: reference clip ended before -60dB was reached; its value is a LOWER BOUND, not a measured T60)",
+        "reference": 1.99,
+        "synth": 1.71,
+        "verdict": "ok"
+      },
+      {
+        "axis": "release",
+        "direction": "low",
+        "group": "temporal envelope",
+        "note": "synth release is far too fast",
+        "reference": 1.2,
+        "synth": 0,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "inharmonicity",
+        "direction": "low",
+        "group": "partial structure",
+        "note": "synth partials are too harmonic (needs inharmonic bar/tube modes)",
+        "reference": 0.009971078060521995,
+        "synth": 0.0009912247830834815,
+        "verdict": "drift"
+      },
+      {
+        "axis": "partial series deviation",
+        "direction": "low",
+        "group": "partial structure",
+        "note": "synth partials follow a cleaner consecutive harmonic series than the reference (needs non-consecutive bar/tube-style overtones, e.g. ~1,4,9x)",
+        "reference": 0.5912815925450393,
+        "synth": 0.40796742545835046,
+        "verdict": "drift"
+      },
+      {
+        "axis": "centroid",
+        "direction": "low",
+        "group": "brightness / formant",
+        "note": "synth is darker/duller",
+        "reference": 5481.976243109263,
+        "synth": 2317.3344507779916,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "rolloff",
+        "direction": "high",
+        "group": "brightness / formant",
+        "note": "synth has too much high-frequency energy",
+        "reference": 864.019775390625,
+        "synth": 2344.427490234375,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "sustain modulation",
+        "direction": "low",
+        "group": "modulation",
+        "note": "synth sustain is missing amplitude modulation (flat/organ-like)",
+        "reference": 0.12448871859698377,
+        "synth": 0,
+        "verdict": "drift"
+      }
+    ],
+    "instrument": "kalimba",
+    "ref_clip_truncated_sec": 2,
+    "ref_partial_ratios": [
+      3.4414686056394714,
+      4.028186810298697,
+      4.530009016362024,
+      5.103019286522407,
+      6.097111295533193,
+      6.408351822071699,
+      6.5089954747400895,
+      6.949531977922098
+    ],
+    "reference_id": "kalimba-vcsl",
+    "synth_partial_ratios": [
+      0.9999788725421758,
+      2.0005052729204875,
+      4.001149066358471,
+      4.999910827668359,
+      6.999027075274668,
+      7.9995691388664785,
+      11.000996795318237,
+      19.00106934735782
+    ]
+  },
+  "oboe": {
+    "axes": [
+      {
+        "axis": "noise fraction",
+        "direction": "high",
+        "group": "noise / harmonic balance",
+        "note": "synth is far too breathy/noisy",
+        "reference": 0.03935232615748274,
+        "synth": 0.10573934229488358,
+        "verdict": "drift"
+      },
+      {
+        "axis": "spectral flatness",
+        "direction": "",
+        "group": "noise / harmonic balance",
+        "note": "",
+        "reference": 0.1207367660973672,
+        "synth": 0.08617547135479106,
+        "verdict": "ok"
+      },
+      {
+        "axis": "attack",
+        "direction": "low",
+        "group": "temporal envelope",
+        "note": "synth attack is far too fast",
+        "reference": 1.1400000000000001,
+        "synth": 0.02,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "ring T60",
+        "direction": "high",
+        "group": "temporal envelope",
+        "note": "synth decay/ring is far too sustained (NOTE: synth clip ended before -60dB was reached; its value is a LOWER BOUND, not a measured T60)",
+        "reference": 0.39,
+        "synth": 1.54,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "release",
+        "direction": "low",
+        "group": "temporal envelope",
+        "note": "synth release is far too fast",
+        "reference": 0.21,
+        "synth": 0.09,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "inharmonicity",
+        "direction": "high",
+        "group": "partial structure",
+        "note": "synth partials are too inharmonic",
+        "reference": 0.00038005031040440373,
+        "synth": 0.005824036252293441,
+        "verdict": "drift"
+      },
+      {
+        "axis": "partial series deviation",
+        "direction": "",
+        "group": "partial structure",
+        "note": "",
+        "reference": 0.09502991533729978,
+        "synth": 0.1103651096116304,
+        "verdict": "ok"
+      },
+      {
+        "axis": "centroid",
+        "direction": "high",
+        "group": "brightness / formant",
+        "note": "synth is brighter",
+        "reference": 3043.6312475814257,
+        "synth": 3859.7790637574158,
+        "verdict": "drift"
+      },
+      {
+        "axis": "rolloff",
+        "direction": "high",
+        "group": "brightness / formant",
+        "note": "synth has too much high-frequency energy",
+        "reference": 1321.600341796875,
+        "synth": 1763.031005859375,
+        "verdict": "drift"
+      },
+      {
+        "axis": "sustain modulation",
+        "direction": "",
+        "group": "modulation",
+        "note": "",
+        "reference": 0.04423583509151139,
+        "synth": 0.03290637635662489,
+        "verdict": "ok"
+      }
+    ],
+    "instrument": "oboe",
+    "ref_partial_ratios": [
+      0.9990129522310647,
+      1.999022253152955,
+      2.998009034990096,
+      3.997609357548363,
+      5.99725942744065,
+      6.997213986520399,
+      7.996346739273324,
+      9.996100966777991
+    ],
+    "reference_id": "oboe-A4",
+    "synth_partial_ratios": [
+      0.9995800959106693,
+      1.9996234185743234,
+      2.998802562195261,
+      3.014868653108442,
+      3.9989927928405704,
+      4.998108704007101,
+      5.998267976942909,
+      6.997257595093911
+    ]
+  },
+  "rimshot": {
+    "axes": [
+      {
+        "axis": "noise fraction",
+        "direction": "low",
+        "group": "noise / harmonic balance",
+        "note": "synth is too pure/tonal (missing noise character) (CAVEAT: reference partial series deviation=0.51 -- this instrument's true partials are strongly non-harmonic-series, so NoiseRatio's harmonic-bin assumption likely misclassifies real tonal energy as noise; treat this axis as unreliable here, see partial ratios below)",
+        "reference": 0.7699889462620373,
+        "synth": 0.15548861027734673,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "spectral flatness",
+        "direction": "low",
+        "group": "noise / harmonic balance",
+        "note": "synth is too pure/tonal (missing noise character) (CAVEAT: reference partial series deviation=0.51 -- this instrument's true partials are strongly non-harmonic-series, so NoiseRatio's harmonic-bin assumption likely misclassifies real tonal energy as noise; treat this axis as unreliable here, see partial ratios below)",
+        "reference": 0.31692804883310033,
+        "synth": 0.021207692970963647,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "attack",
+        "direction": "",
+        "group": "temporal envelope",
+        "note": "",
+        "reference": 0,
+        "synth": 0,
+        "verdict": "ok"
+      },
+      {
+        "axis": "ring T60",
+        "direction": "low",
+        "group": "temporal envelope",
+        "note": "synth decays far too fast (NOTE: reference clip ended before -60dB was reached; its value is a LOWER BOUND, not a measured T60)",
+        "reference": 0.56,
+        "synth": 0.36,
+        "verdict": "drift"
+      },
+      {
+        "axis": "release",
+        "direction": "low",
+        "group": "temporal envelope",
+        "note": "synth release is far too fast",
+        "reference": 0.09,
+        "synth": 0,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "inharmonicity",
+        "direction": "low",
+        "group": "partial structure",
+        "note": "synth partials are too harmonic (needs inharmonic bar/tube modes)",
+        "reference": 0.008141666975000308,
+        "synth": 0,
+        "verdict": "drift"
+      },
+      {
+        "axis": "partial series deviation",
+        "direction": "low",
+        "group": "partial structure",
+        "note": "synth partials follow a cleaner consecutive harmonic series than the reference (needs non-consecutive bar/tube-style overtones, e.g. ~1,4,9x)",
+        "reference": 0.5079668565388804,
+        "synth": 0.024941949632174165,
+        "verdict": "drift"
+      },
+      {
+        "axis": "centroid",
+        "direction": "low",
+        "group": "brightness / formant",
+        "note": "synth is darker/duller",
+        "reference": 3693.543523367136,
+        "synth": 565.4463018006097,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "rolloff",
+        "direction": "low",
+        "group": "brightness / formant",
+        "note": "synth is missing high-frequency energy",
+        "reference": 484.4970703125,
+        "synth": 282.623291015625,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "sustain modulation",
+        "direction": "low",
+        "group": "modulation",
+        "note": "synth sustain is missing amplitude modulation (flat/organ-like)",
+        "reference": 0.1421408998385909,
+        "synth": 0,
+        "verdict": "drift"
+      }
+    ],
+    "instrument": "rimshot",
+    "ref_partial_ratios": [
+      1.6495592633326488,
+      1.7268523503147557,
+      1.8059200747331403,
+      1.9058143408124946,
+      2.0242510737436663,
+      2.7220906228967303,
+      2.8512727050204814,
+      3.0249170803153507
+    ],
+    "reference_id": "rimshot-vcsl",
+    "synth_partial_ratios": [
+      0.9972754446167661,
+      2.094318687762229
+    ]
+  },
+  "snare": {
+    "axes": [
+      {
+        "axis": "noise fraction",
+        "direction": "high",
+        "group": "noise / harmonic balance",
+        "note": "synth is far too breathy/noisy (CAVEAT: reference partial series deviation=0.52 -- this instrument's true partials are strongly non-harmonic-series, so NoiseRatio's harmonic-bin assumption likely misclassifies real tonal energy as noise; treat this axis as unreliable here, see partial ratios below)",
+        "reference": 0.8148392950601169,
+        "synth": 0.9332533087736479,
+        "verdict": "drift"
+      },
+      {
+        "axis": "spectral flatness",
+        "direction": "low",
+        "group": "noise / harmonic balance",
+        "note": "synth is too pure/tonal (missing noise character) (CAVEAT: reference partial series deviation=0.52 -- this instrument's true partials are strongly non-harmonic-series, so NoiseRatio's harmonic-bin assumption likely misclassifies real tonal energy as noise; treat this axis as unreliable here, see partial ratios below)",
+        "reference": 0.5986211762551973,
+        "synth": 0.20449755072829603,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "attack",
+        "direction": "",
+        "group": "temporal envelope",
+        "note": "",
+        "reference": 0,
+        "synth": 0,
+        "verdict": "ok"
+      },
+      {
+        "axis": "ring T60",
+        "direction": "high",
+        "group": "temporal envelope",
+        "note": "synth decay/ring is far too sustained (NOTE: synth clip ended before -60dB was reached; its value is a LOWER BOUND, not a measured T60)",
+        "reference": 0.33,
+        "synth": 0.78,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "release",
+        "direction": "high",
+        "group": "temporal envelope",
+        "note": "synth release is far too slow",
+        "reference": 0,
+        "synth": 0.29,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "inharmonicity",
+        "direction": "",
+        "group": "partial structure",
+        "note": "",
+        "reference": 0.009982704685085638,
+        "synth": 0.010420845989027807,
+        "verdict": "ok"
+      },
+      {
+        "axis": "partial series deviation",
+        "direction": "high",
+        "group": "partial structure",
+        "note": "synth partials skip ranks worse than the reference (less like a consecutive harmonic series)",
+        "reference": 0.5191717105290803,
+        "synth": 0.8732401862589246,
+        "verdict": "drift"
+      },
+      {
+        "axis": "centroid",
+        "direction": "low",
+        "group": "brightness / formant",
+        "note": "synth is darker/duller",
+        "reference": 6114.231574971765,
+        "synth": 2989.5657328565353,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "rolloff",
+        "direction": "high",
+        "group": "brightness / formant",
+        "note": "synth has too much high-frequency energy",
+        "reference": 1152.0263671875,
+        "synth": 2024.12109375,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "sustain modulation",
+        "direction": "high",
+        "group": "modulation",
+        "note": "synth sustain wobbles more than the reference",
+        "reference": 0,
+        "synth": 0.13078840009392456,
+        "verdict": "drift"
+      }
+    ],
+    "instrument": "snare",
+    "ref_partial_ratios": [
+      1.6696648713391993,
+      1.749976205853237,
+      1.8105231376458855,
+      1.9103321121216477,
+      1.9983160127225796,
+      2.4034983928220646,
+      2.500325540362353,
+      3.22221370141705
+    ],
+    "reference_id": "snare-freesound-alt",
+    "synth_partial_ratios": [
+      0.6046736603188915,
+      0.7544534527342555,
+      1.0084405439971,
+      1.209747429732639,
+      2.0362998307247535,
+      10.961122674207637,
+      18.41494006094519,
+      20.448848370462272
+    ]
+  },
+  "tubular-bells": {
+    "axes": [
+      {
+        "axis": "noise fraction",
+        "direction": "low",
+        "group": "noise / harmonic balance",
+        "note": "synth is too pure/tonal (missing noise character) (CAVEAT: reference partial series deviation=0.52 -- this instrument's true partials are strongly non-harmonic-series, so NoiseRatio's harmonic-bin assumption likely misclassifies real tonal energy as noise; treat this axis as unreliable here, see partial ratios below)",
+        "reference": 0.8752239529329966,
+        "synth": 0.008994921303808079,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "spectral flatness",
+        "direction": "",
+        "group": "noise / harmonic balance",
+        "note": "(CAVEAT: reference partial series deviation=0.52 -- this instrument's true partials are strongly non-harmonic-series, so NoiseRatio's harmonic-bin assumption likely misclassifies real tonal energy as noise; treat this axis as unreliable here, see partial ratios below)",
+        "reference": 0.0296803681509644,
+        "synth": 2.0686690850203685e-05,
+        "verdict": "ok"
+      },
+      {
+        "axis": "attack",
+        "direction": "",
+        "group": "temporal envelope",
+        "note": "",
+        "reference": 0.02,
+        "synth": 0.02,
+        "verdict": "ok"
+      },
+      {
+        "axis": "ring T60",
+        "direction": "low",
+        "group": "temporal envelope",
+        "note": "T60 NOT OBSERVABLE: both clips still ring above -60dB at clip end (ref clamped at 2.97s, synth at 2.97s) -- comparing overall decay RATE instead (ref -4.3 dB/s, synth -6.5 dB/s); synth decays far too fast",
+        "reference": 2.97,
+        "synth": 2.97,
+        "verdict": "drift"
+      },
+      {
+        "axis": "release",
+        "direction": "",
+        "group": "temporal envelope",
+        "note": "",
+        "reference": 2.59,
+        "synth": 2.48,
+        "verdict": "ok"
+      },
+      {
+        "axis": "inharmonicity",
+        "direction": "low",
+        "group": "partial structure",
+        "note": "synth partials are too harmonic (needs inharmonic bar/tube modes)",
+        "reference": 0.009275753811806741,
+        "synth": 0.0002078724866047211,
+        "verdict": "drift"
+      },
+      {
+        "axis": "partial series deviation",
+        "direction": "low",
+        "group": "partial structure",
+        "note": "synth partials follow a cleaner consecutive harmonic series than the reference (needs non-consecutive bar/tube-style overtones, e.g. ~1,4,9x)",
+        "reference": 0.5225827694941844,
+        "synth": 0.2500015306167474,
+        "verdict": "drift"
+      },
+      {
+        "axis": "centroid",
+        "direction": "low",
+        "group": "brightness / formant",
+        "note": "synth is darker/duller",
+        "reference": 1855.0894789873707,
+        "synth": 1185.581368573851,
+        "verdict": "drift"
+      },
+      {
+        "axis": "rolloff",
+        "direction": "low",
+        "group": "brightness / formant",
+        "note": "synth is missing high-frequency energy",
+        "reference": 1873.388671875,
+        "synth": 934.002685546875,
+        "verdict": "MISMATCH"
+      },
+      {
+        "axis": "sustain modulation",
+        "direction": "",
+        "group": "modulation",
+        "note": "",
+        "reference": 0.057838318134662246,
+        "synth": 0.036017762325413046,
+        "verdict": "ok"
+      }
+    ],
+    "instrument": "tubular-bells",
+    "ref_clip_truncated_sec": 3,
+    "ref_partial_ratios": [
+      0.6164549125901118,
+      1.0050601915489747,
+      1.4746364513443928,
+      1.7128928700658343,
+      2.013636250547399,
+      2.609459783287037,
+      3.2587078292127467
+    ],
+    "reference_id": "tubular-bells-vcsl",
+    "synth_partial_ratios": [
+      0.9996872762351402,
+      2.99938067493727
+    ]
+  }
+}

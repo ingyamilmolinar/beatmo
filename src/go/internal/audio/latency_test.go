@@ -1,16 +1,26 @@
-//go:build !test
+//go:build !test && !js
 
 package audio
 
 import (
 	"testing"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
 )
 
 func TestVoiceStartsWithin50ms(t *testing.T) {
-	m := &mixer{}
-	m.Schedule(Snare{}.NewVoice(120, sampleRate), 0)
-	buf := make([]byte, sampleRate/10*2) // 0.1s of 16-bit mono
+	sr := SampleRate()
+	m := &mixer{
+		workBuf:   make([]float64, blockSize),
+		voiceTemp: make([]float64, blockSize),
+		masterBuf: make([]float64, blockSize),
+		postEQBuf: make([]float64, blockSize),
+		instSlots: make(map[channel.ID]int),
+	}
+	m.Schedule(channel.Of(roster.Snare), shippedSnareVoice(sr), 0, -1, -1)
+	buf := make([]byte, sr/10*2) // 0.1s of 16-bit mono
 	m.Read(buf)
 	first := -1
 	for i := 0; i < len(buf)/2; i++ {
@@ -23,7 +33,7 @@ func TestVoiceStartsWithin50ms(t *testing.T) {
 	if first == -1 {
 		t.Fatalf("no audio produced")
 	}
-	delay := time.Duration(first) * time.Second / sampleRate
+	delay := time.Duration(first) * time.Second / time.Duration(sr)
 	if delay > 50*time.Millisecond {
 		t.Fatalf("start delay %v exceeds 50ms", delay)
 	}

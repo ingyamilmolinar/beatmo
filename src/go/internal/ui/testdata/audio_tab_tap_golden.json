@@ -1,0 +1,114 @@
+{
+  "circuit": "canonical/dnb-kick",
+  "sample_rate": 48000,
+  "sections": [
+    {
+      "name": "shape.spectrum",
+      "count": 4,
+      "digest": "69527bc32068f03ba8f6b80db01140e7279790c28885f386a65031e2854df99a",
+      "digest_q": "69527bc32068f03ba8f6b80db01140e7279790c28885f386a65031e2854df99a"
+    },
+    {
+      "name": "shape.waveform",
+      "count": 1,
+      "digest": "50e360a541cd409bc38fe604ad26ca29ac399b0725a67a41a66152dbcbd65da9",
+      "digest_q": "50e360a541cd409bc38fe604ad26ca29ac399b0725a67a41a66152dbcbd65da9"
+    },
+    {
+      "name": "shape.band_bin_counts",
+      "count": 10,
+      "digest": "76633b68345f803e7bd983c0f5161b88c28ac75ea730a3efafe4e67636458e3b",
+      "digest_q": "76633b68345f803e7bd983c0f5161b88c28ac75ea730a3efafe4e67636458e3b"
+    },
+    {
+      "name": "analysis.fft_bins",
+      "count": 1024,
+      "digest": "a36815a56d20a84886eb57f0b0d431b8bd90b07ae0ffc5b680196ebc90f9bc12",
+      "digest_q": "6f4839356abe830040cd88e6106925aa22344825a064d265ddae4f3faeffd88f"
+    },
+    {
+      "name": "analysis.freq_bins",
+      "count": 1024,
+      "digest": "d61bf93fcecf49382a37832f0c718a10454852c90a4f4a930e33ff32d041c962",
+      "digest_q": "c8963ccf6db0e98b5bfcf588bc824bb9d83f08b14aff1e5dcfb19cfba4a1ce4e"
+    },
+    {
+      "name": "analysis.waveform",
+      "count": 512,
+      "digest": "2a132831d521b41592ddad65673ded4582718fd0a5c78346f54577278f5a1a91",
+      "digest_q": "95c7ffdd6adb5ef7980a3d60020d2e90940b321e935cea7d7063c114f4792c5d"
+    },
+    {
+      "name": "analysis.levels",
+      "count": 2,
+      "digest": "b548644c009f982b1c0ed5084f09512ccebffde552e51178500f30f3d3125e10",
+      "digest_q": "222b03ab03f5693466198ef9de3a9987d62a18f0efe8f9e059ad13997bf98299"
+    },
+    {
+      "name": "analysis.active",
+      "count": 1,
+      "digest": "f52f3a746c2545658e1c6add32e5410365553ebaaa0433f5f8bd90c6f85fd6e2",
+      "digest_q": "f52f3a746c2545658e1c6add32e5410365553ebaaa0433f5f8bd90c6f85fd6e2"
+    },
+    {
+      "name": "render.spectrum.band_db",
+      "count": 10,
+      "digest": "91cdd0d287686e598fa9bb86086e3c38956d725dcee14a294984abd106e93fb7",
+      "digest_q": "8bcda5c963b31c52d92e672a16f5153033b06f58fc9f9067f45f767bb54bd7c5"
+    },
+    {
+      "name": "render.spectrum.band_measured",
+      "count": 10,
+      "digest": "c30196a841666df19f910ce752ae957685efe28461c90b980ae17f34894c7062",
+      "digest_q": "c30196a841666df19f910ce752ae957685efe28461c90b980ae17f34894c7062"
+    },
+    {
+      "name": "render.spectrum.window",
+      "count": 2,
+      "digest": "679e62691e633eeb851a6dcbcbde8cadcf42094c45764ecf20b92f74942df95c",
+      "digest_q": "a6f1b9d4760760583955b8ed08745bef9220d86cd2487416bd661db879d01ea9"
+    },
+    {
+      "name": "render.spectrum.bar_norms",
+      "count": 10,
+      "digest": "5cf25622ef2bd00759f5d156def76adc8813ffa9f5424375783d189c18eedd25",
+      "digest_q": "a5eee593d14f11142babb9b601c605979c490cbc60cb0b79a325efdc62c74da9"
+    },
+    {
+      "name": "render.eq.band_levels",
+      "count": 10,
+      "digest": "c92ce82ab3cfeb11856dd297e8764b691c85d399491ddecd5a48bc8a713dc3ae",
+      "digest_q": "c96b0a6cc96a173b6d158fd4059293a6f8b45a9384c331928465184cb36b576f"
+    },
+    {
+      "name": "render.wave.gain",
+      "count": 1,
+      "digest": "25c6e6c2283500acf7449b86150cb20d0c9b8d82062e9399cf43a6b4e416fb33",
+      "digest_q": "f48bad31f58480b01637cf5c5ff64ba8c2ee5768fd4f3155e5411ed177e6ceab"
+    },
+    {
+      "name": "render.wave.scaled",
+      "count": 512,
+      "digest": "f2b9c949d1f76e9ffd988285cd481563480f90141498687bd0d3fedfadd51759",
+      "digest_q": "ed28bdaaa9798dd4565abd9422a6de7ebb5f8265c195465c7ef0a6cb4ef350ff"
+    },
+    {
+      "name": "render.levels.ids",
+      "count": 3,
+      "digest": "95ff87ec70fa90144f2d69c282830d5169ef1a2effa58945bf4e94ec396dcefc",
+      "digest_q": "95ff87ec70fa90144f2d69c282830d5169ef1a2effa58945bf4e94ec396dcefc"
+    },
+    {
+      "name": "render.levels.db",
+      "count": 6,
+      "digest": "15940941b60eac153d2e67c588ece4690195ecd6e08df14397c97d8d1dcd96de",
+      "digest_q": "d80d80430a1eeffe8d6a827b18ddefdbeb05444639072697dfdcc610d1eecf9f"
+    },
+    {
+      "name": "render.levels.active",
+      "count": 3,
+      "digest": "f779254dae0ea56d802a4645de7a310dbcbbb9aea7b212a83a63f8c6468095eb",
+      "digest_q": "f779254dae0ea56d802a4645de7a310dbcbbb9aea7b212a83a63f8c6468095eb"
+    }
+  ]
+}

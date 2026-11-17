@@ -1,0 +1,218 @@
+package ui
+
+import "github.com/ingyamilmolinar/beatmo/internal/i18n"
+
+// PanelTab identifies one of the tabs in the EQ/waveform/spectrum/meters panel.
+type PanelTab int
+
+const (
+	TabWave PanelTab = iota
+	TabSpectrum
+	TabMeters
+	TabEQ
+	TabScope
+	TabSynth   // Phase 4 redirect: synth-recipe parameter editor for the selected row
+	TabSampler // sample editor: trim/pitch a WAV or synth-capture, save as an instrument
+)
+
+// AllPanelTabs returns the AVAILABLE tabs in display order. Synth is appended
+// at the end of the strip so existing scene catalogs / pixel tests that anchor
+// on the legacy 5-tab layout stay valid; mobile uses an abbreviated label.
+// The Chain tab (TabScope) is a developer tool: the production UI omits it
+// (devToolsOn, devtools.go). Package-level slices, so the per-frame callers
+// allocate nothing; read-only by convention.
+func AllPanelTabs() []PanelTab {
+	if devToolsOn() {
+		return allPanelTabsDev
+	}
+	return allPanelTabsProduction
+}
+
+var (
+	allPanelTabsDev        = []PanelTab{TabEQ, TabWave, TabSpectrum, TabMeters, TabScope, TabSynth, TabSampler}
+	allPanelTabsProduction = []PanelTab{TabEQ, TabWave, TabSpectrum, TabMeters, TabSynth, TabSampler}
+)
+
+// panelTabAvailable reports whether tab may become active: every tab in a
+// developer build, every tab but Chain in the production UI.
+func panelTabAvailable(tab PanelTab) bool { return tab != TabScope || devToolsOn() }
+
+// PanelTabLabel returns the human-readable label for a tab.
+//
+// TabMeters renders as "Levels" — every consumer DAW (Logic, GarageBand,
+// FL, Ableton) uses "Levels" for the peak/RMS meter view. "Mtr" was jargon.
+//
+// TabScope renders as "Chain" — communicates "your sound's journey through
+// effects" instead of the engineer-jargon "Scope". The underlying 6 pipeline
+// stages (Synth · Click guard · FX · EQ · Bus · Master) are exposed as
+// thumbnails inside the tab; see chain_panel_zone.go.
+func PanelTabLabel(tab PanelTab) string {
+	switch tab {
+	case TabWave:
+		return i18n.T(i18n.KeyTabWave)
+	case TabSpectrum:
+		return i18n.T(i18n.KeyTabSpectrum)
+	case TabMeters:
+		return i18n.T(i18n.KeyTabLevels)
+	case TabEQ:
+		return i18n.T(i18n.KeyTabEQ)
+	case TabScope:
+		return i18n.T(i18n.KeyTabChain)
+	case TabSynth:
+		return i18n.T(i18n.KeyTabSynth)
+	case TabSampler:
+		return i18n.T(i18n.KeyTabSampler)
+	default:
+		return "?"
+	}
+}
+
+// PanelTabLabelForProfile returns the tab label sized for the active screen
+// class. Mobile uses 3–4 char abbreviations so all five tabs fit in a 390px
+// audio-view bar alongside the channel button + HPF/LPF/freeze controls.
+func PanelTabLabelForProfile(tab PanelTab) string {
+	if Profile().IsMobile() {
+		switch tab {
+		case TabWave:
+			return i18n.T(i18n.KeyTabWaveShort)
+		case TabSpectrum:
+			return i18n.T(i18n.KeyTabSpectrumShort)
+		case TabMeters:
+			return i18n.T(i18n.KeyTabLevelsShort)
+		case TabEQ:
+			return i18n.T(i18n.KeyTabEQShort)
+		case TabScope:
+			return i18n.T(i18n.KeyTabChainShort)
+		case TabSynth:
+			return i18n.T(i18n.KeyTabSynthShort)
+		case TabSampler:
+			return i18n.T(i18n.KeyTabSamplerShort)
+		default:
+			return "?"
+		}
+	}
+	return PanelTabLabel(tab)
+}
+
+// PanelTabSlug returns the canonical lowercase slug for a tab. Slugs are
+// stable identifiers used by scene catalogs, screenshot subjects, and the
+// SetActiveEQTab API. Both the new and legacy slugs route through
+// SetActiveEQTab — see game_eq_tab.go.
+func PanelTabSlug(tab PanelTab) string {
+	switch tab {
+	case TabWave:
+		return "wave"
+	case TabSpectrum:
+		return "spectrum"
+	case TabMeters:
+		return "levels"
+	case TabEQ:
+		return "eq"
+	case TabScope:
+		return "chain"
+	case TabSynth:
+		return "synth"
+	case TabSampler:
+		return "sampler"
+	default:
+		return ""
+	}
+}
+
+// PanelTabState holds the currently active tab and the expand/collapse state
+// of the bottom panel. This is the data model that will eventually drive the
+// tab bar UI (Task 15). For now it replaces the boolean waveformMode toggle.
+type PanelTabState struct {
+	activeTab PanelTab
+	expanded  bool
+	// onLeave, when set, fires synchronously with the tab being left whenever
+	// SetActiveTab actually changes the active tab (no-op when the incoming
+	// tab equals the current one). This is the single low-level chokepoint
+	// EVERY tab transition passes through — the sticky-bar onTab closure,
+	// EQPanelZone.SetActiveTab, and setViewMode's direct
+	// `eqPanelZone.tabState.SetActiveTab` call for the mobile view-mode
+	// switch all end up here — so it's the narrowest correct place to flush
+	// state that must not survive a tab change (see NewEQPanelZone, which
+	// wires this to flush dv.synthWheelNudge on leaving TabSynth).
+	onLeave func(prev PanelTab)
+}
+
+// NewPanelTabState creates a PanelTabState with default values:
+// TabEQ active, collapsed.
+func NewPanelTabState() *PanelTabState {
+	return &PanelTabState{activeTab: TabEQ}
+}
+
+// ActiveTab returns the currently selected tab.
+func (p *PanelTabState) ActiveTab() PanelTab { return p.activeTab }
+
+// SetOnLeave installs the callback invoked with the outgoing tab whenever
+// SetActiveTab changes the active tab. Intended to be called once, right
+// after construction.
+func (p *PanelTabState) SetOnLeave(fn func(prev PanelTab)) { p.onLeave = fn }
+
+// SetActiveTab switches to the given tab, invoking the onLeave hook (if any)
+// with the previously-active tab when this is an actual transition.
+//
+// A tab the build does not offer (Chain in the production UI) is refused here,
+// the chokepoint every route reaches, so the current tab stays active.
+func (p *PanelTabState) SetActiveTab(tab PanelTab) {
+	if !panelTabAvailable(tab) {
+		return
+	}
+	prev := p.activeTab
+	p.activeTab = tab
+	if prev != tab && p.onLeave != nil {
+		p.onLeave(prev)
+	}
+}
+
+// Expanded returns true when the panel is in its expanded (2x) state.
+func (p *PanelTabState) Expanded() bool { return p.expanded }
+
+// ToggleExpanded flips the expand/collapse state.
+func (p *PanelTabState) ToggleExpanded() { p.expanded = !p.expanded }
+
+// PanelHeight returns the panel height in pixels.
+//
+// Sized through RuntimeProfile (AudioPanelHeightMultiplier × eqPanelHeight)
+// so the Spectrum/Levels/Chain/Synth analysis surfaces have room for legible
+// scales, channel strips, signal-flow cards, and synth knob cards. Default
+// 3×; bound by AudioPanelHeightScreenFrac of the framebuffer height when a
+// screenH > 0 is supplied so the panel never crowds the grid. User
+// drag-resize (RowHeight(2) in drumview_geometry.go) still overrides.
+//
+// PanelHeightAt is the screen-aware variant; callers that don't know the
+// framebuffer pass 0 to opt out of the cap (legacy behaviour).
+func (p *PanelTabState) PanelHeight() int {
+	return p.PanelHeightAt(0)
+}
+
+// PanelHeightAt returns the panel height clamped to a fraction of screenH
+// (the framebuffer height in pixels). screenH ≤ 0 disables the cap.
+func (p *PanelTabState) PanelHeightAt(screenH int) int {
+	mult := 2
+	frac := 0.0
+	if rp := RuntimeProf(); rp != nil {
+		if rp.AudioPanelHeightMultiplier > 0 {
+			mult = rp.AudioPanelHeightMultiplier
+		}
+		if rp.AudioPanelHeightScreenFrac > 0 {
+			frac = rp.AudioPanelHeightScreenFrac
+		}
+	}
+	h := eqPanelHeight * mult
+	// The Synth tab packs a row of stage cards where each knob carries a dial,
+	// a caption, AND a concept mini-visual band beneath it — that needs more
+	// vertical room than the other analysis tabs, so it gets a taller floor.
+	if p.activeTab == TabSynth {
+		h += eqPanelHeight
+	}
+	if screenH > 0 && frac > 0 {
+		cap := int(float64(screenH) * frac)
+		if cap > 0 && h > cap {
+			h = cap
+		}
+	}
+	return h
+}

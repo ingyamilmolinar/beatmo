@@ -1,0 +1,433 @@
+//go:build js && !test
+
+package ui
+
+import (
+	"math"
+	"syscall/js"
+	"time"
+
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+)
+
+func (g *Game) initJSHarness() {
+	// zoomAt(x, y, delta) applies a zoom centered at screen coords (x,y).
+	js.Global().Set("zoomAt", jsFn(func(args jsArgs) any {
+		if args.Len() < 3 {
+			return nil
+		}
+		x := args.Float(0)
+		y := args.Float(1)
+		delta := args.Float(2)
+		wx := (x - g.cam.OffsetX) / g.cam.Scale
+		// Account for the transport bar offset in screen space
+		wy := (y - float64(gridTopOffset()) - g.cam.OffsetY) / g.cam.Scale
+		constZoomFactor := 1.05
+		constSens := 0.1
+		newScale := g.cam.Scale * math.Pow(constZoomFactor, delta*constSens)
+		if newScale < 0.1 {
+			newScale = 0.1
+		} else if newScale > 10.0 {
+			newScale = 10.0
+		}
+		g.cam.OffsetX = x - wx*newScale
+		g.cam.OffsetY = y - float64(gridTopOffset()) - wy*newScale
+		g.cam.Scale = newScale
+		return nil
+	}))
+
+	// visibleRows() -> int
+	js.Global().Set("visibleRows", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return js.ValueOf(0)
+		}
+		return js.ValueOf(g.drum.visibleRows())
+	}))
+
+	// drumRowCount() -> int
+	js.Global().Set("drumRowCount", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return js.ValueOf(0)
+		}
+		return js.ValueOf(len(g.drum.Rows))
+	}))
+
+	// rowsContentVisibleCount() -> int : counts visible rows with any content drawn
+	js.Global().Set("rowsContentVisibleCount", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return js.ValueOf(0)
+		}
+		vis := g.drum.visibleRows()
+		cnt := 0
+		for i := g.drum.rowOffset; i < g.drum.rowOffset+vis && i < len(g.drum.Rows); i++ {
+			if i >= 0 && i < len(g.drum.rowsDrawnMask) && g.drum.rowsDrawnMask[i] {
+				cnt++
+			}
+		}
+		return js.ValueOf(cnt)
+	}))
+
+	// uiLayoutOk() – sanity check to catch catastrophic UI layout regressions.
+	js.Global().Set("uiLayoutOk", jsFn(func(args jsArgs) any {
+		if g == nil || g.drum == nil {
+			return js.ValueOf(false)
+		}
+		ok := true
+		if g.drum.Bounds.Dx() <= 0 || g.drum.Bounds.Dy() <= 0 {
+			ok = false
+		}
+		if g.drum.timelineRect.Dx() <= 0 || g.drum.timelineRect.Dy() <= 0 {
+			ok = false
+		}
+		// Require at least one drawable rows representation.
+		// On small screens, the direct draw path bypasses rowsLayer.
+		if Profile().IsMobile() && g.drum.directDrawCount > 0 {
+			// Direct draw path is active — no layer needed.
+		} else if g.drum.rowsLayer == nil {
+			ok = false
+		}
+		return js.ValueOf(ok)
+	}))
+
+	// buildPerfRect(rows, side) builds 'rows' disjoint 1-rectangle loops
+	// each with edges of length 'side' grid units to stress scheduling.
+	js.Global().Set("buildPerfRect", jsFn(func(args jsArgs) any {
+		start := time.Now()
+		rows := 1
+		side := 1
+		if args.Len() > 0 {
+			rows = args.Int(0)
+		}
+		if args.Len() > 1 {
+			side = args.Int(1)
+		}
+		if rows < 1 {
+			rows = 1
+		}
+		if side < 1 {
+			side = 1
+		}
+		// Ensure enough rows exist in the drum view
+		for len(g.drum.Rows) < rows {
+			g.drum.AddRow()
+		}
+		for r := 0; r < rows; r++ {
+			g.pendingStartRow = r
+			baseX := r * (side + 2)
+			baseY := 0
+			n0 := g.tryAddNode(baseX, baseY, model.NodeTypeRegular)
+			n1 := g.tryAddNode(baseX+side, baseY, model.NodeTypeRegular)
+			n2 := g.tryAddNode(baseX+side, baseY+side, model.NodeTypeRegular)
+			n3 := g.tryAddNode(baseX, baseY+side, model.NodeTypeRegular)
+			g.addEdge(n0, n1)
+			g.addEdge(n1, n2)
+			g.addEdge(n2, n3)
+			g.addEdge(n3, n0)
+			g.pendingStartRow = -1
+		}
+		g.updateBeatInfos()
+		if !g.perf.started.IsZero() {
+			g.perf.started = g.perf.started.Add(time.Since(start))
+		}
+		return nil
+	}))
+
+	// setNodeLogicCallbackGrid(i, j, kind) – attach a built-in NodeLogic callback
+	// for browser harnesses. Kinds: "param_boost", "param_drop", "disable_even", "none".
+	js.Global().Set("setNodeLogicCallbackGrid", jsFn(func(args jsArgs) any {
+		if args.Len() < 3 {
+			return nil
+		}
+		i := args.Int(0)
+		j := args.Int(1)
+		kind := args.Str(2)
+		node := g.nodeAt(i, j)
+		if node == nil {
+			return nil
+		}
+		if kind == "" || kind == "none" {
+			g.graph.SetNodeLogic(node.ID, nil)
+			return nil
+		}
+		var logic model.NodeLogic
+		switch kind {
+		case "param_boost":
+			logic = func(ctx model.NodeContext) model.NodeDecision {
+				return model.NodeDecision{VolumeMul: 0.5, PitchDelta: 3, DurationMul: 2}
+			}
+		case "param_drop":
+			logic = func(ctx model.NodeContext) model.NodeDecision {
+				return model.NodeDecision{VolumeMul: 0.25, PitchDelta: -2, DurationMul: 0.5}
+			}
+		case "disable_even":
+			logic = func(ctx model.NodeContext) model.NodeDecision {
+				if ctx.TriggerCount%2 == 0 {
+					disabled := false
+					return model.NodeDecision{Enabled: &disabled}
+				}
+				return model.NodeDecision{}
+			}
+		default:
+			return nil
+		}
+		g.graph.SetNodeLogic(node.ID, logic)
+		return nil
+	}))
+
+	js.Global().Set("incrementBPM", jsFn(func(args jsArgs) any {
+		b := g.drum.BPM() + 1
+		g.drum.SetBPM(b)
+		js.Global().Get("console").Call("log", "[WASM] incrementBPM ->", b)
+		return nil
+	}))
+
+	js.Global().Set("currentBeat", jsFn(func(args jsArgs) any {
+		cb := g.currentBeat()
+		js.Global().Get("console").Call("log", "[WASM] currentBeat()=", cb)
+		return js.ValueOf(cb)
+	}))
+
+	// camScale() -> float, camOffset() -> {x,y}
+	js.Global().Set("camScale", jsFn(func(args jsArgs) any {
+		return js.ValueOf(g.cam.Scale)
+	}))
+
+	js.Global().Set("camOffset", jsFn(func(args jsArgs) any {
+		obj := js.Global().Get("Object").New()
+		obj.Set("x", g.cam.OffsetX)
+		obj.Set("y", g.cam.OffsetY)
+		return obj
+	}))
+
+	// setCamScale(s) – set camera scale directly.
+	js.Global().Set("setCamScale", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
+			return nil
+		}
+		g.cam.Scale = args.Float(0)
+		g.cam.Snap()
+		return nil
+	}))
+
+	// setCamOffset(x, y) – set camera offset directly and snap to pixels.
+	js.Global().Set("setCamOffset", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
+			return nil
+		}
+		g.cam.OffsetX = args.Float(0)
+		g.cam.OffsetY = args.Float(1)
+		g.cam.Snap()
+		return nil
+	}))
+
+	// panBy(dx, dy) – adjust camera offset directly and snap to pixels.
+	js.Global().Set("panBy", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
+			return nil
+		}
+		dx := args.Float(0)
+		dy := args.Float(1)
+		g.cam.OffsetX += dx
+		g.cam.OffsetY += dy
+		g.cam.Snap()
+		return nil
+	}))
+
+	// gridToScreen(i,j) -> {x,y} screen coordinates for a grid position,
+	// even if no node exists there. Useful for clicking empty grid cells.
+	js.Global().Set("gridToScreen", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
+			return nil
+		}
+		i := args.Int(0)
+		j := args.Int(1)
+		unitPx := g.grid.UnitPixels(g.cam.Scale)
+		offX := math.Round(g.cam.OffsetX)
+		offY := math.Round(g.cam.OffsetY)
+		sx := offX + unitPx*float64(i)
+		sy := offY + unitPx*float64(j) + float64(gridTopOffset())
+		obj := js.Global().Get("Object").New()
+		obj.Set("x", int(sx))
+		obj.Set("y", int(sy))
+		return obj
+	}))
+
+	// nodeRect(i,j) -> {x,y,w,h} for a node at grid coordinates. nil if none.
+	js.Global().Set("nodeRect", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
+			return nil
+		}
+		i := args.Int(0)
+		j := args.Int(1)
+		n := g.nodeAt(i, j)
+		if n == nil {
+			return nil
+		}
+		x1, y1, x2, y2 := g.nodeScreenRect(n)
+		obj := js.Global().Get("Object").New()
+		obj.Set("x", int(x1))
+		obj.Set("y", int(y1))
+		obj.Set("w", int(x2-x1))
+		obj.Set("h", int(y2-y1))
+		return obj
+	}))
+
+	// nodeIdAt(i,j) -> id or -1 if none
+	js.Global().Set("nodeIdAt", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
+			return js.ValueOf(-1)
+		}
+		i := args.Int(0)
+		j := args.Int(1)
+		n := g.nodeAt(i, j)
+		if n == nil {
+			return js.ValueOf(-1)
+		}
+		return js.ValueOf(int(n.ID))
+	}))
+
+	// nodeHighlightedAt(i,j) -> bool using last drawn highlight state
+	js.Global().Set("nodeHighlightedAt", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
+			return js.ValueOf(false)
+		}
+		i := args.Int(0)
+		j := args.Int(1)
+		n := g.nodeAt(i, j)
+		if n == nil {
+			return js.ValueOf(false)
+		}
+		return js.ValueOf(g.lastNodeHLHas(n.ID))
+	}))
+
+	// openNodeMenu(i,j) -> opens the node popup for the node at grid coords.
+	js.Global().Set("openNodeMenu", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
+			return nil
+		}
+		i := args.Int(0)
+		j := args.Int(1)
+		n := g.nodeAt(i, j)
+		if n == nil {
+			return nil
+		}
+		g.sel = n
+		n.Selected = true
+		g.sidebar.Open(n)
+		return nil
+	}))
+
+	// centerCamera() resets the centered flag and re-runs Layout so the camera
+	// re-centers on the current splitY. Useful after the demo circuit changes
+	// splitY post-init.
+	js.Global().Set("centerCamera", jsFn(func(args jsArgs) any {
+		g.centered = false
+		g.Layout(g.winW, g.winH)
+		return nil
+	}))
+
+	// instrumentsList() -> string[] : returns the Go-side instrument ID list.
+	js.Global().Set("instrumentsList", jsFn(func(args jsArgs) any {
+		ids := audio.Instruments()
+		arr := js.Global().Get("Array").New(len(ids))
+		for i, id := range ids {
+			arr.SetIndex(i, string(id))
+		}
+		return arr
+	}))
+
+	// debugDrumLayout() -> object with all critical rendering state for mobile diagnosis.
+	js.Global().Set("debugDrumLayout", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return js.ValueOf(nil)
+		}
+		dv := g.drum
+		obj := js.Global().Get("Object").New()
+		obj.Set("bounds", rectToJS(dv.Bounds))
+		obj.Set("headerH", dv.headerH)
+		obj.Set("eqH", dv.eqH)
+		obj.Set("rowsAreaHeight", dv.rowsAreaHeight())
+		obj.Set("visibleRows", dv.visibleRows())
+		obj.Set("timelineRect", rectToJS(dv.timelineRect))
+		// Cell-indexed callers must use cellGridRect: the ribbon bar is
+		// narrowed by header-only chrome, the grid fills the full width.
+		obj.Set("cellGridRect", rectToJS(dv.cellGridRect))
+		obj.Set("rowHeight", dv.rowHeight())
+		obj.Set("rowOffset", dv.rowOffset)
+		obj.Set("isSmallScreen", Profile().IsMobile())
+		obj.Set("touchScreenWidth", touchScreenWidth)
+		obj.Set("touchScreenHeight", touchScreenHeight)
+		obj.Set("numRows", len(dv.Rows))
+		obj.Set("numRowCache", len(dv.rowCache))
+		obj.Set("rowsLayerExists", dv.rowsLayer != nil)
+		if dv.rowsLayer != nil {
+			obj.Set("rowsLayerW", dv.rowsLayerW)
+			obj.Set("rowsLayerH", dv.rowsLayerH)
+		}
+		obj.Set("rowsLayerDirty", dv.rowsLayerDirty)
+		obj.Set("rowCacheW", dv.rowCacheW)
+		obj.Set("rowCacheH", dv.rowCacheH)
+		obj.Set("directDrawCount", int(dv.directDrawCount))
+		obj.Set("directDrawCells", dv.directDrawCells)
+
+		// Per-row detail
+		rowsArr := js.Global().Get("Array").New(len(dv.Rows))
+		for i := range dv.Rows {
+			r := js.Global().Get("Object").New()
+			if i < len(dv.rowDirty) {
+				r.Set("dirty", dv.rowDirty[i])
+			}
+			if i < len(dv.rowFullDirty) {
+				r.Set("fullDirty", dv.rowFullDirty[i])
+			}
+			r.Set("cacheExists", i < len(dv.rowCache) && dv.rowCache[i] != nil)
+			r.Set("numSteps", len(dv.Rows[i].Steps))
+			onCount := 0
+			for _, s := range dv.Rows[i].Steps {
+				if s {
+					onCount++
+				}
+			}
+			r.Set("stepsOn", onCount)
+			if i < len(dv.rowsDrawnMask) {
+				r.Set("drawn", dv.rowsDrawnMask[i])
+			}
+			rowsArr.SetIndex(i, r)
+		}
+		obj.Set("rows", rowsArr)
+		return obj
+	}))
+
+	// debugDrumRender() -> object with per-frame render decision trace.
+	// Call forceDraw() first, then immediately call debugDrumRender() to
+	// inspect what happened in the most recent Draw().
+	js.Global().Set("debugDrumRender", jsFn(func(args jsArgs) any {
+		if g.drum == nil {
+			return js.ValueOf(nil)
+		}
+		dv := g.drum
+		obj := js.Global().Get("Object").New()
+		obj.Set("frame", int(dv.frame))
+		obj.Set("rowsLayerFrame", int(dv.rowsLayerFrame))
+		obj.Set("rowsLayerDirty", dv.rowsLayerDirty)
+		obj.Set("rowsLayerExists", dv.rowsLayer != nil)
+		obj.Set("rowsRepaints", dv.rowsRepaints)
+		obj.Set("rowsLayerBytes", dv.rowsLayerBytes)
+		obj.Set("visibleRows", dv.visibleRows())
+		obj.Set("rowsAreaHeight", dv.rowsAreaHeight())
+		obj.Set("directDrawCount", int(dv.directDrawCount))
+		obj.Set("directDrawCells", dv.directDrawCells)
+
+		// Check how many visible rows were drawn
+		vis := dv.visibleRows()
+		drawn := 0
+		for i := dv.rowOffset; i < dv.rowOffset+vis && i < len(dv.Rows); i++ {
+			if i >= 0 && i < len(dv.rowsDrawnMask) && dv.rowsDrawnMask[i] {
+				drawn++
+			}
+		}
+		obj.Set("drawnRows", drawn)
+		return obj
+	}))
+}

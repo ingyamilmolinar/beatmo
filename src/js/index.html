@@ -2,23 +2,1074 @@
 <html>
 <head>
   <meta charset="UTF-8"/>
-  <title>Tunkul - Ebitengine WASM</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>Beatmo</title>
+  <script>
+    // FIRST thing on the page: start the game's download, then decide whether
+    // to show the landing (spec docs/superpowers/specs/2026-10-23-landing-page-design.md).
+    // "main.wasm" is stamped to the content-hashed name by the deploy
+    // (main.<sha16>.wasm, immutable), so the name doubles as the build id.
+    (function () {
+      var boot = (window.__beatmoBoot = window.__beatmoBoot || {});
+      boot.wasmFetchStart = performance.now();
+      // THE game canvas (Ebiten appends it to <body> at boot). Never take the
+      // first <canvas> on the page: while the landing is up its crystal canvas
+      // comes first, and every listener bound to "the canvas" landed on it.
+      window.__beatmoGameCanvas = function () {
+        return document.querySelector("canvas:not(#lc-crystal)");
+      };
+      var name = (window.__beatmoWasmName = "main.wasm");
+      window.__beatmoWasm = fetch("main.wasm");
+      // The landing (the tutorial demo) shows on every visit until the visitor
+      // ticks "Do not show tutorial demo again" (landing.js stores the opt-out
+      // under the same key). ?landing=1 / ?landing=0 force either way. An
+      // unstamped name means a dev / serve-lan / browser-test page: no landing
+      // unless asked, so real-input tests keep clicking the game's canvas
+      // (`make serve-landing` serves a stamped page).
+      var q = /[?&]landing=([01])/.exec(location.search), optedOut = false;
+      try { optedOut = localStorage.getItem("beatmo.landing.optOut") === "1"; } catch (_) {}
+      var deployed = /^main\.[0-9a-f]{16}\.wasm$/.test(name);
+      var show = q ? q[1] === "1" : deployed && !optedOut;
+      if (!show) return;
+      var root = document.documentElement;
+      root.setAttribute("data-landing", "");
+      // Each layout has its own recording: the portrait phone cut or the 16:9 desktop cut.
+      root.setAttribute("data-cut", matchMedia("(max-aspect-ratio: 1/1)").matches ? "phone" : "desktop");
+      // While the landing is up its keys must not reach the game: this
+      // capture listener is registered before Ebiten's, and landing.js reads
+      // the keys from here.
+      addEventListener("keydown", function (e) {
+        if (!root.hasAttribute("data-landing")) return;
+        e.stopImmediatePropagation();
+        if (window.__beatmoLandingKey) window.__beatmoLandingKey(e);
+      }, true);
+      import("./landing.js");
+    })();
+  </script>
   <style>
-    body, html { margin:0; padding:0; background:#222; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #222;
+      overflow: hidden;
+      position: fixed;
+      width: 100%;
+      /* Ebiten's web runtime forces `height: 100%` INLINE on <html>/<body> and
+         the canvas. On iOS Safari `height:100%` resolves to the LAYOUT viewport,
+         which doesn't update promptly on an orientation change — so after
+         rotating back to portrait the canvas stays the wrong height (a black
+         band at the top + a mis-scaled game resolution). We override that inline
+         height with `!important` (stylesheet !important beats inline) bound to
+         --app-vh, which JS pins to the ACTUAL visible viewport (see syncAppVh
+         below) and re-applies on every resize/orientationchange. Falls back to
+         100dvh (dynamic viewport) until JS runs — already better than 100%. */
+      height: var(--app-vh, 100dvh) !important;
+    }
+    /* NOTE: do NOT force the canvas height/width directly. Ebiten owns the
+       canvas (inline width/height:100% of the body) and derives its framebuffer
+       from the canvas's client size; pinning a fixed canvas height fought that
+       and left the framebuffer the wrong shape (a black box over half the
+       screen). Correcting the BODY height above is enough — the canvas fills the
+       corrected body at 100% in both axes. */
+    canvas {
+      touch-action: none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    #loading-indicator {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #888;
+      font-family: sans-serif;
+      font-size: 14px;
+      z-index: 10;
+      pointer-events: none;
+    }
+    #loading-indicator.hidden { display: none; }
+
+    /* Landscape is unsupported on small (phone) screens. A pure-CSS overlay,
+       anchored to the visible viewport (position:fixed; inset:0), covers the
+       canvas and shows a rotate-to-portrait notice. Driven by the real
+       orientation media query — NOT the Ebiten framebuffer — so it can't be
+       mis-positioned by canvas/DPR sizing races on rotation (the "top half
+       black, message in the bottom half" bug). pointer-events:auto blocks all
+       input to the canvas beneath while shown. Rotating back to portrait hides
+       it automatically (media query), so the transition is seamless. */
+    #landscape-block {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 100000;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 24px;
+      box-sizing: border-box;
+      background: #120A1C;
+      color: #FDF2FF;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      pointer-events: auto;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    #landscape-block .lb-title { font-size: 22px; font-weight: 600; margin-bottom: 12px; }
+    #landscape-block .lb-body { font-size: 15px; color: #C9B8D6; max-width: 32em; line-height: 1.4; }
+    @media screen and (orientation: landscape) and (max-width: 900px) {
+      #landscape-block { display: flex; }
+    }
+    /* ---- Landing (shown only when the head script set data-landing) ---- */
+    #landing { display: none; }
+    html[data-landing] #landing {
+      display: block; position: fixed; inset: 0; z-index: 50; overflow: hidden;
+      --bg: #120A1C; --s1: #1C1230; --s2: #281A40; --hi: #FDF2FF; --mid: #C9B8D6; --dim: #8A7A9C; --acc: #FFB30A;
+      background: var(--bg); color: var(--hi); touch-action: none; overscroll-behavior: none;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      -webkit-user-select: none; user-select: none; transition: opacity .45s;
+    }
+    #landing.lc-out { opacity: 0; pointer-events: none; }
+    #lc-crystal { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .lc-video { position: absolute; left: 50%; top: 47%; transform: translate(-50%, -50%);
+      width: min(58vw, 92vh * 16 / 9 * .62); aspect-ratio: 16 / 9; border-radius: 6px; overflow: hidden;
+      background: #000 url(landing/desktop.webp) center / cover; box-shadow: 0 0 0 1px color-mix(in srgb, var(--acc) 40%, transparent); }
+    .lc-video video { width: 100%; height: 100%; display: block; object-fit: cover; }
+    .lc-brand { position: absolute; left: 28px; top: 24px; padding: 14px 18px; margin: -14px -18px;
+      border-radius: 8px; background: color-mix(in srgb, var(--bg) 70%, transparent); }
+    .lc-brand h1 { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: .22em; }
+    .lc-brand h1 b { color: var(--acc); }
+    .lc-brand p { margin: 10px 0 0; max-width: 280px; color: var(--mid); font-size: 14px; line-height: 1.45; }
+    .lc-top { position: absolute; right: 24px; top: 20px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+    #lc-play { display: flex; align-items: center; gap: 10px; padding: 10px 18px; border-radius: 4px; border: 0;
+      font: 700 15px system-ui, sans-serif; background: var(--s2); color: var(--dim); cursor: default; }
+    #lc-play.ready { background: var(--acc); color: var(--bg); cursor: pointer; animation: lc-pulse 1.2s infinite;
+      box-shadow: 0 0 24px color-mix(in srgb, var(--acc) 70%, transparent); }
+    @keyframes lc-pulse { 50% { box-shadow: 0 0 36px color-mix(in srgb, var(--acc) 90%, transparent); } }
+    #lc-optout { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+    #lc-optout .lc-box { width: 12px; height: 12px; box-sizing: border-box; border: 1.5px solid var(--mid); border-radius: 2px; position: relative; flex: none; }
+    #lc-optout[aria-checked="true"] { color: var(--hi); border-color: var(--acc); }
+    #lc-optout[aria-checked="true"] .lc-box { background: var(--acc); border-color: var(--acc); }
+    #lc-optout[aria-checked="true"] .lc-box::after { content: ""; position: absolute; left: 3px; top: 0; width: 3px; height: 7px;
+      border: solid var(--bg); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+    .lc-ring { width: 16px; height: 16px; border-radius: 50%; background: conic-gradient(var(--acc) var(--p, 8%), #ffffff22 0); }
+    #lc-play.ready .lc-ring { display: none; }
+    .lc-chip, .lc-chapters button, .lc-tips button { font: 600 12px system-ui, sans-serif; color: var(--mid); background: var(--s1);
+      border: 1px solid var(--s2); padding: 7px 11px; border-radius: 4px; cursor: pointer; }
+    #lc-cap { position: absolute; box-sizing: border-box; width: 240px; padding: 12px 14px; border-radius: 8px; opacity: 0;
+      background: color-mix(in srgb, var(--bg) 82%, transparent); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+      border-left: 2px solid var(--acc); transition: opacity .35s, transform .35s; transform: translateY(6px); }
+    #lc-cap.on { opacity: 1; transform: none; }
+    #lc-cap .t { font-size: 17px; font-weight: 700; }
+    #lc-cap .s { margin-top: 4px; font-size: 13px; color: var(--mid); }
+    .lc-chapters { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; gap: 6px; }
+    .lc-chapters button { position: relative; overflow: hidden; }
+    .lc-chapters button i { position: absolute; left: 0; bottom: 0; height: 2px; background: var(--acc); width: 0; }
+    .lc-chapters button.on { color: var(--hi); border-color: var(--acc); }
+    #lc-seed { position: absolute; left: 28px; bottom: 22px; font: 11px ui-monospace, monospace; color: var(--dim); }
+    .lc-tips { position: absolute; right: 24px; bottom: 16px; display: flex; gap: 6px; }
+    .lc-tips button { font: 11px ui-monospace, monospace; padding: 5px 8px; color: var(--hi); }
+    .lc-tips kbd { color: var(--acc); font: 700 11px ui-monospace, monospace; margin-right: 5px; }
+    #lc-toast { position: absolute; left: 50%; top: 18px; transform: translateX(-50%); padding: 8px 14px; border-radius: 4px;
+      background: var(--s1); border: 1px solid var(--acc); font: 600 13px system-ui, sans-serif; opacity: 0; transition: opacity .25s; pointer-events: none; }
+    html[data-cut="phone"] .lc-video { top: 44%; width: auto; height: min(56vh, 70vw * 844 / 390); aspect-ratio: 390 / 844;
+      background-image: url(landing/phone.webp); }
+    html[data-cut="phone"] .lc-brand { left: 16px; top: 16px; }
+    html[data-cut="phone"] .lc-brand p { display: none; }
+    html[data-cut="phone"] .lc-top { right: 16px; top: 14px; }
+    html[data-cut="phone"] #lc-cap { width: auto; text-align: center; border-left: 0; border-top: 2px solid var(--acc); padding: 8px 12px; }
+    html[data-cut="phone"] #lc-cap .t { font-size: 15px; }
+    html[data-cut="phone"] #lc-cap .s { font-size: 12px; }
+    html[data-cut="phone"] .lc-chapters { bottom: 84px; width: calc(100vw - 16px); justify-content: center; gap: 4px; }
+    /* Phone: the bottom stack is chapters · opt-out · crystal tips (the top
+       right only has room for Play and Sound above the video). */
+    html[data-cut="phone"] #lc-optout { position: fixed; left: 50%; bottom: 48px; transform: translateX(-50%); white-space: nowrap; font-size: 11px; padding: 6px 10px; }
+    html[data-cut="phone"] #lc-toast { top: 40%; max-width: calc(100vw - 48px); text-align: center; }
+    html[data-cut="phone"] .lc-chapters button { padding: 6px 7px; font-size: 11px; }
+    html[data-cut="phone"] #lc-seed { display: none; }
+    html[data-cut="phone"] .lc-tips { left: 8px; right: 8px; bottom: 12px; justify-content: center; }
   </style>
 </head>
 <body>
+  <!-- Landing (spec docs/superpowers/specs/2026-10-23-landing-page-design.md).
+       Visible only when the head script set data-landing; landing.js wires it. -->
+  <div id="landing">
+    <canvas id="lc-crystal"></canvas>
+    <div class="lc-video" id="lc-frame"><video id="lc-video" muted playsinline loop preload="none" crossorigin="anonymous"></video></div>
+    <div class="lc-brand"><h1>BEAT<b>MO</b></h1><p>A drum machine you wire like a circuit. Draw paths on a grid; signals walk them; every node they reach plays.</p></div>
+    <div class="lc-top">
+      <button id="lc-play" disabled><span class="lc-ring" id="lc-ring"></span><span id="lc-play-label">Loading game…</span></button>
+      <button class="lc-chip" id="lc-sound">Tap for sound</button>
+      <button class="lc-chip" id="lc-optout" role="checkbox" aria-checked="false"><span class="lc-box"></span>Do not show tutorial demo again</button>
+    </div>
+    <div id="lc-cap"><div class="t"></div><div class="s"></div></div>
+    <div class="lc-chapters" id="lc-chapters"></div>
+    <div id="lc-seed"></div>
+    <div class="lc-tips">
+      <button data-k="r"><kbd>R</kbd><span id="lc-rule">Crystal</span></button>
+      <button data-k="-"><kbd>−</kbd>slower</button>
+      <button data-k="+"><kbd>+</kbd>faster</button>
+      <button data-k="t"><kbd>T</kbd><span id="lc-theme">Vice City</span></button>
+    </div>
+    <div id="lc-toast"></div>
+  </div>
+  <script>
+    // A landing that is not shown leaves nothing behind (as handOver removes
+    // it after Play): its hidden canvas would otherwise be the page's first.
+    if (!document.documentElement.hasAttribute("data-landing")) document.getElementById("landing").remove();
+  </script>
+  <div id="loading-indicator">Loading...</div>
+  <!-- Landscape-unsupported overlay (shown via the orientation media query). -->
+  <div id="landscape-block" aria-hidden="true" role="alertdialog">
+    <div class="lb-title">Rotate your device</div>
+    <div class="lb-body">Landscape isn't supported yet — turn your phone upright to keep playing.</div>
+  </div>
+  <script>
+    // ---------------------------------------------------------------------
+    // Wheel transport shim (see src/go/internal/ui/input_dynamics.go).
+    //
+    // Ebiten's JS backend does two things that break wheel handling:
+    //   1. it ASSIGNS `WheelY = -deltaY` per event, so when several wheel
+    //      events land in one frame only the last survives;
+    //   2. it DISCARDS `deltaMode`, which is the only way to tell a Chrome
+    //      notch (deltaY ~100, DOM_DELTA_PIXEL) from a Firefox notch
+    //      (deltaY ~3, DOM_DELTA_LINE) -- a ~33x difference. Ebiten even
+    //      carries an upstream "TODO: What if e.deltaMode is not
+    //      DOM_DELTA_PIXEL?" at that line.
+    //
+    // Without deltaMode, Go cannot size a wheel notch, and one browser notch
+    // scrolled a menu through its entire list.
+    //
+    // This is DUMB TRANSPORT on purpose: it accumulates raw deltas and reports
+    // deltaMode verbatim. Every conversion decision lives in Go
+    // (wheelNotchesFromRaw), per the JS Test Charter -- "logic correctness
+    // lives in Go". Do not add unit math here.
+    //
+    // Double-buffered on requestAnimationFrame: `pending` collects events as
+    // they arrive, and each animation frame promotes it to the fields Go
+    // reads. That keeps the value STABLE for the whole frame, which matters
+    // because several Go call sites read the wheel per frame (grid dispatcher,
+    // drum row fallback, tree, camera) and all must see the same movement. It
+    // also makes us independent of whether our rAF callback runs before or
+    // after Ebiten's.
+    (function () {
+      var pending = { x: 0, y: 0, mode: 0 };
+      // Fields Go reads (syscall/js: __beatmoWheel.x / .y / .mode).
+      var out = { x: 0, y: 0, mode: 0 };
+      window.__beatmoWheel = out;
+
+      window.addEventListener('wheel', function (e) {
+        // deltaMode is per-event and never changes mid-gesture in practice.
+        // If it DOES change, the pending deltas are in the old unit, so drop
+        // them rather than summing incompatible units.
+        if (e.deltaMode !== pending.mode) {
+          pending.x = 0;
+          pending.y = 0;
+          pending.mode = e.deltaMode;
+        }
+        pending.x += e.deltaX;
+        pending.y += e.deltaY;
+      }, { capture: true, passive: true });
+
+      (function promote() {
+        out.x = pending.x;
+        out.y = pending.y;
+        out.mode = pending.mode;
+        pending.x = 0;
+        pending.y = 0;
+        requestAnimationFrame(promote);
+      })();
+    })();
+  </script>
+  <script>
+    // Localized text is pushed from Go (single i18n source) via this setter, so
+    // the overlay tracks the in-app language. English is baked in as the
+    // pre-WASM fallback. Visibility is pure CSS (orientation media query).
+    window.__beatmoSetLandscapeText = function (title, body) {
+      try {
+        var el = document.getElementById('landscape-block');
+        if (!el) return;
+        if (title) el.querySelector('.lb-title').textContent = title;
+        if (body) el.querySelector('.lb-body').textContent = body;
+      } catch (_) { /* ignore */ }
+    };
+
+    // iOS Safari mis-reports 100dvh across orientation changes: after rotating
+    // back to portrait the layout-viewport height can stay at a stale value, so
+    // the canvas (100% of body) ends up TALLER than the visible viewport — a
+    // ~10% black band at the top and a wrong (too-tall) game resolution. Pin the
+    // app height to the ACTUAL visible viewport and re-apply on every resize /
+    // orientation change so the Ebiten canvas always refits exactly.
+    (function () {
+      function syncAppVh() {
+        var h = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+        if (h > 0) document.documentElement.style.setProperty('--app-vh', h + 'px');
+      }
+      window.__beatmoSyncAppVh = syncAppVh; // exposed for tests
+      syncAppVh();
+      window.addEventListener('resize', syncAppVh);
+      window.addEventListener('orientationchange', function () {
+        // iOS settles the viewport a few frames after the event fires; re-apply.
+        syncAppVh();
+        setTimeout(syncAppVh, 100);
+        setTimeout(syncAppVh, 400);
+      });
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', syncAppVh);
+      }
+    })();
+  </script>
+  <!-- Hidden proxy input for mobile soft keyboard activation -->
+  <input id="beatmo-kb-proxy"
+         style="position:fixed;left:-9999px;top:50%;opacity:0;width:1px;height:1px;border:none;padding:0"
+         autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+         inputmode="text">
+  <script>
+    // Soft keyboard proxy bridge
+    (function() {
+      const proxy = document.getElementById('beatmo-kb-proxy');
+      let charBuf = [];
+
+      proxy.addEventListener('beforeinput', function(e) {
+        if (e.inputType === 'deleteContentBackward') {
+          charBuf.push('\b');
+        }
+      });
+      proxy.addEventListener('input', function(e) {
+        // 'beforeinput' already captured backspace; skip if last char was backspace
+        if (charBuf.length > 0 && charBuf[charBuf.length - 1] === '\b') {
+          return;
+        }
+        const data = e.data;
+        if (data) {
+          for (let i = 0; i < data.length; i++) {
+            charBuf.push(data[i]);
+          }
+        }
+      });
+      proxy.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+          charBuf.push('\n');
+          e.preventDefault();
+        } else if (e.key === 'Backspace') {
+          // Buffer Backspace from the KEYDOWN event, not `beforeinput`.
+          // `beforeinput(deleteContentBackward)` does NOT fire on an EMPTY proxy
+          // input in WebKit/Safari — the proxy value is kept empty (the app draws
+          // its own text), so hardware-keyboard Backspace was silently dropped on
+          // Safari ("click, see cursor, backspace does nothing"). keydown fires
+          // for Backspace on every engine and is buffered here, so even a very
+          // short press is never missed (Ebiten's per-frame isKeyPressed would).
+          // preventDefault stops the browser's own delete + the beforeinput it
+          // would trigger, so we don't double-count. Mobile soft keyboards that
+          // report Backspace as key='Unidentified' still fall through to the
+          // beforeinput handler above.
+          charBuf.push('\b');
+          e.preventDefault();
+        } else if (e.key === 'Escape') {
+          // The hidden proxy holds keyboard focus, so the canvas/ebiten never
+          // sees this Esc. Forward it to the universal Esc handler (cancel +
+          // close the active text input) and dismiss the soft keyboard.
+          if (typeof window._kbProxyEscapeGo === 'function') {
+            window._kbProxyEscapeGo();
+          }
+          charBuf = [];
+          proxy.blur();
+          e.preventDefault();
+        } else if (e.key === 'ArrowLeft') {
+          // Same reason as Esc: the proxy holds focus, so caret-navigation keys
+          // never reach the canvas. Forward Left/Right to move the focused text
+          // input's caret in Go (preventDefault so the proxy's own hidden caret
+          // doesn't fight it).
+          if (typeof window._kbProxyArrowLeftGo === 'function') {
+            window._kbProxyArrowLeftGo();
+          }
+          e.preventDefault();
+        } else if (e.key === 'ArrowRight') {
+          if (typeof window._kbProxyArrowRightGo === 'function') {
+            window._kbProxyArrowRightGo();
+          }
+          e.preventDefault();
+        } else if (e.key === 'Home') {
+          // Caret jump-to-start. Same out-of-band bridge as the arrows: the
+          // proxy holds focus, so forward to Go and preventDefault so the
+          // proxy's own hidden caret doesn't fight it.
+          if (typeof window._kbProxyHomeGo === 'function') {
+            window._kbProxyHomeGo();
+          }
+          e.preventDefault();
+        } else if (e.key === 'End') {
+          if (typeof window._kbProxyEndGo === 'function') {
+            window._kbProxyEndGo();
+          }
+          e.preventDefault();
+        } else if (e.key === 'Delete') {
+          // Forward-delete. Buffer it as the DEL (\x7f) sentinel into charBuf,
+          // mirroring how Backspace is buffered as \b — the focused TextInput's
+          // softKeyboardDrainChars turns \x7f into a delete-at-caret. keydown
+          // (not beforeinput) so a very short press is never dropped; the proxy
+          // value stays empty so its own deleteContentForward never fires.
+          charBuf.push('\x7f');
+          e.preventDefault();
+        } else if (e.key === ' ' && !e.isComposing) {
+          // Space, buffered from KEYDOWN — same reliability reason as Backspace
+          // above. The proxy value is kept EMPTY (the app draws its own text), and
+          // some engines do NOT fire the 'input' event for a space typed into an
+          // empty/off-screen input, so Space — captured ONLY via 'input' — was
+          // silently dropped ("caret goes to the start, Space adds nothing") while
+          // keydown-forwarded arrows still worked. keydown fires for Space on every
+          // engine, so buffer it here and preventDefault so the browser's own
+          // insert + the 'input' it would trigger don't double-count it. Also stops
+          // Space's default page-scroll. Skipped while composing (e.isComposing) so
+          // IME candidate-selection with Space is unaffected — Space then flows to
+          // the composition and its committed text arrives via 'input' as usual.
+          charBuf.push(' ');
+          e.preventDefault();
+        }
+      });
+
+      window._kbProxyFocus = function(inputmode) {
+        proxy.setAttribute('inputmode', inputmode || 'text');
+        proxy.value = '';
+        charBuf = [];
+        proxy.focus();
+      };
+      window._kbProxyBlur = function() {
+        proxy.blur();
+        charBuf = [];
+      };
+      window._kbProxyDrain = function() {
+        const out = charBuf.slice();
+        charBuf = [];
+        return out;
+      };
+      window._kbProxySetValue = function(text) {
+        proxy.value = text || '';
+      };
+    })();
+  </script>
+  <script>
+    // Focus-rect system: registers canvas regions that should trigger soft keyboard
+    // focus on touchend. Mobile browsers require input.focus() inside a trusted
+    // gesture handler; Go's game loop calls focus() 1-2 frames late, so the browser
+    // silently ignores it. This listener runs synchronously on touchend.
+    (function() {
+      const proxy = document.getElementById('beatmo-kb-proxy');
+      const rects = new Map(); // id -> {x, y, w, h, inputmode}
+
+      window._kbRegisterFocusRect = function(id, x, y, w, h, inputmode) {
+        rects.set(id, { x: x, y: y, w: w, h: h, inputmode: inputmode || 'text' });
+      };
+      window._kbClearFocusRects = function() {
+        rects.clear();
+      };
+      window._kbUnregisterFocusRect = function(id) {
+        rects.delete(id);
+      };
+
+      function onCanvasTouchEnd(e) {
+        if (!e.changedTouches || e.changedTouches.length === 0) return;
+        const touch = e.changedTouches[0];
+        const canvas = e.currentTarget;
+        const cr = canvas.getBoundingClientRect();
+        // Convert client coords to canvas logical coords (game coordinates = CSS pixels)
+        const cx = touch.clientX - cr.left;
+        const cy = touch.clientY - cr.top;
+
+        for (const rect of rects.values()) {
+          if (cx >= rect.x && cx <= rect.x + rect.w &&
+              cy >= rect.y && cy <= rect.y + rect.h) {
+            proxy.setAttribute('inputmode', rect.inputmode);
+            proxy.value = '';
+            proxy.focus();
+            return;
+          }
+        }
+      }
+
+      // Attach listener when canvas is available
+      function attachFocusRectListener() {
+        const canvas = window.__beatmoGameCanvas();
+        if (!canvas) {
+          requestAnimationFrame(attachFocusRectListener);
+          return;
+        }
+        canvas.addEventListener('touchend', onCanvasTouchEnd, { passive: true });
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', attachFocusRectListener);
+      } else {
+        attachFocusRectListener();
+      }
+    })();
+  </script>
+  <script>
+    // Mobile native input system: creates real HTML <input> overlays on canvas for
+    // text entry on mobile. Mobile browsers silently ignore input.focus() calls
+    // outside trusted gesture handlers (touchend, click). This system creates the
+    // native input WITHIN the touchend gesture context so the soft keyboard appears
+    // automatically. Desktop behavior is unchanged (uses Ebiten TextInput).
+    (function() {
+      const registrations = new Map(); // id -> {x, y, w, h, text, maxLen, inputMode}
+      const triggers = new Map();      // id -> {trigX, trigY, trigW, trigH, inputX, inputY, inputW, inputH, text, maxLen, inputMode}
+      let activeInput = null;          // {id, element, result}
+      let touchStartPos = null;        // {x, y} for drag detection
+
+      // --- Registration functions (called each layout pass from Go) ---
+
+      window._mobileInputRegister = function(id, x, y, w, h, text, maxLen, inputMode) {
+        registrations.set(id, { x, y, w, h, text: text || '', maxLen: maxLen || 64, inputMode: inputMode || 'text' });
+      };
+
+      window._mobileInputRegisterTrigger = function(id, trigX, trigY, trigW, trigH, inputX, inputY, inputW, inputH, text, maxLen, inputMode) {
+        triggers.set(id, {
+          trigX, trigY, trigW, trigH,
+          inputX, inputY, inputW, inputH,
+          text: text || '', maxLen: maxLen || 64, inputMode: inputMode || 'text',
+        });
+      };
+
+      window._mobileInputClear = function() {
+        registrations.clear();
+        triggers.clear();
+      };
+
+      // --- Lifecycle functions (polled from Go each frame) ---
+
+      window._mobileInputActive = function(id) {
+        return activeInput !== null && activeInput.id === id &&
+               (activeInput.element !== null || activeInput.result !== null);
+      };
+
+      window._mobileInputAnyActive = function() {
+        return activeInput !== null &&
+               (activeInput.element !== null || activeInput.result !== null);
+      };
+
+      window._mobileInputPollResult = function(id) {
+        if (!activeInput || activeInput.id !== id || !activeInput.result) return null;
+        const r = activeInput.result;
+        activeInput = null;
+        return r;
+      };
+
+      window._mobileInputGetValue = function(id) {
+        if (!activeInput || activeInput.id !== id || !activeInput.element) return null;
+        return activeInput.element.value;
+      };
+
+      window._mobileInputClose = function(id) {
+        if (activeInput && activeInput.id === id) {
+          closeActiveInput();
+        }
+      };
+
+      window._mobileInputCloseAll = function() {
+        closeActiveInput();
+      };
+
+      // --- Internal helpers ---
+
+      // detachInput removes the native <input> for an entry exactly once.
+      // It nulls entry.element BEFORE calling remove() because removing a focused
+      // element synchronously fires a 'blur' event whose handler would otherwise
+      // try to remove the same node again — that double-remove throws
+      // "NotFoundError: ... no longer a child of this node" (an uncaught pageerror
+      // that aborts the browser-test's waitForFunction polling). Nulling first
+      // makes the blur handler's `entry.element !== null` guard a no-op; the
+      // try/catch is belt-and-suspenders against any other re-entrant removal.
+      function detachInput(entry) {
+        if (!entry) return;
+        const el = entry.element;
+        entry.element = null;
+        if (el && el.parentNode) {
+          try { el.remove(); } catch (_) { /* already detached */ }
+        }
+      }
+
+      function closeActiveInput() {
+        if (!activeInput) return;
+        detachInput(activeInput);
+        activeInput = null;
+      }
+
+      function createNativeInput(id, x, y, w, h, text, maxLen, inputMode) {
+        // Close any existing native input
+        closeActiveInput();
+
+        const canvas = window.__beatmoGameCanvas();
+        if (!canvas) return;
+        const cr = canvas.getBoundingClientRect();
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.setAttribute('inputmode', inputMode || 'text');
+        input.setAttribute('autocomplete', 'off');
+        input.setAttribute('autocorrect', 'off');
+        input.setAttribute('autocapitalize', 'off');
+        input.setAttribute('spellcheck', 'false');
+        if (maxLen > 0) input.setAttribute('maxlength', String(maxLen));
+        input.value = text || '';
+
+        // Style: fixed position over the canvas, dark theme
+        input.style.cssText = [
+          'position:fixed',
+          'z-index:10000',
+          'left:' + (cr.left + x) + 'px',
+          'top:' + (cr.top + y) + 'px',
+          'width:' + w + 'px',
+          'height:' + h + 'px',
+          'background:#1a1a2e',
+          'color:white',
+          'border:2px solid #4a90d9',
+          'font-size:16px',
+          'border-radius:3px',
+          'padding:0 4px',
+          'box-sizing:border-box',
+          'outline:none',
+          'font-family:monospace',
+        ].join(';');
+
+        const entry = { id: id, element: input, result: null };
+        activeInput = entry;
+
+        // Commit on Enter
+        input.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            entry.result = { value: input.value, committed: true };
+            detachInput(entry);
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            entry.result = { value: '', committed: false };
+            detachInput(entry);
+          }
+        });
+
+        // Commit on blur
+        input.addEventListener('blur', function() {
+          // Only commit if not already committed via Enter/Escape
+          if (entry.element !== null) {
+            entry.result = { value: input.value, committed: true };
+            detachInput(entry);
+          }
+        });
+
+        document.body.appendChild(input);
+        // Auto-focus and select text (within gesture context)
+        input.focus();
+        input.select();
+      }
+
+      function hitTest(cx, cy, rect) {
+        return cx >= rect.x && cx <= rect.x + rect.w &&
+               cy >= rect.y && cy <= rect.y + rect.h;
+      }
+
+      function hitTestTrigger(cx, cy, trig) {
+        return cx >= trig.trigX && cx <= trig.trigX + trig.trigW &&
+               cy >= trig.trigY && cy <= trig.trigY + trig.trigH;
+      }
+
+      // --- Gesture handler ---
+
+      function onCanvasTouchStart(e) {
+        if (!e.touches || e.touches.length === 0) return;
+        const t = e.touches[0];
+        touchStartPos = { x: t.clientX, y: t.clientY };
+      }
+
+      function onCanvasTouchEnd(e) {
+        if (!e.changedTouches || e.changedTouches.length === 0) return;
+        const touch = e.changedTouches[0];
+
+        // Movement gate — must match Go's tap detector (gesture.go,
+        // tapMaxMovePx=10) EXACTLY. Go accepts a tap when BOTH axes move <= 10px
+        // (a square envelope, ~14px diagonally) and opens the in-canvas editor.
+        // A Euclidean circle (dx*dx+dy*dy > 100) rejected diagonal real-finger
+        // jitter that Go accepts — so the editor opened but no native <input> was
+        // created and the soft keyboard never appeared on real iOS Safari. Use
+        // the same per-axis test so any gesture Go treats as a tap also raises
+        // the keyboard.
+        if (touchStartPos) {
+          const dx = Math.abs(touch.clientX - touchStartPos.x);
+          const dy = Math.abs(touch.clientY - touchStartPos.y);
+          if (dx > 10 || dy > 10) {
+            touchStartPos = null;
+            return;
+          }
+        }
+        touchStartPos = null;
+
+        const canvas = e.currentTarget;
+        const cr = canvas.getBoundingClientRect();
+        const cx = touch.clientX - cr.left;
+        const cy = touch.clientY - cr.top;
+
+        // Check trigger rects first (pencil buttons)
+        for (const [id, trig] of triggers.entries()) {
+          if (hitTestTrigger(cx, cy, trig)) {
+            createNativeInput(id, trig.inputX, trig.inputY, trig.inputW, trig.inputH,
+                              trig.text, trig.maxLen, trig.inputMode);
+            return;
+          }
+        }
+
+        // Check direct rects
+        for (const [id, rect] of registrations.entries()) {
+          if (hitTest(cx, cy, rect)) {
+            createNativeInput(id, rect.x, rect.y, rect.w, rect.h,
+                              rect.text, rect.maxLen, rect.inputMode);
+            return;
+          }
+        }
+      }
+
+      // Attach listeners when canvas is available
+      function attachMobileInputListeners() {
+        const canvas = window.__beatmoGameCanvas();
+        if (!canvas) {
+          requestAnimationFrame(attachMobileInputListeners);
+          return;
+        }
+        canvas.addEventListener('touchstart', onCanvasTouchStart, { passive: true });
+        canvas.addEventListener('touchend', onCanvasTouchEnd, { passive: true });
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', attachMobileInputListeners);
+      } else {
+        attachMobileInputListeners();
+      }
+    })();
+  </script>
+  <script>
+    // Pointer-type tracker: records whether the MOST RECENT pointer interaction
+    // was a touch/pen or a mouse. This is the correct discriminator for "should a
+    // text field use the native <input> overlay (created on touchend) or the
+    // buffered soft-keyboard proxy?" — NOT navigator.maxTouchPoints (device
+    // CAPABILITY). A touch-capable laptop / DevTools device-mode used with a MOUSE
+    // reports maxTouchPoints>0 yet fires no touchend, so the native <input> is
+    // never created and the editor was left inert ("mobile layout: click, see
+    // cursor, no key works"). pointerdown carries pointerType on every engine.
+    (function() {
+      let lastType = 'mouse';
+      const rec = function(e) { if (e && e.pointerType) lastType = e.pointerType; };
+      window.addEventListener('pointerdown', rec, { capture: true, passive: true });
+      // Fallback for the (rare) path that delivers touch without pointer events.
+      window.addEventListener('touchstart', function() { lastType = 'touch'; }, { capture: true, passive: true });
+      window._lastPointerWasTouch = function() { return lastType === 'touch' || lastType === 'pen'; };
+    })();
+  </script>
+  <script>
+    // File picker rect system: registers canvas regions (Import/Upload buttons in
+    // the mobile overflow menu) that should open a file picker on tap.
+    //
+    // iOS Safari will NOT open a file picker from a programmatic input.click()
+    // fired in a canvas `touchend` handler — it only reliably opens the native
+    // picker when the user physically taps a real <input type=file>. So for each
+    // registered rect we place a real, transparent <input type=file> OVERLAY over
+    // the button. The user's tap lands directly on the input, which every browser
+    // (including iOS Safari) honors. On change we stash the file via the `pending`
+    // map and call back into Go (_fpStartImport/_fpStartUpload) to run the normal
+    // import/upload flow, which consumes the pending pick through _fpConsumePending.
+    (function() {
+      const rects = new Map();    // id -> {x, y, w, h, accept}
+      const pending = new Map();  // id -> Promise<{data, name} | null>
+      const overlays = new Map(); // id -> HTMLInputElement
+
+      function canvasOffset() {
+        const c = window.__beatmoGameCanvas();
+        if (!c) return null;
+        const r = c.getBoundingClientRect();
+        return { left: r.left, top: r.top };
+      }
+
+      function removeOverlay(id) {
+        const el = overlays.get(id);
+        overlays.delete(id);
+        if (el && el.parentNode) { try { el.remove(); } catch (_) {} }
+      }
+      function removeAllOverlays() {
+        for (const id of Array.from(overlays.keys())) removeOverlay(id);
+      }
+
+      // Read the picked file into the shape _fpConsumePending resolves with.
+      function readPick(file, accept) {
+        if (!file) return Promise.resolve(null);
+        if (accept && accept.indexOf('.json') >= 0) {
+          const MAX = 5 * 1024 * 1024; // 5MB guard, mirrors the JSON import cap
+          if (typeof file.size === 'number' && file.size > MAX) {
+            console.warn('[FilePicker] file too large:', file.size);
+            return Promise.resolve(null);
+          }
+          return file.text().then((text) => ({ data: text, name: file.name })).catch(() => null);
+        }
+        // WAV/other: object URL
+        try { return Promise.resolve({ data: URL.createObjectURL(file), name: file.name }); }
+        catch (_) { return Promise.resolve(null); }
+      }
+
+      // Create (or replace) the transparent file-input overlay for a rect.
+      function makeOverlay(id, rect) {
+        removeOverlay(id);
+        const off = canvasOffset();
+        if (!off) return; // canvas not ready; rect still stored for fallback path
+        const input = document.createElement('input');
+        input.type = 'file';
+        if (rect.accept) input.accept = rect.accept;
+        input.setAttribute('data-fp-id', id);
+        input.setAttribute('aria-hidden', 'true');
+        input.tabIndex = -1;
+        input.style.cssText = [
+          'position:fixed',
+          'z-index:9999',
+          'left:' + (off.left + rect.x) + 'px',
+          'top:' + (off.top + rect.y) + 'px',
+          'width:' + rect.w + 'px',
+          'height:' + rect.h + 'px',
+          'margin:0', 'padding:0', 'border:0',
+          'opacity:0',
+          // 16px avoids iOS auto-zoom; the element is invisible either way.
+          'font-size:16px',
+          'cursor:pointer',
+        ].join(';');
+        input.addEventListener('change', () => {
+          const file = input.files && input.files[0];
+          pending.set(id, readPick(file, rect.accept || ''));
+          if (!file) return;
+          if (id === 'import') { if (window._fpStartImport) window._fpStartImport(); }
+          else if (id === 'upload') { if (window._fpStartUpload) window._fpStartUpload(); }
+        });
+        document.body.appendChild(input);
+        overlays.set(id, input);
+      }
+
+      window._fpRegisterRect = function(id, x, y, w, h, accept) {
+        const rect = { x: x, y: y, w: w, h: h, accept: accept || '' };
+        rects.set(id, rect);
+        makeOverlay(id, rect);
+      };
+      window._fpClearRects = function() {
+        rects.clear();
+        removeAllOverlays();
+      };
+
+      // Consume a pending file pick result. Returns a Promise or null.
+      window._fpConsumePending = function(id) {
+        const p = pending.get(id);
+        if (p) {
+          pending.delete(id);
+          return p;
+        }
+        return null;
+      };
+
+      // Test-observability hook: returns the currently registered rects keyed by
+      // id. Go caches a reference to _fpRegisterRect at init, so tests cannot
+      // intercept registration by reassigning the global; this reads the
+      // authoritative closure-owned map instead.
+      window._fpDebugRects = function() {
+        const out = {};
+        for (const [id, r] of rects.entries()) out[id] = { x: r.x, y: r.y, w: r.w, h: r.h, accept: r.accept };
+        return out;
+      };
+
+      // Reposition overlays if the canvas moves/resizes while a menu is open so
+      // the invisible inputs stay aligned with their (canvas-drawn) buttons.
+      function repositionOverlays() {
+        const off = canvasOffset();
+        if (!off) return;
+        for (const [id, rect] of rects.entries()) {
+          const el = overlays.get(id);
+          if (!el) continue;
+          el.style.left = (off.left + rect.x) + 'px';
+          el.style.top = (off.top + rect.y) + 'px';
+        }
+      }
+      window.addEventListener('resize', repositionOverlays);
+      window.addEventListener('scroll', repositionOverlays, { passive: true });
+    })();
+  </script>
+  <script>
+    // Touch debug mode: enable via ?touchDebug=1 or window.BEATMO_TOUCH_DEBUG = true
+    (function() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const debugParam = urlParams.get('touchDebug');
+      window.BEATMO_TOUCH_DEBUG = debugParam === '1' || debugParam === 'true';
+
+      if (window.BEATMO_TOUCH_DEBUG) {
+        console.log('[Beatmo Touch Debug] Enabled via URL parameter');
+        console.log('[Beatmo Touch Debug] DPR:', window.devicePixelRatio);
+        console.log('[Beatmo Touch Debug] Screen:', screen.width, 'x', screen.height);
+        console.log('[Beatmo Touch Debug] Window:', window.innerWidth, 'x', window.innerHeight);
+      }
+
+      // Debug logging function
+      function logTouchEvent(type, event) {
+        if (!window.BEATMO_TOUCH_DEBUG) return;
+
+        const canvas = window.__beatmoGameCanvas();
+        const rect = canvas ? canvas.getBoundingClientRect() : null;
+
+        const touches = Array.from(event.touches || []).map(t => ({
+          id: t.identifier,
+          clientX: t.clientX,
+          clientY: t.clientY,
+          pageX: t.pageX,
+          pageY: t.pageY,
+          canvasX: rect ? Math.round(t.clientX - rect.left) : null,
+          canvasY: rect ? Math.round(t.clientY - rect.top) : null,
+        }));
+
+        const changedTouches = Array.from(event.changedTouches || []).map(t => ({
+          id: t.identifier,
+          clientX: t.clientX,
+          clientY: t.clientY,
+          canvasX: rect ? Math.round(t.clientX - rect.left) : null,
+          canvasY: rect ? Math.round(t.clientY - rect.top) : null,
+        }));
+
+        console.log(`[Touch ${type}]`, {
+          touches,
+          changedTouches,
+          canvasRect: rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null,
+          dpr: window.devicePixelRatio,
+          timestamp: Date.now(),
+        });
+      }
+
+      // Debug logging for pointer events (modern mobile browsers)
+      function logPointerEvent(type, event) {
+        if (!window.BEATMO_TOUCH_DEBUG) return;
+        if (event.pointerType !== 'touch') return; // Only log touch pointers
+
+        const canvas = window.__beatmoGameCanvas();
+        const rect = canvas ? canvas.getBoundingClientRect() : null;
+
+        console.log(`[Pointer ${type}]`, {
+          pointerId: event.pointerId,
+          pointerType: event.pointerType,
+          clientX: event.clientX,
+          clientY: event.clientY,
+          canvasX: rect ? Math.round(event.clientX - rect.left) : null,
+          canvasY: rect ? Math.round(event.clientY - rect.top) : null,
+          isPrimary: event.isPrimary,
+          pressure: event.pressure,
+          width: event.width,
+          height: event.height,
+          timestamp: Date.now(),
+        });
+      }
+
+      // Attach debug listeners when canvas is available
+      function attachDebugListeners() {
+        const canvas = window.__beatmoGameCanvas();
+        if (!canvas) {
+          requestAnimationFrame(attachDebugListeners);
+          return;
+        }
+
+        if (window.BEATMO_TOUCH_DEBUG) {
+          console.log('[Beatmo Touch Debug] Canvas found, attaching listeners');
+          console.log('[Beatmo Touch Debug] Canvas size:', canvas.width, 'x', canvas.height);
+          console.log('[Beatmo Touch Debug] Canvas rect:', canvas.getBoundingClientRect());
+
+          // Touch events
+          canvas.addEventListener('touchstart', e => logTouchEvent('start', e), { passive: true });
+          canvas.addEventListener('touchmove', e => logTouchEvent('move', e), { passive: true });
+          canvas.addEventListener('touchend', e => logTouchEvent('end', e), { passive: true });
+          canvas.addEventListener('touchcancel', e => logTouchEvent('cancel', e), { passive: true });
+
+          // Pointer events (for comparison)
+          canvas.addEventListener('pointerdown', e => logPointerEvent('down', e), { passive: true });
+          canvas.addEventListener('pointermove', e => logPointerEvent('move', e), { passive: true });
+          canvas.addEventListener('pointerup', e => logPointerEvent('up', e), { passive: true });
+          canvas.addEventListener('pointercancel', e => logPointerEvent('cancel', e), { passive: true });
+        }
+      }
+
+      // Start looking for canvas
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', attachDebugListeners);
+      } else {
+        attachDebugListeners();
+      }
+
+      // Helper to enable debug mode from console
+      window.enableTouchDebug = function() {
+        window.BEATMO_TOUCH_DEBUG = true;
+        if (typeof setTouchDebug === 'function') {
+          setTouchDebug(true);
+        }
+        console.log('[Beatmo Touch Debug] Enabled from console');
+        console.log('[Beatmo Touch Debug] Use touchDebugState() to see Go-side state');
+        console.log('[Beatmo Touch Debug] Use touchEventLog() to see recent events');
+      };
+    })();
+
+    // Prevent default touch behaviors on the game's canvas. Not on the
+    // landing's crystal: a cancelled touchstart cancels the tap's click, and
+    // the landing plants a node and turns the sound on from that click
+    // (landing.js handles its own touchmove).
+    ['touchstart', 'touchmove'].forEach(evt => {
+      document.addEventListener(evt, e => {
+        if (e.target.tagName === 'CANVAS' && e.target.id !== 'lc-crystal') e.preventDefault();
+      }, { passive: false });
+    });
+  </script>
   <script type="module" src="audio.js"></script>
   <script src="wasm_exec.js"></script>
-  <script>
+  <script type="module">
+    // Boot waterfall: lightweight performance timings recorded into
+    // window.__beatmoBoot (all values are performance.now() ms). Harmless in
+    // production and reusable for real-user monitoring. Consumed by
+    // src/js/wasm_load_startup.browser.test.js. TTI ("first frame + input
+    // wired") == firstFrame: the rAF fired right after setSimpleDraw(false).
+    const boot = (window.__beatmoBoot = window.__beatmoBoot || {});
+    const bootMark = (name) => {
+      boot[name] = performance.now();
+      try { performance.mark("beatmo:" + name); } catch (_) { /* ignore */ }
+    };
+    bootMark("scriptStart");
+
     const go = new Go(); // from wasm_exec.js
-    WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject)
-      .then(result => {
+    // Env vars for the Go side. wasm_exec.js serializes this object into
+    // linear memory as KEY=value pairs at run(), which is exactly what Go's
+    // goenvs_unix reads — so os.Getenv works in the browser once this is
+    // populated. Without it the object stays {} and every os.Getenv returns "".
+    go.env = { ...(globalThis.__beatmoEnv || {}) };
+    // The download started in the first <head> script (window.__beatmoWasm),
+    // so it no longer waits for audio.js to load and run.
+    const wasmReady = WebAssembly.instantiateStreaming(window.__beatmoWasm || fetch("main.wasm"), go.importObject)
+      .then((result) => { bootMark("wasmInstantiated"); return result; });
+    Promise.all([wasmReady, window.audioReady || Promise.resolve()])
+      .then(([result]) => {
         go.run(result.instance);
-        console.log("Tunkul WASM game started");
+        bootMark("goRun");
+        console.log("Beatmo WASM game started (audio pre-warmed)");
+        // Hide loading indicator once the game starts
+        const el = document.getElementById('loading-indicator');
+        if (el) el.classList.add('hidden');
+        // Disable simpleDraw mode once WASM is loaded to show full UI. The
+        // poll loop also records the boot waterfall's last two milestones:
+        // exportsReady (Go-registered JS exports are callable) and firstFrame
+        // (the next painted frame after the full UI is enabled == TTI).
+        const disableSimpleDraw = () => {
+          if (typeof setSimpleDraw === "function") {
+            bootMark("exportsReady");
+            try { setSimpleDraw(false); } catch (_) {}
+            requestAnimationFrame(() => bootMark("firstFrame"));
+            return;
+          }
+          requestAnimationFrame(disableSimpleDraw);
+        };
+        disableSimpleDraw();
       })
       .catch(err => console.error(err));
   </script>
 </body>
 </html>
-

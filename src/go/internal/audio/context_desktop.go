@@ -13,7 +13,7 @@ func platformInitContext(sampleRate int) *oto.Context {
 		SampleRate:   sampleRate,
 		ChannelCount: 1,
 		Format:       oto.FormatSignedInt16LE,
-		BufferSize:   10 * time.Millisecond,
+		BufferSize:   20 * time.Millisecond, // 20ms buffer reduces underruns/clicks on slower systems
 	})
 	if err != nil {
 		return nil

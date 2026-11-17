@@ -1,0 +1,607 @@
+{
+  "version": 5,
+  "k": 10,
+  "refs": 64,
+  "instruments": {
+    "accordion": {
+      "sound_hash": "d6913b2e484beb30-db260a6a9def49b4",
+      "hub": 0.496211
+    },
+    "banjo": {
+      "sound_hash": "970b89237eaf4721-fcb0a25b2fc7a34d",
+      "hub": 1.20103
+    },
+    "bass-808": {
+      "sound_hash": "64c1864982b3ca32-43d788ba7149861c",
+      "hub": 1.219459
+    },
+    "bass-acid": {
+      "sound_hash": "2cc2bd42b4881a9a-42d2b3d6ccf391b3",
+      "hub": 0.89655
+    },
+    "bass-fm": {
+      "sound_hash": "7ee3f0868381944e-cf77125c937c7c90",
+      "hub": 1.029746
+    },
+    "bass-guitar": {
+      "sound_hash": "d67ea9fe77668060-30475120f7449930",
+      "hub": 0.932345
+    },
+    "bass-reese": {
+      "sound_hash": "73b8effb11f5eefc-964d9624a6e5b8cc",
+      "hub": 0.717804
+    },
+    "bass-wobble": {
+      "sound_hash": "d93429850f065afd-7abbe7c9fe3b1c29",
+      "hub": 0.805936
+    },
+    "bassoon": {
+      "sound_hash": "23db97d9a0684181-6097975640fefe51",
+      "hub": 0.709801
+    },
+    "brass-stab": {
+      "sound_hash": "648c0d8400c86a6c-3e2113c31e50b2c1",
+      "hub": 0.89063
+    },
+    "celesta": {
+      "sound_hash": "b0f303c48a47b587-881e2f303bb79f89",
+      "hub": 1.236769
+    },
+    "cello": {
+      "sound_hash": "9915ca28959e2f0f-b8f76f21eb6ac226",
+      "hub": 0.549457
+    },
+    "cello-warm": {
+      "sound_hash": "783eec2f23b56c3e-5883e32614e87cc2",
+      "hub": 1.076678
+    },
+    "clap": {
+      "sound_hash": "d54751d7d2f422b2-d5f1e39b4da39875",
+      "hub": 1.066581
+    },
+    "clap-bright": {
+      "sound_hash": "d54751d7d2f422b2-966f303b1fde9145",
+      "hub": 1.094273
+    },
+    "clap-lofi": {
+      "sound_hash": "d54751d7d2f422b2-badaee050418d0ec",
+      "hub": 1.122696
+    },
+    "clap-tight": {
+      "sound_hash": "d54751d7d2f422b2-fe7a0501a0edc669",
+      "hub": 1.073427
+    },
+    "clarinet": {
+      "sound_hash": "6f7f6ea4091ee626-5a62fb337bf4f485",
+      "hub": 0.919325
+    },
+    "clavinet": {
+      "sound_hash": "f7ae25e9854a8bd6-fcb0a25b2fc7a34d",
+      "hub": 1.103999
+    },
+    "conga": {
+      "sound_hash": "9ee1e4a2b1f6fba6-5ef5f20246f93e5",
+      "hub": 1.296563
+    },
+    "conga-open": {
+      "sound_hash": "d15c1de9056cf204-5ef5f20246f93e5",
+      "hub": 1.516936
+    },
+    "conga-organic": {
+      "sound_hash": "f881d2553b9c4d0b-3a328572e3012709",
+      "hub": 1.333073
+    },
+    "conga-organic-dry": {
+      "sound_hash": "ff405b2b4242559a-3a328572e3012709",
+      "hub": 1.411321
+    },
+    "conga-tumba": {
+      "sound_hash": "8527ed1c2db4f59a-5ef5f20246f93e5",
+      "hub": 1.262968
+    },
+    "cowbell": {
+      "sound_hash": "722bd2381ae5875a-4da20c9fa9989b5b",
+      "hub": 1.287481
+    },
+    "cowbell-drive": {
+      "sound_hash": "722bd2381ae5875a-9868cf030523a2f2",
+      "hub": 1.269158
+    },
+    "cowbell-lofi": {
+      "sound_hash": "722bd2381ae5875a-304200b404781e44",
+      "hub": 1.170466
+    },
+    "crash": {
+      "sound_hash": "85bb54e5dc15bcc3-f88a8a25d4c46ddd",
+      "hub": 1.27075
+    },
+    "dnb-kick": {
+      "sound_hash": "cc570543341725f3-dede2297f7e1c1a4",
+      "hub": 1.228486
+    },
+    "double-bass": {
+      "sound_hash": "9506360ebac83b17-993a439e23edc0ef",
+      "hub": 0.594699
+    },
+    "ensemble-lead": {
+      "sound_hash": "20560fe41bce6186-1f23dbb786e6f9f8",
+      "hub": 0.766062
+    },
+    "ensemble-lead-dark": {
+      "sound_hash": "75b9714fc77dc80c-a88a4e163677c00d",
+      "hub": 0.83788
+    },
+    "flute": {
+      "sound_hash": "fcecbe0051415cf4-79596741153aa054",
+      "hub": 0.553902
+    },
+    "flute-breathy": {
+      "sound_hash": "a6e584da4601c83c-d73a302b973c24be",
+      "hub": 0.962638
+    },
+    "fm-bass": {
+      "sound_hash": "9be770c197e5befe-960ff65c147995c8",
+      "hub": 1.23894
+    },
+    "fm-bass-drive": {
+      "sound_hash": "9be770c197e5befe-c4c1f6992075e330",
+      "hub": 1.240714
+    },
+    "fm-bell": {
+      "sound_hash": "57b7335811cbdcf7-1ab24809be16c2ad",
+      "hub": 1.318085
+    },
+    "fm-bell-soft": {
+      "sound_hash": "57b7335811cbdcf7-b21a69fb61282098",
+      "hub": 1.316641
+    },
+    "fm-epiano": {
+      "sound_hash": "6d39f8d0995e426b-ea18b3a8a06fb9c4",
+      "hub": 1.341755
+    },
+    "fm-epiano-drive": {
+      "sound_hash": "6d39f8d0995e426b-47b947d8f15cc1c",
+      "hub": 1.304196
+    },
+    "fm-lead": {
+      "sound_hash": "b22bf1398137f64b-2f092c01e69894f9",
+      "hub": 1.177263
+    },
+    "fm-lead-crush": {
+      "sound_hash": "b22bf1398137f64b-935cac367d4e4f98",
+      "hub": 1.121549
+    },
+    "fm-pluck": {
+      "sound_hash": "396ac4369fa6917b-7cbda3dde551e398",
+      "hub": 1.599059
+    },
+    "fm-pluck-tight": {
+      "sound_hash": "396ac4369fa6917b-af42ca6b51b158ef",
+      "hub": 1.627078
+    },
+    "french-horn": {
+      "sound_hash": "d5484bf0f1dc5c36-143ea444d69a9f97",
+      "hub": 0.741662
+    },
+    "french-horn-loud": {
+      "sound_hash": "e99ecc24a7423fca-9f9ebfc5eae5e4ee",
+      "hub": 0.695878
+    },
+    "gamelan": {
+      "sound_hash": "b06c13c80e0dbc72-daa410b9f623aa4e",
+      "hub": 1.226186
+    },
+    "ghost-bass": {
+      "sound_hash": "2ea95c34bba52d8a-ff481ea0576f9992",
+      "hub": 0.699459
+    },
+    "glass-armonica": {
+      "sound_hash": "df10a5059d8e3d84-4ad91b98c499867a",
+      "hub": 1.117708
+    },
+    "glass-wash": {
+      "sound_hash": "a0767325172c4404-ba0f39cbecc7d215",
+      "hub": 1.26413
+    },
+    "glockenspiel": {
+      "sound_hash": "30698b1b63333ce5-62660c41bfdca000",
+      "hub": 1.26993
+    },
+    "guitar-electric": {
+      "sound_hash": "6947aeea32d6bbb9-cfa3a4b48e88996c",
+      "hub": 1.103491
+    },
+    "guitar-electric-neck": {
+      "sound_hash": "12d41e18b87b9c49-7d2621ebe748cd81",
+      "hub": 0.917236
+    },
+    "guitar-nylon": {
+      "sound_hash": "3a3ca0085cbf9d6c-749e5053d1a016d8",
+      "hub": 0.652426
+    },
+    "guitar-nylon-bright": {
+      "sound_hash": "9a148d9f7824418c-fcb0a25b2fc7a34d",
+      "hub": 1.046683
+    },
+    "guitar-steel": {
+      "sound_hash": "3b055e099c02b09f-918c8d1e594711cf",
+      "hub": 1.116486
+    },
+    "guitar-steel-warm": {
+      "sound_hash": "aa6a077cb57e9162-fcb0a25b2fc7a34d",
+      "hub": 1.008301
+    },
+    "harmonium": {
+      "sound_hash": "1df7ca9a38063e46-fdd9838c9d8d0975",
+      "hub": 0.480945
+    },
+    "harp": {
+      "sound_hash": "b7533841cf2b4c07-ec929a1dcfb934f0",
+      "hub": 0.720974
+    },
+    "harpsichord": {
+      "sound_hash": "ab7c6061ce334b0f-ac3ce7972b52596d",
+      "hub": 1.115291
+    },
+    "high-tom-organic": {
+      "sound_hash": "71b4bb8453431ee4-59f20672099a5380",
+      "hub": 1.085321
+    },
+    "hihat": {
+      "sound_hash": "938f447ea7fc6a20-5ef5f20246f93e5",
+      "hub": 1.279246
+    },
+    "hihat-lofi": {
+      "sound_hash": "938f447ea7fc6a20-1410f2419f45f07f",
+      "hub": 1.243585
+    },
+    "hihat-open-bright": {
+      "sound_hash": "884096eb16754fdf-e28ef10b280e23f3",
+      "hub": 1.340032
+    },
+    "hihat-pedal": {
+      "sound_hash": "938f447ea7fc6a20-40a234dbe32d79a5",
+      "hub": 1.351774
+    },
+    "kalimba": {
+      "sound_hash": "a1f7838eb9240b50-fcb0a25b2fc7a34d",
+      "hub": 1.210769
+    },
+    "kick": {
+      "sound_hash": "e345810df3c2376f-4a21ea984d095dc9",
+      "hub": 1.130303
+    },
+    "kick-808": {
+      "sound_hash": "635df10251d1968d-7d7bfb653eb41f1c",
+      "hub": 1.281445
+    },
+    "kick-acoustic": {
+      "sound_hash": "45b2951266c4a286-969a777af0723dd8",
+      "hub": 1.181016
+    },
+    "kick-acoustic-heavy": {
+      "sound_hash": "7823a08b63e90280-969a777af0723dd8",
+      "hub": 1.29062
+    },
+    "kick-airy": {
+      "sound_hash": "4c9cf84ede2b66e9-d5f1e39b4da39875",
+      "hub": 0.878665
+    },
+    "kick-boom-bap": {
+      "sound_hash": "4e76765bfe19dba5-d5f1e39b4da39875",
+      "hub": 1.012657
+    },
+    "kick-brutal": {
+      "sound_hash": "1b58480e351179cb-d5f1e39b4da39875",
+      "hub": 0.904164
+    },
+    "kick-deep": {
+      "sound_hash": "d41ec1e0bdc14b15-7814bc5937b589f5",
+      "hub": 1.425369
+    },
+    "kick-electro": {
+      "sound_hash": "7156c1dda8cf0286-9b7df7227507ee39",
+      "hub": 1.306873
+    },
+    "kick-fat": {
+      "sound_hash": "8728aa0f18aea889-e028573098e9b683",
+      "hub": 1.072324
+    },
+    "kick-lofi": {
+      "sound_hash": "ad19ae9f640ba0bb-ccd0e19d1fd7e6d1",
+      "hub": 1.047718
+    },
+    "kick-muted": {
+      "sound_hash": "d3a60cdef5e5d907-d5f1e39b4da39875",
+      "hub": 1.073893
+    },
+    "kick-muted-room": {
+      "sound_hash": "aaba8b9258347aff-d5f1e39b4da39875",
+      "hub": 0.925657
+    },
+    "kick-organic-tight": {
+      "sound_hash": "ef501e852d945355-9cb3aca25581b3d",
+      "hub": 1.082241
+    },
+    "kick-punchy": {
+      "sound_hash": "86383be25680e1e6-f8e8ffef5f919ff1",
+      "hub": 1.193822
+    },
+    "kick-rock": {
+      "sound_hash": "848becbcc4ef641b-d5f1e39b4da39875",
+      "hub": 0.936492
+    },
+    "kick-snap": {
+      "sound_hash": "876a19a230cb95e4-5ef5f20246f93e5",
+      "hub": 1.168086
+    },
+    "kick-tight": {
+      "sound_hash": "7b37aceb5acd4696-7fe45f9be7e0b78b",
+      "hub": 1.17359
+    },
+    "kick-wood": {
+      "sound_hash": "6d562ddc58313b82-d5f1e39b4da39875",
+      "hub": 0.920016
+    },
+    "koto": {
+      "sound_hash": "f60996ff577a3146-8d5980cafe35bb26",
+      "hub": 1.088798
+    },
+    "lead-chip": {
+      "sound_hash": "0a95079980717639-61d659e6192f6926",
+      "hub": 0.940159
+    },
+    "lead-hoover": {
+      "sound_hash": "4e714a90743d85eb-e7cae56c312a6e1",
+      "hub": 0.798323
+    },
+    "lead-supersaw": {
+      "sound_hash": "fa0b47766705ba33-39b677d5bf96c2c1",
+      "hub": 0.866623
+    },
+    "mandolin": {
+      "sound_hash": "8d922b1e5e5a5565-fcb0a25b2fc7a34d",
+      "hub": 1.147493
+    },
+    "marimba": {
+      "sound_hash": "f51973476b461bc4-8011bce911dd0571",
+      "hub": 1.201609
+    },
+    "modular": {
+      "sound_hash": "7209091640e45503-ed0b3ec4ce587ed3",
+      "hub": 1.613001
+    },
+    "modular-pad": {
+      "sound_hash": "49d90955d2fa8b12-4a20098fe7e16aff",
+      "hub": 1.584887
+    },
+    "moog-bass": {
+      "sound_hash": "06b0bf6322629051-e5687ad330c0b0b2",
+      "hub": 0.67307
+    },
+    "music-box": {
+      "sound_hash": "538954f4fb5705b1-291862066b15316a",
+      "hub": 1.019823
+    },
+    "muted-trumpet": {
+      "sound_hash": "dd2d0082aa33a4f3-262c7ae7ff6095f9",
+      "hub": 0.617185
+    },
+    "oboe": {
+      "sound_hash": "1b720be594ed720c-3dac95b6596279c1",
+      "hub": 0.537611
+    },
+    "oboe-full": {
+      "sound_hash": "96569431fc69bd5e-5401e32cd73b1e44",
+      "hub": 0.733547
+    },
+    "organ": {
+      "sound_hash": "34e8b892761c5b8b-3e3b193a05611b2b",
+      "hub": 1.0021
+    },
+    "organ-church": {
+      "sound_hash": "37d147d815bb424a-d3e7897f29959105",
+      "hub": 0.931813
+    },
+    "pan-flute": {
+      "sound_hash": "f10dc7932a44ef47-37603d46acad2307",
+      "hub": 0.966387
+    },
+    "piano-felt": {
+      "sound_hash": "7031580558c358bc-356af8f161bbf36e",
+      "hub": 1.095648
+    },
+    "piano-grand": {
+      "sound_hash": "451b2d7fddb90452-35df73394b6ce4b4",
+      "hub": 1.068203
+    },
+    "piano-rhodes": {
+      "sound_hash": "bd8da7042340ffa8-f0d6f88e34ad3b04",
+      "hub": 1.021162
+    },
+    "piccolo": {
+      "sound_hash": "ab142575df2e37f3-379593eb33ee6160",
+      "hub": 1.092807
+    },
+    "pizz-strings": {
+      "sound_hash": "8b15a53f0ea26e6f-fcb0a25b2fc7a34d",
+      "hub": 1.143447
+    },
+    "pwm-pad": {
+      "sound_hash": "f602d53109f152f8-f2eed8736ed0521a",
+      "hub": 1.000965
+    },
+    "raw-kick": {
+      "sound_hash": "9c5cff51efc2b534-ce33c4d856639e67",
+      "hub": 1.185996
+    },
+    "ride": {
+      "sound_hash": "ba8783c1c0ddfe42-bf639056f6a45020",
+      "hub": 1.251636
+    },
+    "rimshot": {
+      "sound_hash": "52e693b633badf57-d3e7897f29959105",
+      "hub": 0.935319
+    },
+    "sax": {
+      "sound_hash": "4075bd197ac39bff-eff3639a1238648a",
+      "hub": 0.438787
+    },
+    "scifi-lead": {
+      "sound_hash": "7097fca728770672-d3e7897f29959105",
+      "hub": 0.456036
+    },
+    "shaker": {
+      "sound_hash": "df0d15156af5a8b9-223b620615194ef4",
+      "hub": 1.444798
+    },
+    "sidestick": {
+      "sound_hash": "899b0a38976e2633-5ef5f20246f93e5",
+      "hub": 1.518183
+    },
+    "singing-bowl": {
+      "sound_hash": "8e0a5301ecb614e6-4cb5fbf75d894052",
+      "hub": 1.217519
+    },
+    "sitar": {
+      "sound_hash": "80fa816fc1d8df5f-2b1b42e12a45946d",
+      "hub": 1.049786
+    },
+    "snare": {
+      "sound_hash": "ad06213eb92246ca-d3e7897f29959105",
+      "hub": 0.970051
+    },
+    "snare-acoustic": {
+      "sound_hash": "b66b500af07f91b9-e8bf235ca71ef413",
+      "hub": 1.084991
+    },
+    "snare-crack": {
+      "sound_hash": "764560170e70ac4d-66fcff01e68aa2b4",
+      "hub": 1.342648
+    },
+    "snare-deep": {
+      "sound_hash": "251ce815aab1a0fc-e8bf235ca71ef413",
+      "hub": 1.033808
+    },
+    "snare-fat": {
+      "sound_hash": "f438384d65e540cd-d3e7897f29959105",
+      "hub": 0.947312
+    },
+    "snare-ghost": {
+      "sound_hash": "91f541b222257361-94e27dfb43f69d48",
+      "hub": 1.005163
+    },
+    "snare-lofi": {
+      "sound_hash": "91f541b222257361-223ba2061519bbb4",
+      "hub": 1.026776
+    },
+    "snare-punch": {
+      "sound_hash": "5facdc7651b070f7-23c4189bb3bd1b30",
+      "hub": 0.990734
+    },
+    "steel-drum": {
+      "sound_hash": "9a85ba2a3d25e27a-18d0df46beeaa2c",
+      "hub": 1.129954
+    },
+    "sub-bass": {
+      "sound_hash": "b8e9c35309f72ba3-63e4732c163d2467",
+      "hub": 1.384651
+    },
+    "sub-bass-drive": {
+      "sound_hash": "b8e9c35309f72ba3-bc509539987fe73e",
+      "hub": 1.306103
+    },
+    "theremin": {
+      "sound_hash": "03417cec464aafef-46a9885910dc33b7",
+      "hub": 1.270706
+    },
+    "tom": {
+      "sound_hash": "c77f2b625f20acae-a6171751aaef21da",
+      "hub": 1.113454
+    },
+    "tom-high-acoustic": {
+      "sound_hash": "5b1f9bf6dbe89173-e8bf235ca71ef413",
+      "hub": 1.253412
+    },
+    "tom-high-drive": {
+      "sound_hash": "7a651de74c0f2b59-74f5c69ffbb55d7b",
+      "hub": 1.072801
+    },
+    "tom-lofi": {
+      "sound_hash": "ef7e6c9b43183f68-18e58bb978fc0aea",
+      "hub": 1.124846
+    },
+    "trombone": {
+      "sound_hash": "8fbfb2d57c6bc423-5058aaa2644d9dd3",
+      "hub": 0.455038
+    },
+    "trumpet": {
+      "sound_hash": "2c2d11241fc91ac8-16f67fff70db82f7",
+      "hub": 0.64554
+    },
+    "trumpet-mellow": {
+      "sound_hash": "e8ff7927c6f21a7a-a9601429405d1447",
+      "hub": 0.680096
+    },
+    "tuba": {
+      "sound_hash": "bbc134029a34317a-9eea7cf854d562e3",
+      "hub": 0.560917
+    },
+    "tubular-bells": {
+      "sound_hash": "53df4bb8201d26b3-25998e0263aab6a6",
+      "hub": 1.230759
+    },
+    "ukulele": {
+      "sound_hash": "ec3eb708611712fe-fcb0a25b2fc7a34d",
+      "hub": 1.139353
+    },
+    "vibraphone": {
+      "sound_hash": "dd94fa899b18be38-bf7366b8b995bfdf",
+      "hub": 1.182069
+    },
+    "viola": {
+      "sound_hash": "268faa5922b14832-d3e7897f29959105",
+      "hub": 0.503025
+    },
+    "viola-pad": {
+      "sound_hash": "58df4fd943f82e5c-8e99fd1f50397f2c",
+      "hub": 0.698846
+    },
+    "violin": {
+      "sound_hash": "9247e196c3d62755-a6d9309f38f09de2",
+      "hub": 0.515912
+    },
+    "violin-ensemble": {
+      "sound_hash": "1d10fbca055256d8-876e483fe1775cc7",
+      "hub": 0.585415
+    },
+    "voice-ahh": {
+      "sound_hash": "39af59bb032fe58b-3f82fd11267c87e1",
+      "hub": 0.885475
+    },
+    "voice-alien": {
+      "sound_hash": "390ef3863c129d2e-88ee3df177a7b9ae",
+      "hub": 0.815335
+    },
+    "voice-opera": {
+      "sound_hash": "262f855e0121f361-3f82fd11267c87e1",
+      "hub": 0.907814
+    },
+    "voice-soprano": {
+      "sound_hash": "f6bbf4644d6af4ba-87eff18f93c56186",
+      "hub": 0.761543
+    },
+    "voice-whisper": {
+      "sound_hash": "f01de86b68404e85-d3e7897f29959105",
+      "hub": 1.165034
+    },
+    "xylophone": {
+      "sound_hash": "52390bc7924fda12-27c213e08653f780",
+      "hub": 1.195373
+    },
+    "zgump-kick": {
+      "sound_hash": "d682650d91a121f5-fa52243e98077924",
+      "hub": 1.29896
+    }
+  }
+}

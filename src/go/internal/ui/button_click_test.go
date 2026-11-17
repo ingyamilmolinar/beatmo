@@ -12,15 +12,24 @@ import (
 // TestControlButtonsClickable ensures that top-panel buttons respond to clicks
 // when unobstructed.
 func TestControlButtonsClickable(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	g.drum.recalcButtons()
+	g.drum.calcLayout() // positions trackBtn in the timeline area
 
-	buttons := []*Button{g.drum.playBtn, g.drum.stopBtn, g.drum.bpmDecBtn, g.drum.bpmIncBtn, g.drum.lenDecBtn, g.drum.lenIncBtn, g.drum.uploadBtn}
+	// File ops (upload/import/export) moved behind the overflow "..." menu on
+	// desktop; the overflow button is the inline control that took upload's old
+	// toolbar slot, so it's the representative right-edge file-ops control here.
+	buttons := []*Button{g.drum.playBtn(), g.drum.stopBtn(), g.drum.bpmDecBtn(), g.drum.bpmIncBtn(), g.drum.lenDecBtn, g.drum.lenIncBtn, g.drum.trackBtn()}
 	for i, btn := range buttons {
 		called := false
 		btn.OnClick = func() { called = true }
 		r := btn.Rect()
+		if r.Empty() {
+			t.Fatalf("button %d (%s) has empty rect", i, btn.Text)
+		}
 		click(g, r.Min.X+1, r.Min.Y+1)
 		if !called {
 			t.Fatalf("button %d (%s) not clickable", i, btn.Text)
@@ -31,11 +40,17 @@ func TestControlButtonsClickable(t *testing.T) {
 // TestButtonsDoNotOverlap verifies that control-panel buttons have disjoint
 // rectangles so clicks are unambiguous.
 func TestButtonsDoNotOverlap(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	g.drum.recalcButtons()
+	g.drum.calcLayout()
 
-	buttons := []*Button{g.drum.playBtn, g.drum.stopBtn, g.drum.bpmDecBtn, g.drum.bpmIncBtn, g.drum.lenDecBtn, g.drum.lenIncBtn, g.drum.uploadBtn}
+	// File ops (upload/import/export) moved behind the overflow "..." menu on
+	// desktop; the overflow button is the inline control that took upload's old
+	// toolbar slot, so it's the representative right-edge file-ops control here.
+	buttons := []*Button{g.drum.playBtn(), g.drum.stopBtn(), g.drum.bpmDecBtn(), g.drum.bpmIncBtn(), g.drum.lenDecBtn, g.drum.lenIncBtn, g.drum.trackBtn()}
 	for i := 0; i < len(buttons); i++ {
 		ri := buttons[i].Rect()
 		for j := i + 1; j < len(buttons); j++ {
@@ -49,6 +64,7 @@ func TestButtonsDoNotOverlap(t *testing.T) {
 // TestButtonHoldRepeat verifies that holding a repeat-enabled button triggers
 // repeats after a 1s delay and then every ~100ms with acceleration.
 func TestButtonHoldRepeat(t *testing.T) {
+	assertDefaultParityState(t)
 	b := NewButton("+", ButtonStyle{}, nil)
 	b.Repeat = true
 	b.SetRect(image.Rect(0, 0, 10, 10))
@@ -58,9 +74,9 @@ func TestButtonHoldRepeat(t *testing.T) {
 	b.OnClick = func() { calls = append(calls, frame) }
 
 	for frame = 0; frame < 100; frame++ {
-		b.Handle(5, 5, true)
+		b.HandleInputResult(5, 5, true)
 	}
-	b.Handle(5, 5, false)
+	b.HandleInputResult(5, 5, false)
 
 	want := []int{0, 65, 71, 77, 83, 89, 94, 99}
 	if len(calls) != len(want) {
@@ -74,15 +90,18 @@ func TestButtonHoldRepeat(t *testing.T) {
 }
 
 func TestBPMHoldIncrements(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	dv := g.drum
 	dv.recalcButtons()
-	btn := dv.bpmIncBtn
+	btn := dv.bpmIncBtn()
 	x, y := btn.Rect().Min.X+1, btn.Rect().Min.Y+1
 	pressed := true
 	restore := SetInputForTest(func() (int, int) { return x, y }, func(ebiten.MouseButton) bool { return pressed }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 800, 600 })
 	for i := 0; i < 100; i++ {
+		t.Cleanup(restore)
 		dv.Update()
 	}
 	pressed = false

@@ -1,0 +1,128 @@
+{
+  "schema_version": "0.0.1",
+  "id": "conga-organic",
+  "name": "Organic Conga",
+  "category": "modular",
+  "notes": "congaOrganicSeed: congaOrganicDrySeed plus a second, coupled head — a\nstruck-free modal plate (ride mounting, so no rattle: 40 modes 350-2200 Hz,\nbeat 0.01) that adds the paired-membrane complexity a six-mode head lacks.\nKept alongside the dry one by ear: \"they are not the same and both sound\ngreat\" (2026-09-30).",
+  "render": {
+    "seconds": 0.8,
+    "amplitude": 1,
+    "gate_tail": 0,
+    "melodic": false
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "amp_attack": 0.005,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.2,
+        "amp_sustain": 0.6
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 330
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "filter_cutoff": 8000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 0,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "snare.acoustic",
+      "v": 1,
+      "on": true,
+      "values": {
+        "freq": 1,
+        "freq_mode": 0,
+        "snare_attack": 0.8,
+        "snare_noise_d": 0,
+        "snare_noise_m": 0.5,
+        "snare_tail_d": 30,
+        "snare_tone2": 520,
+        "snare_tone_d": 50,
+        "snare_tone_m": 1.25,
+        "snare_tune": 1,
+        "snare_wire_m": 0,
+        "wave": 0
+      }
+    },
+    null,
+    {
+      "type": "cym.ride",
+      "v": 1,
+      "on": true,
+      "values": {
+        "cym_attack": 0.0005,
+        "cym_beat": 0.01,
+        "cym_body": 0,
+        "cym_body_f": 1500,
+        "cym_body_w": 0.15,
+        "cym_decay_tilt": 0.3,
+        "cym_env_fast": 0.0001,
+        "cym_env_tail": 30,
+        "cym_hf_corner": 10000,
+        "cym_mode_hi": 2200,
+        "cym_mode_lo": 350,
+        "cym_modes": 40,
+        "cym_noise_d": 4,
+        "cym_noise_m": 0,
+        "cym_spark": 0,
+        "cym_spark_f": 11000,
+        "cym_spark_w": 0.3,
+        "cym_tone_f": 900,
+        "cym_tone_m": 0.35,
+        "cym_tone_w": 1.2,
+        "cym_tune": 1,
+        "cym_wash": 0.3
+      }
+    }
+  ]
+}

@@ -3,7 +3,7 @@
 set -e
 
 # Format Go files
-find src/go -name '*.go' | xargs gofmt -w
+find src/go -name '*.go' -exec gofmt -w {} +
 
 # Run unit tests with stubbed Ebiten
 cd src/go && go test -tags test -modfile=go.test.mod ./...

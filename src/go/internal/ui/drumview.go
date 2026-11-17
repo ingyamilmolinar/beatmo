@@ -1,52 +1,179 @@
 package ui
 
 import (
-	"fmt"
 	"image"
 	"image/color"
-	"slices"
-	"strconv"
-	"strings"
-	"time"
+	"sync"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 const (
-	asciiPrintableMin = 32
-	asciiPrintableMax = 126
 	// timelineHeight reserves vertical space for the transport controls and
-	// timeline bar above the drum rows. Increasing this ensures row labels
-	// never overlap with the top control panel.
-	timelineHeight    = 110
-	timelineBarHeight = 10
-	buttonPad         = 2
+	// the thin timeline bar above the instrument rows. Keep this as small as
+	// possible so the bottom panel wastes no vertical space. Two rows of
+	// controls (2×rowHeight) + a 10px bar + a small margin is sufficient.
+	timelineHeight = 36
+	// desktopHeaderH is the target header height for the two-row desktop transport bar.
+	desktopHeaderH = 72
+	// mobileHeaderH is the target header height for the two-row mobile transport bar.
+	mobileHeaderH               = 72
+	defaultRowCachePadPx        = 32
+	defaultRowsLayerPadPx       = 96
+	instMenuMaxVisibleRows      = 8
+	instMenuScrollBarWidth      = 10
+	eqChannelMenuMaxVisibleRows = 8
 )
+
+// tlBarHeight returns the timeline bar height, larger on mobile for touch targets.
+func tlBarHeight() int { return Profile().TimelineBarH }
+
+// instMenuMode is an enum describing the instrument dropdown view.
+type instMenuMode string
+
+const (
+	instMenuModeUnset       instMenuMode = ""
+	instMenuModeCategories  instMenuMode = "categories"
+	instMenuModeInstruments instMenuMode = "instruments"
+)
+
+// viewMode describes which pane is visible in the mobile drum view.
+type viewMode int
+
+const (
+	viewModeRows     viewMode = iota // drum rows visible
+	viewModeEQ                       // mobile audio panel showing EQ tab
+	viewModeWave                     // mobile audio panel showing Wave tab
+	viewModeSpectrum                 // mobile audio panel showing Spectrum tab
+	viewModeMeters                   // mobile audio panel showing Meters tab
+	viewModeChain                    // mobile audio panel showing Scope tab
+	viewModeSynth                    // mobile audio panel showing Synth tab (Phase 4)
+	viewModeSampler                  // mobile audio panel showing Sampler tab
+)
+
+// viewModeSlug returns the canonical lowercase slug for a view mode, matching
+// the bottomNav segment slugs exposed in fullLayoutSnapshot. "pads" is the
+// Rows view (desktop is always "pads"); the rest mirror the audio-panel tabs.
+func viewModeSlug(m viewMode) string {
+	switch m {
+	case viewModeRows:
+		return "pads"
+	case viewModeEQ:
+		return "eq"
+	case viewModeWave:
+		return "wave"
+	case viewModeSpectrum:
+		return "spectrum"
+	case viewModeMeters:
+		return "levels"
+	case viewModeChain:
+		return "chain"
+	case viewModeSynth:
+		return "synth"
+	case viewModeSampler:
+		return "sampler"
+	default:
+		return ""
+	}
+}
+
+// viewModeForPanelTab maps an audio-panel tab to the mobile view mode that
+// displays it. The bottom-nav segmented control derives its highlight from
+// currentViewMode, so any programmatic tab switch (scene catalog, JS
+// exports, keyboard shortcuts) routes through this mapping to keep the nav
+// a derived view of the panel tab state — never a second source of truth.
+func viewModeForPanelTab(tab PanelTab) (viewMode, bool) {
+	switch tab {
+	case TabEQ:
+		return viewModeEQ, true
+	case TabWave:
+		return viewModeWave, true
+	case TabSpectrum:
+		return viewModeSpectrum, true
+	case TabMeters:
+		return viewModeMeters, true
+	case TabScope:
+		return viewModeChain, true
+	case TabSynth:
+		return viewModeSynth, true
+	case TabSampler:
+		return viewModeSampler, true
+	default:
+		return viewModeRows, false
+	}
+}
+
+// viewModeFromSlug is the inverse of viewModeSlug: each view has exactly one
+// slug (no aliases, no case folding). Returns (viewModeRows, false) otherwise.
+func viewModeFromSlug(slug string) (viewMode, bool) {
+	for m := viewModeRows; m <= viewModeSampler; m++ {
+		if viewModeSlug(m) == slug {
+			return m, true
+		}
+	}
+	return viewModeRows, false
+}
+
+var eqPanelHeight = 190
+
+// eqPanelHeightForTest, when > 0, overrides the test-mode collapse of the audio
+// panel so functional tests can drive the REAL production-floored layout. See
+// the runningUnderGoTest gate in (*DrumView) layout. Always 0 outside tests.
+var eqPanelHeightForTest int
+
+type eqBandDef struct {
+	loHz float64
+	hiHz float64
+}
+
+// eqBandDefs are the ten ISO one-octave bands (31 Hz … 16 kHz), as
+// audio.EQBandEdges defines them.
+var eqBandDefs = func() []eqBandDef {
+	out := make([]eqBandDef, len(audio.EQBandEdges))
+	for i, e := range audio.EQBandEdges {
+		out[i] = eqBandDef{loHz: e[0], hiHz: e[1]}
+	}
+	return out
+}()
+
+// rowEQ is the EQ of the row's instrument (edited in place, then applied with
+// applyRowEQ).
+func rowEQ(r *DrumRow) *audio.EQSettings { return audio.EQSettingsOf(r.Instrument) }
 
 /* ───────────────────────────────────────────────────────────── */
 
 type DrumRow struct {
 	Name       string
-	Instrument string
+	Instrument instrument.ID
 	Steps      []bool
+	CellTypes  []model.NodeType
 	Color      color.Color
 	Origin     model.NodeID
 	Node       *uiNode
 	Volume     float64
 	Muted      bool
 	Solo       bool
+	// A row's EQ, insert effects and Sampler edit are its INSTRUMENT's (the
+	// audio bundle, spec 2026-10-31 §2.6): rowEQ(r), audio.GetInsertEffects.
+	Role instrument.Role // explicit kit role; empty = the instrument's own (audio.RoleForInstrument)
 }
 
-func instColor(id string) color.Color {
+func instColor(id instrument.ID) color.Color {
 	if c, ok := instColors[id]; ok {
 		return c
 	}
 	if c, ok := customColors[id]; ok {
 		return c
+	}
+	if len(customPalette) == 0 {
+		// Graceful fallback when palette is empty (e.g., in tests).
+		return genColorRowRackColorFallback
 	}
 	c := customPalette[nextCustomColor%len(customPalette)]
 	nextCustomColor++
@@ -61,79 +188,677 @@ type uploadResult struct {
 	err  error
 }
 
+type importResult struct {
+	data []byte
+	name string // picked filename / path; "" when unknown (basenamed for the notification)
+	err  error
+}
+
+// ProjectPins returns a snapshot copy of the currently loaded project's pin
+// set. Callers (the instrument menu's PinSource builder) treat the result as
+// read-only — mutating the returned map does not affect DrumView state. Nil
+// is fine; callers handle empty maps the same as a nil map.
+func (dv *DrumView) ProjectPins() map[instrument.ID]struct{} {
+	if dv == nil || len(dv.projectPins) == 0 {
+		return nil
+	}
+	out := make(map[instrument.ID]struct{}, len(dv.projectPins))
+	for k := range dv.projectPins {
+		out[k] = struct{}{}
+	}
+	return out
+}
+
+// SetProjectPins replaces the per-project pin set. Called from Game.Import
+// after parsing the project JSON's pinned_instruments field; tests may also
+// drive it directly. Empty / nil clears the set.
+func (dv *DrumView) SetProjectPins(ids []instrument.ID) {
+	if dv == nil {
+		return
+	}
+	if len(ids) == 0 {
+		dv.projectPins = nil
+		return
+	}
+	m := make(map[instrument.ID]struct{}, len(ids))
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		m[id] = struct{}{}
+	}
+	if len(m) == 0 {
+		dv.projectPins = nil
+		return
+	}
+	dv.projectPins = m
+}
+
+// exportPinnedInstrumentIDs returns the pin set as a deterministic
+// (alphabetical) slice for JSON serialisation. Empty result → caller emits
+// an absent field (omitempty keeps v1 projects byte-identical when no pins
+// are set).
+func (dv *DrumView) exportPinnedInstrumentIDs() []instrument.ID {
+	if dv == nil || len(dv.projectPins) == 0 {
+		return nil
+	}
+	out := make([]instrument.ID, 0, len(dv.projectPins))
+	for k := range dv.projectPins {
+		out = append(out, k)
+	}
+	sortStrings(out)
+	return out
+}
+
 type DrumView struct {
 	Rows   []*DrumRow
 	Bounds image.Rectangle
 	Graph  *model.Graph
-	logger *game_log.Logger
+	// projectPins is the per-project instrument pin set, populated from the
+	// project JSON's pinned_instruments field on import and serialised back on
+	// export. It feeds the instrument menu's tier-0 pin source (see
+	// PinSource.ProjectPins). No UI to mutate the set ships in this PR — that
+	// affordance lands in a follow-up; the storage and read path are wired
+	// now so the JSON schema doesn't need to bump later.
+	projectPins map[instrument.ID]struct{}
+	// instMenuShowFavoritesCategory wires the production builder's
+	// ShowFavoritesCategory prop. See ctor comment.
+	instMenuShowFavoritesCategory bool
+	logger                        *game_log.Logger
+	tree                          *DrumViewTree // zone-based component tree (Phase 1+)
+	audioTree                     *DrumViewTree // audio-panel subtree (eq-panel + divider + view-switch)
+	overlayTree                   *DrumViewTree // top-of-z overlay subtree: owns the SINGLE global portal
+	rootTree                      *RootTree     // composes [tree, audioTree, overlayTree] for isolated input/draw
+	// tapGate is the shared mobile tap-debounce, consulted at the injectTouchTap
+	// chokepoint (game_update.go) so every drum-area mobile control shares one
+	// guard against touch-bounce / accidental double-taps. Ticked once per frame
+	// in Update. See tap_debounce.go.
+	tapGate tapDebounce
+	// lastNativeRects is the set of native-gesture rects synced to JS last frame.
+	// syncNativeGestures diffs against it to avoid per-frame arm/clear churn.
+	lastNativeRects []NativeRect
+	eqPanelZone     *EQPanelZone // Phase 2: EQ panel zone (owns EQ buttons/sliders/state)
+	scopeVisible    bool
+	transportZone   *TransportZone // Phase 3: transport zone (owns transport buttons/state)
+	// viewSwitchSegmented is the mobile 3-segment view selector
+	// (Pads/EQ/Wave). Replaces the binary viewSwitchBtn on mobile; nil on
+	// desktop. See B4 in the mobile UX overhaul plan.
+	viewSwitchSegmented *SegmentedControl
+	rowRackZone         *RowRackZone      // Phase 4: row rack zone (owns per-row buttons/sliders/scroll)
+	timelineZone        *TimelineZone     // Phase 5: timeline zone (owns drag/scrub)
+	layoutResizeZone    *layoutResizeZone // layout resize zone (column/row divider pills)
+
+	// Overlay components (Phase 5 integration)
+	subdivMenuComp *SubdivMenuComponent
+	renameComp     *RenameComponent
+	colorWheelComp *ColorWheelComponent
+	instMenuComp   *InstrumentMenuComponent
+	// jumpMenuComp is a second SubdivMenuComponent instance (generic
+	// int-options dropdown) reused for the FF/RW jump-size ("×N") picker.
+	jumpMenuComp *SubdivMenuComponent
+	// jumpBeats is the current FF/RW jump size in whole beats. Configurable
+	// via the ×N pill's dropdown ({1,2,4,8,16}); default 4.
+	jumpBeats int
+	// jumpUnitBeats selects the NavigationPanel's prev/next jump granularity:
+	// true = jumpBeats whole beats (RequestSeekDeltaBeats, beat-snapped),
+	// false = jumpBeats raw subdivisions (RequestSeekDeltaSteps, no snap).
+	// Toggled via the panel's unit button; defaults true.
+	jumpUnitBeats bool
+	// navPanel is the position/jump/go-to controls embedded as the overflow
+	// menu's NAVIGATION section — see drumview_context_menu.go
+	// (overflowItems/overflowPopupRect/drawOverflowMenu/handleOverflowMenuInput).
+	navPanel *NavigationPanel
+	// navMenuComp is the first-class portal component that hosts the navigation
+	// menu (wrapping navPanel + owning its go-to editor). It flows through
+	// compPortalOverlay + the tree's native input/keyboard/capture dispatch —
+	// see drumview_overlay_nav_comp.go, openNavMenuPortal, OpenNavigation. The
+	// go-to numeric editor lives on this component (navMenuComp.Editor()), NOT
+	// as a floating view-owned editor drawn outside the tree.
+	navMenuComp *NavigationMenuComponent
+
+	// widget layout (bottom pane is divided into movable widgets)
+	widgets         *WidgetBoard
+	widgetRects     map[WidgetKind]image.Rectangle
+	headerH         int // dynamic header height (replaces timelineHeight)
+	eqH             int // dynamic EQ panel height
+	userEqH         int // explicit audio-panel height set by dragging the EQ divider (0 = auto/floored)
+	layoutHoverAxis string
+	layoutHoverIdx  int
+	layoutDragAxis  string
+	layoutDragIdx   int
+	layoutDragPrev  int
+	layoutHandler   *LayoutResizeHandler // widget-span-aware layout resize
+	rowEQDivider    *rowEQDividerLayer   // animated EQ-boundary divider (shared SplitterHandle)
 
 	cell      int // px per step
 	labelW    int
 	controlsW int // width reserved for control buttons
 
-	// control-panel components
-	playBtn   *Button
-	stopBtn   *Button
-	bpmDecBtn *Button // decrease BPM
-	bpmBox    *Button
-	bpmIncBtn *Button // increase BPM
-	lenDecBtn *Button // decrease length
-	lenIncBtn *Button // increase length
-	uploadBtn *Button
-	saveBtn   *Button
+	// control-panel components (non-transport)
+	lenDecBtn       *Button // decrease length
+	lenIncBtn       *Button // increase length
+	saveBtn         *Button
+	mainVolRect     image.Rectangle
+	mainVolIconRect image.Rectangle
+	// bottomActionBarRect is the mobile-only bottom sheet host for the
+	// volume icon, view-switch, and overflow buttons. Empty on desktop.
+	// Set by recalcButtons when LayoutProfile.UseBottomSheet is true.
+	bottomActionBarRect image.Rectangle
+	// eqPeekRect is the 24-px sparkline strip directly above
+	// bottomActionBarRect, visible only when mobileEQCollapsed is true.
+	// Tap on this rect expands the EQ panel.
+	eqPeekRect image.Rectangle
 
-	// per-row components
-	addRowBtn     *Button
-	rowLabels     []*Button
-	rowEditBtns   []*Button
-	rowDeleteBtns []*Button
-	rowVolSliders []*Slider
-	rowOriginBtns []*Button
-	rowMuteBtns   []*Button
-	rowSoloBtns   []*Button
-	selRow        int
-	activeSlider  int // index of slider capturing mouse events, -1 if none
+	// per-row components: owned by rowRackZone, accessed via accessor methods.
+	selRow int
 
 	// instrument selection dropdown
-	instMenuOpen bool
-	instMenuRow  int
-	instMenuBtns []*Button
-	instHold     bool
+	instMenuRow                int
+	instMenuScroll             VerticalScroller
+	instMenuLastAdded          instrument.ID
+	instMenuUserScrolled       bool
+	instCategories             []audio.Category
+	instCategoryBtns           []*Button
+	instMenuFullRect           image.Rectangle
+	instMenuMode               instMenuMode
+	instMenuActiveCat          audio.Category
+	instMenuForceCategories    bool
+	instMenuCameFromCategories bool
+	instMenuActiveByRow        map[int]audio.Category // remembers last category per row
+	instCatByID                map[instrument.ID]audio.Category
+	instMeta                   map[instrument.ID]audio.SoundMeta
+	instSearch                 string
+	instSearchBox              *TextInput
+	instSearchRect             image.Rectangle
+	instCatalogVersion         uint64
+	instRegistryVersion        uint64
+	instRefreshDirty           bool
 
-	deleted    []deletedRow
-	added      []int
-	originReq  []int
-	renameRow  int
-	renameBox  *TextInput
-	renameHold bool
+	// color picker: swatch-grid popup
+	colorMenuRow int
 
-	bgDirty bool
-	bgCache []*ebiten.Image
+	// FX panel
+	fxPanelRow         int
+	fxPanelRect        image.Rectangle
+	fxPanelBtns        []*Button         // add/remove/toggle/reorder buttons within the panel
+	fxPanelCloseButton *Button           // the close (×) button, tracked by identity (never the slice tail)
+	fxPanelSliders     []*Slider         // param sliders within the panel
+	fxSliderBindings   []fxSliderBinding // maps slider index to effect param
+	fxSliderDragging   bool              // active slider drag in FX panel
+	fxSliderDragIdx    int               // index into fxPanelSliders being dragged
+	fxAddMenuOpen      bool
+	fxListScrollPx     int                // effect-list scroll offset saved when the add picker opens, restored by Back/Esc
+	fxAddRowEffect     []audio.EffectType // effect type picker rows, aligned with fxAddRowBtn
+	fxAddRowBtn        []*Button          // picker-row buttons, aligned with fxAddRowEffect (drawn via drawMenuRow, not btn.Draw)
+	fxAddEffectBtn     *Button            // the list's "+ Add Effect" footer (nil while the picker shows or it is scrolled out)
+	fxAddMenuBackBtn   *Button            // the add-menu "Back" row, tracked by identity (drawn via drawMenuRow)
+	fxAddHeaderRows    []fxAddHeaderRow   // idle-only category group-header rows interleaved into the picker layout
+	fxExpandedSlots    map[int]bool       // which effect slots are expanded (mobile only)
+	fxScroll           *MenuScroll        // FX panel content scroll (pixel mode, ItemHeight=1): the shared list-menu engine, so wheel/momentum/thumb match every menu
+	fxSliderLeft       int                // computed label area width for FX param rows (desktop)
+	fxViewportRect     image.Rectangle    // scrollable content area (between header and footer)
 
-	instOptions []string
+	// FX add-menu fuzzy search — mirrors the template/overflow menu's pinned
+	// search field (drumview_context_menu.go templateSearch*) exactly: a
+	// TextInput built via ensureMenuSearchBox, a cached query string, the
+	// pinned hit-rect for tap-to-focus/clear, and per-result highlight
+	// indices (keyed by effect type) for drawMenuRow's fuzzy-match painting.
+	fxAddSearch           *TextInput
+	fxAddSearchRect       image.Rectangle
+	fxAddSearchQuery      string
+	fxAddSearchHighlights map[audio.EffectType][]int
+
+	// Instrument-editor (Phase 4 → redesigned per
+	// hey-please-review-the-vectorized-rocket.md) state. The editor lives
+	// as a Synth tab alongside EQ/Wave/Spectrum/Levels/Chain (see
+	// synth_panel_zone.go). State is carried on DrumView so per-row scroll
+	// position survives tab switches and the EQ-panel routing can reach the
+	// widget lists.
+	//
+	// Slider/Knob duality: each wired ParamDef gets a (Slider, Knob) pair.
+	// Knob is the visual + interaction widget rendered inside the section
+	// card; Slider is a value-store that the legacy hit-adapter / coalesce
+	// path continues to read. Drag handlers
+	// keep the two values in sync so either widget can drive playback. The
+	// Slider's rect is set equal to the Knob's bounds so hit-test paths
+	// that still consult slider rects land on the knob area.
+	instEditorSliders    []*Slider
+	instEditorControls   []*Knob
+	instEditorStepBadges []*KnobStepBadge   // index-aligned with instEditorControls; nil for discrete params
+	instEditorBindings   []instParamBinding // maps widget index → ParamDef
+	synthWheelNudge      wheelNudger        // desktop scroll-wheel value nudge -> debounced single-undo commit
+	samplerWheelPopup    *MobileWheelPopup  // mobile vertical scroll-wheel for sampler knobs
+	samplerWheelNudge    wheelNudger        // desktop scroll-wheel value nudge -> debounced single-undo commit
+	eqWheelPopup         *MobileWheelPopup  // desktop+mobile precision wheel for EQ band dB
+	valueWheelPopup      *MobileWheelPopup  // shared value wheel over a NumberModel (BPM, node values)
+	eqWheelStepBadge     *KnobStepBadge     // shared step-resolution ladder for all EQ dB bands
+	eqWheelStepRestored  bool               // true once eqWheelStepBadge's persisted rung has been restored (lazy, on first popup open)
+	instEditorBtns       []*Button          // footer buttons: Reset, Save, Save-As (close lives on the sticky bar)
+	instEditorSections   []synthSection     // PITCH | ENVELOPE | TONE | DRIVE cards
+	// instEditorPreviewRect holds the geometry of the right-half
+	// preview pane (osc + ADSR + filter plots). Empty when the panel
+	// is too narrow for a horizontal split (mobile) or when the
+	// content area is below the minimum width for the pane to fit.
+	// Phase 4 of the audio-panel redesign.
+	instEditorPreviewRect image.Rectangle
+	// instEditorMobileFocusRect is the stacked band reserved at the TOP of
+	// the sections area on mobile (where there is no side preview pane) for
+	// the "Your sound" mirror + the focus graph. Empty on desktop (the side
+	// pane carries those instead).
+	instEditorMobileFocusRect image.Rectangle
+	// instEditorSectionsRect is the post-shrink knob-grid rect that
+	// layoutSynthSections consumes (after reserving the desktop preview pane
+	// and/or the mobile focus band). Stored for test introspection.
+	instEditorSectionsRect image.Rectangle
+	// instEditorNoSynth is set when the active row's instrument has no
+	// synth recipe (it plays a loaded WAV sample). In that state the synth
+	// tab replaces its grid of section cards with a single explanatory
+	// banner (instEditorBannerRect) instead of a grid of empty section
+	// cards plus their distracting trigger-pulse borders.
+	instEditorNoSynth    bool
+	instEditorBannerRect image.Rectangle
+	instEditorHeader     synthHeaderLayout // header strip rects
+	instEditorHeaderBtns []*Button         // header retrigger + vol buttons (shared *Button chrome)
+	// actionMenu is the shared "⋯" overflow (Save As / Reset) opened from the
+	// mobile Synth/Sampler action cluster on the sticky bar. One instance
+	// serves both tabs (props swapped per open).
+	actionMenu            *actionMenuComponent
+	saveAsDialog          *synthSaveAsDialog // active Save-As name dialog (nil = closed)
+	instEditorScrollPx    int
+	instEditorScrollMax   int
+	instEditorScrollTS    TouchScroller
+	instEditorDeferredTap DeferredTap
+	// instEditorMacroOpen is the drill-down nav state of the category layer
+	// (synth_macro_nav.go): resolved instID → drilled target (a category or a
+	// pipeline stage; zero value = the root of category cards + strip).
+	instEditorMacroOpen map[instrument.ID]synthDrillTarget
+	// instEditorMoreOpen is the per-instrument+target "More" expander state of
+	// the drilled view (key: instID + "|" + target.key()). Session-only.
+	instEditorMoreOpen map[string]bool
+	// Pipeline strip (root): the ON-stage pills + the "+" off-stage pill, laid
+	// out by instEditorPipeGrid inside instEditorPipeRect. Rebuilt every Layout.
+	instEditorPipePills  []synthPipePill
+	instEditorPipeAddBtn *Button
+	instEditorPipeGrid   *ControlGrid
+	instEditorPipeRect   image.Rectangle
+	// synthDialActive is the macro dial gesture in progress (synth_dials.go),
+	// nil otherwise. It is the ONLY dial state: a dial's position is a pure
+	// function of the instrument document.
+	synthDialActive *synthDialGesture
+
+	// Macro-layer layout state (synth_macro_render.go), rebuilt every Layout.
+	// instEditorMacros is nil when the instrument is NOT in the macro layer
+	// (percussion/WAV) — the panel then uses the legacy chip+stage UI unchanged.
+	instEditorMacros []macroGroup // built concept groups for the active instrument
+	// synthFocusState is the Synth tab's focused dial (synth_focus.go).
+	synthFocusState synthFocus
+	// graphPipe renders + analyses the Synth tab graph's documents
+	// (synth_graph_pipeline.go); created on first use.
+	graphPipe     *synthGraphPipeline
+	dialRelevance dialRelevanceState     // which dials the DSP vouches for (synth_dial_relevance.go)
+	graphDetails  synthGraphDetailsState // the graph readout's Details toggle (synth_graph_details.go)
+	// graphBefore is the graph's BEFORE ghost (synth_graph_pane.go).
+	graphBefore graphBeforeSnap
+	// graphViewOverride is the developer view picker's per-control choice.
+	graphViewOverride       synthGraphViewOverride
+	instEditorMacrosKey     synthMacroCacheKey // rebuild gate for instEditorMacros
+	instEditorMacroCards    []macroCardSlot    // root: laid-out concept card rects
+	instEditorMacroBackBtn  *Button            // drilled: the Back button (in instEditorBtns)
+	instEditorMoreBtn       *Button            // drilled: the More divider's input button (in instEditorBtns)
+	instEditorMacroPillRect image.Rectangle    // drilled: the stage enable pill rect (empty = no pill)
+	instEditorMacroPillSec  int                // drilled: section index the pill toggles (-1 = none)
+	instEditorMacroTitle    string             // drilled: title text (category label / stage label)
+	instEditorDrilledOrder  []int              // drilled: knob indices in display order (essentials then More)
+	glow                    *synthGlow         // the Synth graph's trigger glow (lazy)
+	instEditorDrillEss      []int              // scratch for drilledKnobIdxs (reused across frames)
+	instEditorDrillAdv      []int              // scratch for drilledKnobIdxs (reused across frames)
+	// instEditorBindingIdx caches param name → binding index; rebuilt when the
+	// bindings generation (bumped on every knob-slice rebuild) changes.
+	instEditorBindingIdx    map[string]int
+	instEditorBindingIdxGen int
+	instEditorBindingsGen   int
+	instEditorMacroGloss    string          // drilled: one-liner under the title
+	instEditorMacroGrid     *ControlGrid    // grid for root cards / drilled knobs
+	instEditorMacroDetailR  image.Rectangle // the macro layer's detail region
+	// instEditorSelectedControl is the per-instrument index (into instEditorControls /
+	// instEditorBindings) of the knob explained by the focus graph. Set on knob
+	// press (click-to-select); defaults to the open stage's main knob.
+	instEditorSelectedControl map[instrument.ID]int
+	// instEditorArmedControl is the per-instrument index of the control that is
+	// currently ARMED for inline barrel editing (at most one). Absent = none
+	// armed. Arming also selects (focus graph); locking removes the entry.
+	instEditorArmedControl map[instrument.ID]int
+	// instEditorArmedEditor owns the two barrel wheels for the armed control.
+	instEditorArmedEditor *ArmedControlEditor
+	// armGrow* drive the grow/shrink animation of the armed control's 2×2 card
+	// and the reflow of its neighbours. armGrowIdx is the control being animated
+	// (-1 = none, retained through the shrink so it can keep interpolating after
+	// the control is no longer "armed"); armGrowInst its instrument id;
+	// armGrowScope which panel owns it (the Synth and Sampler tabs index their
+	// controls independently, so the subject must be scoped); armGrowT the
+	// current 0..1 progress; armGrowTarget where it is easing to (1 armed, 0
+	// locking). See synth_armed_grow_anim.go.
+	armGrowIdx    int
+	armGrowInst   instrument.ID
+	armGrowScope  armedScope
+	armGrowT      float64
+	armGrowTarget float64
+	// Tiering in the drilled view: a target's Essential knobs come first; its
+	// fine-tuning knobs sit below the "More" divider row (phantom cells).
+	// synthAdvDividerRect is the band spanned by that row (empty when the target
+	// has no fine-tuning knobs); synthAdvDividerCount is the hidden-knob count.
+	// Both are rebuilt each Layout.
+	synthAdvDividerRect  image.Rectangle
+	synthAdvDividerCount int
+
+	// sampler holds the Sampler tab's working buffer + edit params + widgets.
+	// The sampler methods live on samplerPanel (see sampler_panel.go); these
+	// fields stay here (accessed via the panel's dv back-ref) in Rung A.
+	samplerPanel *samplerPanel
+	// The synth methods live on synthPanel (see synth_panel.go); synth state
+	// fields stay here, accessed via the panel's dv back-ref.
+	synthPanel     *synthPanel
+	sampler        samplerState
+	samplerButtons []samplerButton // header + control-row buttons, rebuilt each Layout
+
+	// subdiv dropdown
+	subdivMenuBtns []*Button
+
+	deleted            []deletedRow
+	added              []int
+	originReq          []int
+	deleteConfirmRow   int   // row pending delete confirmation, -1 = none
+	deleteConfirmFrame int64 // frame when first click happened
+	renameRow          int
+	renameBox          *TextInput
+	// textFields tracks every NewTextField box for native keyboard wiring
+	// (textfield.go); syncNativeGestures arms the live ones.
+	textFields *textFieldRegistry
+
+	// import handler. source is a short label (filename / template name) the
+	// success notification names; "" falls back to the generic "Imported" toast.
+	onImport            func(data []byte, source string) error
+	onImportDialogStart func()
+	onImportDialogEnd   func()
+
+	// onStructuralMutation is invoked for every runtime mutation that changes
+	// state observable by parity (instrument id, BPM, length, row count,
+	// effect chain, EQ, mute/solo, send levels, etc.). Game injects this in
+	// New() to bump the parity generation, grant a grace window, and clear
+	// parity buffers. Must NOT call back into Game paths that re-acquire
+	// seqMu — DrumView methods are reachable from Game.Update under that
+	// lock and a re-acquire would deadlock.
+	onStructuralMutation func(reason string)
+	// onRowRemoved fires synchronously right after DeleteRow splices row i
+	// out, so every index-keyed per-row store (timeline history, freeze
+	// watermarks, scheduler cursors) moves with the rows BEFORE anything —
+	// updateBeatInfos included — reads a row by its new index.
+	onRowRemoved func(i int, origin model.NodeID)
+
+	// game is a weak back-reference to the owning Game, set by game_new.go
+	// after NewDrumView() returns. Used exclusively by callback closures
+	// (e.g. EQCallbacks.BeatGridFrac) that must read transient Game state
+	// like beatInfosByRow / playheadFloor at render time. May be nil during
+	// the brief window before Game wires it; closures must guard.
+	game *Game
+
+	bgDirty          bool
+	layoutSuppressed bool
+	bgCache          []*ebiten.Image
+	// bgCacheThemeGen is the ThemeGeneration bgCache was filled under.
+	bgCacheThemeGen int
+
+	instOptions []instrument.ID
+	instAvail   map[instrument.ID]bool
+	missingInst map[instrument.ID]bool
+	instMu      sync.RWMutex
 
 	uploading  bool
 	uploadCh   chan uploadResult
 	pendingWAV string
-	naming     bool
-	nameInput  string
+	nameInput  string     // legacy helper, not used for typing anymore
+	nameBox    *TextInput // active while naming
 
-	timelineRect  image.Rectangle // progress bar for fast seek
-	timelineBeats int             // total beats represented by timeline
+	// JSON import
+	importing bool
+	importCh  chan importResult
+	// Portable single-instrument import (*.beatmo-inst.json) — its own picker
+	// guard + channel, drained by drainInstrumentImport in Update.
+	instImporting  bool
+	instImportCh   chan importResult
+	lengthChanging bool // Set true during length change to suppress parity
+
+	// callback to change subdivisions per beat
+	onChangeSubdiv func(int) error
+
+	// Per-row sprite cache — grouped into the embedded rowSpriteCache (see
+	// drumview_row_sprite_cache.go). Anonymous so dv.rowCache / dv.rowCacheGen /
+	// … keep resolving via field promotion.
+	rowSpriteCache
+
+	// Segmented timeline slices populated each refresh; mirrors TimelineSegments.
+	timelineOffset    []int
+	timelinePast      [][]bool
+	timelinePastTypes [][]model.NodeType
+	timelinePresent   [][]bool
+	timelineFuture    [][]bool
+
+	// Rows-layer composite cache — grouped into the embedded rowsLayerCache (see
+	// drumview_rows_layer_cache.go). Anonymous so dv.rowsLayer / dv.rowsLayerGen /
+	// … keep resolving via field promotion.
+	rowsLayerCache
+
+	// Windowed row-scroll cache — grouped into the embedded rowsWinCache (see
+	// drumview_rows_win_cache.go). Anonymous so dv.rowsWinBuf / … keep resolving
+	// via field promotion.
+	rowsWinCache
+
+	// WASM-only adaptive pad helpers: expand pad when frequent full rebuilds
+	// happen due to horizontal pans; decay toward default when stationary.
+	rowsPadFullRebuilds int
+	rowsPadLastDecay    int64
+
+	// Last-frame row draw mask for visibility assertions (set during Draw)
+	rowsDrawnMask   []bool
+	rowsRepaints    int
+	directDrawCount int64 // frames where drawRowsDirect was used (mobile fallback)
+	directDrawCells int   // cells drawn in last directDraw call
+	rowFrame        []int64
+	rowRepaint      []int
+	panelMaskRect   image.Rectangle
+
+	// rowFireDecay holds a per-row "now-playing" tint intensity in [0,1].
+	// MarkRowFired snaps the entry to 1.0 when the row's audible step fires;
+	// decayAnims attenuates it each frame so the tint fades out smoothly.
+	// Read at draw time on mobile (drawRowsDirect overlay) to wash the row
+	// strip in WithAlpha(genColorPrimary, AlphaFaint*intensity).
+	rowFireDecay []float64
+
+	// Mobile EQ collapse: hides the Wave/EQ panel by default on mobile.
+	mobileEQCollapsed bool
+	mobileEQInited    bool // true once the mobile-default has been applied
+	// NOTE: previously held a parallel `mobileEQMode bool` — now derived
+	// from currentViewMode via dv.MobileEQMode() to keep the mobile tab
+	// swap on a single source of truth (see drumview_context_menu.go).
+
+	// userAdjustedLength is set when the user manually changes the timeline
+	// length via +/- buttons. When false, the mobile default cap is applied
+	// in SetBounds and updateBeatInfos to keep the initial view at 8 beats.
+	userAdjustedLength bool
+
+	// Mobile view switching (Rows → EQ → Wave cycle)
+	currentViewMode viewMode
+
+	// rowZoom* host the +/− chip pair inline with the addRow button on
+	// mobile. The chips resize the *entire drum-view pane* (not per-row
+	// dimensions) — see `Game.adjustDrumViewHeight` and the ctor where
+	// the OnClick callbacks dispatch into it. The historical row-height
+	// scaling has been retired; per-row dimensions are now fixed.
+	rowZoomChipRect image.Rectangle
+	rowZoomIncBtn   *Button
+	rowZoomDecBtn   *Button
+
+	// Mobile overflow menu for Upload/Import/Export
+	overflowMenuScroll *MenuScroll // shared scroll component for the overflow menu
+	overflowBtns       []*Button   // persisted overflow/template rows (rebuilt on open/page switch); rects updated per frame for scroll
+	overflowCard       *MenuCard   // shared frame for the File/template menu (title band from the pinned header item, IconFolder, close ×)
+	overflowBtnsPage   int         // page the persisted overflowBtns were built for; rebuild on page change
+
+	// overflowPage selects the overflow (file) popup page: 0 = File actions,
+	// 1 = the genre template list. Reset to 0 whenever the menu closes or a
+	// template is chosen so reopening always starts at the File page. The
+	// overflow portal is file-only; the navigation menu is a separate portal
+	// component (navMenuComp).
+	overflowPage int
+
+	// Template-menu (overflow page 1) fuzzy search. Mirrors the instrument
+	// menu's search field; templateSearchCache memoizes MenuSearcher output so
+	// overflowItems (called several times per frame) never re-fuzzes per frame.
+	templateSearchBox        *TextInput
+	templateSearchRect       image.Rectangle
+	templateSearchQuery      string
+	templateSearchCache      []MenuSearchResult
+	templateSearchCacheQuery string
+	templateSearchCacheValid bool
+	// templateLoadedStem remembers the last template loaded this session (by
+	// file stem) so the menu can mark it menuItemActive on reopen.
+	templateLoadedStem string
+
+	// overflowItemsCache memoizes the whole overflow item model. overflowItems
+	// is called ~12x per frame while the menu is open (draw, input, scroll
+	// config, popup geometry, native-gesture rects, search poll) and the
+	// template page rebuilds 40 rows, a 32-entry genre map, 32 onClick closures
+	// and 32 BPM captions on every call — 237 KB/frame before this cache.
+	// The model is a pure function of the state in overflowItemsKey, so it is
+	// rebuilt only when that key changes. Callers treat the slice as read-only.
+	// overflowNav / contextNav are the shared keyboard cursors for the two
+	// DrumView-hosted list menus (see menu_keynav_wiring.go). overflowNavSig
+	// tracks the item-list shape so a page switch or a new search query clears
+	// a now-meaningless cursor index.
+	overflowNav    *MenuKeyNav
+	overflowNavSig string
+	contextNav     *MenuKeyNav
+
+	overflowItemsCache      []overflowItem
+	overflowItemsCacheKey   overflowItemsKey
+	overflowItemsCacheValid bool
+	// overflowLabelWidth memoizes the widest row label for the cached item set
+	// (overflowPopupWidth measured ~40 long "Artist — Song" labels 6x per
+	// frame). Keyed by the same item key plus the font generation, since a
+	// locale/font switch changes every measurement.
+	overflowLabelWidth      int
+	overflowLabelWidthKey   overflowItemsKey
+	overflowLabelWidthFont  int64
+	overflowLabelWidthValid bool
+
+	// Mobile beat counter rect (inside transport row, 7th column on mobile)
+	beatCounterRect image.Rectangle
+
+	// Mobile per-row volume popup
+	volPopup    *SliderPopup
+	volPopupRow int // which row's volume is being edited
+
+	// Master volume popup (desktop icon-click opens vertical slider)
+	masterVolPopup *SliderPopup
+
+	// Mobile context menu for row controls (long-press on row label)
+	contextMenuRow         int
+	contextMenuRect        image.Rectangle
+	contextMenuBtns        []*Button
+	contextMenuCloseButton *Button            // the close (×) button, tracked by identity so retrieval never relies on append position
+	contextMenuCard        *MenuCard          // shared frame (panel / sheet, title band, close ×)
+	fxPanelCard            *MenuCard          // shared title band for the docked FX panel
+	contextMenuItemIcons   map[*Button]string // per-button leading icon, keyed by button identity (not a parallel slice — can't drift out of lockstep)
+	contextMenuHeaderRect  image.Rectangle    // mobile bottom sheet header area
+	contextMenuScroll      *ScrollBehavior    // scroll when items overflow
+
+	// EQ visualization (supports master and per-instrument channels)
+	eqRect          image.Rectangle
+	eqWaveformMode  bool
+	eqBandVals      []float64
+	eqLastBands     []float64
+	eqApplied       []audio.EQBand
+	masterGainsDB   []float64       // master channel EQ gains (separate from zone working copy)
+	masterMuted     []bool          // master channel EQ mute state
+	eqActiveChannel channel.ID      // the master bus or an instrument's channel; empty = master
+	eqChannelScroll *ScrollBehavior // Scroll state for EQ channel dropdown
+	// Deferred taps: two-phase mobile tap pattern (position stored on press,
+	// fired on release if no scroll committed). Replaces 15 individual fields.
+	eqChDeferredTap        DeferredTap
+	instMenuDeferredTap    DeferredTap
+	contextMenuDeferredTap DeferredTap
+	fxPanelDeferredTap     DeferredTap
+
+	// Deferred release-commit state for continuous controls. The live
+	// audio.Set* calls stay per-frame; the emit + undo record fire ONCE at
+	// drag release via commitEQBand / commitMainVolume / commitRowVolume.
+	eqPendingChannel    channel.ID
+	eqPendingBand       int
+	eqPendingGainDB     float64
+	eqPendingDirty      bool
+	mainVolPending      float64
+	mainVolPendingDirty bool
+
+	// EQ frequency response curve
+	eqCurveDragBand   int                       // -1 when not dragging, else band index
+	eqCurveDragFilter hooks.EQFilter            // FilterNone when not dragging a filter handle
+	eqCurveDirty      bool                      // true when EQ settings changed
+	eqCurveCache      []audio.FreqResponsePoint // cached response curve
+
+	// High-pass and low-pass filter state (master channel)
+	hpfEnabled  bool    // high-pass filter on/off
+	hpfCutoffHz float64 // cutoff frequency (20–2000 Hz range)
+	lpfEnabled  bool    // low-pass filter on/off
+	lpfCutoffHz float64 // cutoff frequency (1000–20000 Hz range)
+
+	// eqTestSnapshot lets tests inject a deterministic analyzer reading.
+	eqTestSnapshot      *audio.AnalyzerSnapshot
+	eqTestPreEQSnapshot *audio.AnalyzerSnapshot
+
+	frame int64
+
+	// lastElapsedBeats is the elapsedBeats value from the most recent Draw.
+	// recalcButtons (which runs every frame) reads it to size the beat-counter
+	// slot to the LIVE readout width, so the notification area can hug the
+	// rendered beat/timer text instead of a fixed worst-case slot. At most one
+	// frame stale; defaults to 0 ("Beat 1 · 0:00") before the first Draw.
+	lastElapsedBeats float64
+	// readout memoizes timelineInfo on what it displays: recalcButtons sizes
+	// the counter from it every frame, while the text changes once a second.
+	readout readoutMemo
+	// Gates for recalcButtons' forced zone layouts (drumview_layout_gate.go).
+	timelineLayoutKey  timelineLayoutKey
+	timelineLayoutHave bool
+	eqLayoutGate       eqLayoutGate
+
+	timelineRect image.Rectangle // progress bar for fast seek
+	// cellGridRect is the authoritative X span for row step cells. It is
+	// deliberately NOT timelineRect: the ribbon bar reserves horizontal room
+	// for header-only chrome (track/lock chip left, len +/- buttons right,
+	// mobile row-zoom chips right) and maps the whole song, while the cells
+	// map the current window (Offset/Length) and must fill the full width the
+	// timeline widget dedicates to them. Anchoring cells to the bar leaked
+	// those chrome reservations into the grid as black side bands.
+	cellGridRect  image.Rectangle
+	timelineBeats int // total beats represented by timeline
+	// Units per beat used by the timeline header. When running under Game,
+	// this is set to the grid's MaxDiv so offsets/length (which are tracked
+	// in subdivision steps) are mapped to beats consistently in the header.
+	timelineUnitsPerBeat int
 
 	// internal ui state
-	bpm           int
-	focusBPM      bool
-	playPressed   bool
-	stopPressed   bool
+	bpm         int
+	secPerBeat  float64
+	playPressed bool
+	stopPressed bool
+	// pendingSeek is a one-shot navigation intent queued by any UI entry
+	// point (ribbon, FF/RW, counter, keyboard) and drained once per frame by
+	// Game.Update's drainSeekRequest (game_seek.go), under seqMu.
+	pendingSeek   *seekRequest
 	Length        int  // Length of the drum view, independent of graph
-	bpmIncPressed bool // State for BPM increase button
-	bpmDecPressed bool // State for BPM decrease button
 	lenIncPressed bool // State for length increase button
 	lenDecPressed bool // State for length decrease button
-
-	bpmInput string // typed digits while editing
-	bpmPrev  int    // previous BPM before editing
+	bpmDelta      int  // accumulated BPM adjustments from +/- buttons
 
 	// button animations
 	playAnim     float64
@@ -143,7 +868,6 @@ type DrumView struct {
 	lenDecAnim   float64
 	lenIncAnim   float64
 	uploadAnim   float64
-	bpmFocusAnim float64
 	bpmErrorAnim float64
 	saveAnim     float64
 	namePhase    float64
@@ -152,1143 +876,234 @@ type DrumView struct {
 	// window scrolling
 	Offset        int // index of first visible beat
 	dragging      bool
-	dragStartX    int
-	startOffset   int
 	offsetChanged bool
 
-	rowOffset      int
-	scrollDrag     bool
-	scrollStartY   int
-	scrollStartOff int
+	rowOffset         int
+	rowScrollFromZone bool // set by zone callbacks to signal zone→dv sync needed
+
+	// twoFingerPan tracks an in-progress two-finger pan gesture over the drum
+	// cell grid so it can drive the timeline (horizontal) / row scroll
+	// (vertical) exactly like the single-finger grid drag, direction-locked.
+	twoFingerPan twoFingerPanState
 
 	scrubbing bool
+
+	// mouseDownInBounds is true while mouse is pressed and press started in drum view.
+	// Prevents splitter (or other handlers) from stealing mid-drag.
+	mouseDownInBounds bool
+	// inputCapturedExternally is set by Game when another handler holds dispatcher capture.
+	// Prevents drum view from starting new interactions when another component owns input.
+	inputCapturedExternally bool
+
+	// Local cache of custom instrument WAV paths by instrument ID. Used for
+	// export so imported projects can auto-register custom samples.
+	samplePath map[instrument.ID]string
+
+	// wavReg is our own file-based WAV versioning registry (name→content
+	// versions), used by the portable-instrument export/import to pin a WAV
+	// version by hash. Lazily created; backed by the decoupled instrument store.
+	wavReg *audio.WavRegistry
+
+	// Playing flag (copied from Game) so DrumView can freeze header scale
+	// and avoid cursor jumps during active playback.
+	isPlaying bool
+
+	// simple draw hint propagated from Game; enables low-overhead highlight path
+	simpleDraw bool
+	// perfDrawLite skips expensive, non-critical chrome when perf fast path is on.
+	perfDrawLite bool
+
+	// notifications: single source of truth for the in-band notification
+	// area + history popup. Replaces the former floating top-right toast.
+	notifStore *notificationStore
+	// logsComp is the Logs Navigation Panel component (event stream +
+	// notifications, searchable/filterable/paginated). Lazily created.
+	logsComp *LogsComponent
+	// logsToast is the transient error-only alert shown at the top of the grid
+	// pane (replaces the removed in-band notification area's alert role).
+	logsToast logsToast
+	// import
+	importAttemptFrame  int
+	importAttemptUpdate int
+
+	// update sequence (increments each Update call)
+	updateSeq int
+
+	// Label caching for performance: avoids O(N) string ops every frame.
+	// instLabelCache caches computed display labels for instrument IDs.
+	instLabelCache map[instrument.ID]string
+	// cachedLabelW stores the computed labelW; labelWidthDirty triggers recompute.
+	cachedLabelW    int
+	labelWidthDirty bool
+	// Track data signature to detect stale cache even when labelWidthDirty is false.
+	labelCacheRowCount int
+	labelCacheInstLen  int
+	labelCacheRowNames []string // cached row names to detect direct modifications
+
+	// Toolbar caching: renders transport buttons/sliders to a cached image
+	// to avoid ~130 DrawImage calls every frame (1 blit on cache hit).
+	toolbarCache     *ebiten.Image
+	toolbarCacheHash uint64
+
+	// Row controls caching: renders per-row buttons/sliders to a cached image
+	// to avoid excessive DrawImage calls every frame.
+	rowControlsCacheDirty bool
+	rowControlsCacheRect  image.Rectangle // cached bounds
 }
 
-// Capturing reports whether the drum view is actively handling a mouse drag
-// (e.g. scrollbar or slider) and should therefore block camera panning.
-func (dv *DrumView) Capturing() bool {
-	return dv.scrollDrag || dv.activeSlider >= 0
-}
+// --- EQ zone accessor methods (delegate to eqPanelZone) ---
 
-// BlocksAt reports whether a point (x,y) lies over a temporary overlay such as
-// the instrument dropdown or rename dialog. When true, clicks at that position
-// should not reach underlying UI elements.
-func (dv *DrumView) BlocksAt(x, y int) bool {
-	if dv.instMenuOpen || dv.instHold || dv.renameBox != nil || dv.naming {
-		return true
+func (dv *DrumView) eqMuteBtns() []*Button    { return dv.eqPanelZone.eqMuteBtns }
+func (dv *DrumView) eqBandGainsDB() []float64 { return dv.eqPanelZone.bandGainsDB }
+func (dv *DrumView) eqBandMuted() []bool      { return dv.eqPanelZone.bandMuted }
+func (dv *DrumView) eqToggleBtn() *Button     { return dv.eqPanelZone.stickyBar.TabBtn(0) }
+func (dv *DrumView) eqChannelBtn() *Button    { return dv.eqPanelZone.stickyBar.ChannelBtn() }
+func (dv *DrumView) hpfBtn() *Button          { return dv.eqPanelZone.hpfBtn }
+func (dv *DrumView) lpfBtn() *Button          { return dv.eqPanelZone.lpfBtn }
+
+// --- Scope panel accessors ---
+
+func (dv *DrumView) ScopeVisible() bool {
+	if dv.eqPanelZone != nil {
+		return dv.eqPanelZone.tabState.ActiveTab() == TabScope
 	}
 	return false
 }
-
-type deletedRow struct {
-	index  int
-	origin model.NodeID
-}
-
-/* ─── geometry helpers ─────────────────────────────────────── */
-
-// rowHeight returns the fixed pixel height for each drum row and for the
-// trailing "+" button row. Keeping this constant avoids oversized buttons when
-// only a few rows are present, yielding a minimal and consistent layout.
-func (dv *DrumView) rowHeight() int { return 24 }
-
-func (dv *DrumView) visibleRows() int {
-	return (dv.Bounds.Dy() - timelineHeight) / dv.rowHeight()
-}
-
-func (dv *DrumView) scrollBarRect() image.Rectangle {
-	w := 6
-	return image.Rect(dv.Bounds.Max.X-w, dv.Bounds.Min.Y+timelineHeight, dv.Bounds.Max.X, dv.Bounds.Max.Y)
-}
-
-func (dv *DrumView) scrollThumbRect() image.Rectangle {
-	total := len(dv.Rows) + 1
-	vis := dv.visibleRows()
-	bar := dv.scrollBarRect()
-	if total <= vis {
-		return image.Rect(0, 0, 0, 0)
-	}
-	h := bar.Dy() * vis / total
-	if h < 10 {
-		h = 10
-	}
-	track := bar.Dy() - h
-	y := bar.Min.Y
-	if total-vis > 0 {
-		y += track * dv.rowOffset / (total - vis)
-	}
-	return image.Rect(bar.Min.X, y, bar.Max.X, y+h)
-}
-
-// SetBeatLength sets the beat length in the underlying graph.
-func (dv *DrumView) SetBeatLength(length int) {
-	if dv.Graph != nil {
-		dv.Graph.SetBeatLength(length)
-		dv.logger.Debugf("[DRUMVIEW] Graph beat length set to: %d", length)
-	}
-	if length > dv.timelineBeats {
-		dv.timelineBeats = length
-	}
-}
-
-/* ─── ctor ─────────────────────────────────────────────────── */
-
-func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *DrumView {
-	opts := audio.Instruments()
-	inst := "snare"
-	name := "Snare"
-	if len(opts) > 0 {
-		inst = opts[0]
-		name = strings.ToUpper(inst[:1]) + inst[1:]
-	}
-	dv := &DrumView{
-		Bounds:        b,
-		labelW:        100,
-		bpm:           120,
-		bgDirty:       true,
-		Graph:         g,
-		logger:        logger,
-		Length:        8, // Default length
-		Offset:        0,
-		instOptions:   opts,
-		uploadCh:      make(chan uploadResult, 1),
-		timelineBeats: 8,
-		selRow:        0,
-		activeSlider:  -1,
-		renameRow:     -1,
-	}
-	dv.playBtn = NewButton("▶", PlayButtonStyle, func() {
-		dv.playPressed = true
-		dv.playAnim = 1
-	})
-	dv.stopBtn = NewButton("■", StopButtonStyle, func() {
-		dv.stopPressed = true
-		dv.stopAnim = 1
-	})
-	dv.bpmDecBtn = NewButton("-", BPMDecStyle, func() {
-		dv.bpmDecPressed = true
-		dv.bpmDecAnim = 1
-	})
-	dv.bpmDecBtn.Repeat = true
-	dv.bpmBox = NewButton("120", BPMBoxStyle, nil)
-	dv.bpmIncBtn = NewButton("+", BPMIncStyle, func() {
-		dv.bpmIncPressed = true
-		dv.bpmIncAnim = 1
-	})
-	dv.bpmIncBtn.Repeat = true
-	dv.lenDecBtn = NewButton("-", LenDecStyle, func() {
-		dv.lenDecPressed = true
-		dv.lenDecAnim = 1
-	})
-	dv.lenDecBtn.Repeat = true
-	dv.lenIncBtn = NewButton("+", LenIncStyle, func() {
-		dv.lenIncPressed = true
-		dv.lenIncAnim = 1
-	})
-	dv.lenIncBtn.Repeat = true
-	dv.uploadBtn = NewButton("Upload", UploadBtnStyle, func() {
-		dv.logger.Debugf("[DRUMVIEW] Upload button clicked. uploading=%v naming=%v menuOpen=%v", dv.uploading, dv.naming, dv.instMenuOpen)
-		dv.instMenuOpen = false
-		if !dv.uploading && !dv.naming {
-			dv.uploadAnim = 1
-			dv.uploading = true
-			dv.logger.Debugf("[DRUMVIEW] Opening file chooser")
-			go func() {
-				path, err := audio.SelectWAV()
-				dv.uploadCh <- uploadResult{path: path, err: err}
-			}()
-		}
-	})
-	dv.saveBtn = NewButton("Save", InstButtonStyle, nil)
-	dv.addRowBtn = NewButton("+", InstButtonStyle, func() {
-		dv.AddRow()
-		dv.selRow = len(dv.Rows) - 1
-	})
-	dv.addRowBtn.Repeat = true
-
-	dv.Rows = []*DrumRow{{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), Color: instColor(inst), Origin: model.InvalidNodeID, Volume: 1}}
-	dv.SetBeatLength(dv.Length) // Initialize graph's beat length
-	dv.recalcButtons()
-	if dv.bgDirty {
-		dv.calcLayout()
-		dv.bgDirty = false
-	}
-	return dv
-}
-
-// SetBounds is called from Game whenever the splitter moves or the window
-// resizes; it invalidates the cached background so dimensions update next draw.
-func (dv *DrumView) SetBounds(b image.Rectangle) {
-	if dv.Bounds != b {
-		dv.Bounds = b
-		dv.bgDirty = true
-		dv.recalcButtons()
-		if dv.bgDirty {
-			dv.calcLayout()
-			dv.bgDirty = false
-		}
-	}
-}
-
-// AddRow appends a new drum row with default settings.
-func (dv *DrumView) AddRow() {
-	inst := "snare"
-	name := "Snare"
-	if len(dv.instOptions) > 0 {
-		inst = dv.instOptions[0]
-		name = strings.ToUpper(inst[:1]) + inst[1:]
-	}
-	idx := len(dv.Rows)
-	dv.Rows = append(dv.Rows, &DrumRow{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), Color: instColor(inst), Origin: model.InvalidNodeID, Node: nil, Volume: 1})
-	dv.added = append(dv.added, idx)
-	dv.bgDirty = true
-	dv.activeSlider = -1
-	dv.calcLayout()
-	maxOff := len(dv.Rows) + 1 - dv.visibleRows()
-	if maxOff < 0 {
-		maxOff = 0
-	}
-	if dv.rowOffset > maxOff {
-		dv.rowOffset = maxOff
-	}
-}
-
-// DeleteRow removes the drum row at the given index.
-func (dv *DrumView) DeleteRow(i int) {
-	if i < 0 || i >= len(dv.Rows) || len(dv.Rows) <= 1 {
+func (dv *DrumView) SetChainVisible(v bool) {
+	if v && !panelTabAvailable(TabScope) {
 		return
 	}
-	origin := dv.Rows[i].Origin
-	dv.Rows = append(dv.Rows[:i], dv.Rows[i+1:]...)
-	dv.deleted = append(dv.deleted, deletedRow{index: i, origin: origin})
-	dv.bgDirty = true
-	dv.activeSlider = -1
-	if dv.selRow >= len(dv.Rows) {
-		dv.selRow = len(dv.Rows) - 1
-	}
-	dv.calcLayout()
-	maxOff := len(dv.Rows) + 1 - dv.visibleRows()
-	if maxOff < 0 {
-		maxOff = 0
-	}
-	if dv.rowOffset > maxOff {
-		dv.rowOffset = maxOff
+	dv.scopeVisible = v
+	if dv.eqPanelZone != nil && v {
+		dv.eqPanelZone.tabState.SetActiveTab(TabScope)
 	}
 }
 
-func (dv *DrumView) toggleMute(idx int) {
-	if idx < 0 || idx >= len(dv.Rows) {
-		return
+// --- RowRack zone accessor methods (delegate to rowRackZone) ---
+
+func (dv *DrumView) addRowBtn() *Button {
+	if dv.rowRackZone == nil {
+		return nil
 	}
-	r := dv.Rows[idx]
-	r.Muted = !r.Muted
-	if r.Muted {
-		r.Solo = false
+	return dv.rowRackZone.AddRowButton()
+}
+func (dv *DrumView) rowEntryCount() int {
+	if dv.rowRackZone == nil {
+		return 0
 	}
+	return dv.rowRackZone.EntryCount()
+}
+func (dv *DrumView) rowLabels() []*Button {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowLabels()
+}
+func (dv *DrumView) rowEditBtns() []*Button {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowEditBtns()
+}
+func (dv *DrumView) rowSaveBtns() []*Button {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowSaveBtns()
+}
+func (dv *DrumView) rowColorBtns() []*Button {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowColorBtns()
+}
+func (dv *DrumView) rowDeleteBtns() []*Button {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowDeleteBtns()
+}
+func (dv *DrumView) rowVolSliders() []*Slider {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowVolSliders()
+}
+func (dv *DrumView) rowOriginBtns() []*Button {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowOriginBtns()
+}
+func (dv *DrumView) rowMuteBtns() []*Button {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowMuteBtns()
+}
+func (dv *DrumView) rowSoloBtns() []*Button {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowSoloBtns()
+}
+func (dv *DrumView) rowMenuBtns() []*Button {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowMenuBtns()
+}
+func (dv *DrumView) rowFXBtns() []*Button {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowFXBtns()
+}
+func (dv *DrumView) rowGroups() []RowButtonGroup {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowGroups()
+}
+func (dv *DrumView) rowVolGroup() *SliderGroup {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowVolGroup()
+}
+func (dv *DrumView) rowScroll() *ScrollBehavior {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowScroll()
 }
 
-func (dv *DrumView) toggleSolo(idx int) {
-	if idx < 0 || idx >= len(dv.Rows) {
-		return
-	}
-	r := dv.Rows[idx]
-	r.Solo = !r.Solo
-	if r.Solo {
-		r.Muted = false
-		for i, o := range dv.Rows {
-			if i == idx {
-				continue
-			}
-			o.Solo = false
-			o.Muted = true
-		}
-	} else {
-		anySolo := false
-		for _, o := range dv.Rows {
-			if o.Solo {
-				anySolo = true
-				break
-			}
-		}
-		if !anySolo {
-			for _, o := range dv.Rows {
-				o.Muted = false
-			}
-		}
-	}
-}
+// --- Transport zone accessor methods (delegate to transportZone) ---
 
-// ConsumeDeletedRows returns and clears the recently deleted rows info.
-func (dv *DrumView) ConsumeDeletedRows() []deletedRow {
-	rows := dv.deleted
-	dv.deleted = nil
-	return rows
-}
+func (dv *DrumView) playBtn() *Button             { return dv.transportZone.playBtn }
+func (dv *DrumView) stopBtn() *Button             { return dv.transportZone.stopBtn }
+func (dv *DrumView) recordBtn() *Button           { return dv.transportZone.recordBtn }
+func (dv *DrumView) bpmDecBtn() *Button           { return dv.transportZone.bpmDecBtn }
+func (dv *DrumView) bpmBox() *TextInput           { return dv.transportZone.bpmBox }
+func (dv *DrumView) bpmIncBtn() *Button           { return dv.transportZone.bpmIncBtn }
+func (dv *DrumView) subdivBtn() *Button           { return dv.transportZone.subdivBtn }
+func (dv *DrumView) trackBtn() *Button            { return dv.transportZone.trackBtn }
+func (dv *DrumView) uploadBtn() *Button           { return dv.transportZone.uploadBtn }
+func (dv *DrumView) importBtn() *Button           { return dv.transportZone.importBtn }
+func (dv *DrumView) exportBtn() *Button           { return dv.transportZone.exportBtn }
+func (dv *DrumView) eqToggleMobile() *Button      { return dv.transportZone.eqToggleMobile }
+func (dv *DrumView) viewSwitchBtn() *Button       { return dv.transportZone.viewSwitchBtn }
+func (dv *DrumView) mainVolSlider() *Slider       { return dv.transportZone.mainVolSlider }
+func (dv *DrumView) mainVolGroup() *SliderGroup   { return dv.transportZone.mainVolGroup }
+func (dv *DrumView) transportGroup() *LayoutGroup { return dv.transportZone.transportGroup }
 
-// ConsumeAddedRows returns and clears indexes of newly added rows.
-func (dv *DrumView) ConsumeAddedRows() []int {
-	rows := dv.added
-	dv.added = nil
-	return rows
-}
+// RowOffsetForTest reports the index of the first visible drum row
+// (dv.rowOffset). Test-only read accessor — production code reads the field
+// directly or via the row-rack zone. Used by input-isolation tests that
+// assert an unrelated wheel gesture did NOT scroll the drum rows.
+func (dv *DrumView) RowOffsetForTest() int { return dv.rowOffset }
 
-// ConsumeOriginRequests returns and clears indexes of rows requesting origin reassignment.
-func (dv *DrumView) ConsumeOriginRequests() []int {
-	rows := dv.originReq
-	dv.originReq = nil
-	return rows
-}
-
-/* ─── public update ────────────────────────────────────────── */
-
-func (dv *DrumView) recalcButtons() {
-	dv.controlsW = dv.Bounds.Dx() / 4
-	if dv.controlsW < 140 {
-		dv.controlsW = 140
-	}
-	if dv.controlsW > 320 {
-		dv.controlsW = 320
-	}
-
-	topBounds := image.Rect(dv.Bounds.Min.X+dv.labelW, dv.Bounds.Min.Y, dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Min.Y+dv.rowHeight())
-	topGrid := NewGridLayout(topBounds, []float64{1, 1, 1, 2, 1, 1, 1}, []float64{1})
-	dv.playBtn.SetRect(insetRect(topGrid.Cell(0, 0), buttonPad))
-	dv.stopBtn.SetRect(insetRect(topGrid.Cell(1, 0), buttonPad))
-	dv.bpmDecBtn.SetRect(insetRect(topGrid.Cell(2, 0), buttonPad))
-	dv.bpmBox.SetRect(insetRect(topGrid.Cell(3, 0), buttonPad))
-	dv.bpmIncBtn.SetRect(insetRect(topGrid.Cell(4, 0), buttonPad))
-	dv.lenDecBtn.SetRect(insetRect(topGrid.Cell(5, 0), buttonPad))
-	dv.lenIncBtn.SetRect(insetRect(topGrid.Cell(6, 0), buttonPad))
-
-	botBounds := image.Rect(dv.Bounds.Min.X+dv.labelW, dv.Bounds.Min.Y+dv.rowHeight(), dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Min.Y+2*dv.rowHeight())
-	botGrid := NewGridLayout(botBounds, []float64{1}, []float64{1})
-	dv.uploadBtn.SetRect(insetRect(botGrid.Cell(0, 0), buttonPad))
-
-	top := dv.Bounds.Min.Y + timelineHeight - timelineBarHeight - 5
-	dv.timelineRect = image.Rect(
-		dv.Bounds.Min.X+dv.labelW+dv.controlsW,
-		top,
-		dv.Bounds.Max.X-10,
-		top+timelineBarHeight,
-	)
-}
-
-func (dv *DrumView) calcLayout() {
-	if len(dv.Rows) > 0 {
-		dv.cell = (dv.Bounds.Dx() - dv.labelW - dv.controlsW) / len(dv.Rows[0].Steps)
-	}
-	dv.rowLabels = dv.rowLabels[:0]
-	dv.rowEditBtns = dv.rowEditBtns[:0]
-	dv.rowDeleteBtns = dv.rowDeleteBtns[:0]
-	dv.rowVolSliders = dv.rowVolSliders[:0]
-	dv.rowOriginBtns = dv.rowOriginBtns[:0]
-	dv.rowMuteBtns = dv.rowMuteBtns[:0]
-	dv.rowSoloBtns = dv.rowSoloBtns[:0]
-	vis := dv.visibleRows()
-	for i := range dv.Rows {
-		y := dv.Bounds.Min.Y + timelineHeight + (i-dv.rowOffset)*dv.rowHeight()
-		rowRect := image.Rect(dv.Bounds.Min.X, y, dv.Bounds.Min.X+dv.labelW+dv.controlsW, y+dv.rowHeight())
-		if i < dv.rowOffset || i >= dv.rowOffset+vis {
-			rowRect = image.Rect(0, 0, 0, 0)
-		}
-		g := NewGridLayout(rowRect, []float64{6, 2, 5, 2, 2, 2, 2}, []float64{1})
-		lbl := NewButton(dv.Rows[i].Name, InstButtonStyle, nil)
-		lbl.SetRect(insetRect(g.Cell(0, 0), buttonPad))
-		idx := i
-		lbl.OnClick = func() {
-			dv.selRow = idx
-			if dv.instMenuOpen && dv.instMenuRow == idx {
-				dv.logger.Debugf("[DRUMVIEW] Closing instrument menu for row %d", idx)
-				dv.instMenuOpen = false
-			} else {
-				dv.instMenuRow = idx
-				dv.instMenuOpen = true
-				dv.buildInstMenu()
-				dv.logger.Debugf("[DRUMVIEW] Opening instrument menu for row %d", idx)
-			}
-		}
-		edit := NewButton("✎", InstButtonStyle, nil)
-		edit.SetRect(insetRect(g.Cell(1, 0), buttonPad))
-		editIdx := i
-		edit.OnClick = func() {
-			dv.renameRow = editIdx
-			r := dv.rowLabels[editIdx].Rect()
-			dv.renameBox = NewTextInput(r, BPMBoxStyle)
-			dv.renameBox.SetText(dv.Rows[editIdx].Name)
-			dv.renameBox.focused = true
-			dv.renameBox.anim = 1
-			dv.renameHold = true
-			dv.instMenuOpen = false
-		}
-		slider := NewSlider(dv.Rows[i].Volume)
-		slider.SetRect(insetRect(g.Cell(2, 0), buttonPad))
-		mute := NewButton("M", InstButtonStyle, nil)
-		mute.SetRect(insetRect(g.Cell(3, 0), buttonPad))
-		solo := NewButton("S", InstButtonStyle, nil)
-		solo.SetRect(insetRect(g.Cell(4, 0), buttonPad))
-		origin := NewButton("O", InstButtonStyle, nil)
-		origin.SetRect(insetRect(g.Cell(5, 0), buttonPad))
-		del := NewButton("X", InstButtonStyle, nil)
-		del.SetRect(insetRect(g.Cell(6, 0), buttonPad))
-		delIdx := i
-		if len(dv.Rows) > 1 {
-			del.OnClick = func() { dv.DeleteRow(delIdx) }
-		} else {
-			del.Style = DisabledButtonStyle
-		}
-		originIdx := i
-		origin.OnClick = func() { dv.originReq = append(dv.originReq, originIdx) }
-		muteIdx := i
-		mute.OnClick = func() { dv.toggleMute(muteIdx) }
-		soloIdx := i
-		solo.OnClick = func() { dv.toggleSolo(soloIdx) }
-		dv.rowLabels = append(dv.rowLabels, lbl)
-		dv.rowEditBtns = append(dv.rowEditBtns, edit)
-		dv.rowVolSliders = append(dv.rowVolSliders, slider)
-		dv.rowMuteBtns = append(dv.rowMuteBtns, mute)
-		dv.rowSoloBtns = append(dv.rowSoloBtns, solo)
-		dv.rowOriginBtns = append(dv.rowOriginBtns, origin)
-		dv.rowDeleteBtns = append(dv.rowDeleteBtns, del)
-	}
-	y := dv.Bounds.Min.Y + timelineHeight + (len(dv.Rows)-dv.rowOffset)*dv.rowHeight()
-	dv.addRowBtn.SetRect(insetRect(image.Rect(dv.Bounds.Min.X, y, dv.Bounds.Min.X+dv.labelW+dv.controlsW, y+dv.rowHeight()), buttonPad))
-}
-
-// buildInstMenu rebuilds the instrument dropdown buttons for the selected row.
-func (dv *DrumView) buildInstMenu() {
-	dv.instMenuBtns = dv.instMenuBtns[:0]
-	if dv.instMenuRow < 0 || dv.instMenuRow >= len(dv.rowLabels) {
-		return
-	}
-	base := dv.rowLabels[dv.instMenuRow].Rect()
-	menuH := dv.rowHeight() * len(dv.instOptions)
-	openUp := base.Max.Y+menuH > dv.Bounds.Max.Y
-	for i, id := range dv.instOptions {
-		var r image.Rectangle
-		if openUp {
-			r = image.Rect(base.Min.X, base.Min.Y-(i+1)*dv.rowHeight(), base.Max.X, base.Min.Y-i*dv.rowHeight())
-		} else {
-			r = image.Rect(base.Min.X, base.Max.Y+i*dv.rowHeight(), base.Max.X, base.Max.Y+(i+1)*dv.rowHeight())
-		}
-		optID := id
-		btn := NewButton(strings.ToUpper(id[:1])+id[1:], DropdownStyle, func() {
-			dv.SetInstrument(optID)
-		})
-		btn.SetRect(insetRect(r, buttonPad))
-		dv.instMenuBtns = append(dv.instMenuBtns, btn)
-	}
-}
-
-func (dv *DrumView) refreshInstruments() {
-	opts := audio.Instruments()
-	if !slices.Equal(opts, dv.instOptions) {
-		dv.instOptions = opts
-		if dv.instMenuOpen {
-			dv.buildInstMenu()
-		}
-	}
-}
-
-func (dv *DrumView) PlayPressed() bool {
-	if dv.playPressed {
-		dv.playPressed = false
-		return true
-	}
-	return false
-}
-
-func (dv *DrumView) StopPressed() bool {
-	if dv.stopPressed {
-		dv.stopPressed = false
-		return true
-	}
-	return false
-}
-
-func (dv *DrumView) BPM() int {
-	return dv.bpm
-}
-
-func (dv *DrumView) SetBPM(b int) {
-	if b < 1 {
-		dv.bpm = 1
-		dv.bpmErrorAnim = 1
-		return
-	}
-	if b > maxBPM {
-		dv.bpm = maxBPM
-		dv.bpmErrorAnim = 1
-		return
-	}
-	dv.bpm = b
-}
-
-func (dv *DrumView) OffsetChanged() bool {
-	if dv.offsetChanged {
-		dv.offsetChanged = false
-		return true
-	}
-	return false
-}
-
-func (dv *DrumView) SetLength(length int) {
-	if length < 1 {
-		length = 1
-	}
-	dv.Length = length
-	for _, r := range dv.Rows {
-		r.Steps = make([]bool, dv.Length)
-	}
-	dv.SetBeatLength(dv.Length)
-	dv.bgDirty = true
-}
-
-func (dv *DrumView) SetInstrument(id string) {
-	if len(dv.Rows) == 0 {
-		return
-	}
-	dv.logger.Debugf("[DRUMVIEW] SetInstrument row=%d id=%s", dv.selRow, id)
-	dv.Rows[dv.selRow].Instrument = id
-	if id != "" {
-		dv.Rows[dv.selRow].Name = strings.ToUpper(id[:1]) + id[1:]
-	}
-	dv.Rows[dv.selRow].Color = instColor(id)
-	if dv.selRow < len(dv.rowLabels) {
-		dv.rowLabels[dv.selRow].Text = dv.Rows[dv.selRow].Name
-	}
-}
-
-func (dv *DrumView) AddInstrument(id string) {
-	dv.instOptions = audio.Instruments()
-	dv.SetInstrument(id)
-}
-
-func (dv *DrumView) CycleInstrument() {
-	if len(dv.instOptions) == 0 || len(dv.Rows) == 0 {
-		return
-	}
-	cur := dv.Rows[dv.selRow].Instrument
-	for i, id := range dv.instOptions {
-		if id == cur {
-			next := dv.instOptions[(i+1)%len(dv.instOptions)]
-			dv.SetInstrument(next)
-			return
-		}
-	}
-}
-
-func (dv *DrumView) registerInstrument(id string) {
-	if err := audio.RegisterWAV(id, dv.pendingWAV); err == nil {
-		dv.instOptions = audio.Instruments()
-		dv.SetInstrument(id)
-		if dv.instMenuOpen {
-			dv.buildInstMenu()
-		}
-		dv.logger.Infof("[DRUMVIEW] Loaded user WAV %s", id)
-	} else {
-		dv.logger.Infof("[DRUMVIEW] Failed to load WAV: %v", err)
-	}
-	dv.naming = false
-	dv.pendingWAV = ""
-	dv.nameInput = ""
-	dv.savePressed = false
-}
-
-func (dv *DrumView) decayAnims() {
-	decay := func(v *float64) {
-		*v *= 0.85
-		if *v < 0.01 {
-			*v = 0
-		}
-	}
-	decay(&dv.playAnim)
-	decay(&dv.stopAnim)
-	decay(&dv.bpmDecAnim)
-	decay(&dv.bpmIncAnim)
-	decay(&dv.lenDecAnim)
-	decay(&dv.lenIncAnim)
-	decay(&dv.uploadAnim)
-	decay(&dv.bpmFocusAnim)
-	decay(&dv.bpmErrorAnim)
-	decay(&dv.saveAnim)
-}
-
-func (dv *DrumView) Update() {
-	if len(dv.Rows) == 0 {
-		return
-	}
-
-	dv.refreshInstruments()
-
-	if dv.uploading {
-		select {
-		case res := <-dv.uploadCh:
-			dv.uploading = false
-			dv.logger.Debugf("[DRUMVIEW] Upload result path=%s err=%v", res.path, res.err)
-			if res.err != nil {
-				dv.logger.Infof("[DRUMVIEW] Failed to load WAV: %v", res.err)
-			} else {
-				dv.pendingWAV = res.path
-				dv.naming = true
-				dv.nameInput = ""
-			}
-		default:
-		}
-	}
-
-	if dv.naming {
-		box := image.Rect(dv.Bounds.Min.X+10, dv.Bounds.Min.Y+110, dv.Bounds.Min.X+300, dv.Bounds.Min.Y+150)
-		dv.saveBtn.SetRect(image.Rect(box.Max.X+10, box.Min.Y, box.Max.X+50, box.Max.Y))
-		dv.saveBtn.OnClick = func() {
-			id := strings.TrimSpace(dv.nameInput)
-			if id != "" {
-				dv.registerInstrument(id)
-			}
-		}
-		for _, r := range inputChars() {
-			if r >= asciiPrintableMin && r <= asciiPrintableMax {
-				dv.nameInput += string(r)
-			}
-		}
-		if isKeyPressed(ebiten.KeyBackspace) && len(dv.nameInput) > 0 {
-			dv.nameInput = dv.nameInput[:len(dv.nameInput)-1]
-		}
-		if isKeyPressed(ebiten.KeyEnter) {
-			id := strings.TrimSpace(dv.nameInput)
-			if id != "" {
-				dv.registerInstrument(id)
-			}
-		}
-		if isKeyPressed(ebiten.KeyEscape) {
-			dv.naming = false
-			dv.pendingWAV = ""
-			dv.nameInput = ""
-		}
-		mx, my := cursorPosition()
-		left := isMouseButtonPressed(ebiten.MouseButtonLeft)
-		if dv.saveBtn.Handle(mx, my, left) {
-			dv.saveAnim = 1
-		}
-		dv.namePhase += 0.1
-		return
-	}
-
-	if dv.renameBox != nil {
-		if dv.renameHold {
-			if !isMouseButtonPressed(ebiten.MouseButtonLeft) {
-				dv.renameHold = false
-			}
-		} else {
-			dv.renameBox.Update()
-		}
-		if !dv.renameHold && isKeyPressed(ebiten.KeyEnter) {
-			name := strings.TrimSpace(dv.renameBox.Value())
-			if name != "" && dv.renameRow >= 0 && dv.renameRow < len(dv.Rows) {
-				oldID := dv.Rows[dv.renameRow].Instrument
-				newID := strings.ToLower(name)
-				audio.RenameInstrument(oldID, newID)
-				dv.Rows[dv.renameRow].Instrument = newID
-				dv.Rows[dv.renameRow].Name = name
-				dv.rowLabels[dv.renameRow].Text = name
-				customColors[newID] = dv.Rows[dv.renameRow].Color
-				dv.refreshInstruments()
-			}
-			dv.renameBox = nil
-			dv.renameRow = -1
-		}
-		if !dv.renameHold && isKeyPressed(ebiten.KeyEscape) {
-			dv.renameBox = nil
-			dv.renameRow = -1
-		}
-		return
-	}
-
-	if dv.instHold {
-		if !isMouseButtonPressed(ebiten.MouseButtonLeft) {
-			dv.instHold = false
-		}
-		return
-	}
-
-	dv.recalcButtons()
-	if dv.bgDirty {
-		dv.calcLayout()
-		dv.bgDirty = false
-	}
-
-	prevFocus := dv.focusBPM
-
-	mx, my := cursorPosition()
-	left := isMouseButtonPressed(ebiten.MouseButtonLeft)
-	totalRows := len(dv.Rows) + 1
-	visRows := dv.visibleRows()
-	if totalRows > visRows {
-		if _, whY := wheel(); whY != 0 {
-			dv.rowOffset -= int(whY)
-			if dv.rowOffset < 0 {
-				dv.rowOffset = 0
-			}
-			if dv.rowOffset > totalRows-visRows {
-				dv.rowOffset = totalRows - visRows
-			}
-			dv.calcLayout()
-		}
-		bar := dv.scrollBarRect()
-		thumb := dv.scrollThumbRect()
-		if dv.scrollDrag {
-			if left {
-				track := bar.Dy() - thumb.Dy()
-				if track > 0 {
-					delta := my - dv.scrollStartY
-					dv.rowOffset = dv.scrollStartOff + delta*totalRows/track
-					if dv.rowOffset < 0 {
-						dv.rowOffset = 0
-					}
-					if dv.rowOffset > totalRows-visRows {
-						dv.rowOffset = totalRows - visRows
-					}
-					dv.calcLayout()
-				}
-			} else {
-				dv.scrollDrag = false
-			}
-		} else if left && image.Pt(mx, my).In(thumb) {
-			dv.scrollDrag = true
-			dv.scrollStartY = my
-			dv.scrollStartOff = dv.rowOffset
-		}
-	}
-
-	if dv.instMenuOpen {
-		for _, btn := range dv.instMenuBtns {
-			if btn.Handle(mx, my, left) {
-				dv.instMenuOpen = false
-				dv.instHold = true
-				return
-			}
-		}
-		if left {
-			lbl := dv.rowLabels[dv.instMenuRow].Rect()
-			menu := image.Rect(lbl.Min.X, lbl.Max.Y, lbl.Max.X, lbl.Max.Y+len(dv.instMenuBtns)*dv.rowHeight())
-			if !pt(mx, my, lbl) && !pt(mx, my, menu) {
-				dv.instMenuOpen = false
-				dv.instHold = true
-			}
-			return
-		}
-		return
-	}
-
-	stepsRect := image.Rect(dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Min.Y+timelineHeight, dv.Bounds.Max.X, dv.Bounds.Max.Y)
-
-	// wheel zoom for length adjustment
-	if _, whY := wheel(); whY != 0 {
-		if pt(mx, my, stepsRect) {
-			if whY > 0 && dv.Length < 64 {
-				dv.Length++
-				for _, r := range dv.Rows {
-					r.Steps = make([]bool, dv.Length)
-				}
-				dv.SetBeatLength(dv.Length)
-				dv.bgDirty = true
-				dv.logger.Infof("[DRUMVIEW] Length increased to: %d via wheel", dv.Length)
-			}
-			if whY < 0 && dv.Length > 1 {
-				dv.Length--
-				for _, r := range dv.Rows {
-					r.Steps = make([]bool, dv.Length)
-				}
-				dv.SetBeatLength(dv.Length)
-				dv.bgDirty = true
-				dv.logger.Infof("[DRUMVIEW] Length decreased to: %d via wheel", dv.Length)
-			}
-		}
-	}
-
-	/* ——— widget clicks & dragging ——— */
-	if dv.activeSlider >= 0 {
-		s := dv.rowVolSliders[dv.activeSlider]
-		if s.Handle(mx, my, left) {
-			dv.Rows[dv.activeSlider].Volume = s.Value
-		}
-		if !left {
-			dv.activeSlider = -1
-		}
-		return
-	}
-	for i, s := range dv.rowVolSliders {
-		if s.Handle(mx, my, left) {
-			dv.Rows[i].Volume = s.Value
-			dv.activeSlider = i
-			if !left {
-				dv.activeSlider = -1
-			}
-			return
-		}
-	}
-
-	handled := false
-	if !dv.dragging {
-		for _, btn := range dv.rowOriginBtns {
-			if btn.Handle(mx, my, left) {
-				handled = true
-			}
-		}
-		for _, btn := range dv.rowDeleteBtns {
-			if btn.Handle(mx, my, left) {
-				handled = true
-			}
-		}
-		for _, btn := range dv.rowMuteBtns {
-			if btn.Handle(mx, my, left) {
-				handled = true
-			}
-		}
-		for _, btn := range dv.rowSoloBtns {
-			if btn.Handle(mx, my, left) {
-				handled = true
-			}
-		}
-		for _, btn := range dv.rowEditBtns {
-			if btn.Handle(mx, my, left) {
-				handled = true
-			}
-		}
-		for _, lbl := range dv.rowLabels {
-			if lbl.Handle(mx, my, left) {
-				handled = true
-			}
-		}
-		if handled && left {
-			return
-		}
-		buttons := []*Button{dv.playBtn, dv.stopBtn, dv.bpmDecBtn, dv.bpmIncBtn, dv.lenDecBtn, dv.lenIncBtn, dv.addRowBtn, dv.uploadBtn}
-		for _, btn := range buttons {
-			if handled {
-				break
-			}
-			if btn.Handle(mx, my, left) {
-				handled = true
-			}
-		}
-		if dv.bpmBox.Handle(mx, my, left) {
-			if left && !dv.focusBPM {
-				dv.focusBPM = true
-				dv.bpmFocusAnim = 1
-				dv.bpmPrev = dv.bpm
-				dv.bpmInput = ""
-				dv.logger.Debugf("[DRUMVIEW] BPM box clicked. focusingBPM: %t", dv.focusBPM)
-			}
-			if left {
-				handled = true
-			}
-		}
-	}
-
-	if left {
-		if !dv.dragging {
-			if pt(mx, my, stepsRect) {
-				dv.dragging = true
-				dv.dragStartX = mx
-				dv.startOffset = dv.Offset
-			} else if dv.focusBPM {
-				dv.focusBPM = false
-				dv.logger.Debugf("[DRUMVIEW] Clicked outside BPM box. focusingBPM: %t", dv.focusBPM)
-			}
-		}
-	} else {
-		dv.dragging = false
-	}
-
-	if dv.dragging {
-		delta := (dv.dragStartX - mx) / dv.cell
-		newOffset := dv.startOffset + delta
-		if newOffset < 0 {
-			newOffset = 0
-		}
-		if newOffset != dv.Offset {
-			dv.Offset = newOffset
-			dv.offsetChanged = true
-			dv.logger.Debugf("[DRUMVIEW] Dragging: offset=%d", dv.Offset)
-		}
-	}
-
-	// timeline scrubbing
-	if left && pt(mx, my, dv.timelineRect) {
-		dv.scrubbing = true
-	}
-	if dv.scrubbing {
-		pos := mx
-		if pos < dv.timelineRect.Min.X {
-			pos = dv.timelineRect.Min.X
-		}
-		if pos > dv.timelineRect.Max.X {
-			pos = dv.timelineRect.Max.X
-		}
-		totalBeats := dv.timelineBeats
-		frac := float64(pos-dv.timelineRect.Min.X) / float64(dv.timelineRect.Dx())
-		beat := int(frac * float64(totalBeats))
-		if beat < 0 {
-			beat = 0
-		}
-		if beat+dv.Length > dv.timelineBeats {
-			dv.timelineBeats = beat + dv.Length
-			totalBeats = dv.timelineBeats
-			beat = int(frac * float64(totalBeats))
-		}
-		if beat != dv.Offset {
-			dv.Offset = beat
-			dv.offsetChanged = true
-		}
-		if !left {
-			dv.scrubbing = false
-		}
-	}
-
-	/* ——— BPM editing ——— */
-	if dv.focusBPM {
-		for _, r := range inputChars() {
-			if r >= '0' && r <= '9' {
-				dv.bpmInput += string(r)
-			}
-		}
-		if isKeyPressed(ebiten.KeyBackspace) {
-			if l := len(dv.bpmInput); l > 0 {
-				dv.bpmInput = dv.bpmInput[:l-1]
-			}
-		}
-		if isKeyPressed(ebiten.KeyEnter) {
-			dv.focusBPM = false
-		}
-		if dv.bpmInput != "" {
-			if v, err := strconv.Atoi(dv.bpmInput); err == nil {
-				dv.bpm = v
-				dv.logger.Debugf("[DRUMVIEW] BPM changed to: %d", dv.bpm)
-			}
-		} else {
-			dv.bpm = dv.bpmPrev
-		}
-	}
-
-	if !dv.focusBPM && prevFocus {
-		if dv.bpmInput == "" {
-			dv.bpm = dv.bpmPrev
-		}
-		dv.SetBPM(dv.bpm)
-		dv.bpmInput = ""
-	}
-
-	/* ——— BPM editing via buttons ——— */
-	if dv.bpmIncPressed {
-		dv.SetBPM(dv.bpm + 1)
-		dv.logger.Infof("[DRUMVIEW] BPM increased to: %d", dv.bpm)
-		dv.bpmIncPressed = false
-	}
-	if dv.bpmDecPressed {
-		dv.SetBPM(dv.bpm - 1)
-		dv.logger.Infof("[DRUMVIEW] BPM decreased to: %d", dv.bpm)
-		dv.bpmDecPressed = false
-	}
-
-	/* ——— Length editing ——— */
-	if dv.lenIncPressed {
-		if dv.Length < 64 { // Set a reasonable max length
-			dv.Length++
-			dv.logger.Infof("[DRUMVIEW] Length increased to: %d", dv.Length)
-			for _, r := range dv.Rows {
-				r.Steps = make([]bool, dv.Length)
-			}
-			dv.SetBeatLength(dv.Length) // Update graph's beat length
-			dv.bgDirty = true
-		}
-		dv.lenIncPressed = false
-	}
-	if dv.lenDecPressed {
-		if dv.Length > 1 { // Prevent length from going below 1
-			dv.Length--
-			dv.logger.Infof("[DRUMVIEW] Length decreased to: %d", dv.Length)
-			for _, r := range dv.Rows {
-				r.Steps = make([]bool, dv.Length)
-			}
-			dv.SetBeatLength(dv.Length) // Update graph's beat length
-			dv.bgDirty = true
-		}
-		dv.lenDecPressed = false
-	}
-	if handled && left {
-		return
-	}
-}
-
-func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, frame int64, beatInfos []model.BeatInfo, elapsedBeats int) {
-	dv.logger.Debugf("[DRUMVIEW] Draw called. beatInfos: %v, highlightedBeats: %v", beatInfos, highlightedBeats)
-	// draw background
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(float64(dv.Bounds.Min.X), float64(dv.Bounds.Min.Y))
-	dst.DrawImage(dv.bg(dv.Bounds.Dx(), dv.Bounds.Dy()), op)
-
-	dv.decayAnims()
-	dv.calcLayout()
-
-	bpmText := dv.bpmInput
-	if !dv.focusBPM {
-		bpmText = strconv.Itoa(dv.bpm)
-	}
-	dv.bpmBox.Text = bpmText
-	if len(dv.Rows) > 0 {
-	}
-	dv.playBtn.Draw(dst)
-	dv.stopBtn.Draw(dst)
-	dv.bpmDecBtn.Draw(dst)
-	dv.bpmBox.Draw(dst)
-	dv.bpmIncBtn.Draw(dst)
-	dv.lenDecBtn.Draw(dst)
-	dv.lenIncBtn.Draw(dst)
-	dv.uploadBtn.Draw(dst)
-	// timeline and progress
-	if dv.timelineBeats < dv.Graph.BeatLength() {
-		dv.timelineBeats = dv.Graph.BeatLength()
-	}
-	if elapsedBeats+dv.Length > dv.timelineBeats {
-		dv.timelineBeats = elapsedBeats + dv.Length
-	}
-	if dv.Offset+dv.Length > dv.timelineBeats {
-		dv.timelineBeats = dv.Offset + dv.Length
-	}
-	totalBeats := dv.timelineBeats
-	info := dv.timelineInfo(elapsedBeats)
-	ebitenutil.DebugPrintAt(dst, info, dv.timelineRect.Min.X, dv.Bounds.Min.Y+5)
-	drawRect(dst, dv.timelineRect, colTimelineTotal, true)
-
-	// current view rectangle
-	viewStart := dv.timelineRect.Min.X + int(float64(dv.Offset)/float64(totalBeats)*float64(dv.timelineRect.Dx()))
-	viewWidth := int(float64(dv.Length) / float64(totalBeats) * float64(dv.timelineRect.Dx()))
-	viewRect := image.Rect(viewStart, dv.timelineRect.Min.Y, viewStart+viewWidth, dv.timelineRect.Max.Y)
-	drawRect(dst, viewRect, colTimelineView, true)
-
-	// beat markers
-	for i := 0; i <= totalBeats; i++ {
-		x := dv.timelineRect.Min.X + int(float64(i)/float64(totalBeats)*float64(dv.timelineRect.Dx()))
-		drawRect(dst, image.Rect(x, dv.timelineRect.Min.Y, x+1, dv.timelineRect.Max.Y), color.RGBA{100, 100, 100, 255}, true)
-	}
-
-	// current playback cursor
-	cursorX := dv.timelineRect.Min.X + int(float64(elapsedBeats)/float64(totalBeats)*float64(dv.timelineRect.Dx()))
-	cursorRect := image.Rect(cursorX-1, dv.timelineRect.Min.Y, cursorX+1, dv.timelineRect.Max.Y)
-	drawRect(dst, cursorRect, colTimelineCursor, true)
-
-	drawRect(dst, dv.timelineRect, colButtonBorder, false)
-
-	// draw steps
-	vis := dv.visibleRows()
-	for i, r := range dv.Rows {
-		if i < dv.rowOffset || i >= dv.rowOffset+vis {
-			continue
-		}
-		y := dv.Bounds.Min.Y + timelineHeight + (i-dv.rowOffset)*dv.rowHeight()
-		if dv.renameBox == nil || dv.renameRow != i {
-			dv.rowLabels[i].Draw(dst)
-		}
-		dv.rowEditBtns[i].Draw(dst)
-		dv.rowVolSliders[i].Draw(dst)
-		dv.rowMuteBtns[i].pressed = dv.Rows[i].Muted
-		dv.rowSoloBtns[i].pressed = dv.Rows[i].Solo
-		dv.rowMuteBtns[i].Draw(dst)
-		dv.rowSoloBtns[i].Draw(dst)
-		dv.rowOriginBtns[i].Draw(dst)
-		dv.rowDeleteBtns[i].Draw(dst)
-		for j, step := range r.Steps {
-			x := dv.Bounds.Min.X + dv.labelW + dv.controlsW + j*dv.cell
-			rect := image.Rect(x, y, x+dv.cell, y+dv.rowHeight())
-
-			// Highlighting logic
-			key := makeBeatKey(i, j+dv.Offset)
-			highlighted := false
-			isRegularNode := step
-
-			if _, ok := highlightedBeats[key]; ok {
-				highlighted = true
-				if isRegularNode {
-					dv.logger.Debugf("[DRUMVIEW] Draw: Highlighting regular node at row %d index %d", i, j)
-				} else {
-					dv.logger.Debugf("[DRUMVIEW] Draw: Highlighting empty beat at row %d index %d", i, j)
-				}
-			}
-
-			DrumCellUI.Draw(dst, rect, step, highlighted, r.Color)
-		}
-	}
-
-	if dv.renameBox != nil {
-		dv.renameBox.Draw(dst)
-	}
-
-	// trailing "+" row
-	dv.addRowBtn.Draw(dst)
-	if len(dv.Rows)+1 > vis {
-		bar := dv.scrollBarRect()
-		drawRect(dst, bar, color.RGBA{80, 80, 80, 255}, true)
-		thumb := dv.scrollThumbRect()
-		drawRect(dst, thumb, color.RGBA{200, 200, 200, 255}, true)
-	}
-
-	if dv.instMenuOpen {
-		for _, btn := range dv.instMenuBtns {
-			btn.Draw(dst)
-		}
-	}
-
-	if dv.uploading {
-		ebitenutil.DebugPrintAt(dst, "Loading...", dv.uploadBtn.Rect().Min.X, dv.uploadBtn.Rect().Max.Y+20)
-	}
-	if dv.naming {
-		box := image.Rect(dv.Bounds.Min.X+10, dv.Bounds.Min.Y+110, dv.Bounds.Min.X+300, dv.Bounds.Min.Y+150)
-		BPMBoxStyle.Draw(dst, box, true, false)
-		ebitenutil.DebugPrintAt(dst, "Name: "+dv.nameInput, box.Min.X+5, box.Min.Y+18)
-		dv.saveBtn.Draw(dst)
-	}
-}
-
-func (dv *DrumView) timelineInfo(elapsedBeats int) string {
-	beatsToDuration := func(beats int) time.Duration {
-		return time.Duration(float64(beats) * 60 / float64(dv.bpm) * float64(time.Second))
-	}
-	totalBeats := dv.timelineBeats
-	totalDur := beatsToDuration(totalBeats)
-	curDur := beatsToDuration(elapsedBeats)
-	curMin := int(curDur / time.Minute)
-	curSec := int((curDur % time.Minute) / time.Second)
-	curMilli := int((curDur % time.Second) / time.Millisecond)
-	totMin := int(totalDur / time.Minute)
-	totSec := int((totalDur % time.Minute) / time.Second)
-	totMilli := int((totalDur % time.Second) / time.Millisecond)
-
-	viewStartBeat := dv.Offset
-	viewEndBeat := dv.Offset + dv.Length
-	viewStartDur := beatsToDuration(viewStartBeat)
-	viewEndDur := beatsToDuration(viewEndBeat)
-	vStartMin := int(viewStartDur / time.Minute)
-	vStartSec := int((viewStartDur % time.Minute) / time.Second)
-	vStartMilli := int((viewStartDur % time.Second) / time.Millisecond)
-	vEndMin := int(viewEndDur / time.Minute)
-	vEndSec := int((viewEndDur % time.Minute) / time.Second)
-	vEndMilli := int((viewEndDur % time.Second) / time.Millisecond)
-
-	return fmt.Sprintf("%02d:%02d.%03d/%02d:%02d.%03d | View %02d:%02d.%03d-%02d:%02d.%03d | Beats %d-%d/%d",
-		curMin, curSec, curMilli,
-		totMin, totSec, totMilli,
-		vStartMin, vStartSec, vStartMilli,
-		vEndMin, vEndSec, vEndMilli,
-		viewStartBeat+1, viewEndBeat, totalBeats)
-}
-
-func (dv *DrumView) bg(w, h int) *ebiten.Image {
-	if dv.bgDirty || len(dv.bgCache) == 0 || !dv.bgCache[0].Bounds().Eq(image.Rect(0, 0, w, h)) {
-		dv.bgCache = make([]*ebiten.Image, 1)
-		img := ebiten.NewImage(w, h)
-		img.Fill(colBGBottom)
-		dv.bgCache[0] = img
-		dv.bgDirty = false
-	}
-	return dv.bgCache[0]
-}
+// VisibleRowsForTest reports how many drum rows are currently visible
+// (dv.visibleRows()). Test-only read accessor used to prove a row-scroll
+// test is non-vacuous (more rows exist than fit, so scrolling is possible).
+func (dv *DrumView) VisibleRowsForTest() int { return dv.visibleRows() }

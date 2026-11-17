@@ -1,0 +1,90 @@
+{
+  "schema_version": "0.0.1",
+  "id": "bass-808",
+  "name": "808 Bass",
+  "category": "modular",
+  "notes": "bass808Seed: 808 sub-bass — a sine OSC with a fast downward PITCH envelope (the\n808 \"pew\" drop) and a long amp decay with zero sustain (the boom that rings\nout). Light drive thickens the low end without buzz.",
+  "render": {
+    "seconds": 0.75,
+    "amplitude": 0.3951,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.001,
+        "amp_curve": 1,
+        "amp_decay": 1.5,
+        "amp_release": 0.2,
+        "amp_sustain": 0
+      },
+      "notes": "amp_attack: the boom: long decay, no sustain — each hit blooms then rings down."
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": -1,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      },
+      "notes": "osc_octave: deep bass register"
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0.2
+      },
+      "notes": "drive_enabled: light low-end thickening."
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 1800,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    },
+    "pitch_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "pitchenv_amt": 12,
+        "pitchenv_decay": 0.04
+      },
+      "notes": "pitchenv_amt: drop ~12 semitones\npitchenv_enabled: the 808 \"pew\": fast downward pitch drop on attack."
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": true,
+    "values": {
+      "osc_type": 0
+    },
+    "notes": "osc_type: sine — pure sub"
+  }
+}

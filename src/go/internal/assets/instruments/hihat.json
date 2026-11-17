@@ -1,0 +1,114 @@
+{
+  "schema_version": "0.0.1",
+  "id": "hihat",
+  "name": "Hi-Hat",
+  "category": "modular",
+  "notes": "REBUILT 2026-09-28 as a MODAL PLATE with collision RATTLE (see\ngen_cymbal_modal in modular_stages.c) against a user-supplied acoustic\nclosed hi-hat. The legacy variant-0 voice was six square oscillators plus\nflat white noise: measured on the reference it was all wrong in the way that\nreads \"electronic\" — spectral flatness 0.006 (six tones) where the real hat\nis 0.29 (noise-like), energy flat to 20 kHz where the real hat centres on\n8-12 kHz and rolls off above 14 kHz, and a peak at 0.4 ms where the real hat\nswells over ~8 ms and holds a CHATTERING ~40 ms plateau before it decays.\n\nThat plateau is the physics of a hi-hat (Sekiguchi & Samejima 2023): two\ncymbals clamped together, the top one re-colliding with the bottom after the\nstick hit. The voice models it directly — the plate's impulse response\nre-struck by a decaying Poisson train of collision impulses — so the noise\nis the plate itself rattling, not a noise generator.\n\nFITTED on the real C render: 1/3-octave x time energy map (1-16 kHz, 0-320\nms) + the 2 ms envelope over the first 60 ms + spectral flatness, minimized\nby coordinate descent. Score 4.1 against 32 for the legacy voice on the same\nmeasure. Units: env_tail / env_fast Np/s, *_f Hz, *_w octaves, rattle_rate\ncollisions/s, rattle_decay s.\n\nChosen BY EAR (2026-09-28) from five fitted takes: this is \"H4 — tight\"\n(rattle_decay 0.058 -> 0.042, env_tail 28 -> 36); the looser takes were\njudged \"too low pitched\". The fit's best-scoring take (4.1) was the looser\nH1; the ear preferred the tighter chick.\n\nShared by hihat, hihat-lofi and hihat-pedal (each keeps its own DefaultFX).",
+  "render": {
+    "seconds": 0.25,
+    "amplitude": 1,
+    "gate_tail": 0,
+    "melodic": false
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "amp_attack": 0.005,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.2,
+        "amp_sustain": 0.6
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "filter_cutoff": 8000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 0,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 20,
+        "post_drive": 0,
+        "post_pitch": 0
+      },
+      "notes": "out_clamp: no output limit (these voices never had one)"
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "cym.hihat",
+      "v": 1,
+      "on": true,
+      "values": {
+        "cym_attack": 0.002916,
+        "cym_beat": 0.0052,
+        "cym_body": 0,
+        "cym_body_f": 1500,
+        "cym_body_w": 0.15,
+        "cym_decay_tilt": 0.302,
+        "cym_drive_delay": 0,
+        "cym_env_fast": 14.01,
+        "cym_env_tail": 36,
+        "cym_hf_corner": 16674,
+        "cym_mode_hi": 16038,
+        "cym_mode_lo": 1081,
+        "cym_modes": 396,
+        "cym_noise_d": 4,
+        "cym_noise_m": 0,
+        "cym_rattle": 1.1036,
+        "cym_rattle_decay": 0.042,
+        "cym_rattle_hold": 0,
+        "cym_rattle_rate": 1950,
+        "cym_spark": 0,
+        "cym_spark_f": 11000,
+        "cym_spark_w": 0.3,
+        "cym_tone_f": 10600,
+        "cym_tone_m": 1,
+        "cym_tone_w": 0.805,
+        "cym_tune": 1,
+        "cym_wash": 0.21
+      }
+    }
+  ]
+}

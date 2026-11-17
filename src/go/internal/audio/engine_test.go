@@ -2,12 +2,23 @@
 
 package audio
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/internal/channel"
+	"github.com/ingyamilmolinar/beatmo/internal/instrument/roster"
+)
 
 func TestMixerPlaysSequentialVoices(t *testing.T) {
-	m := &mixer{}
-	m.Schedule(Snare{}.NewVoice(120, sampleRate), 0)
-	m.Schedule(Snare{}.NewVoice(120, sampleRate), sampleRate/4)
+	m := &mixer{
+		workBuf:   make([]float64, blockSize),
+		voiceTemp: make([]float64, blockSize),
+		masterBuf: make([]float64, blockSize),
+		postEQBuf: make([]float64, blockSize),
+		instSlots: make(map[channel.ID]int),
+	}
+	m.Schedule(channel.Of(roster.Snare), shippedSnareVoice(sampleRate), 0, -1, -1)
+	m.Schedule(channel.Of(roster.Snare), shippedSnareVoice(sampleRate), sampleRate/4, -1, -1)
 	buf := make([]byte, sampleRate)
 	m.Read(buf)
 	first := -1

@@ -1,0 +1,107 @@
+{
+  "schema_version": "0.0.1",
+  "id": "guitar-steel",
+  "name": "Guitar Steel",
+  "category": "modular",
+  "notes": "guitarSteelSeed: STEEL-string acoustic — bright, ringing, metallic. The steel\ncharacter vs nylon: a brighter/sharper pluck (ks_pluck 0.6 vs nylon's 0.09), a\nlong bright sustain (the highs ring — that's the metallic zing), an open filter,\nAND the high-Q steel body (body_model:4) whose ringing upper modes give the\nbright acoustic \"presence\" a bare string lacks. Contrast guitarNylonSeed (warm\nbody_model:2, soft dark pluck).",
+  "render": {
+    "seconds": 0.75,
+    "amplitude": 0.9024,
+    "gate_tail": 0,
+    "melodic": true
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.001,
+        "amp_curve": 1,
+        "amp_decay": 2.5,
+        "amp_release": 0.3,
+        "amp_sustain": 0
+      }
+    },
+    "body": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "body_mix": 0.3,
+        "body_model": 4,
+        "bow_dynamics": 0
+      },
+      "notes": "body_model: STEEL body: high-Q ringing upper modes = the metallic zing"
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.9,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 7000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "ks",
+      "v": 1,
+      "on": true,
+      "values": {
+        "atk_amt": 0,
+        "atk_rate": 0,
+        "env_fast_rate": 0,
+        "freq": 1,
+        "freq_mode": 0,
+        "gain": 1,
+        "ks_blow": 0,
+        "ks_pluck": 0.6,
+        "ks_sustain": 0.988,
+        "out_scale": 1
+      },
+      "notes": "gen1_ks_pluck: bright/sharp pluck (vs nylon 0.09)\ngen1_ks_sustain: long bright ring (the metallic sustain)"
+    }
+  ]
+}

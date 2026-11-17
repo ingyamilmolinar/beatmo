@@ -1,0 +1,169 @@
+{
+  "schema_version": "0.0.1",
+  "id": "conga-tumba",
+  "name": "Conga Tumba",
+  "category": "modular",
+  "notes": "congaTumbaSeed: TUMBA — the largest/lowest conga, a deep full BASS tone (tuned an\noctave below the quinto). Darker/fuller, strong fundamental, medium ring.",
+  "render": {
+    "seconds": 0.25,
+    "amplitude": 1,
+    "gate_tail": 0,
+    "melodic": false
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "amp_attack": 0.001,
+        "amp_curve": 1,
+        "amp_decay": 0.2,
+        "amp_release": 0.05,
+        "amp_sustain": 0
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 0.95,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": -1,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      },
+      "notes": "osc_octave: the bass drum of the conga set — an octave below the quinto"
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "filter_cutoff": 2600,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      },
+      "notes": "filter_cutoff: darker/fuller (bass)"
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 1.5,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 8,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    },
+    "pitch_env": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "pitchenv_amt": 1.2,
+        "pitchenv_decay": 0.025
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 5,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 1,
+        "freq_mode": 0,
+        "gain": 1,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 7,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 1.5,
+        "freq_mode": 0,
+        "gain": 0.4,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.wavetable",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 9,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1000,
+        "filt_q": 0.707,
+        "filt_type": 0,
+        "freq": 2,
+        "freq_mode": 0,
+        "gain": 0.2,
+        "phase": 0,
+        "phase_mode": 0,
+        "wave": 0
+      }
+    },
+    {
+      "type": "gen.noise",
+      "v": 1,
+      "on": true,
+      "values": {
+        "env_fast_mix": 1,
+        "env_fast_rate": 130,
+        "env_tail_mix": 0,
+        "env_tail_rate": 0,
+        "filt_alpha": 0,
+        "filt_freq": 1500,
+        "filt_q": 0.8,
+        "filt_type": 5,
+        "gain": 0.25,
+        "noise_offset": 0
+      }
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+WEBVTT
+
+00:00:00.000 --> 00:00:32.071
+{"palettes":[{"acc":"#FFB30A","bg":"#120A1C","cols":["#EE00DD","#FFD319","#FF7A3D","#FFB30A","#3A6AF0","#FFD319"],"id":"vice-city","name":"Vice City"},{"acc":"#FF7A3D","bg":"#0B101B","cols":["#FF2D9E","#4CCFEA","#6DEDC3","#FF7A3D","#DF7469","#FF9A4C"],"id":"ocean","name":"Ocean"},{"acc":"#00C8E0","bg":"#0B101B","cols":["#FF2D9E","#4CCFEA","#6DEDC3","#00C8E0","#DF7469","#00B9EF"],"id":"midnight","name":"Midnight"},{"acc":"#FF7A3D","bg":"#1C0E0A","cols":["#FF2D9E","#FFD319","#FF7A3D","#FF7A3D","#3A6AF0","#FF9A4C"],"id":"ember","name":"Ember"},{"acc":"#3FD67A","bg":"#0C1A10","cols":["#FF2D9E","#4CCFEA","#6DEDC3","#3FD67A","#DF7469","#4BD993"],"id":"neon-mint","name":"Neon Mint"},{"acc":"#A030FF","bg":"#120A1C","cols":["#FF2D9E","#4CCFEA","#6DEDC3","#A030FF","#DF7469","#BE3FFF"],"id":"orchid","name":"Orchid"}],"song":{"beat0":0.16486007,"bpm":140}}
+
+00:00:00.000 --> 00:00:04.293
+{"chapter":"circuit","label":"Circuit","side":"left","sub":"every node they reach plays its instrument","title":"Signals walk the paths you draw"}
+
+00:00:04.293 --> 00:00:08.641
+{"chapter":"nodes","label":"Nodes","side":"right","sub":"every node can play its own pitch","title":"Tap a node, change its note"}
+
+00:00:08.641 --> 00:00:13.203
+{"chapter":"chords","label":"Chords","side":"right","sub":"pick the chord right on the node","title":"Stack notes into a chord"}
+
+00:00:13.203 --> 00:00:17.090
+{"chapter":"effects","label":"Effects","side":"left","sub":"delay, reverb, crush… per instrument","title":"Drop in effects"}
+
+00:00:17.090 --> 00:00:22.480
+{"chapter":"sound","label":"Sound","side":"left","sub":"spectrum, levels and the whole signal chain","title":"Read your mix live"}
+
+00:00:22.480 --> 00:00:25.491
+{"chapter":"sound","label":"Sound","side":"left","sub":"turn a dial, hear it on the next note","title":"Shape every instrument"}
+
+00:00:00.000 --> 00:00:26.242
+{"theme":"vice-city"}
+
+00:00:26.242 --> 00:00:27.525
+{"theme":"ocean"}
+
+00:00:27.525 --> 00:00:28.841
+{"theme":"ember"}
+
+00:00:25.491 --> 00:00:32.071
+{"chapter":"themes","label":"Themes","side":"left","sub":"six themes, or tune every colour","title":"Repaint everything in one tap"}
+
+00:00:28.841 --> 00:00:32.071
+{"theme":"vice-city"}
+

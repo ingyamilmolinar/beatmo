@@ -1,0 +1,109 @@
+{
+  "schema_version": "0.0.1",
+  "id": "crash",
+  "name": "Crash",
+  "category": "modular",
+  "render": {
+    "seconds": 1.5,
+    "amplitude": 1,
+    "gate_tail": 0,
+    "melodic": false
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "amp_attack": 0.005,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.2,
+        "amp_sustain": 0.6
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 0
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "filter_cutoff": 8000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 0,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 4,
+        "post_drive": 0,
+        "post_pitch": 0
+      },
+      "notes": "out_clamp: no output limit (these voices never had one)"
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "cym.crash",
+      "v": 1,
+      "on": true,
+      "values": {
+        "cym_attack": 0.0005,
+        "cym_beat": 0,
+        "cym_body": 0,
+        "cym_body_f": 1500,
+        "cym_body_w": 0.15,
+        "cym_decay_tilt": 0,
+        "cym_env_fast": 10,
+        "cym_env_tail": 3,
+        "cym_hf_corner": 10000,
+        "cym_mode_hi": 18000,
+        "cym_mode_lo": 300,
+        "cym_modes": 0,
+        "cym_noise_d": 8,
+        "cym_noise_m": 0.35,
+        "cym_spark": 0,
+        "cym_spark_f": 11000,
+        "cym_spark_w": 0.3,
+        "cym_tone_f": 3000,
+        "cym_tone_m": 1,
+        "cym_tone_w": 0.6,
+        "cym_tune": 1,
+        "cym_wash": 0,
+        "wave": 0
+      }
+    }
+  ]
+}

@@ -1,0 +1,1851 @@
+{
+  "schema_version": "0.0.1",
+  "refs": [
+    {
+      "id": "bassoon-A2",
+      "tier": "instrument",
+      "instruments": [
+        "bassoon"
+      ],
+      "file": "bassoon_A2.wav",
+      "source": {
+        "provider": "uiowa-mis",
+        "url": "https://theremin.music.uiowa.edu/sound%20files/MIS%20Pitches%20-%202014/Woodwinds/Bassoon/Bassoon.ff.A2.stereo.aif"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "43d3df0731f17821953bbb5446622cab94c1378b0370c58255c35a677da5bb02",
+      "measured": {
+        "f0_hz": 110.49021848715091,
+        "semis_from_a3": -12,
+        "peak": 0.183349609375,
+        "rms": 0.06475891206317697,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "cello-A3",
+      "tier": "instrument",
+      "instruments": [
+        "cello-warm"
+      ],
+      "file": "cello_A3.wav",
+      "source": {
+        "provider": "uiowa-mis",
+        "url": "https://theremin.music.uiowa.edu/sound%20files/MIS%20Pitches%20-%202014/Strings/Cello/Cello.arco.ff.sulA.A3.stereo.aif"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "101f27db6ff6346ac97b84d8aabee70ec80e879eae436c206cbf144c20fcb81e",
+      "measured": {
+        "f0_hz": 221.01243747302607,
+        "semis_from_a3": 0,
+        "peak": 0.30413818359375,
+        "rms": 0.08957889981652083,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "cello-C2",
+      "tier": "instrument",
+      "instruments": [
+        "cello"
+      ],
+      "file": "cello_C2.wav",
+      "note": "Pitch-matched to cello-freesound-alt (measured -19 semis from A3). D2 was tried first (per the stated pitch-match plan) but the automated YIN F0 detector mismeasured it at -7 semis (148.6Hz, an octave-error artifact of a weak/missing fundamental on that stopped note -- both stereo channels independently show ~73Hz as a real but much weaker peak beneath a dominant 148Hz 2nd harmonic). C2, the open string, has a strong clean fundamental and measures reliably at -21 semis, 2 semitones from the target -- the closest reliable match available on this instrument.",
+      "source": {
+        "provider": "uiowa-mis",
+        "url": "https://theremin.music.uiowa.edu/sound%20files/MIS%20Pitches%20-%202014/Strings/Cello/Cello.arco.ff.sulC.C2.stereo.aif"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "e2dec84d6a8f687940be01bb0a518d7e928b7743b57b96d01fc727398c79f1c0",
+      "measured": {
+        "f0_hz": 66.66397799065399,
+        "semis_from_a3": -21,
+        "peak": 0.461944580078125,
+        "rms": 0.12048455062929049,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "cello-freesound-alt",
+      "tier": "instrument",
+      "instruments": [
+        "cello"
+      ],
+      "file": "cello_freesound.wav",
+      "note": "128 kbps MP3 preview from freesound's CDN, NOT the lossless original; HF above ~14 kHz is codec-limited, so treat noise-floor / flatness / air-band metrics from this reference as unreliable.",
+      "source": {
+        "provider": "freesound",
+        "url": "https://cdn.freesound.org/previews/257/257996_43-hq.mp3"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 3
+      },
+      "pcm_sha256": "79fd6e099f456aed0fc635df916b103e044276e405c58bb1f1545512dd1ba636",
+      "measured": {
+        "f0_hz": 73.00072818564064,
+        "semis_from_a3": -19,
+        "peak": 0.147003173828125,
+        "rms": 0.04671151576742401,
+        "duration_sec": 3
+      }
+    },
+    {
+      "id": "clap-vcsl",
+      "tier": "instrument",
+      "instruments": [
+        "clap",
+        "clap-bright",
+        "clap-lofi",
+        "clap-tight"
+      ],
+      "file": "clap_vcsl.wav",
+      "source": {
+        "provider": "vcsl",
+        "url": "https://raw.githubusercontent.com/sgossner/VCSL/master/Idiophones/Struck%20Idiophones/Claps/Clap_rr1.wav"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "177b48917be4f6bd264fd5e7da82a74e2413b052c60342499a935bda7f907a8c",
+      "measured": {
+        "f0_hz": 120.16502756621571,
+        "semis_from_a3": -10,
+        "peak": 0.742462158203125,
+        "rms": 0.03436378475660495,
+        "duration_sec": 0.7392290249433107
+      }
+    },
+    {
+      "id": "clarinet-A4",
+      "tier": "instrument",
+      "instruments": [
+        "clarinet"
+      ],
+      "file": "clarinet_A4.wav",
+      "source": {
+        "provider": "uiowa-mis",
+        "url": "https://theremin.music.uiowa.edu/sound%20files/MIS%20Pitches%20-%202014/Woodwinds/Bb%20Clarinet/BbClarinet.ff.A4.stereo.aif"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "121f042acfa242965f78a324326e13d170390c92842a863b58841dd3cdf98305",
+      "measured": {
+        "f0_hz": 146.72560218999058,
+        "semis_from_a3": -7,
+        "peak": 0.19708251953125,
+        "rms": 0.0628083365747856,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "conga-freesound-alt",
+      "tier": "instrument",
+      "instruments": [
+        "conga",
+        "conga-open",
+        "conga-organic",
+        "conga-organic-dry"
+      ],
+      "file": "conga_freesound.wav",
+      "note": "High/open conga tone (measured +22 semis from A3) -- a quinto-register hit, not the same drum as conga-vcsl's low tumba tone. Serves conga/conga-open, not conga-tumba. 128 kbps MP3 preview from freesound's CDN, NOT the lossless original; HF above ~14 kHz is codec-limited, so treat noise-floor / flatness / air-band metrics from this reference as unreliable.",
+      "source": {
+        "provider": "freesound",
+        "url": "https://cdn.freesound.org/previews/455/455509_5720726-hq.mp3"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 1
+      },
+      "pcm_sha256": "1df03493369c297ea9499da9df82e2ff87ee64780512d50fa073e696c6beda24",
+      "measured": {
+        "f0_hz": 779.6479920830565,
+        "semis_from_a3": 22,
+        "peak": 0.7061767578125,
+        "rms": 0.027592652070990202,
+        "duration_sec": 0.6951473922902495
+      }
+    },
+    {
+      "id": "conga-vcsl",
+      "tier": "instrument",
+      "instruments": [
+        "conga-tumba"
+      ],
+      "file": "conga_vcsl.wav",
+      "note": "Low tumba-register conga hit (measured -17 semis from A3), a different drum from conga-freesound-alt's high/open tone. Serves conga-tumba only.",
+      "source": {
+        "provider": "vcsl",
+        "url": "https://raw.githubusercontent.com/sgossner/VCSL/master/Membranophones/Struck%20Membranophones/Conga/Conga_HitFM_v1_rr1_Sum.wav"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "2f733d2e64b1ce98f053074bdf817c27859d46f826e668b006ffda5a61caee5a",
+      "measured": {
+        "f0_hz": 81.99719386394698,
+        "semis_from_a3": -17,
+        "peak": 0.042724609375,
+        "rms": 0.0052654789911468,
+        "duration_sec": 0.6741043083900227
+      }
+    },
+    {
+      "id": "cowbell-vcsl",
+      "tier": "instrument",
+      "instruments": [
+        "cowbell",
+        "cowbell-drive",
+        "cowbell-lofi"
+      ],
+      "file": "cowbell_vcsl.wav",
+      "source": {
+        "provider": "vcsl",
+        "url": "https://raw.githubusercontent.com/sgossner/VCSL/master/Idiophones/Struck%20Idiophones/Cowbells/Cowbell1_Hit_v2_rr1_Mid.wav"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "7db0f8f3af4a6952e070da24d2ee9ebdbe3f44575eba0f454ffa61921eeaa980",
+      "measured": {
+        "f0_hz": 489.88037109375,
+        "semis_from_a3": 14,
+        "peak": 0.044708251953125,
+        "rms": 0.0019458238327291655,
+        "duration_sec": 1.130748299319728
+      }
+    },
+    {
+      "id": "crash-vcsl",
+      "tier": "instrument",
+      "instruments": [
+        "crash"
+      ],
+      "file": "crash_vcsl.wav",
+      "source": {
+        "provider": "vcsl",
+        "url": "https://raw.githubusercontent.com/sgossner/VCSL/master/Idiophones/Struck%20Idiophones/Suspended%20Cymbal%201/susCymb1_hit_fff1.wav"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "3eb351f746c9e8d6272824e534b95136336cc9ddc605109a8db01b65af13aed4",
+      "measured": {
+        "f0_hz": 220.71533203125,
+        "semis_from_a3": 0,
+        "peak": 0.350982666015625,
+        "rms": 0.052856848522922814,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "dnb-kick-freesound",
+      "tier": "instrument",
+      "instruments": [
+        "dnb-kick"
+      ],
+      "file": "36010__sandyrb__dnb-kick-003.wav",
+      "note": "128 kbps MP3 preview from freesound's CDN, NOT the lossless original; HF above ~14 kHz is codec-limited, so treat noise-floor / flatness / air-band metrics from this reference as unreliable.",
+      "source": {
+        "provider": "freesound",
+        "url": "https://cdn.freesound.org/previews/36/36010_14771-hq.mp3"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 1
+      },
+      "pcm_sha256": "e787b4f71f6c77fc3e9d5d2c71f6ccf138231101c845c13f197392dc38741ef1",
+      "measured": {
+        "f0_hz": 75.3662109375,
+        "semis_from_a3": -19,
+        "peak": 0.9390869140625,
+        "rms": 0.11710850947390201,
+        "duration_sec": 0.48367346938775513
+      }
+    },
+    {
+      "id": "double-bass-A2",
+      "tier": "instrument",
+      "instruments": [
+        "double-bass"
+      ],
+      "file": "double_bass_A2.wav",
+      "source": {
+        "provider": "uiowa-mis",
+        "url": "https://theremin.music.uiowa.edu/sound%20files/MIS%20Pitches%20-%202014/Strings/Double%20Bass/Bass.arco.ff.sulA.A2.stereo.aif"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 3
+      },
+      "pcm_sha256": "eca67379a0a18360eae9607bcd48c4043b206b43e2d8efbadd14a0f9a843ece7",
+      "measured": {
+        "f0_hz": 109.27471354088968,
+        "semis_from_a3": -12,
+        "peak": 0.321075439453125,
+        "rms": 0.09730474318352884,
+        "duration_sec": 2.9615419501133786
+      }
+    },
+    {
+      "id": "drum-variant-needs-source",
+      "tier": "instrument",
+      "instruments": [
+        "hihat-open-bright",
+        "tom-high-drive",
+        "tom-lofi"
+      ],
+      "status": "needs-source",
+      "note": "Each renders through its own drum-gen recipe (drum-open-hihat, drum-tom-high, drum-tom-low) distinct from the covered closed-hihat and single-tom clips -- an open hi-hat, a higher-pitched tom, and a lower-pitched tom are each a real acoustic sound, so hihat-vcsl/tom-vcsl are not valid ground truth for them despite the shared instrument family. tom-lofi's drum-tom-low recipe itself is a plain lower tom with no bitcrush stage, but the SHIPPED instrument is not plain: its DefaultFX chain adds a 5-bit bitcrusher plus a 2kHz lowpass, so a future reference for it needs to match that lo-fi/filtered character, not the bare recipe's output. No isolated recording of an open hi-hat or a differently-pitched tom was found in VCSL beyond the single hi-hat and tom already catalogued, nor among the local freesound absorptions. Drop one into $BEATMO_WAV_REFS/sources and `make refs-adopt` it."
+    },
+    {
+      "id": "electric-keys-needs-source",
+      "tier": "instrument",
+      "instruments": [
+        "guitar-steel",
+        "guitar-steel-warm",
+        "guitar-electric",
+        "guitar-electric-neck",
+        "bass-guitar",
+        "clavinet",
+        "organ",
+        "piano-rhodes"
+      ],
+      "status": "needs-source",
+      "note": "No isolated recording adopted yet. Iowa MIS has no guitar, clavinet, Hammond organ, or Rhodes electric piano; VCSL covers pipe and Renaissance organ but not a drawbar Hammond or an electric piano; archive.org keyword searches return mixed full tracks rather than isolated notes. Drop any isolated single-note recording into $BEATMO_WAV_REFS/sources and `make refs-adopt` it."
+    },
+    {
+      "id": "flute-A4",
+      "tier": "instrument",
+      "instruments": [
+        "flute"
+      ],
+      "file": "flute_A4.wav",
+      "source": {
+        "provider": "uiowa-mis",
+        "url": "https://theremin.music.uiowa.edu/sound%20files/MIS%20Pitches%20-%202014/Woodwinds/Flute/Flute.nonvib.ff.A4.stereo.aif"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "62ab115723910aa19e928b50df18e6df420dceacb09f0a74d4ed8e5338a272f4",
+      "measured": {
+        "f0_hz": 443.3968453315225,
+        "semis_from_a3": 12,
+        "peak": 0.189422607421875,
+        "rms": 0.07367587448098421,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "flute-breathy-freesound",
+      "tier": "instrument",
+      "instruments": [
+        "flute-breathy"
+      ],
+      "file": "flute_breathy_freesound.wav",
+      "note": "128 kbps MP3 preview from freesound's CDN, NOT the lossless original; HF above ~14 kHz is codec-limited, so treat noise-floor / flatness / air-band metrics from this reference as unreliable.",
+      "source": {
+        "provider": "freesound",
+        "url": "https://cdn.freesound.org/previews/373/373313_2475994-hq.mp3"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "1c4a19d36e449a402bd1f0a8f520caebe9d10bdd4803e10ff22a6980686138de",
+      "measured": {
+        "f0_hz": 659.506949380295,
+        "semis_from_a3": 19,
+        "peak": 0.051544189453125,
+        "rms": 0.023820879268515806,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "fm-family-synthetic",
+      "tier": "instrument",
+      "instruments": [
+        "bass-808",
+        "bass-acid",
+        "bass-fm",
+        "bass-reese",
+        "bass-wobble",
+        "brass-stab",
+        "ensemble-lead",
+        "ensemble-lead-dark",
+        "fm-bass",
+        "fm-bass-drive",
+        "fm-bell",
+        "fm-bell-soft",
+        "fm-epiano",
+        "fm-epiano-drive",
+        "fm-lead",
+        "fm-lead-crush",
+        "fm-pluck",
+        "fm-pluck-tight",
+        "ghost-bass",
+        "glass-wash",
+        "kick",
+        "kick-808",
+        "kick-deep",
+        "kick-electro",
+        "kick-lofi",
+        "kick-punchy",
+        "kick-snap",
+        "kick-tight",
+        "lead-chip",
+        "lead-hoover",
+        "lead-supersaw",
+        "modular",
+        "modular-pad",
+        "moog-bass",
+        "pwm-pad",
+        "raw-kick",
+        "scifi-lead",
+        "sub-bass",
+        "sub-bass-drive",
+        "viola-pad",
+        "voice-alien",
+        "kick-fat",
+        "kick-organic-tight"
+      ],
+      "status": "synthetic",
+      "note": "Synthesizer voices with no acoustic counterpart -- an 808 kick, a supersaw lead, a Reese bass, a hoover, a raw/deep/punchy/tight/electro/fat kick variant (and kick-organic-tight, a physical-model take on the electronic F1 kick rather than on a recording), an FM voice, a moog-style bass, etc. are DEFINED by their synthesis rather than modelling a real instrument, so there is no recording to match them against. Excludes dnb-kick and zgump-kick, which have real sampled-kick freesound ground truth (see dnb-kick-freesound / zgump-kick-freesound) despite the similar naming."
+    },
+    {
+      "id": "french-horn-A3",
+      "tier": "instrument",
+      "instruments": [
+        "french-horn-loud"
+      ],
+      "file": "french_horn_A3.wav",
+      "source": {
+        "provider": "uiowa-mis",
+        "url": "https://theremin.music.uiowa.edu/sound%20files/MIS%20Pitches%20-%202014/Brass/Horn/Horn.ff.A3.stereo.aif"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "d72f37c9c7812b6c57e009b499ebb8b8bb635dd8dc6a3f22fd835a9530845455",
+      "measured": {
+        "f0_hz": 218.57402544877814,
+        "semis_from_a3": 0,
+        "peak": 0.180267333984375,
+        "rms": 0.05109767318341222,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "french-horn-C4",
+      "tier": "instrument",
+      "instruments": [
+        "french-horn"
+      ],
+      "file": "french_horn_C4.wav",
+      "note": "Pitch-matched to french-horn-freesound-alt (measured +3 semis from A3) so refs candidates compares timbre, not register.",
+      "source": {
+        "provider": "uiowa-mis",
+        "url": "https://theremin.music.uiowa.edu/sound%20files/MIS%20Pitches%20-%202014/Brass/Horn/Horn.ff.C4.stereo.aif"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "b2d07bbaf22e6b9153f057868ac43d7da8d2ed41de9d58525b269780f3a89fd6",
+      "measured": {
+        "f0_hz": 260.35561142195525,
+        "semis_from_a3": 3,
+        "peak": 0.16534423828125,
+        "rms": 0.0470898823051282,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "french-horn-freesound-alt",
+      "tier": "instrument",
+      "instruments": [
+        "french-horn"
+      ],
+      "file": "french_horn_freesound.wav",
+      "note": "128 kbps MP3 preview from freesound's CDN, NOT the lossless original; HF above ~14 kHz is codec-limited, so treat noise-floor / flatness / air-band metrics from this reference as unreliable.",
+      "source": {
+        "provider": "freesound",
+        "url": "https://cdn.freesound.org/previews/682/682231_10938187-hq.mp3"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "21c99863e781f3bb2f673bc7f6fa17f952e76a57adf5cc390f3d770444f75ab6",
+      "measured": {
+        "f0_hz": 262.99390086504854,
+        "semis_from_a3": 3,
+        "peak": 0.371002197265625,
+        "rms": 0.11717970869749533,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "glass-armonica-vcsl",
+      "tier": "instrument",
+      "instruments": [
+        "glass-armonica"
+      ],
+      "file": "glass_armonica_vcsl.wav",
+      "note": "VCSL has no glass armonica; substituted VCSL's bowed Wine Glasses (same friction-idiophone family, closest analogue).",
+      "source": {
+        "provider": "vcsl",
+        "url": "https://raw.githubusercontent.com/sgossner/VCSL/master/Idiophones/Friction%20Idiophones/Wine%20Glasses/Sustains/Fast/glass1_D%234_Fast_1_main.wav"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 3
+      },
+      "pcm_sha256": "fe78aff23aa61a5e5bf40955d4cf4d38529668947dbb0e6b09a9cc5659b30ffb",
+      "measured": {
+        "f0_hz": 632.8501492986435,
+        "semis_from_a3": 18,
+        "peak": 0.07574462890625,
+        "rms": 0.02064103211196381,
+        "duration_sec": 3
+      }
+    },
+    {
+      "id": "glockenspiel-vcsl",
+      "tier": "instrument",
+      "instruments": [
+        "glockenspiel"
+      ],
+      "file": "glockenspiel_vcsl.wav",
+      "source": {
+        "provider": "vcsl",
+        "url": "https://raw.githubusercontent.com/sgossner/VCSL/master/Idiophones/Struck%20Idiophones/Glockenspiel/glock_loud_C5_01.wav"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "a8a38d8bb6e6a61ed61e890c7a400d687b0ff17bc7ab571fa2ea586300fe0bd4",
+      "measured": {
+        "f0_hz": 1053.2933420294894,
+        "semis_from_a3": 27,
+        "peak": 0.061981201171875,
+        "rms": 0.00507360615089012,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "guitar-nylon-freesound",
+      "tier": "instrument",
+      "instruments": [
+        "guitar-nylon",
+        "guitar-nylon-bright"
+      ],
+      "file": "guitar_nylon_freesound.wav",
+      "note": "128 kbps MP3 preview from freesound's CDN, NOT the lossless original; HF above ~14 kHz is codec-limited, so treat noise-floor / flatness / air-band metrics from this reference as unreliable.",
+      "source": {
+        "provider": "freesound",
+        "url": "https://cdn.freesound.org/previews/117/117852_646701-hq.mp3"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "505e5c32867f2207c8bd673ed75b6301efdc02406dd1579ab22f7d60d548948c",
+      "measured": {
+        "f0_hz": 526.2747599832489,
+        "semis_from_a3": 15,
+        "peak": 0.28753662109375,
+        "rms": 0.029043484611735348,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "harp-freesound-alt",
+      "tier": "instrument",
+      "instruments": [
+        "harp"
+      ],
+      "file": "harp_freesound.wav",
+      "note": "128 kbps MP3 preview from freesound's CDN, NOT the lossless original; HF above ~14 kHz is codec-limited, so treat noise-floor / flatness / air-band metrics from this reference as unreliable.",
+      "source": {
+        "provider": "freesound",
+        "url": "https://cdn.freesound.org/previews/127/127160_667113-hq.mp3"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "a05646b42f9c4ac39769948a583b37c8db1b9f00a08d0b09de470d17d4bf61d4",
+      "measured": {
+        "f0_hz": 776.6945077096364,
+        "semis_from_a3": 22,
+        "peak": 0.3782958984375,
+        "rms": 0.06589265178567467,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "harp-vcsl-e5",
+      "tier": "instrument",
+      "instruments": [
+        "harp"
+      ],
+      "file": "harp_vcsl_e5.wav",
+      "note": "Pitch-matched to harp-freesound-alt (measured +22 semis from A3). G5 (the theoretically exact match) was tried first, but this specific VCSL sample (both f1 and mf1 velocity layers) makes the automated YIN F0 detector report an octave-down 390Hz/+10 semis, even though independent FFT inspection of the same sustain window shows the true fundamental is genuinely ~780Hz/G5 (a closely-spaced detuned-unison triplet around 778/781/783Hz likely fools YIN into a subharmonic lock). Neighbouring notes E5 and B5 do not exhibit this bug and measure cleanly; E5 (+19, 3 semitones from target) is closer than B5 (+26, 4 semitones) and was kept. Was harp-vcsl (A4, +12 semis); renamed to keep the id honest about the note.",
+      "source": {
+        "provider": "vcsl",
+        "url": "https://raw.githubusercontent.com/sgossner/VCSL/master/Chordophones/Composite%20Chordophones/Concert%20Harp/KSHarp_E5_f1.wav"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "77a18c7c535d50c7de9af6929a62dcada6699e25f53f79a6efd6c1757d568902",
+      "measured": {
+        "f0_hz": 654.9359789164681,
+        "semis_from_a3": 19,
+        "peak": 0.168365478515625,
+        "rms": 0.01955476571716639,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "harpsichord-vcsl",
+      "tier": "instrument",
+      "instruments": [
+        "harpsichord"
+      ],
+      "file": "harpsichord_vcsl.wav",
+      "source": {
+        "provider": "vcsl",
+        "url": "https://raw.githubusercontent.com/sgossner/VCSL/master/Chordophones/Zithers/Harpsichord%2C%20French/Sustains/Harpsi2_Normal_A%230_rr1_Main.wav"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "a58fc32de19c2d2cd8a7caf247ebe6319155220af81f40e8105429905d72f8af",
+      "measured": {
+        "f0_hz": 58.26988853202026,
+        "semis_from_a3": -23,
+        "peak": 0.114959716796875,
+        "rms": 0.027533991122241412,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "hihat-vcsl",
+      "tier": "instrument",
+      "instruments": [
+        "hihat",
+        "hihat-lofi",
+        "hihat-pedal"
+      ],
+      "file": "hihat_vcsl.wav",
+      "source": {
+        "provider": "vcsl",
+        "url": "https://raw.githubusercontent.com/sgossner/VCSL/master/Idiophones/Struck%20Idiophones/Hi-Hat%20Cymbal/HiHat_Close_rr1_Mid.wav"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "b9d558ac23fa96c451615fffa2e8723acfaf3c57bc5c31bcd9d43927d0d703f4",
+      "measured": {
+        "f0_hz": 56.524658203125,
+        "semis_from_a3": -24,
+        "peak": 0.07305908203125,
+        "rms": 0.002930286535655435,
+        "duration_sec": 1.3419274376417234
+      }
+    },
+    {
+      "id": "kalimba-vcsl",
+      "tier": "instrument",
+      "instruments": [
+        "kalimba"
+      ],
+      "file": "kalimba_vcsl.wav",
+      "source": {
+        "provider": "vcsl",
+        "url": "https://raw.githubusercontent.com/sgossner/VCSL/master/Idiophones/Plucked%20Idiophones/Kalimba%2C%20Kenya/Mbira6_Normal_MainSpirit_A4_k1_vl3_rr2.wav"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "db8ffb0f0eec7878899793025e74991ec669cfda055c4f2b1671dd7e84ac46bb",
+      "measured": {
+        "f0_hz": 123.99062636828658,
+        "semis_from_a3": -10,
+        "peak": 0.1278076171875,
+        "rms": 0.006653530183653885,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "kick-acoustic-freesound-alt1",
+      "tier": "instrument",
+      "instruments": [
+        "kick-acoustic",
+        "kick-acoustic-heavy"
+      ],
+      "file": "kick_hybrid_freesound.wav",
+      "note": "128 kbps MP3 preview from freesound's CDN, NOT the lossless original; HF above ~14 kHz is codec-limited, so treat noise-floor / flatness / air-band metrics from this reference as unreliable.",
+      "source": {
+        "provider": "freesound",
+        "url": "https://cdn.freesound.org/previews/403/403244_1954411-hq.mp3"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 1
+      },
+      "pcm_sha256": "769c46d548bfcf7cb841543e252bb69ccaa622d5696a6ba11ce0c84aad0e5ca7",
+      "measured": {
+        "f0_hz": 54.65881902338097,
+        "semis_from_a3": -24,
+        "peak": 0.66754150390625,
+        "rms": 0.07419333486001928,
+        "duration_sec": 1
+      }
+    },
+    {
+      "id": "kick-acoustic-vcsl",
+      "tier": "instrument",
+      "instruments": [
+        "kick-acoustic"
+      ],
+      "file": "kick_acoustic_vcsl.wav",
+      "source": {
+        "provider": "vcsl",
+        "url": "https://raw.githubusercontent.com/sgossner/VCSL/master/Membranophones/Struck%20Membranophones/Bass%20Drum%202/bassdrum_hit_f.wav"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "04cb0d2c7962839907c3053447bc065bf36c05cff50697d96be7bcb561ed9c16",
+      "measured": {
+        "f0_hz": 48.44970703125,
+        "semis_from_a3": -26,
+        "peak": 0.391632080078125,
+        "rms": 0.04675310821306241,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "koto-vcsl",
+      "tier": "instrument",
+      "instruments": [
+        "koto"
+      ],
+      "file": "koto_vcsl.wav",
+      "note": "VCSL has no koto; substituted VCSL's Dan Tranh (Vietnamese plucked zither, closest analogue to a koto).",
+      "source": {
+        "provider": "vcsl",
+        "url": "https://raw.githubusercontent.com/sgossner/VCSL/master/Chordophones/Zithers/Dan%20Tranh/Gliss/Gliss_Dwn_Med_ff_1.wav"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "384c05df3d8ffa1413c82a3592972a52d13a014d269bd66366338aec25bffacb",
+      "measured": {
+        "f0_hz": 106.49194786141258,
+        "semis_from_a3": -13,
+        "peak": 0.35479736328125,
+        "rms": 0.054718879111210955,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "marimba-vcsl",
+      "tier": "instrument",
+      "instruments": [
+        "marimba"
+      ],
+      "file": "marimba_vcsl.wav",
+      "source": {
+        "provider": "vcsl",
+        "url": "https://raw.githubusercontent.com/sgossner/VCSL/master/Idiophones/Struck%20Idiophones/Marimba/Marimba_hit_Outrigger_B2_loud_01.wav"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "83cd09561d504faa93a3280b3d133a20773d2dfb275c3dcfe20de9a8610fb4dc",
+      "measured": {
+        "f0_hz": 247.2980643023141,
+        "semis_from_a3": 2,
+        "peak": 0.029876708984375,
+        "rms": 0.006014549611056241,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "oboe-A4",
+      "tier": "instrument",
+      "instruments": [
+        "oboe-full",
+        "oboe"
+      ],
+      "file": "oboe_A4.wav",
+      "source": {
+        "provider": "uiowa-mis",
+        "url": "https://theremin.music.uiowa.edu/sound%20files/MIS%20Pitches%20-%202014/Woodwinds/Oboe/Oboe.ff.A4.stereo.aif"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "01a11a605240c91fb6b7f728681ba640c237809c8dca06e4ff0dd96e8c2e2b89",
+      "measured": {
+        "f0_hz": 440.0657793444441,
+        "semis_from_a3": 12,
+        "peak": 0.108001708984375,
+        "rms": 0.04741217708412791,
+        "duration_sec": 1.566326530612245
+      }
+    },
+    {
+      "id": "orchestral-gaps-needs-source",
+      "tier": "instrument",
+      "instruments": [
+        "piccolo",
+        "muted-trumpet"
+      ],
+      "status": "needs-source",
+      "note": "Iowa MIS's 2014 Pitches set has no piccolo or muted-trumpet directory; guessed URL patterns (Woodwinds/Piccolo/Piccolo.{ff,nonvib,vib}.ff.{A4,A5,A6}.stereo.aif, Brass/BbTrumpet/Trumpet.{harmonMute,straightMute,harmon,straight}.ff.A4.stereo.aif) all 404'd, and neither VCSL nor the freesound absorption batch had a candidate. Drop any isolated muted-trumpet/piccolo recording into $BEATMO_WAV_REFS/sources and `make refs-adopt` it."
+    },
+    {
+      "id": "organ-church-vcsl",
+      "tier": "instrument",
+      "instruments": [
+        "organ-church"
+      ],
+      "file": "organ_church_vcsl.wav",
+      "source": {
+        "provider": "vcsl",
+        "url": "https://raw.githubusercontent.com/sgossner/VCSL/master/Aerophones/Edge-blown%20Aerophones/Pipe%20Organ/Loud/Rode_Man3Open_A3.wav"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 3
+      },
+      "pcm_sha256": "3e3f3674b807d401351fbf5cfb308f2a30c2527c292edb167bb07cdf391ac203",
+      "measured": {
+        "f0_hz": 440.08000768775867,
+        "semis_from_a3": 12,
+        "peak": 0.0570068359375,
+        "rms": 0.01767671566786471,
+        "duration_sec": 3
+      }
+    },
+    {
+      "id": "pan-flute-vcsl",
+      "tier": "instrument",
+      "instruments": [
+        "pan-flute"
+      ],
+      "file": "pan_flute_vcsl.wav",
+      "note": "VCSL has no pan flute; substituted VCSL's Baroque Alto Recorder (same edge-blown aerophone family).",
+      "source": {
+        "provider": "vcsl",
+        "url": "https://raw.githubusercontent.com/sgossner/VCSL/master/Aerophones/Edge-blown%20Aerophones/Baroque%20Alto%20Recorder/Staccato/AltRecorder_Stac_A%233_rr1_Main.wav"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "c55773f2411c8a64e50133e691d5c92aaeb0e2890a65cb9192f4f26e80d5cae7",
+      "measured": {
+        "f0_hz": 155.4571467297069,
+        "semis_from_a3": -6,
+        "peak": 0.02703857421875,
+        "rms": 0.008641566138058457,
+        "duration_sec": 0.41913832199546486
+      }
+    },
+    {
+      "id": "piano-felt-vcsl",
+      "tier": "instrument",
+      "instruments": [
+        "piano-felt"
+      ],
+      "file": "piano_felt_vcsl.wav",
+      "source": {
+        "provider": "vcsl",
+        "url": "https://raw.githubusercontent.com/sgossner/VCSL/master/Chordophones/Zithers/Upright%20Piano%2C%20Yamaha/Sustains/Upright1_Sus_C0_vl1_rr1.wav"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "a3506f2b21dcb2015b48ed51d68bbcb3155b7581a9ff3dfa19a59dbedec4e909",
+      "measured": {
+        "f0_hz": 90.5124908927128,
+        "semis_from_a3": -15,
+        "peak": 0.00689697265625,
+        "rms": 0.001442689712288263,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "piano-grand-freesound-alt",
+      "tier": "instrument",
+      "instruments": [
+        "piano-grand"
+      ],
+      "file": "piano_freesound.wav",
+      "note": "128 kbps MP3 preview from freesound's CDN, NOT the lossless original; HF above ~14 kHz is codec-limited, so treat noise-floor / flatness / air-band metrics from this reference as unreliable.",
+      "source": {
+        "provider": "freesound",
+        "url": "https://cdn.freesound.org/previews/68/68448_871124-hq.mp3"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "26e4566ebd45186124651c2d4eb5745d3ea2b415d92a1cdf51af0ff85015ff86",
+      "measured": {
+        "f0_hz": 792.1903999216419,
+        "semis_from_a3": 22,
+        "peak": 0.986785888671875,
+        "rms": 0.18355309109898,
+        "duration_sec": 1.555736961451247
+      }
+    },
+    {
+      "id": "piano-grand-vcsl-gs5",
+      "tier": "instrument",
+      "instruments": [
+        "piano-grand"
+      ],
+      "file": "piano_grand_vcsl_gs5.wav",
+      "note": "Pitch-matched to piano-grand-freesound-alt (measured +22 semis from A3). VCSL only samples this Steinway B at whole-tone intervals (A#,C,D,E,F#,G# per octave), so no exact G5 sample exists; F#5 (-1) and G#5 (+1) are the neighbours. Measured F#5=740.4Hz (+21) vs G#5=829.6Hz (+23) -- G#5 is the closer match in cents (0.80 semis from target vs 1.17 for F#5) and was kept. Was piano-grand-vcsl (A#0, -23 semis); renamed to keep the id honest about the note.",
+      "source": {
+        "provider": "vcsl",
+        "url": "https://raw.githubusercontent.com/sgossner/VCSL/master/Chordophones/Zithers/Grand%20Piano%2C%20Steinway%20B/NoSus/JHPiano_NoSus_Close_G%235_vl3_rr1.wav"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "1b52e7347ba8dae58e599ea895fb980356fc6698eb9f7c8c576e6628d4bbc83a",
+      "measured": {
+        "f0_hz": 829.6327397140202,
+        "semis_from_a3": 23,
+        "peak": 0.3839111328125,
+        "rms": 0.048621133736047914,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "rimshot-vcsl",
+      "tier": "instrument",
+      "instruments": [
+        "rimshot",
+        "snare-crack"
+      ],
+      "file": "rimshot_vcsl.wav",
+      "source": {
+        "provider": "vcsl",
+        "url": "https://raw.githubusercontent.com/sgossner/VCSL/master/Membranophones/Struck%20Membranophones/Legacy%20Snares/drum2/snare2_rimshot_f_rr1.wav"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "fcd78880813e076c95b7c77bc2f0ccbc4f69618df7b9e3e79b1033b5f0a28ae2",
+      "measured": {
+        "f0_hz": 121.124267578125,
+        "semis_from_a3": -10,
+        "peak": 0.332061767578125,
+        "rms": 0.02249406602155899,
+        "duration_sec": 0.6096598639455783
+      }
+    },
+    {
+      "id": "sax-A4",
+      "tier": "instrument",
+      "instruments": [
+        "sax"
+      ],
+      "file": "sax_A4.wav",
+      "source": {
+        "provider": "uiowa-mis",
+        "url": "https://theremin.music.uiowa.edu/sound%20files/MIS%20Pitches%20-%202014/Woodwinds/Eb%20Alto%20Saxophone/AltoSax.NoVib.ff.A4.stereo.aif"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "b1d8afbdcc1280c512fdf317b1defe67c1a47ec279f40649cd4b0f7dc88f4a76",
+      "measured": {
+        "f0_hz": 442.849297512822,
+        "semis_from_a3": 12,
+        "peak": 0.18255615234375,
+        "rms": 0.06970166468009223,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "sax-baritone-freesound-alt",
+      "tier": "instrument",
+      "instruments": [
+        "sax"
+      ],
+      "file": "sax_baritone_freesound.wav",
+      "note": "Baritone saxophone, NOT the alto that `sax` models: different horn/range/timbre from sax-A4 (Iowa MIS alto sax; 4 semitones higher F0). There is no `sax-baritone` builtin instrument id, so this is filed under `sax` as a second, lower-register real-audio reference rather than left orphaned. `refs candidates -instrument sax` will show a pitch-spread warning between this and sax-A4 — that is expected: judge recording quality (room tone, mic distance, articulation) here, not timbre parity with the alto. 128 kbps MP3 preview from freesound's CDN, NOT the lossless original; HF above ~14 kHz is codec-limited, so treat noise-floor / flatness / air-band metrics from this reference as unreliable.",
+      "source": {
+        "provider": "freesound",
+        "url": "https://cdn.freesound.org/previews/360/360251_6552981-hq.mp3"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "196116240e62e25cd5b32d7c2ff906d41246119c72831d9aabc44259d840e3a6",
+      "measured": {
+        "f0_hz": 344.53125,
+        "semis_from_a3": 8,
+        "peak": 0.258880615234375,
+        "rms": 0.032353165159799316,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "shaker-vcsl",
+      "tier": "instrument",
+      "instruments": [
+        "shaker"
+      ],
+      "file": "shaker_vcsl.wav",
+      "source": {
+        "provider": "vcsl",
+        "url": "https://raw.githubusercontent.com/sgossner/VCSL/master/Idiophones/Struck%20Idiophones/Shaker%2C%20Small/Mid_ShakerDouble_Down_rr1.wav"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "1924345e36225379a059685c1099f58283ade93a42ec79c5c19401751df74f1c",
+      "measured": {
+        "f0_hz": 1639.215087890625,
+        "semis_from_a3": 35,
+        "peak": 0.021942138671875,
+        "rms": 0.002917908890486507,
+        "duration_sec": 0.26528344671201814
+      }
+    },
+    {
+      "id": "sidestick-vcsl",
+      "tier": "instrument",
+      "instruments": [
+        "sidestick"
+      ],
+      "file": "sidestick_vcsl.wav",
+      "source": {
+        "provider": "vcsl",
+        "url": "https://raw.githubusercontent.com/sgossner/VCSL/master/Membranophones/Struck%20Membranophones/Snare%20Drum%2C%20Rope%20Tension/RopeSnare_sidestick_Main_vl2_rr1.wav"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "e15a5313800785e44b5a9c2ac67fef3cc0ac0383293a523d87c7112f0ca7f9c4",
+      "measured": {
+        "f0_hz": 139.48666408870992,
+        "semis_from_a3": -8,
+        "peak": 0.076751708984375,
+        "rms": 0.0021159266740835335,
+        "duration_sec": 1.3042857142857143
+      }
+    },
+    {
+      "id": "singing-bowl-freesound",
+      "tier": "instrument",
+      "instruments": [
+        "singing-bowl"
+      ],
+      "file": "singing_bowl_freesound.wav",
+      "note": "Best-guess classification: freesound id 826038 (\"g1_rr1\", 5.4s sustained low resonant decay) has no descriptive title beyond the filename; assigned to singing-bowl by duration/timbre inference, not confirmed provenance beyond the freesound id. 128 kbps MP3 preview from freesound's CDN, NOT the lossless original; HF above ~14 kHz is codec-limited, so treat noise-floor / flatness / air-band metrics from this reference as unreliable.",
+      "source": {
+        "provider": "freesound",
+        "url": "https://cdn.freesound.org/previews/826/826038_11912888-hq.mp3"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 3
+      },
+      "pcm_sha256": "a894757d754ef58bc265ceb4e13c05e747d2720618f203a312d37777127157e7",
+      "measured": {
+        "f0_hz": 100,
+        "semis_from_a3": -14,
+        "peak": 0.95880126953125,
+        "rms": 0.12580969870385034,
+        "duration_sec": 3
+      }
+    },
+    {
+      "id": "snare-freesound-alt",
+      "tier": "instrument",
+      "instruments": [
+        "snare",
+        "snare-fat",
+        "snare-lofi",
+        "snare-punch"
+      ],
+      "file": "snare_freesound.wav",
+      "note": "128 kbps MP3 preview from freesound's CDN, NOT the lossless original; HF above ~14 kHz is codec-limited, so treat noise-floor / flatness / air-band metrics from this reference as unreliable.",
+      "source": {
+        "provider": "freesound",
+        "url": "https://cdn.freesound.org/previews/579/579499_7005-hq.mp3"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 1
+      },
+      "pcm_sha256": "44c326d7235aa5967fe8e231aaaceca8b743206c305035e7f0725cacc877ce8e",
+      "measured": {
+        "f0_hz": 113.04931640625,
+        "semis_from_a3": -12,
+        "peak": 0.19659423828125,
+        "rms": 0.014733151899723495,
+        "duration_sec": 0.7894784580498866
+      }
+    },
+    {
+      "id": "snare-vcsl",
+      "tier": "instrument",
+      "instruments": [
+        "snare",
+        "snare-ghost"
+      ],
+      "file": "snare_vcsl.wav",
+      "source": {
+        "provider": "vcsl",
+        "url": "https://raw.githubusercontent.com/sgossner/VCSL/master/Membranophones/Struck%20Membranophones/Snare%20Drum%2C%20Modern%201/Snare2_HitNS_v2_rr1_Mid.wav"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "b4b4df5019e2e15a9aa9511a725fdfe1e8ef44f3cc47c21ccd614ece611318a8",
+      "measured": {
+        "f0_hz": 84.02295210102315,
+        "semis_from_a3": -17,
+        "peak": 0.06683349609375,
+        "rms": 0.007963072175132374,
+        "duration_sec": 0.8807482993197279
+      }
+    },
+    {
+      "id": "tom-vcsl",
+      "tier": "instrument",
+      "instruments": [
+        "tom",
+        "high-tom-organic",
+        "tom-high-acoustic"
+      ],
+      "file": "tom_vcsl.wav",
+      "source": {
+        "provider": "vcsl",
+        "url": "https://raw.githubusercontent.com/sgossner/VCSL/master/Membranophones/Struck%20Membranophones/Tom%201/Mallet/TomH_HitM_v2_rr1_Mid.wav"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "826d0eec2db1604317cd25451c0094b52c8c348f2ff8e886e6c6dc21090ce7a3",
+      "measured": {
+        "f0_hz": 107.40743266584211,
+        "semis_from_a3": -12,
+        "peak": 0.058837890625,
+        "rms": 0.0036019711129099976,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "trombone-A3",
+      "tier": "instrument",
+      "instruments": [
+        "trombone"
+      ],
+      "file": "trombone_A3.wav",
+      "source": {
+        "provider": "uiowa-mis",
+        "url": "https://theremin.music.uiowa.edu/sound%20files/MIS%20Pitches%20-%202014/Brass/Tenor%20Trombone/TenorTrombone.ff.A3.stereo.aif"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "1a06a41f43d0d4df490b57eb00046385a76902363a2fed39ec68e21efb6c552b",
+      "measured": {
+        "f0_hz": 220.41880502422728,
+        "semis_from_a3": 0,
+        "peak": 0.183990478515625,
+        "rms": 0.02400182476542952,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "trumpet-A4",
+      "tier": "instrument",
+      "instruments": [
+        "trumpet-mellow"
+      ],
+      "file": "trumpet_A4.wav",
+      "source": {
+        "provider": "uiowa-mis",
+        "url": "https://theremin.music.uiowa.edu/sound%20files/MIS%20Pitches%20-%202014/Brass/BbTrumpet/Trumpet.novib.ff.A4.stereo.aif"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "ab440e9ebab945e79598d095f90f93d270b7f494c6e7ffe287406711b71af920",
+      "measured": {
+        "f0_hz": 441.85911328854615,
+        "semis_from_a3": 12,
+        "peak": 0.17840576171875,
+        "rms": 0.05849324689642672,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "trumpet-G4",
+      "tier": "instrument",
+      "instruments": [
+        "trumpet"
+      ],
+      "file": "trumpet_G4.wav",
+      "note": "Pitch-matched to trumpet-freesound-alt (measured +10 semis from A3) so refs candidates compares timbre, not register.",
+      "source": {
+        "provider": "uiowa-mis",
+        "url": "https://theremin.music.uiowa.edu/sound%20files/MIS%20Pitches%20-%202014/Brass/BbTrumpet/Trumpet.novib.ff.G4.stereo.aif"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "32eaad68f2ea20dd2b4664ebca8dcd0f7db27af4442127a5df7c7f1939d4156b",
+      "measured": {
+        "f0_hz": 393.9180527962666,
+        "semis_from_a3": 10,
+        "peak": 0.187774658203125,
+        "rms": 0.05737531958868481,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "trumpet-freesound-alt",
+      "tier": "instrument",
+      "instruments": [
+        "trumpet",
+        "trumpet-mellow"
+      ],
+      "file": "trumpet_freesound.wav",
+      "note": "128 kbps MP3 preview from freesound's CDN, NOT the lossless original; HF above ~14 kHz is codec-limited, so treat noise-floor / flatness / air-band metrics from this reference as unreliable.",
+      "source": {
+        "provider": "freesound",
+        "url": "https://cdn.freesound.org/previews/374/374162_2475994-hq.mp3"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "a0c8e9a9a0a651711542ce6095fac14cd974a5f505d210c5c6f05ff4fdd1b765",
+      "measured": {
+        "f0_hz": 393.183406158549,
+        "semis_from_a3": 10,
+        "peak": 0.62890625,
+        "rms": 0.16483376508770334,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "tuba-A2",
+      "tier": "instrument",
+      "instruments": [
+        "tuba"
+      ],
+      "file": "tuba_A2.wav",
+      "source": {
+        "provider": "uiowa-mis",
+        "url": "https://theremin.music.uiowa.edu/sound%20files/MIS%20Pitches%20-%202014/Brass/Tuba/Tuba.ff.A2.stereo.aif"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "8f7cf93f5782a19f6e72d575cf4a2a5adc27078c9d1e19a11616c54ad5cd5dcf",
+      "measured": {
+        "f0_hz": 112.12453597562303,
+        "semis_from_a3": -12,
+        "peak": 0.583648681640625,
+        "rms": 0.09425860542775533,
+        "duration_sec": 1.6234467120181406
+      }
+    },
+    {
+      "id": "tubular-bells-vcsl",
+      "tier": "instrument",
+      "instruments": [
+        "tubular-bells"
+      ],
+      "file": "tubular_bells_vcsl.wav",
+      "source": {
+        "provider": "vcsl",
+        "url": "https://raw.githubusercontent.com/sgossner/VCSL/master/Idiophones/Struck%20Idiophones/Tubular%20Bells%201/chimes_A%233_ff_rr1.wav"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 3
+      },
+      "pcm_sha256": "94df9b244e09e6b9c1f1caf52c6d932dd6762baceb08e838307cecf8d218af80",
+      "measured": {
+        "f0_hz": 931.6299181664882,
+        "semis_from_a3": 25,
+        "peak": 0.671722412109375,
+        "rms": 0.05690938190433168,
+        "duration_sec": 3
+      }
+    },
+    {
+      "id": "vibraphone-vcsl",
+      "tier": "instrument",
+      "instruments": [
+        "vibraphone"
+      ],
+      "file": "vibraphone_vcsl.wav",
+      "source": {
+        "provider": "vcsl",
+        "url": "https://raw.githubusercontent.com/sgossner/VCSL/master/Idiophones/Struck%20Idiophones/Vibraphone/Hard%20Mallets/Vibes_hard_A4_v2_rr1_Main.wav"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "96ef422a3ff9b527177fcf002f596f5848bbc19854d3a1f229faec34c7685d52",
+      "measured": {
+        "f0_hz": 880.1815248673406,
+        "semis_from_a3": 24,
+        "peak": 0.061309814453125,
+        "rms": 0.02477203140821604,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "viola-A4",
+      "tier": "instrument",
+      "instruments": [
+        "viola"
+      ],
+      "file": "viola_A4.wav",
+      "source": {
+        "provider": "uiowa-mis",
+        "url": "https://theremin.music.uiowa.edu/sound%20files/MIS%20Pitches%20-%202014/Strings/Viola/Viola.arco.ff.sulA.A4.stereo.aif"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 3
+      },
+      "pcm_sha256": "a63ccd6b8532b1c11947dacdbd118c48d588b29c1d1e5965a814cec9464cc433",
+      "measured": {
+        "f0_hz": 441.59304356338174,
+        "semis_from_a3": 12,
+        "peak": 0.54156494140625,
+        "rms": 0.16922045830603658,
+        "duration_sec": 3
+      }
+    },
+    {
+      "id": "violin-A4",
+      "tier": "instrument",
+      "instruments": [
+        "violin-ensemble"
+      ],
+      "file": "violin_A4.wav",
+      "source": {
+        "provider": "uiowa-mis",
+        "url": "https://theremin.music.uiowa.edu/sound%20files/MIS%20Pitches%20-%202014/Strings/Violin/Violin.arco.ff.sulA.A4.stereo.aif"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "07472ee743ebf6851f07b3cd577301cc3724eaf102bdeb8a4280fa661fd84ef1",
+      "measured": {
+        "f0_hz": 442.2735190915072,
+        "semis_from_a3": 12,
+        "peak": 0.4375,
+        "rms": 0.09321821838538691,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "violin-D5",
+      "tier": "instrument",
+      "instruments": [
+        "violin"
+      ],
+      "file": "violin_D5.wav",
+      "note": "Pitch-matched to violin-freesound-alt (measured +17 semis from A3) so refs candidates compares timbre, not register.",
+      "source": {
+        "provider": "uiowa-mis",
+        "url": "https://theremin.music.uiowa.edu/sound%20files/MIS%20Pitches%20-%202014/Strings/Violin/Violin.arco.ff.sulD.D5.stereo.aif"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "e6d8c373f2fab53a0af5731b4152423b88b79859c3057ea6bdd5e1c5e8651d91",
+      "measured": {
+        "f0_hz": 586.7774861758148,
+        "semis_from_a3": 17,
+        "peak": 0.46588134765625,
+        "rms": 0.09415381198751768,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "violin-freesound-alt",
+      "tier": "instrument",
+      "instruments": [
+        "violin"
+      ],
+      "file": "356181__mtg__violin-d5.wav",
+      "note": "128 kbps MP3 preview from freesound's CDN, NOT the lossless original; HF above ~14 kHz is codec-limited, so treat noise-floor / flatness / air-band metrics from this reference as unreliable.",
+      "source": {
+        "provider": "freesound",
+        "url": "https://cdn.freesound.org/previews/356/356181_6552981-hq.mp3"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "e73e321d63dd8603181bf9cc70bee3e97be113314a082326279829e153f735bf",
+      "measured": {
+        "f0_hz": 592.2892555834242,
+        "semis_from_a3": 17,
+        "peak": 0.302337646484375,
+        "rms": 0.08509119884688768,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "voice-ahh-freesound",
+      "tier": "instrument",
+      "instruments": [
+        "voice-ahh"
+      ],
+      "file": "voice_ahh_freesound.wav",
+      "note": "128 kbps MP3 preview from freesound's CDN, NOT the lossless original; HF above ~14 kHz is codec-limited, so treat noise-floor / flatness / air-band metrics from this reference as unreliable.",
+      "source": {
+        "provider": "freesound",
+        "url": "https://cdn.freesound.org/previews/763/763910_11744683-hq.mp3"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "d1f7025b9ba6328e84f2da6dbb4d7e554feac05af2ac5f5cc46471e21d6cbcc7",
+      "measured": {
+        "f0_hz": 59.21630859375,
+        "semis_from_a3": -23,
+        "peak": 0.0941162109375,
+        "rms": 0.01133044242867943,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "voice-out-of-scope-needs-source",
+      "tier": "instrument",
+      "instruments": [
+        "voice-opera",
+        "voice-soprano",
+        "voice-whisper"
+      ],
+      "status": "needs-source",
+      "note": "Voice was out of scope for the first reference-audio pass (guitar-steel/bass-guitar/organ/voice-soprano/voice-whisper named explicitly as needs-source). voice-ahh was upgraded to a real reference (a freesound choir 'ahh' recording, id 763910); voice-opera/voice-soprano/voice-whisper have no isolated recording adopted yet."
+    },
+    {
+      "id": "world-folk-needs-source",
+      "tier": "instrument",
+      "instruments": [
+        "banjo",
+        "mandolin",
+        "ukulele",
+        "sitar",
+        "gamelan",
+        "steel-drum",
+        "accordion",
+        "harmonium",
+        "celesta",
+        "music-box",
+        "pizz-strings",
+        "theremin"
+      ],
+      "status": "needs-source",
+      "note": "No isolated recording adopted yet: Iowa MIS and VCSL carry neither instrument family, and the freesound searches returned full mixed performances rather than isolated single notes usable as ground truth. Drop any isolated single-note recording into $BEATMO_WAV_REFS/sources and `make refs-adopt` it."
+    },
+    {
+      "id": "xylophone-vcsl",
+      "tier": "instrument",
+      "instruments": [
+        "xylophone"
+      ],
+      "file": "xylophone_vcsl.wav",
+      "source": {
+        "provider": "vcsl",
+        "url": "https://raw.githubusercontent.com/sgossner/VCSL/master/Idiophones/Struck%20Idiophones/Xylophone/Hard%20Mallets/Xylo_Hard_C4_ff_01_far.wav"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "2f5583b84d04d3f713eba356f5387d0d9975e17f7c2545a37379cf04216e2bff",
+      "measured": {
+        "f0_hz": 526.9964015747482,
+        "semis_from_a3": 15,
+        "peak": 0.496490478515625,
+        "rms": 0.028364948704123927,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "zgump-kick-freesound",
+      "tier": "instrument",
+      "instruments": [
+        "zgump-kick"
+      ],
+      "file": "83768__zgump__kick-pack-0708.wav",
+      "note": "128 kbps MP3 preview from freesound's CDN, NOT the lossless original; HF above ~14 kHz is codec-limited, so treat noise-floor / flatness / air-band metrics from this reference as unreliable.",
+      "source": {
+        "provider": "freesound",
+        "url": "https://cdn.freesound.org/previews/83/83768_377011-hq.mp3"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 1
+      },
+      "pcm_sha256": "9313f3eab510faa7cb144c101d8ddc46aea1c6e3e976d97a60d9f94f5a67faa9",
+      "measured": {
+        "f0_hz": 48.44970703125,
+        "semis_from_a3": -26,
+        "peak": 0.95562744140625,
+        "rms": 0.2821769485894998,
+        "duration_sec": 0.3384580498866213
+      }
+    },
+    {
+      "id": "snare-acoustic-local",
+      "tier": "instrument",
+      "instruments": [
+        "snare-acoustic",
+        "snare-deep"
+      ],
+      "file": "snare-acoustic-local.wav",
+      "note": "soundreality-snare-drum-acoustic-sample-455287 (local dev reference)",
+      "source": {
+        "provider": "local",
+        "url": "/home/ymolinar/.beatmo/wav-refs/sources/snare-acoustic.mp3"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "c0db7099c4e0f47a7b79084e190431febd5bba2c845d322393d54533731a48e7",
+      "measured": {
+        "f0_hz": 225,
+        "semis_from_a3": 0,
+        "peak": 0.984832763671875,
+        "rms": 0.10512543132228483,
+        "duration_sec": 2
+      }
+    },
+    {
+      "id": "ride-local",
+      "tier": "instrument",
+      "instruments": [
+        "ride"
+      ],
+      "file": "ride-local.wav",
+      "note": "user-supplied ride reference; the shipped ride was judged to sound like high-pitched tin, not a ride",
+      "source": {
+        "provider": "local",
+        "url": "/home/ymolinar/.beatmo/wav-refs/sources/freesound_community-electronic-finger-ride-1-100409.mp3"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "856735b026cb7cc685e909491614b824f7a948dbdbe8f70ef0a827ef0ea21be9",
+      "measured": {
+        "f0_hz": 1151.2217692727934,
+        "semis_from_a3": 29,
+        "peak": 0.303985595703125,
+        "rms": 0.02197594085326555,
+        "duration_sec": 1.6979591836734693
+      },
+      "alternatives": [
+        {
+          "url": "https://raw.githubusercontent.com/sgossner/VCSL/master/Idiophones/Struck%20Idiophones/Suspended%20Cymbal%202/susCymb2_hit_stick_mf1.wav",
+          "reason": "superseded for ride by the adopted local recording ride-local"
+        }
+      ]
+    },
+    {
+      "id": "kick-al-bd-acoust-local",
+      "tier": "instrument",
+      "instruments": [
+        "kick-brutal",
+        "kick-rock",
+        "kick-wood"
+      ],
+      "file": "kick-al-bd-acoust-local.wav",
+      "note": "Akai 5000 AL_BD_acoust: the real acoustic kick the physical (variant 8) brutal/rock-room/wood-beater kicks were fit to (2026-10-02 kick A/B rounds 2-3). f0 pinned: YIN reported an upper partial; the body fundamental sits at the strongest 20-120 ms partial, which agrees with the fitted voice_freq.",
+      "source": {
+        "provider": "local",
+        "url": "/home/ymolinar/Downloads/Kick/Kick/Akai 5000/AL_BD_acoust.WAV"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "c693c8a2941425b09a73ad3df4006724eaf54c09f8353eb57cfb78eb707d03c1",
+      "measured": {
+        "f0_hz": 59,
+        "semis_from_a3": -23,
+        "peak": 1,
+        "rms": 0.1840324305070898,
+        "duration_sec": 0.42727891156462583
+      }
+    },
+    {
+      "id": "kick-bb-k5-local",
+      "tier": "instrument",
+      "instruments": [
+        "kick-airy"
+      ],
+      "file": "kick-bb-k5-local.wav",
+      "note": "Akai 5000 BB_K5_KicK4: the real airy/organic kick the physical (variant 8) airy kick was fit to (2026-10-02 kick A/B round 2).",
+      "source": {
+        "provider": "local",
+        "url": "/home/ymolinar/Downloads/Kick/Kick/Akai 5000/BB_K5_KicK4.WAV"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "1f0a725d6da27c7e2d5cd178c975336277f2bf52338a52648ae04f6db254fcc6",
+      "measured": {
+        "f0_hz": 51.141357421875,
+        "semis_from_a3": -25,
+        "peak": 0.727630615234375,
+        "rms": 0.0812601262496067,
+        "duration_sec": 0.44369614512471656
+      }
+    },
+    {
+      "id": "kick-rnd-k1-local",
+      "tier": "instrument",
+      "instruments": [
+        "kick-boom-bap"
+      ],
+      "file": "kick-rnd-k1-local.wav",
+      "note": "9th Wonder Rnd_K1: the real compressed hip-hop kick the physical (variant 8) boom-bap kick was fit to (2026-10-02 kick A/B round 3). f0 pinned: YIN reported an upper partial; the body fundamental sits at the strongest 20-120 ms partial, which agrees with the fitted voice_freq.",
+      "source": {
+        "provider": "local",
+        "url": "/home/ymolinar/Downloads/Kick/Kick/9th Wonder/Rnd_K1.wav"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "c289e197c1e5cb8a50bd3e829dbe0f4dd18e757bf7e78df235bc6c5e8b4b4b00",
+      "measured": {
+        "f0_hz": 53,
+        "semis_from_a3": -25,
+        "peak": 0.989227294921875,
+        "rms": 0.2914412491802111,
+        "duration_sec": 0.4543764172335601
+      }
+    },
+    {
+      "id": "kick-akt-a018-local",
+      "tier": "instrument",
+      "instruments": [
+        "kick-muted",
+        "kick-muted-room"
+      ],
+      "file": "kick-akt-a018-local.wav",
+      "note": "Alkota Gems AKT-KCK-A018_bip: the real muted kick the physical (variant 8) muted/muted-room kicks were fit to (2026-10-02 kick A/B round 3). f0 pinned: YIN reported an upper partial; the body fundamental sits at the strongest 20-120 ms partial, which agrees with the fitted voice_freq.",
+      "source": {
+        "provider": "local",
+        "url": "/home/ymolinar/Downloads/Kick/Kick/Alkota Gems/AKT-KCK-A018_bip.wav"
+      },
+      "convert": {
+        "channels": 1,
+        "rate": 44100,
+        "bits": 16,
+        "max_sec": 2
+      },
+      "pcm_sha256": "3381dc1fe03fd70c887ca4a10e06376ac4a8c307bced58a53fb8d9fda6d2ce13",
+      "measured": {
+        "f0_hz": 61,
+        "semis_from_a3": -22,
+        "peak": 0.95654296875,
+        "rms": 0.1425089392871533,
+        "duration_sec": 0.7430385487528345
+      }
+    }
+  ]
+}

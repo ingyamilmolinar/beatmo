@@ -1,0 +1,101 @@
+{
+  "schema_version": "0.0.1",
+  "id": "kick-fat",
+  "name": "Fat Kick",
+  "category": "modular",
+  "notes": "kickFatSeed: the plain base kick (variant 0) re-tuned to sit FULL under a\nfixed peak: real saturation (0.55 → 1.2) glues the harmonic stack, a bigger,\nfaster drop (0.6 at 40/s) loads the 60-200 Hz punch band, and the body and\ntail run longer. Loudest-300 ms RMS at equal peak −12.2 → −6.9 dB, crest 3.4.\nIt is a frozen literal (not a clone of drumKickSeed): `kick` itself was\nretuned afterwards and Fat Kick must not move with it.\nkickFatSeed: the plain base kick (variant 0) re-tuned to sit FULL under a\nfixed peak: real saturation (0.55 → 1.2) glues the harmonic stack, a bigger,\nfaster drop (0.6 at 40/s) loads the 60-200 Hz punch band, and the body and\ntail run longer. Loudest-300 ms RMS at equal peak −12.2 → −6.9 dB, crest 3.4.\nIt is a frozen literal (not a clone of drumKickSeed): `kick` itself was\nretuned afterwards and Fat Kick must not move with it.",
+  "render": {
+    "seconds": 0.5,
+    "amplitude": 0.676,
+    "gate_tail": 0,
+    "melodic": false
+  },
+  "stages": {
+    "amp_env": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "amp_attack": 0.005,
+        "amp_curve": 1,
+        "amp_decay": 0.3,
+        "amp_release": 0.2,
+        "amp_sustain": 0.6
+      }
+    },
+    "core": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "gain": 1,
+        "noise_draws": 1,
+        "noise_prelude": 0,
+        "osc_detune": 0,
+        "osc_octave": 0,
+        "pitch": 0,
+        "voice_freq_hz": 55
+      }
+    },
+    "drive": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "drive": 0
+      }
+    },
+    "filter": {
+      "v": 1,
+      "on": false,
+      "values": {
+        "filter_cutoff": 8000,
+        "filter_resonance": 0.707,
+        "filter_type": 0
+      }
+    },
+    "finish": {
+      "v": 1,
+      "on": true,
+      "values": {
+        "out_clamp": 0,
+        "post_body": 0,
+        "post_brightness": 0,
+        "post_darken": 0,
+        "post_decay": 1,
+        "post_decay_rate": 6,
+        "post_drive": 0,
+        "post_pitch": 0
+      }
+    }
+  },
+  "source": {
+    "type": "osc.wavetable",
+    "v": 1,
+    "on": false,
+    "values": {
+      "osc_type": 0
+    }
+  },
+  "layers": [
+    {
+      "type": "kick.base",
+      "v": 1,
+      "on": true,
+      "values": {
+        "freq": 1,
+        "freq_mode": 0,
+        "kick_attack": 0.3,
+        "kick_click": 0.35,
+        "kick_env0": 4.5,
+        "kick_env1": 9,
+        "kick_fade": 3,
+        "kick_h2": 0.4,
+        "kick_h3": 0.2,
+        "kick_h4": 0.12,
+        "kick_noise": 0.18,
+        "kick_pe_amt": 0.6,
+        "kick_pe_rate": 40,
+        "kick_sat": 1.2,
+        "wave": 0
+      }
+    }
+  ]
+}
